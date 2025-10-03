@@ -1,12 +1,16 @@
 mod lexer;
+pub mod parser;
 mod token;
+pub mod compiler;
 #[macro_use]
 mod macros;
 
-use crate::lexer::Lexer;
+use crate::{lexer::Lexer, parser::Parser};
 
 fn main() {
     let mut l = Lexer::new();
-    l.lex(String::from(""));
+    let mut p = Parser::new();
+    p.parse(l.lex(String::from("")));
+
     println!("Hello, world!");
 }

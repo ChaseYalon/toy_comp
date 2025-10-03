@@ -1,5 +1,6 @@
-use crate::token::Token;
 use crate::debug;
+use crate::token::Token;
+
 #[derive(Debug)]
 pub struct Lexer {
     chars: Vec<char>,
@@ -27,7 +28,7 @@ impl Lexer {
             let c = self.chars[self.cp];
             debug!(c);
             debug!(self.cp);
-            if c == ' ' || c == '\t' || c == '\n' || c == '\r'{
+            if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
                 self.eat();
                 continue;
             }
@@ -43,21 +44,27 @@ impl Lexer {
                 self.eat();
                 continue;
             }
-            if c == '-'{
+            if c == '-' {
                 self.flush_int();
                 self.toks.push(Token::Minus);
                 self.eat();
                 continue;
             }
-            if c == '*'{
+            if c == '*' {
                 self.flush_int();
                 self.toks.push(Token::Multiply);
                 self.eat();
                 continue;
             }
-            if c == '/'{
+            if c == '/' {
                 self.flush_int();
                 self.toks.push(Token::Divide);
+                self.eat();
+                continue;
+            }
+            if c == ';' {
+                self.flush_int();
+                self.toks.push(Token::Semicolon);
                 self.eat();
                 continue;
             }
@@ -74,8 +81,8 @@ impl Lexer {
     fn eat(&mut self) {
         self.cp += 1;
     }
-    fn flush_int(&mut self){
-        if self.num_buf.len() == 0{
+    fn flush_int(&mut self) {
+        if self.num_buf.len() == 0 {
             return;
         }
         let proto_output: String = self.num_buf.clone().into_iter().collect();
@@ -83,7 +90,7 @@ impl Lexer {
         self.num_buf = Vec::new();
         self.toks.push(Token::IntLit(output));
     }
-    fn clean_up(&mut self){
+    fn clean_up(&mut self) {
         self.chars = Vec::new();
         self.cp = 0;
         self.num_buf = Vec::new();
