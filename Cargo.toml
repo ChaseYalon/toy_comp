@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-cranelift = "0.124.1"
+cranelift = "0.104"
 cranelift-module = "0.104"
 cranelift-jit = "0.104"
 
