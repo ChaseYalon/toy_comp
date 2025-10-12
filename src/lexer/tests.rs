@@ -1,3 +1,5 @@
+use crate::token::TypeTok;
+
 use super::{Lexer, Token};
 #[test]
 fn test_lexer_int_literals() {
@@ -24,4 +26,97 @@ fn test_lexer_infix_ops() {
             Token::IntLit(6)
         ]
     );
+}
+
+#[test]
+fn test_lexer_var_dec(){
+    let mut l = Lexer::new();
+    let out = l.lex(String::from("let x = 9;"));
+    assert_eq!(
+        out,
+        vec![
+            Token::Let,
+            Token::VarName(Box::new("x".to_string())),
+            Token::Assign,
+            Token::IntLit(9),
+            Token::Semicolon
+        ]
+    )
+}
+
+#[test]
+fn test_lexer_multiple_var_decs(){
+    let mut l = Lexer::new();
+    let out = l.lex(String::from("let x = 15; let y = 8;"));
+    assert_eq!(
+        out,
+        vec![
+            Token::Let,
+            Token::VarName(Box::new("x".to_string())),
+            Token::Assign,
+            Token::IntLit(15),
+            Token::Semicolon,
+            Token::Let,
+            Token::VarName(Box::new("y".to_string())),
+            Token::Assign, 
+            Token::IntLit(8),
+            Token::Semicolon,
+        ]
+    )
+}
+
+#[test]
+fn test_lexer_var_ref(){
+    let mut l = Lexer::new();
+    let out = l.lex("let x = 9; x + 3;".to_string());
+    assert_eq!(
+        out,
+        vec![
+            Token::Let,
+            Token::VarName(Box::new("x".to_string())),
+            Token::Assign,
+            Token::IntLit(9),
+            Token::Semicolon,
+            Token::VarRef(Box::new("x".to_string())),
+            Token::Plus,
+            Token::IntLit(3),
+            Token::Semicolon,
+        ]
+    )
+}
+
+#[test]
+fn test_lexer_static_type(){
+    let mut l = Lexer::new();
+    let out = l.lex("let a: int = 0;".to_string());
+    assert_eq!(
+        out,
+        vec![
+            Token::Let,
+            Token::VarName(Box::new("a".to_string())),
+            Token::Colon,
+            Token::Type(TypeTok::Int),
+            Token::Assign,
+            Token::IntLit(0),
+            Token::Semicolon,
+        ]
+    )
+}
+
+#[test]
+fn test_lexer_bool_lit(){
+    let mut l = Lexer::new();
+    let out = l.lex("let b: bool = true;".to_string());
+    assert_eq!(
+        out,
+        vec![
+            Token::Let,
+            Token::VarName(Box::new("b".to_string())),
+            Token::Colon,
+            Token::Type(TypeTok::Bool),
+            Token::Assign,
+            Token::BoolLit(true),
+            Token::Semicolon,
+        ]
+    )
 }

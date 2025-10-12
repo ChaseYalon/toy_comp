@@ -32,3 +32,25 @@ fn test_compiler_int_infix_2() {
     compile_code!(code_fn, "24 / 6 - 3");
     assert_eq!(1, code_fn());
 }
+#[test]
+fn test_compiler_var_ref(){
+    compile_code!(code_fn, "let x = 1; x;");
+    assert_eq!(1, code_fn())
+}
+#[test]
+fn test_compiler_var_ref_reassign(){
+    compile_code!(code_fn, "let x = 9; x = 2; x;");
+    assert_eq!(2, code_fn());
+}
+
+#[test]
+fn test_compiler_static_types(){
+    compile_code!(code_fn, "let x: int = 9; x;");
+    assert_eq!(9, code_fn());
+}
+
+#[test]
+fn test_compiler_bool_literal(){
+    compile_code!(code_fn, "let b: bool = true; b;");
+    assert_eq!(1, code_fn());
+}

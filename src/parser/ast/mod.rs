@@ -1,15 +1,27 @@
 use std::fmt;
 
+use crate::token::TypeTok;
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Ast {
     IntLit(i64),
+    BoolLit(bool),
     InfixExpr(Box<Ast>, Box<Ast>, InfixOp),
+    ///Variable name, type, value
+    VarDec(Box<String>, TypeTok, Box<Ast>),
+    VarRef(Box<String>),
+    ///Variable name and expression to assign it to
+    VarReassign(Box<String>, Box<Ast>),
 }
 impl Ast{
-    pub fn node_type(&self) -> &str{
+    pub fn node_type(&self) -> String{
         return match self{
-            Ast::IntLit(_) => "IntLit",
-            Ast::InfixExpr(_, _, _) => "InfixExpr",
+            Ast::IntLit(_) => "IntLit".to_string(),
+            Ast::InfixExpr(_, _, _) => "InfixExpr".to_string(),
+            Ast::VarDec(_, _, _) => "VarDec".to_string(),
+            Ast::VarRef(_) => "VarRef".to_string(),
+            Ast::VarReassign(_, _) => "VarReassign".to_string(),
+            Ast::BoolLit(_) => "BoolLit".to_string()
         }
     }
 }
@@ -26,9 +38,12 @@ impl fmt::Display for Ast {
             f,
             "{}",
             match self {
-                Ast::InfixExpr(a, b, c) =>
-                    format!("INFIX_EXPR left({}), Right({}), Opp({})", *a, *b, c),
+                Ast::InfixExpr(a, b, c) => format!("INFIX_EXPR left({}), Right({}), Opp({})", *a, *b, c),
                 Ast::IntLit(i) => format!("INT({:.2}", i),
+                Ast::VarDec(name, var_type, value) => format!("Name({}), Value({}), Type({:?})", *name, value, var_type),
+                Ast::VarRef(var) => format!("Var({})", *var),
+                Ast::VarReassign(var, val) => format!("Var({}) = Val({:?})", *var, *val),
+                Ast::BoolLit(b) => format!("BoolLit({})", b)
             }
         )
     }

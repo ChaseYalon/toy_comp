@@ -1,6 +1,11 @@
 {
     "cSpell.words": [
         "cranelift",
-        "libcall"
+        "iadd",
+        "iconst",
+        "imul",
+        "isub",
+        "libcall",
+        "sdiv"
     ]
 }
