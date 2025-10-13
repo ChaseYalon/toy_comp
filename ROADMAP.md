@@ -12,3 +12,20 @@
     c. Compiler
         i. JIT
     d. Repl
+2. Static types, bools, more infix
+    a. Lexer --Done
+        i. Bool literls --Done
+        ii. Int and bool type assertions --Done
+        iii. Boolean infix and modulo --Done
+    b. Parser --Done
+        i. Bool literals --Done
+        ii. Type assertions --Done
+        iii. Boolean infix and modulo --Done
+    c. Compiler --Done
+        i. Bools --Done
+        ii. Boolean infix operators and modulo --Done
+3. If statements
+    a. Scopes
+    b. Else
+    c. Else if
+    

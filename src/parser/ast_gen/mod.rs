@@ -220,7 +220,7 @@ impl AstGenerator {
                 }
                 TBox::VarReassign(var, val) => {
                     let var_node = self.parse_var_ref(var);
-                    let val_node = self.parse_int_expr(val);
+                    let (val_node, _) = self.parse_expr(val);
                     let node = Ast::VarReassign(
                         Box::new(match var_node {
                             Ast::VarRef(i) => i.to_string(),
