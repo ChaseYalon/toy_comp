@@ -23,16 +23,16 @@ impl Lexer {
             toks: t_vec,
         };
     }
-    pub fn peek(&self, i: usize) -> char{
-        if self.chars.len() < self.cp + i{
+    pub fn peek(&self, i: usize) -> char {
+        if self.chars.len() < self.cp + i {
             //Not sure what to do here
             return '\0';
         }
         debug!(i, self.cp, &self.chars);
         return self.chars[self.cp + i];
     }
-    fn lex_keyword(&mut self, word: &str, tok: Token) -> bool{
-        for (i, c) in word.char_indices(){
+    fn lex_keyword(&mut self, word: &str, tok: Token) -> bool {
+        for (i, c) in word.char_indices() {
             if self.peek(i) != c {
                 return false;
             }
@@ -40,7 +40,6 @@ impl Lexer {
         self.cp += word.len();
         self.toks.push(tok);
         return true;
-
     }
     pub fn lex(&mut self, input: String) -> Vec<Token> {
         self.chars = input.chars().collect();
@@ -54,13 +53,22 @@ impl Lexer {
                 self.eat();
                 continue;
             }
-            
-            if self.lex_keyword("let", Token::Let) { continue }
-            if self.lex_keyword("int", Token::Type(TypeTok::Int)) { continue }
-            if self.lex_keyword("bool", Token::Type(TypeTok::Bool)) { continue }
-            if self.lex_keyword("true", Token::BoolLit(true)) { continue }
-            if self.lex_keyword("false", Token::BoolLit(false)) { continue }
 
+            if self.lex_keyword("let", Token::Let) {
+                continue;
+            }
+            if self.lex_keyword("int", Token::Type(TypeTok::Int)) {
+                continue;
+            }
+            if self.lex_keyword("bool", Token::Type(TypeTok::Bool)) {
+                continue;
+            }
+            if self.lex_keyword("true", Token::BoolLit(true)) {
+                continue;
+            }
+            if self.lex_keyword("false", Token::BoolLit(false)) {
+                continue;
+            }
 
             if c.is_ascii_digit() {
                 debug!("In ascii print");
@@ -92,12 +100,67 @@ impl Lexer {
                 self.eat();
                 continue;
             }
-            if c == '='{
+            if c == '%' {
                 self.flush();
+                self.toks.push(Token::Modulo);
+                self.eat();
+                continue;
+            }
+            if c == '&' && self.peek(1) == '&' {
+                self.flush();
+                self.toks.push(Token::And);
+                self.cp += 2;
+                continue;
+            }
+            if c == '|' && self.peek(1) == '|' {
+                self.flush();
+                self.toks.push(Token::Or);
+                self.cp += 2;
+                continue;
+            }
+            if c == '<' {
+                self.flush();
+                if self.peek(1) == '=' {
+                    self.toks.push(Token::LessThanEqt);
+                    self.cp += 2;
+                    continue;
+                }
+                self.toks.push(Token::LessThan);
+                self.eat();
+                continue;
+            }
+            if c == '>' {
+                self.flush();
+                if self.peek(1) == '=' {
+                    self.toks.push(Token::GreaterThanEqt);
+                    self.cp += 2;
+                    continue;
+                }
+                self.toks.push(Token::GreaterThan);
+                self.eat();
+                continue;
+            }
+            if c == '=' {
+                self.flush();
+                if self.peek(1) == '=' {
+                    self.toks.push(Token::Equals);
+                    self.cp += 2;
+                    continue;
+                }
                 self.toks.push(Token::Assign);
                 self.eat();
                 continue;
             }
+            if c == '!' {
+                self.flush();
+                if self.peek(1) == '=' {
+                    self.toks.push(Token::NotEquals);
+                    self.cp += 2;
+                    continue;
+                }
+                todo!("Chase, you have to implement the not operator in the lexer");
+            }
+
             if c == ';' {
                 self.flush();
                 self.toks.push(Token::Semicolon);
@@ -110,7 +173,7 @@ impl Lexer {
                 self.eat();
                 continue;
             }
-            if c.is_ascii(){
+            if c.is_ascii() {
                 self.flush_int();
                 self.str_buf.push(c);
                 self.eat();
@@ -129,7 +192,7 @@ impl Lexer {
     fn eat(&mut self) {
         self.cp += 1;
     }
-    fn flush(&mut self){
+    fn flush(&mut self) {
         self.flush_int();
         self.flush_str();
     }
@@ -143,10 +206,10 @@ impl Lexer {
         self.toks.push(Token::IntLit(output));
     }
     fn flush_str(&mut self) {
-        if self.str_buf.len() == 0{
+        if self.str_buf.len() == 0 {
             return;
         }
-        if self.toks.last().unwrap().tok_type() == "Let"{
+        if self.toks.last().unwrap().tok_type() == "Let" {
             let proto_output: String = self.str_buf.clone().into_iter().collect();
             self.toks.push(Token::VarName(Box::new(proto_output)));
             self.str_buf = Vec::new();

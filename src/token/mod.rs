@@ -2,31 +2,51 @@ use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Token {
+    //Lits
     IntLit(i64),
+    BoolLit(bool),
+
+    //Infix opps
     Plus,
     Minus,
     Multiply,
     Divide,
-    Semicolon,
+    Modulo,
+
+    //Boolean infix opps
+    Equals,
+    NotEquals,
+    LessThan,
+    GreaterThan,
+    LessThanEqt,
+    GreaterThanEqt,
+    And,
+    Or,
+
+    //Keywords
     Let,
-    Assign,
+    Type(TypeTok),
+
+    //Names
     VarName(Box<String>),
     VarRef(Box<String>),
+
+    //Syntax
+    Semicolon,
     Colon,
-    BoolLit(bool),
-    Type(TypeTok)
+    Assign,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TypeTok {
     Int,
     Bool,
 }
-impl TypeTok{
-    pub fn type_str(&self) -> String{
+impl TypeTok {
+    pub fn type_str(&self) -> String {
         return match self {
             Self::Bool => "Bool".to_string(),
-            Self::Int => "Int".to_string()
-        }
+            Self::Int => "Int".to_string(),
+        };
     }
 }
 impl Token {
@@ -45,6 +65,15 @@ impl Token {
             Self::Colon => "Colon".to_string(),
             Self::BoolLit(_) => "BoolLit".to_string(),
             Self::Type(_) => "Type".to_string(),
+            Self::LessThan => "LessThan".to_string(),
+            Self::GreaterThan => "GreaterThan".to_string(),
+            Self::LessThanEqt => "LessThanEqt".to_string(),
+            Self::GreaterThanEqt => "GreaterThanEqt".to_string(),
+            Self::Equals => "Equals".to_string(),
+            Self::NotEquals => "NotEquals".to_string(),
+            Self::Modulo => "Modulo".to_string(),
+            Self::And => "And".to_string(),
+            Self::Or => "Or".to_string(),
         };
     }
     ///Is used to get value out of an int literal
@@ -54,11 +83,11 @@ impl Token {
             _ => None,
         };
     }
-    pub fn get_var_name(&self) -> Option<Box<String>>{
+    pub fn get_var_name(&self) -> Option<Box<String>> {
         return match self {
             Self::VarName(name) => Some(name.clone()),
-            __ => None
-        }
+            __ => None,
+        };
     }
 }
 impl fmt::Display for Token {
@@ -79,7 +108,16 @@ impl fmt::Display for Token {
                 Token::VarRef(name) => format!("VarRef({})", *name),
                 Token::Colon => String::from("COLON"),
                 Token::BoolLit(b) => format!("BoolLit({})", b),
-                Token::Type(t) => format!("Type({:?})", t)
+                Token::Type(t) => format!("Type({:?})", t),
+                Token::LessThan => String::from("LESS_THAN"),
+                Token::GreaterThan => String::from("GREATER_THAN"),
+                Token::LessThanEqt => String::from("LESS_THAN_EQT"),
+                Token::GreaterThanEqt => String::from("GREATER_THAN_EQT"),
+                Token::Equals => String::from("EQUALS"),
+                Token::NotEquals => String::from("NOT_EQUALS"),
+                Token::Modulo => String::from("MODULO"),
+                Token::And => String::from("AND"),
+                Token::Or => String::from("OR"),
             }
         )
     }

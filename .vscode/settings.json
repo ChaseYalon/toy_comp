@@ -6,6 +6,8 @@
         "imul",
         "isub",
         "libcall",
-        "sdiv"
+        "opps",
+        "sdiv",
+        "uextend"
     ]
 }

@@ -13,16 +13,16 @@ pub enum Ast {
     ///Variable name and expression to assign it to
     VarReassign(Box<String>, Box<Ast>),
 }
-impl Ast{
-    pub fn node_type(&self) -> String{
-        return match self{
+impl Ast {
+    pub fn node_type(&self) -> String {
+        return match self {
             Ast::IntLit(_) => "IntLit".to_string(),
             Ast::InfixExpr(_, _, _) => "InfixExpr".to_string(),
             Ast::VarDec(_, _, _) => "VarDec".to_string(),
             Ast::VarRef(_) => "VarRef".to_string(),
             Ast::VarReassign(_, _) => "VarReassign".to_string(),
-            Ast::BoolLit(_) => "BoolLit".to_string()
-        }
+            Ast::BoolLit(_) => "BoolLit".to_string(),
+        };
     }
 }
 #[derive(Clone, Debug, PartialEq)]
@@ -31,6 +31,15 @@ pub enum InfixOp {
     Minus,
     Divide,
     Multiply,
+    LessThan,
+    LessThanEqt,
+    GreaterThan,
+    GreaterThanEqt,
+    NotEquals,
+    Equals,
+    Modulo,
+    And,
+    Or,
 }
 impl fmt::Display for Ast {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -38,12 +47,14 @@ impl fmt::Display for Ast {
             f,
             "{}",
             match self {
-                Ast::InfixExpr(a, b, c) => format!("INFIX_EXPR left({}), Right({}), Opp({})", *a, *b, c),
+                Ast::InfixExpr(a, b, c) =>
+                    format!("INFIX_EXPR left({}), Right({}), Opp({})", *a, *b, c),
                 Ast::IntLit(i) => format!("INT({:.2}", i),
-                Ast::VarDec(name, var_type, value) => format!("Name({}), Value({}), Type({:?})", *name, value, var_type),
+                Ast::VarDec(name, var_type, value) =>
+                    format!("Name({}), Value({}), Type({:?})", *name, value, var_type),
                 Ast::VarRef(var) => format!("Var({})", *var),
                 Ast::VarReassign(var, val) => format!("Var({}) = Val({:?})", *var, *val),
-                Ast::BoolLit(b) => format!("BoolLit({})", b)
+                Ast::BoolLit(b) => format!("BoolLit({})", b),
             }
         )
     }
@@ -59,6 +70,15 @@ impl fmt::Display for InfixOp {
                 InfixOp::Minus => "MINUS",
                 InfixOp::Multiply => "MULTIPLY",
                 InfixOp::Divide => "Divide",
+                InfixOp::LessThan => "LESS_THAN",
+                InfixOp::LessThanEqt => "LESS_THAN_EQT",
+                InfixOp::GreaterThan => "GREATER_THAN",
+                InfixOp::GreaterThanEqt => "GREATER_THAN_EQT",
+                InfixOp::NotEquals => "NOT_EQUALS",
+                InfixOp::Equals => "EQUALS",
+                InfixOp::Modulo => "MODULO",
+                InfixOp::And => "AND",
+                InfixOp::Or => "OR",
             }
         )
     }

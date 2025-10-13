@@ -41,18 +41,16 @@ fn test_boxer_var_dec() {
     let boxes = b.box_toks(toks);
     assert_eq!(
         boxes,
-        vec![
-            TBox::VarDec(
-                Token::VarName(Box::new(String::from("x"))),
-                None,
-                vec![Token::IntLit(9)]
-            )
-        ]
+        vec![TBox::VarDec(
+            Token::VarName(Box::new(String::from("x"))),
+            None,
+            vec![Token::IntLit(9)]
+        )]
     )
 }
 
 #[test]
-fn test_boxer_var_ref(){
+fn test_boxer_var_ref() {
     let input = "let x = 7; x = 8;".to_string();
     let mut l = Lexer::new();
     let mut b = Boxer::new();
@@ -75,7 +73,7 @@ fn test_boxer_var_ref(){
 }
 
 #[test]
-fn test_boxer_static_type(){
+fn test_boxer_static_type() {
     let input = "let foo: int = 9;".to_string();
     let mut l = Lexer::new();
     let mut b = Boxer::new();
@@ -83,12 +81,34 @@ fn test_boxer_static_type(){
     let boxes = b.box_toks(toks);
     assert_eq!(
         boxes,
-        vec![
-            TBox::VarDec(
-                Token::VarName(Box::new("foo".to_string())),
-                Some(TypeTok::Int),
-                vec![Token::IntLit(9)]
-            )
-        ]
+        vec![TBox::VarDec(
+            Token::VarName(Box::new("foo".to_string())),
+            Some(TypeTok::Int),
+            vec![Token::IntLit(9)]
+        )]
+    )
+}
+
+#[test]
+fn test_boxer_bool_infix() {
+    let input = "let x = 9 <= 4 || false;".to_string();
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let toks = l.lex(input);
+    let boxes = b.box_toks(toks);
+
+    assert_eq!(
+        boxes,
+        vec![TBox::VarDec(
+            Token::VarName(Box::new("x".to_string())),
+            None,
+            vec![
+                Token::IntLit(9),
+                Token::LessThanEqt,
+                Token::IntLit(4),
+                Token::Or,
+                Token::BoolLit(false)
+            ]
+        )]
     )
 }

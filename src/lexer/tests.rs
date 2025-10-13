@@ -29,7 +29,7 @@ fn test_lexer_infix_ops() {
 }
 
 #[test]
-fn test_lexer_var_dec(){
+fn test_lexer_var_dec() {
     let mut l = Lexer::new();
     let out = l.lex(String::from("let x = 9;"));
     assert_eq!(
@@ -45,7 +45,7 @@ fn test_lexer_var_dec(){
 }
 
 #[test]
-fn test_lexer_multiple_var_decs(){
+fn test_lexer_multiple_var_decs() {
     let mut l = Lexer::new();
     let out = l.lex(String::from("let x = 15; let y = 8;"));
     assert_eq!(
@@ -58,7 +58,7 @@ fn test_lexer_multiple_var_decs(){
             Token::Semicolon,
             Token::Let,
             Token::VarName(Box::new("y".to_string())),
-            Token::Assign, 
+            Token::Assign,
             Token::IntLit(8),
             Token::Semicolon,
         ]
@@ -66,7 +66,7 @@ fn test_lexer_multiple_var_decs(){
 }
 
 #[test]
-fn test_lexer_var_ref(){
+fn test_lexer_var_ref() {
     let mut l = Lexer::new();
     let out = l.lex("let x = 9; x + 3;".to_string());
     assert_eq!(
@@ -86,7 +86,7 @@ fn test_lexer_var_ref(){
 }
 
 #[test]
-fn test_lexer_static_type(){
+fn test_lexer_static_type() {
     let mut l = Lexer::new();
     let out = l.lex("let a: int = 0;".to_string());
     assert_eq!(
@@ -104,7 +104,7 @@ fn test_lexer_static_type(){
 }
 
 #[test]
-fn test_lexer_bool_lit(){
+fn test_lexer_bool_lit() {
     let mut l = Lexer::new();
     let out = l.lex("let b: bool = true;".to_string());
     assert_eq!(
@@ -116,6 +116,96 @@ fn test_lexer_bool_lit(){
             Token::Type(TypeTok::Bool),
             Token::Assign,
             Token::BoolLit(true),
+            Token::Semicolon,
+        ]
+    )
+}
+
+#[test]
+fn test_lexer_bool_infix() {
+    let mut l = Lexer::new();
+    let out = l.lex("let b = true; let c = b || false;".to_string());
+    assert_eq!(
+        out,
+        vec![
+            Token::Let,
+            Token::VarName(Box::new("b".to_string())),
+            Token::Assign,
+            Token::BoolLit(true),
+            Token::Semicolon,
+            Token::Let,
+            Token::VarName(Box::new("c".to_string())),
+            Token::Assign,
+            Token::VarRef(Box::new("b".to_string())),
+            Token::Or,
+            Token::BoolLit(false),
+            Token::Semicolon,
+        ]
+    )
+}
+
+#[test]
+fn test_lexer_misc_infix() {
+    let mut l = Lexer::new();
+    let out = l.lex("let b = true; let c = b && false; let d = 8; let e = x <= 9;".to_string());
+    assert_eq!(
+        out,
+        vec![
+            Token::Let,
+            Token::VarName(Box::new("b".to_string())),
+            Token::Assign,
+            Token::BoolLit(true),
+            Token::Semicolon,
+            Token::Let,
+            Token::VarName(Box::new("c".to_string())),
+            Token::Assign,
+            Token::VarRef(Box::new("b".to_string())),
+            Token::And,
+            Token::BoolLit(false),
+            Token::Semicolon,
+            Token::Let,
+            Token::VarName(Box::new("d".to_string())),
+            Token::Assign,
+            Token::IntLit(8),
+            Token::Semicolon,
+            Token::Let,
+            Token::VarName(Box::new("e".to_string())),
+            Token::Assign,
+            Token::VarRef(Box::new("x".to_string())),
+            Token::LessThanEqt,
+            Token::IntLit(9),
+            Token::Semicolon,
+        ]
+    )
+}
+
+#[test]
+fn test_lexer_misc_infix_2() {
+    let mut l = Lexer::new();
+    let out = l.lex("let x = 6 >= 0; let b = x != true; let c = 7 == 5;".to_string());
+    assert_eq!(
+        out,
+        vec![
+            Token::Let,
+            Token::VarName(Box::new("x".to_string())),
+            Token::Assign,
+            Token::IntLit(6),
+            Token::GreaterThanEqt,
+            Token::IntLit(0),
+            Token::Semicolon,
+            Token::Let,
+            Token::VarName(Box::new("b".to_string())),
+            Token::Assign,
+            Token::VarRef(Box::new("x".to_string())),
+            Token::NotEquals,
+            Token::BoolLit(true),
+            Token::Semicolon,
+            Token::Let,
+            Token::VarName(Box::new("c".to_string())),
+            Token::Assign,
+            Token::IntLit(7),
+            Token::Equals,
+            Token::IntLit(5),
             Token::Semicolon,
         ]
     )
