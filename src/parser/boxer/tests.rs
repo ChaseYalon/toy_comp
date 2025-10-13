@@ -9,7 +9,7 @@ fn test_boxer_int_literal() {
     let toks = l.lex(input);
     let boxes = b.box_toks(toks);
 
-    assert_eq!(boxes, vec![TBox::IntExpr(vec![Token::IntLit(4)]),])
+    assert_eq!(boxes, vec![TBox::Expr(vec![Token::IntLit(4)]),])
 }
 
 #[test]
@@ -22,7 +22,7 @@ fn test_boxer_infix_expression() {
 
     assert_eq!(
         boxes,
-        vec![TBox::IntExpr(vec![
+        vec![TBox::Expr(vec![
             Token::IntLit(8),
             Token::Minus,
             Token::IntLit(3),
@@ -110,5 +110,26 @@ fn test_boxer_bool_infix() {
                 Token::BoolLit(false)
             ]
         )]
+    )
+}
+
+#[test]
+fn test_boxer_return_bool() {
+    let input = "true || false;".to_string();
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let toks = l.lex(input);
+    let boxes = b.box_toks(toks);
+    assert_eq!(
+        boxes,
+        vec![
+            TBox::Expr(
+                vec![
+                    Token::BoolLit(true),
+                    Token::Or,
+                    Token::BoolLit(false),
+                ]
+            )
+        ]
     )
 }

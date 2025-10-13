@@ -4,7 +4,7 @@ use crate::token::{Token, TypeTok};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TBox {
-    IntExpr(Vec<Token>),
+    Expr(Vec<Token>),
     ///Var name, Var type, Var val
     VarDec(Token, Option<TypeTok>, Vec<Token>),
     #[allow(unused)] //Makes a yellow line go away, it is very much used
@@ -18,7 +18,7 @@ impl fmt::Display for TBox {
             f,
             "{}",
             match self {
-                TBox::IntExpr(v) => format!("TBox_INT_EXPR: {:?}", v),
+                TBox::Expr(v) => format!("TBox_expr: {:?}", v),
                 TBox::VarDec(name, t, val) => format!(
                     "TBox_VAR_DEC: Name({}), Val({:?}), Type({:?})",
                     *name, val, t

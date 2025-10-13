@@ -90,7 +90,7 @@ impl Boxer {
             }
 
             //Assume it is an expression
-            boxes.push(TBox::IntExpr(group.clone()));
+            boxes.push(TBox::Expr(group.clone()));
         }
         return boxes;
     }

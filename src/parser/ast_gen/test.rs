@@ -187,3 +187,23 @@ fn test_asg_gen_modulo(){
         ]
     )
 }
+
+#[test]
+fn test_ast_gen_return_bool(){
+    setup_ast!("let x: bool = true; x || false;", ast);
+    assert_eq!(
+        ast,
+        vec![
+            Ast::VarDec(
+                Box::new("x".to_string()),
+                TypeTok::Bool,
+                Box::new(Ast::BoolLit(true)),
+            ),
+            Ast::InfixExpr(
+                Box::new(Ast::VarRef(Box::new("x".to_string()))),
+                Box::new(Ast::BoolLit(false)),
+                InfixOp::Or
+            )
+        ]
+    )
+}

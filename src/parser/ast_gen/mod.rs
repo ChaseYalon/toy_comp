@@ -4,6 +4,7 @@ use crate::parser::toy_box::TBox;
 use crate::token::Token;
 use crate::token::TypeTok;
 use std::collections::HashMap;
+use crate::debug;
 pub struct AstGenerator {
     boxes: Vec<TBox>,
     nodes: Vec<Ast>,
@@ -95,7 +96,7 @@ impl AstGenerator {
                 Token::Multiply => InfixOp::Multiply,
                 Token::Divide => InfixOp::Divide,
                 Token::Modulo => InfixOp::Modulo,
-                _ => panic!("[ERROR] WTF happened here"),
+                _ => panic!("[ERROR] WTF happened here, got opperator {}", best_tok),
             },
         );
     }
@@ -151,6 +152,8 @@ impl AstGenerator {
             }
         }
         let (_, _, best_val) = self.find_top_val(toks);
+        debug!(best_val.clone());
+        debug!(toks.clone());
         return match best_val {
             Token::IntLit(_) | Token::Plus | Token::Minus | Token::Divide | Token::Multiply | Token::Modulo => {
                 (self.parse_int_expr(toks), TypeTok::Int)
@@ -200,8 +203,8 @@ impl AstGenerator {
         while self.bp < self.boxes.len() {
             let val = &self.boxes[self.bp].clone();
             match val {
-                TBox::IntExpr(i) => {
-                    let node = self.parse_int_expr(i);
+                TBox::Expr(i) => {
+                    let (node, _) = self.parse_expr(i);
                     self.nodes.push(node);
                     self.eat();
                 }
