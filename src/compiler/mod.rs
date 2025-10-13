@@ -242,7 +242,7 @@ impl Compiler {
         let args: Vec<String> = env::args().collect();
         if args.contains(&"--save-ir".to_string()) {
             let ir = format!("{}", ctx.func.display());
-            let mut file = File::create("ir.txt").unwrap();
+            let mut file = File::create("ir.clif").unwrap();
             file.write_all(ir.as_bytes()).unwrap();
         }
 
