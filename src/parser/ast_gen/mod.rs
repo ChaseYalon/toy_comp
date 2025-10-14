@@ -1,10 +1,10 @@
+use crate::debug;
 use crate::parser::ast::Ast;
 use crate::parser::ast::InfixOp;
 use crate::parser::toy_box::TBox;
 use crate::token::Token;
 use crate::token::TypeTok;
 use std::collections::HashMap;
-use crate::debug;
 pub struct AstGenerator {
     boxes: Vec<TBox>,
     nodes: Vec<Ast>,
@@ -103,7 +103,10 @@ impl AstGenerator {
     fn parse_bool_expr(&self, toks: &Vec<Token>) -> Ast {
         if toks.len() == 1 {
             if toks[0].tok_type() == "BoolLit" {
-                return Ast::BoolLit(match toks[0]{Token::BoolLit(b) => b, _ => panic!("this is impossible")})
+                return Ast::BoolLit(match toks[0] {
+                    Token::BoolLit(b) => b,
+                    _ => panic!("this is impossible"),
+                });
             }
             if toks[0].tok_type() == "VarRef" {
                 return self.parse_var_ref(&toks[0]);
@@ -116,8 +119,8 @@ impl AstGenerator {
         let (l_node, _) = self.parse_expr(&left.to_vec());
         let (r_node, _) = self.parse_expr(&right.to_vec());
         return Ast::InfixExpr(
-            Box::new(l_node), 
-            Box::new(r_node), 
+            Box::new(l_node),
+            Box::new(r_node),
             match best_tok {
                 Token::LessThan => InfixOp::LessThan,
                 Token::GreaterThan => InfixOp::GreaterThan,
@@ -127,8 +130,8 @@ impl AstGenerator {
                 Token::Or => InfixOp::Or,
                 Token::Equals => InfixOp::Equals,
                 Token::NotEquals => InfixOp::NotEquals,
-                _ => panic!("[ERROR] Wtf happened here (bool)")
-            }
+                _ => panic!("[ERROR] Wtf happened here (bool)"),
+            },
         );
     }
     fn parse_expr(&self, toks: &Vec<Token>) -> (Ast, TypeTok) {
@@ -137,6 +140,7 @@ impl AstGenerator {
                 return (Ast::IntLit(toks[0].get_val().unwrap()), TypeTok::Int);
             }
             if toks[0].tok_type() == "VarRef" {
+                debug!(targets: ["parser_verbose"], "in var ref");
                 let s = match toks[0].clone() {
                     Token::VarRef(name) => *name,
                     _ => panic!("[ERROR] Expected variable name, got {}", toks[0]),
@@ -152,15 +156,24 @@ impl AstGenerator {
             }
         }
         let (_, _, best_val) = self.find_top_val(toks);
-        debug!(best_val.clone());
-        debug!(toks.clone());
+        debug!(targets: ["parser", "parser_verbose"], best_val.clone());
+        debug!(targets: ["parser", "parser_verbose"], toks.clone());
         return match best_val {
-            Token::IntLit(_) | Token::Plus | Token::Minus | Token::Divide | Token::Multiply | Token::Modulo => {
-                (self.parse_int_expr(toks), TypeTok::Int)
-            }
-            Token::BoolLit(_) | Token::LessThan | Token::LessThanEqt | Token::GreaterThan | Token::GreaterThanEqt | Token::Equals | Token::NotEquals  | Token::And | Token::Or =>{
-                (self.parse_bool_expr(toks), TypeTok::Bool)
-            },
+            Token::IntLit(_)
+            | Token::Plus
+            | Token::Minus
+            | Token::Divide
+            | Token::Multiply
+            | Token::Modulo => (self.parse_int_expr(toks), TypeTok::Int),
+            Token::BoolLit(_)
+            | Token::LessThan
+            | Token::LessThanEqt
+            | Token::GreaterThan
+            | Token::GreaterThanEqt
+            | Token::Equals
+            | Token::NotEquals
+            | Token::And
+            | Token::Or => (self.parse_bool_expr(toks), TypeTok::Bool),
             _ => panic!("[ERROR] Unsupported type for expression, got {}", best_val),
         };
     }
@@ -196,42 +209,73 @@ impl AstGenerator {
         }
         return Ast::VarRef(Box::new(name_s));
     }
+    fn parse_if_stmt(&mut self, stmt: TBox, should_eat: bool) -> Ast {
+        let (cond, body) = match stmt {
+            TBox::IfStmt(c, b) => (c, b),
+            _ => panic!("[ERROR] Expected IfStmt, got {}", stmt),
+        };
+
+        let b_cond = self.parse_bool_expr(&cond);
+        let mut stmt_vec: Vec<Ast> = Vec::new();
+        for stmt in body {
+            debug!(targets: ["parser_verbose"], stmt);
+            stmt_vec.push(self.parse_stmt(stmt, false));
+        }
+        let if_stmt = Ast::IfStmt(Box::new(b_cond), stmt_vec);
+        
+        if should_eat {
+            self.eat();
+        }
+        
+        return if_stmt;
+    }
+
+    fn parse_stmt(&mut self, val: TBox, should_eat: bool) -> Ast {
+        debug!(targets: ["parser_verbose"], val);
+        
+        let node = match val {
+            TBox::Expr(i) => {
+                let (node, _) = self.parse_expr(&i);
+                node
+            }
+            TBox::VarDec(name, var_type, v_val) => {
+                self.parse_var_dec(&name, &v_val, var_type.clone())
+            }
+            TBox::VarRef(name) => {
+                debug!(targets: ["parser_verbose"], name);
+                self.parse_var_ref(&name)
+            }
+            TBox::VarReassign(var, val) => {
+                let var_node = self.parse_var_ref(&var);
+                let (val_node, _) = self.parse_expr(&val);
+                Ast::VarReassign(
+                    Box::new(match var_node {
+                        Ast::VarRef(i) => i.to_string(),
+                        _ => "".to_string(),
+                    }),
+                    Box::new(val_node),
+                )
+            }
+            TBox::IfStmt(_, _) => {
+                return self.parse_if_stmt(val, should_eat);
+            }
+        };
+        
+        if should_eat {
+            self.eat();
+        }
+        
+        node
+    }
     pub fn generate(&mut self, boxes: Vec<TBox>) -> Vec<Ast> {
         self.boxes = boxes.clone();
         self.bp = 0_usize;
-
+        debug!(targets: ["parser_verbose"], boxes);
         while self.bp < self.boxes.len() {
-            let val = &self.boxes[self.bp].clone();
-            match val {
-                TBox::Expr(i) => {
-                    let (node, _) = self.parse_expr(i);
-                    self.nodes.push(node);
-                    self.eat();
-                }
-                TBox::VarDec(name, var_type, val) => {
-                    let node = self.parse_var_dec(name, val, var_type.clone());
-                    self.nodes.push(node);
-                    self.eat();
-                }
-                TBox::VarRef(name) => {
-                    let node = self.parse_var_ref(name);
-                    self.nodes.push(node);
-                    self.eat();
-                }
-                TBox::VarReassign(var, val) => {
-                    let var_node = self.parse_var_ref(var);
-                    let (val_node, _) = self.parse_expr(val);
-                    let node = Ast::VarReassign(
-                        Box::new(match var_node {
-                            Ast::VarRef(i) => i.to_string(),
-                            _ => "".to_string(),
-                        }),
-                        Box::new(val_node),
-                    );
-                    self.nodes.push(node);
-                    self.eat();
-                }
-            }
+            let val = self.boxes[self.bp].clone();
+            debug!(targets: ["parser_verbose"], val);
+            let stmt = self.parse_stmt(val, true);
+            self.nodes.push(stmt)
         }
         return self.nodes.clone();
     }

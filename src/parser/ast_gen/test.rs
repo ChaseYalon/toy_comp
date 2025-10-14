@@ -153,43 +153,36 @@ fn test_ast_gen_mixed_bool_int() {
     setup_ast!("let x = 4 + 3 < 6;", ast);
     assert_eq!(
         ast,
-        vec![
-            Ast::VarDec(
-                Box::new("x".to_string()),
-                TypeTok::Bool,
-                Box::new(
-                    Ast::InfixExpr(
-                        Box::new(
-                            Ast::InfixExpr(
-                                Box::new(Ast::IntLit(4)), 
-                                Box::new(Ast::IntLit(3)), 
-                                InfixOp::Plus
-                            )
-                        ),
-                        Box::new(Ast::IntLit(6)), 
-                        InfixOp::LessThan)
-                )
-            )
-        ]
+        vec![Ast::VarDec(
+            Box::new("x".to_string()),
+            TypeTok::Bool,
+            Box::new(Ast::InfixExpr(
+                Box::new(Ast::InfixExpr(
+                    Box::new(Ast::IntLit(4)),
+                    Box::new(Ast::IntLit(3)),
+                    InfixOp::Plus
+                )),
+                Box::new(Ast::IntLit(6)),
+                InfixOp::LessThan
+            ))
+        )]
     )
 }
 #[test]
-fn test_asg_gen_modulo(){
+fn test_asg_gen_modulo() {
     setup_ast!("5 % 3;", ast);
     assert_eq!(
         ast,
-        vec![
-            Ast::InfixExpr(
-                Box::new(Ast::IntLit(5)), 
-                Box::new(Ast::IntLit(3)), 
-                InfixOp::Modulo
-            )
-        ]
+        vec![Ast::InfixExpr(
+            Box::new(Ast::IntLit(5)),
+            Box::new(Ast::IntLit(3)),
+            InfixOp::Modulo
+        )]
     )
 }
 
 #[test]
-fn test_ast_gen_return_bool(){
+fn test_ast_gen_return_bool() {
     setup_ast!("let x: bool = true; x || false;", ast);
     assert_eq!(
         ast,
@@ -204,6 +197,55 @@ fn test_ast_gen_return_bool(){
                 Box::new(Ast::BoolLit(false)),
                 InfixOp::Or
             )
+        ]
+    )
+}
+
+#[test]
+fn test_ast_gen_if_stmt() {
+    setup_ast!("let x = false; if x || true {x = true;}", ast);
+    assert_eq!(
+        ast,
+        vec![
+            Ast::VarDec(
+                Box::new("x".to_string()),
+                TypeTok::Bool,
+                Box::new(Ast::BoolLit(false))
+            ),
+            Ast::IfStmt(
+                Box::new(Ast::InfixExpr(
+                    Box::new(Ast::VarRef(Box::new("x".to_string()))),
+                    Box::new(Ast::BoolLit(true)),
+                    InfixOp::Or,
+                )),
+                vec![Ast::VarReassign(
+                    Box::new("x".to_string()),
+                    Box::new(Ast::BoolLit(true))
+                )]
+            )
+        ]
+    )
+}
+
+#[test]
+fn test_ast_gen_if_stmt_complex() {
+    setup_ast!("let x:int = 8; if true {x = 4}; x;", ast);
+    assert_eq!(
+        ast,
+        vec![
+            Ast::VarDec(
+                Box::new("x".to_string()), 
+                TypeTok::Int, 
+                Box::new(Ast::IntLit(8)),
+            ),
+            Ast::IfStmt(
+                Box::new(Ast::BoolLit(true)),
+                vec![Ast::VarReassign(
+                    Box::new("x".to_string()), 
+                    Box::new(Ast::IntLit(4))
+                )]
+            ),
+            Ast::VarRef(Box::new("x".to_string())),
         ]
     )
 }

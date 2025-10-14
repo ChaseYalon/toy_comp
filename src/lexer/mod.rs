@@ -28,7 +28,7 @@ impl Lexer {
             //Not sure what to do here
             return '\0';
         }
-        debug!(i, self.cp, &self.chars);
+        debug!(targets: ["lexer", "lexer_verbose"], i, self.cp, &self.chars);
         return self.chars[self.cp + i];
     }
     fn lex_keyword(&mut self, word: &str, tok: Token) -> bool {
@@ -47,8 +47,8 @@ impl Lexer {
 
         while self.cp < self.chars.len() {
             let c = self.chars[self.cp];
-            debug!(c);
-            debug!(self.cp);
+            debug!(targets: ["lexer_verbose"], c);
+            debug!(targets: ["lexer_verbose"], self.cp);
             if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
                 self.eat();
                 continue;
@@ -69,9 +69,12 @@ impl Lexer {
             if self.lex_keyword("false", Token::BoolLit(false)) {
                 continue;
             }
+            if self.lex_keyword("if", Token::If) {
+                continue;
+            }
 
             if c.is_ascii_digit() {
-                debug!("In ascii print");
+                debug!(targets: ["lexer_verbose"], "In ascii print");
                 self.num_buf.push(c);
                 self.eat();
                 continue;
@@ -160,7 +163,18 @@ impl Lexer {
                 }
                 todo!("Chase, you have to implement the not operator in the lexer");
             }
-
+            if c == '{' {
+                self.flush();
+                self.toks.push(Token::LBrace);
+                self.eat();
+                continue;
+            }
+            if c == '}' {
+                self.flush();
+                self.toks.push(Token::RBrace);
+                self.eat();
+                continue;
+            }
             if c == ';' {
                 self.flush();
                 self.toks.push(Token::Semicolon);
@@ -181,7 +195,7 @@ impl Lexer {
             }
             panic!("[ERROR] Unexpected token, got {}", c);
         }
-        debug!(self.toks.clone());
+        debug!(targets: ["lexer_verbose"], self.toks.clone());
 
         //Catch any trailing its
         self.flush_int();

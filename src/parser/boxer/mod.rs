@@ -1,34 +1,20 @@
+use crate::debug;
 use crate::parser::toy_box::TBox;
 use crate::token::Token;
+
 pub struct Boxer {
     toks: Vec<Token>,
-    tp: usize, //Token pointer
+    tp: usize, // token pointer
 }
 
 impl Boxer {
     pub fn new() -> Boxer {
-        let t_vec: Vec<Token> = Vec::new();
-        return Boxer {
-            toks: t_vec,
-            tp: 0_usize,
-        };
-    }
-    fn split_into_groups(&self) -> Vec<Vec<Token>> {
-        let mut toks: Vec<Vec<Token>> = Vec::new();
-        let mut curr_toks: Vec<Token> = Vec::new();
-        for tok in self.toks.clone() {
-            if tok.tok_type() == "Semicolon" {
-                toks.push(curr_toks);
-                curr_toks = Vec::new();
-                continue;
-            }
-            curr_toks.push(tok);
+        Boxer {
+            toks: Vec::new(),
+            tp: 0,
         }
-        if !curr_toks.is_empty() {
-            toks.push(curr_toks);
-        }
-        return toks;
     }
+
     fn box_var_dec(&self, input: &Vec<Token>) -> TBox {
         if input[0].tok_type() != "Let" {
             panic!(
@@ -44,7 +30,7 @@ impl Boxer {
         }
         if input[2].tok_type() != "Assign" && input[2].tok_type() != "Colon" {
             panic!(
-                "[ERROR] Variable time must be followed by an equals sign, or a colon got {}",
+                "[ERROR] Variable declaration must have '=' or ':' after name, got {}",
                 input[2]
             );
         }
@@ -55,8 +41,9 @@ impl Boxer {
             };
             return TBox::VarDec(input[1].clone(), Some(ty), input[5..].to_vec());
         }
-        return TBox::VarDec(input[1].clone(), None, input[3..].to_vec());
+        TBox::VarDec(input[1].clone(), None, input[3..].to_vec())
     }
+
     fn box_var_ref(&self, input: &Vec<Token>) -> TBox {
         if input[0].tok_type() != "VarRef" {
             panic!(
@@ -66,36 +53,146 @@ impl Boxer {
         }
         if input[1].tok_type() != "Assign" {
             panic!(
-                "[ERROR] Variable reassign must have variable reference followed by equals sign, got {}",
+                "[ERROR] Variable reassign must have '=' after variable reference, got {}",
                 input[1]
             );
         }
-        return TBox::VarReassign(input[0].clone(), input[2..].to_vec());
+        TBox::VarReassign(input[0].clone(), input[2..].to_vec())
     }
+
+    fn box_group(&mut self, input: Vec<Token>) -> Vec<TBox> {
+        let mut boxes: Vec<TBox> = Vec::new();
+        let mut curr: Vec<Token> = Vec::new();
+        let mut brace_depth = 0;
+        let mut paren_depth = 0;
+        let mut i = 0;
+
+        while i < input.len() {
+            let t = input[i].clone();
+            let ty = t.tok_type();
+
+            if ty == "LBrace" {
+                brace_depth += 1;
+            } else if ty == "RBrace" {
+                brace_depth -= 1;
+            } else if ty == "LParen" {
+                paren_depth += 1;
+            } else if ty == "RParen" {
+                paren_depth -= 1;
+            }
+
+            if ty == "Semicolon" && brace_depth == 0 && paren_depth == 0 {
+                if !curr.is_empty() {
+                    boxes.push(self.box_statement(curr.clone()));
+                    curr.clear();
+                }
+                i += 1;
+                continue;
+            }
+
+            if ty == "If" && brace_depth == 0 && paren_depth == 0 {
+                if !curr.is_empty() {
+                    boxes.push(self.box_statement(curr.clone()));
+                    curr.clear();
+                }
+
+                let if_slice = input[i..].to_vec();
+                let (stmt, consumed) = self.box_if_standalone(&if_slice);
+                boxes.push(stmt);
+
+                i += consumed;
+                continue;
+            }
+
+            curr.push(t);
+            i += 1;
+        }
+
+        if !curr.is_empty() {
+            boxes.push(self.box_statement(curr.clone()));
+        }
+
+        boxes
+    }
+
+    fn box_statement(&mut self, toks: Vec<Token>) -> TBox {
+        if toks.is_empty() {
+            panic!("[ERROR] Empty statement encountered");
+        }
+
+        let first = toks[0].tok_type();
+
+        if first == "Let" {
+            return self.box_var_dec(&toks);
+        }
+
+        if first == "If" {
+            let (stmt, _) = self.box_if_standalone(&toks);
+            return stmt;
+        }
+
+        if toks.len() > 2 && toks[0].tok_type() == "VarRef" && toks[1].tok_type() == "Assign" {
+            return self.box_var_ref(&toks);
+        }
+
+        TBox::Expr(toks)
+    }
+
+    /// Parse an if statement from a token slice, returning the TBox and number of tokens consumed
+    fn box_if_standalone(&mut self, input: &Vec<Token>) -> (TBox, usize) {
+        debug!(targets: ["parser"], input);
+
+        if input.is_empty() || input[0].tok_type() != "If" {
+            panic!("[ERROR] Expected 'if' statement");
+        }
+
+        let mut i = 1;
+
+        // Parse condition tokens until we hit LBrace
+        let mut cond: Vec<Token> = Vec::new();
+        while i < input.len() && input[i].tok_type() != "LBrace" {
+            cond.push(input[i].clone());
+            i += 1;
+        }
+
+        if i >= input.len() {
+            panic!("[ERROR] Expected '{{' after if condition, got end of input");
+        }
+
+        i += 1; // skip '{'
+
+        // Parse body tokens until matching '}'
+        let mut depth = 1;
+        let mut body_toks: Vec<Token> = Vec::new();
+        while i < input.len() && depth > 0 {
+            let t = input[i].clone();
+            if t.tok_type() == "LBrace" {
+                depth += 1;
+            } else if t.tok_type() == "RBrace" {
+                depth -= 1;
+            }
+            if depth > 0 {
+                body_toks.push(t);
+            }
+            i += 1;
+        }
+
+        if depth != 0 {
+            panic!("[ERROR] Unterminated '{{' block in if statement");
+        }
+
+        let body_boxes = self.box_group(body_toks);
+
+        (TBox::IfStmt(cond, body_boxes), i)
+    }
+
+    /// Recursively box tokens into structured TBoxes (proto-AST)
     pub fn box_toks(&mut self, input: Vec<Token>) -> Vec<TBox> {
         self.toks = input.clone();
         self.tp = 0;
-        let mut boxes: Vec<TBox> = Vec::new();
-        let groups = self.split_into_groups();
-        for group in groups {
-            if group[0].tok_type() == "Let" {
-                boxes.push(self.box_var_dec(&group));
-                continue;
-            }
-            if group.len() > 2 {
-                if group[0].tok_type() == "VarRef" && group[1].tok_type() == "Assign" {
-                    boxes.push(self.box_var_ref(&group));
-                    continue;
-                }
-            }
-
-            //Assume it is an expression
-            boxes.push(TBox::Expr(group.clone()));
-        }
-        return boxes;
+        self.box_group(self.toks.clone())
     }
 }
 
-//Load test
 #[cfg(test)]
 mod tests;

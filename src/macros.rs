@@ -1,14 +1,19 @@
-///Global debug macro that runs if feature debug is enabled
 #[cfg(feature = "debug")]
 #[macro_export]
 macro_rules! debug {
-    ($($arg:tt)*) => {
-        dbg!($($arg)*);
-    };
+    (targets: [$($target:expr),*], $($arg:tt)*) => {{
+        if let Ok(filter) = std::env::var("DEBUG_TARGET") {
+            let args = format!("{:?}", ($($arg)*));
+            $(
+                if filter.contains($target) {
+                    dbg!(args.clone());
+                }
+            )*
+        }
+    }};
 }
-///Ignore all debug macros b/c feature flag is disabled
 #[cfg(not(feature = "debug"))]
 #[macro_export]
 macro_rules! debug {
-    ($($arg:tt)*) => {}; // does nothing
+    (targets: [$($target:expr),*], $($arg:tt)*) => {};
 }

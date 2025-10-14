@@ -122,14 +122,75 @@ fn test_boxer_return_bool() {
     let boxes = b.box_toks(toks);
     assert_eq!(
         boxes,
+        vec![TBox::Expr(vec![
+            Token::BoolLit(true),
+            Token::Or,
+            Token::BoolLit(false),
+        ])]
+    )
+}
+
+#[test]
+fn test_boxer_if_stmt() {
+    let input = "let x: int = 5; if x < 9 {x = 6;}".to_string();
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let toks = l.lex(input);
+    let boxes = b.box_toks(toks);
+
+    assert_eq!(
+        boxes,
         vec![
-            TBox::Expr(
+            TBox::VarDec(
+                Token::VarName(Box::new("x".to_string())),
+                Some(TypeTok::Int),
+                vec![Token::IntLit(5)]
+            ),
+            TBox::IfStmt(
                 vec![
-                    Token::BoolLit(true),
-                    Token::Or,
-                    Token::BoolLit(false),
-                ]
+                    Token::VarRef(Box::new("x".to_string())),
+                    Token::LessThan,
+                    Token::IntLit(9)
+                ],
+                vec![TBox::VarReassign(
+                    Token::VarRef(Box::new("x".to_string())),
+                    vec![Token::IntLit(6)],
+                )]
             )
         ]
+    )
+}
+
+#[test]
+fn test_boxer_nested_if() {
+    let input = "if true{let x = 9; if x > 10 {x = 8;}}".to_string();
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let toks = l.lex(input);
+    let boxes = b.box_toks(toks);
+
+    assert_eq!(
+        boxes,
+        vec![TBox::IfStmt(
+            vec![Token::BoolLit(true)],
+            vec![
+                TBox::VarDec(
+                    Token::VarName(Box::new("x".to_string())),
+                    None,
+                    vec![Token::IntLit(9)]
+                ),
+                TBox::IfStmt(
+                    vec![
+                        Token::VarRef(Box::new("x".to_string())),
+                        Token::GreaterThan,
+                        Token::IntLit(10)
+                    ],
+                    vec![TBox::VarReassign(
+                        Token::VarRef(Box::new("x".to_string())),
+                        vec![Token::IntLit(8)]
+                    )]
+                )
+            ]
+        )]
     )
 }

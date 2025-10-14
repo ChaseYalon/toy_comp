@@ -10,15 +10,18 @@ use std::collections::HashMap;
 use std::env;
 use std::fs::File;
 use std::io::Write;
+
 pub struct Compiler {
     ast: Vec<Ast>,
     var_count: usize,
     main_scope: Scope,
 }
+
 #[derive(Debug, Clone, Default)]
 struct Scope {
     vars: HashMap<String, (Variable, TypeTok)>,
 }
+
 impl Compiler {
     pub fn new() -> Compiler {
         Compiler {
@@ -34,6 +37,7 @@ impl Compiler {
         let builder = JITBuilder::new(cranelift_module::default_libcall_names());
         JITModule::new(builder.unwrap())
     }
+
     fn compile_expr(
         &self,
         expr: &Ast,
@@ -41,7 +45,7 @@ impl Compiler {
         builder: &mut FunctionBuilder<'_>,
         scope: &Scope,
     ) -> (Value, TypeTok) {
-        debug!("in compile expression");
+        debug!(targets: ["compiler", "compiler_verbose"], "in compile expression");
         if expr.node_type() != "IntLit"
             && expr.node_type() != "InfixExpr"
             && expr.node_type() != "VarRef"
@@ -61,7 +65,7 @@ impl Compiler {
                 let (r, r_t) = self.compile_expr(right, _module, builder, scope);
                 let l_type_str = l_t.type_str();
                 let r_type_str = r_t.type_str();
-                
+
                 if l_type_str == "Int" && r_type_str == "Int" {
                     return match op {
                         InfixOp::Plus => (builder.ins().iadd(l, r), TypeTok::Int),
@@ -72,28 +76,28 @@ impl Compiler {
                         InfixOp::LessThan => {
                             let cmp = builder.ins().icmp(IntCC::SignedLessThan, l, r);
                             (builder.ins().uextend(types::I64, cmp), TypeTok::Bool)
-                        },
+                        }
                         InfixOp::LessThanEqt => {
                             let cmp = builder.ins().icmp(IntCC::SignedLessThanOrEqual, l, r);
                             (builder.ins().uextend(types::I64, cmp), TypeTok::Bool)
-                        },
+                        }
                         InfixOp::GreaterThan => {
                             let cmp = builder.ins().icmp(IntCC::SignedGreaterThan, l, r);
                             (builder.ins().uextend(types::I64, cmp), TypeTok::Bool)
-                        },
+                        }
                         InfixOp::GreaterThanEqt => {
                             let cmp = builder.ins().icmp(IntCC::SignedGreaterThanOrEqual, l, r);
                             (builder.ins().uextend(types::I64, cmp), TypeTok::Bool)
-                        },
+                        }
                         InfixOp::Equals => {
                             let cmp = builder.ins().icmp(IntCC::Equal, l, r);
                             (builder.ins().uextend(types::I64, cmp), TypeTok::Bool)
-                        },
+                        }
                         InfixOp::NotEquals => {
                             let cmp = builder.ins().icmp(IntCC::NotEqual, l, r);
                             (builder.ins().uextend(types::I64, cmp), TypeTok::Bool)
-                        },
-                        _ => panic!("[ERROR] Cant use operator {} on two ints", op)
+                        }
+                        _ => panic!("[ERROR] Cant use operator {} on two ints", op),
                     };
                 }
                 if l_type_str == "Bool" && r_type_str == "Bool" {
@@ -101,18 +105,21 @@ impl Compiler {
                         InfixOp::Equals => {
                             let cmp = builder.ins().icmp(IntCC::Equal, l, r);
                             (builder.ins().uextend(types::I64, cmp), TypeTok::Bool)
-                        },
+                        }
                         InfixOp::NotEquals => {
                             let cmp = builder.ins().icmp(IntCC::NotEqual, l, r);
                             (builder.ins().uextend(types::I64, cmp), TypeTok::Bool)
-                        },
+                        }
                         InfixOp::And => (builder.ins().band(l, r), TypeTok::Bool),
                         InfixOp::Or => (builder.ins().bor(l, r), TypeTok::Bool),
-                        _ => panic!("[ERROR] Cant use operator {} on two bools", op)
-                    }
+                        _ => panic!("[ERROR] Cant use operator {} on two bools", op),
+                    };
                 }
 
-                panic!("[ERROR] Unknown type combination, got l_type: {}, r_type: {}", l_type_str, r_type_str);
+                panic!(
+                    "[ERROR] Unknown type combination, got l_type: {}, r_type: {}",
+                    l_type_str, r_type_str
+                );
             }
             Ast::VarRef(v) => {
                 let v_string = v.clone();
@@ -120,14 +127,14 @@ impl Compiler {
                     .vars
                     .get(&*v_string)
                     .unwrap_or_else(|| panic!("[ERROR] Undefined variable, got {}", v_string));
-                debug!(var);
+                debug!(targets: ["compiler_verbose"], var);
                 (builder.use_var(*var), var_type.clone())
             }
 
             _ => todo!("Unknown expression type"),
         }
     }
-    
+
     fn compile_var_reassign(
         &mut self,
         var_res: &Ast,
@@ -147,14 +154,13 @@ impl Compiler {
             }
             _ => panic!("[ERROR] Expecting VarReassign, got {}", var_res),
         }
-        let (_, old_type) = scope.vars.get(&var_name).unwrap();
+        let (var, _old_type) = scope.vars.get(&var_name).unwrap();
+        let var = *var; // Copy the variable
         let (val, _) = self.compile_expr(&new_val, _module, builder, scope);
-        let var = Variable::new(self.var_count);
-        self.var_count += 1;
-        builder.declare_var(var, types::I64);
+        // Use def_var to update the existing variable instead of creating a new one
         builder.def_var(var, val);
-        scope.vars.insert(var_name, (var, old_type.clone()));
     }
+
     fn compile_var_dec(
         &mut self,
         var_dec: &Ast,
@@ -183,10 +189,80 @@ impl Compiler {
         builder.declare_var(var, types::I64);
         builder.def_var(var, val);
         self.var_count += 1;
-        debug!(val);
-        debug!(var);
+        debug!(targets: ["compiler_verbose"], val);
+        debug!(targets: ["compiler_verbose"], var);
         scope.vars.insert(name, (var, t_o.clone()));
     }
+
+    fn compile_if_stmt(
+        &mut self,
+        node: &Ast,
+        _module: &mut JITModule,
+        builder: &mut FunctionBuilder<'_>,
+        scope: &mut Scope,
+    ) {
+        let (cond_ast, body_asts) = match node {
+            Ast::IfStmt(cond, body) => (cond, body),
+            _ => panic!("[ERROR] Expected IfStmt node, got {:?}", node),
+        };
+
+        let (cond_val, _cond_type) = self.compile_expr(&cond_ast, _module, builder, scope);
+
+        let then_block = builder.create_block();
+        let merge_block = builder.create_block();
+
+        // Branch: if condition is non-zero, go to then_block, otherwise go to merge_block
+        builder.ins().brif(cond_val, then_block, &[], merge_block, &[]);
+
+        // Then block
+        builder.switch_to_block(then_block);
+        builder.seal_block(then_block);
+
+        for stmt in body_asts {
+            self.compile_stmt(stmt.clone(), _module, builder, scope);
+        }
+
+        builder.ins().jump(merge_block, &[]);
+
+        // Merge block
+        builder.switch_to_block(merge_block);
+        builder.seal_block(merge_block);
+    }
+
+    fn compile_stmt(
+        &mut self,
+        node: Ast,
+        _module: &mut JITModule,
+        func_builder: &mut FunctionBuilder<'_>,
+        scope: &mut Scope,
+    ) -> Option<(Value, TypeTok)> {
+        let mut last_val = None;
+
+        debug!(targets: ["compiler"], format!("compile_stmt: node_type={}", node.node_type()).as_str());
+
+        if node.node_type() == "IntLit"
+            || node.node_type() == "InfixExpr"
+            || node.node_type() == "VarRef"
+            || node.node_type() == "BoolLit"
+        {
+            last_val = Some(self.compile_expr(&node, _module, func_builder, scope));
+        }
+
+        if node.node_type() == "VarDec" {
+            self.compile_var_dec(&node, _module, func_builder, scope);
+        }
+
+        if node.node_type() == "VarReassign" {
+            self.compile_var_reassign(&node, _module, func_builder, scope);
+        }
+
+        if node.node_type() == "IfStmt" {
+            self.compile_if_stmt(&node, _module, func_builder, scope);
+        }
+
+        last_val
+    }
+
     pub fn compile(&mut self, ast: Vec<Ast>) -> fn() -> i64 {
         self.ast = ast.clone();
         let mut module = self.make_jit();
@@ -202,41 +278,20 @@ impl Compiler {
         let main_block = func_builder.create_block();
         func_builder.switch_to_block(main_block);
         func_builder.append_block_params_for_function_params(main_block);
+        func_builder.seal_block(main_block);
 
-        let mut last_val = None;
+        let mut last_val: Option<(Value, TypeTok)> = None;
         let mut sudo_main_scope = std::mem::take(&mut self.main_scope);
-
         for node in ast {
-            if node.node_type() == "IntLit"
-                || node.node_type() == "InfixExpr"
-                || node.node_type() == "VarRef"
-                || node.node_type() == "BoolLit"
-            {
-                last_val = Some(self.compile_expr(
-                    &node,
-                    &mut module,
-                    &mut func_builder,
-                    &mut sudo_main_scope,
-                ));
-            }
-            if node.node_type() == "VarDec" {
-                self.compile_var_dec(&node, &mut module, &mut func_builder, &mut sudo_main_scope);
-            }
-            if node.node_type() == "VarReassign" {
-                self.compile_var_reassign(
-                    &node,
-                    &mut module,
-                    &mut func_builder,
-                    &mut sudo_main_scope,
-                );
-            }
+            last_val = self.compile_stmt(node, &mut module, &mut func_builder, &mut sudo_main_scope);
         }
+
         self.main_scope = sudo_main_scope;
+        
         let (ret_val, _) =
             last_val.unwrap_or_else(|| (func_builder.ins().iconst(types::I64, 0), TypeTok::Int));
         func_builder.ins().return_(&[ret_val]);
 
-        func_builder.seal_all_blocks();
         func_builder.finalize();
 
         let args: Vec<String> = env::args().collect();

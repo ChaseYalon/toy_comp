@@ -10,11 +10,11 @@
         iii. Ast-generator --Done
         iV. Infix ops --Done
     c. Compiler
-        i. JIT
-    d. Repl
+        i. JIT --Done
+    d. Repl --Done
 2. Static types, bools, more infix
     a. Lexer --Done
-        i. Bool literls --Done
+        i. Bool literals --Done
         ii. Int and bool type assertions --Done
         iii. Boolean infix and modulo --Done
     b. Parser --Done
@@ -25,7 +25,8 @@
         i. Bools --Done
         ii. Boolean infix operators and modulo --Done
 3. If statements
-    a. Scopes
-    b. Else
-    c. Else if
+    a. If --Done
+    b. Scopes
+    c. Else
+    d. Else if
     

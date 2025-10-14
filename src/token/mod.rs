@@ -26,6 +26,7 @@ pub enum Token {
     //Keywords
     Let,
     Type(TypeTok),
+    If,
 
     //Names
     VarName(Box<String>),
@@ -35,6 +36,8 @@ pub enum Token {
     Semicolon,
     Colon,
     Assign,
+    LBrace,
+    RBrace,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TypeTok {
@@ -74,6 +77,9 @@ impl Token {
             Self::Modulo => "Modulo".to_string(),
             Self::And => "And".to_string(),
             Self::Or => "Or".to_string(),
+            Self::If => "If".to_string(),
+            Self::LBrace => "LBrace".to_string(),
+            Self::RBrace => "RBrace".to_string(),
         };
     }
     ///Is used to get value out of an int literal
@@ -118,6 +124,9 @@ impl fmt::Display for Token {
                 Token::Modulo => String::from("MODULO"),
                 Token::And => String::from("AND"),
                 Token::Or => String::from("OR"),
+                Token::If => String::from("IF"),
+                Token::LBrace => String::from("LBRACE"),
+                Token::RBrace => String::from("RBRACE"),
             }
         )
     }

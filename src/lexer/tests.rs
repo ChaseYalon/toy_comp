@@ -210,3 +210,18 @@ fn test_lexer_misc_infix_2() {
         ]
     )
 }
+
+#[test]
+fn test_lexer_if_stmt() {
+    let mut l = Lexer::new();
+    let out = l.lex("if true{}".to_string());
+    assert_eq!(
+        out,
+        vec![
+            Token::If,
+            Token::BoolLit(true),
+            Token::LBrace,
+            Token::RBrace,
+        ]
+    )
+}
