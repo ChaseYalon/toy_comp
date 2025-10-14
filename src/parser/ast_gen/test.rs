@@ -221,7 +221,8 @@ fn test_ast_gen_if_stmt() {
                 vec![Ast::VarReassign(
                     Box::new("x".to_string()),
                     Box::new(Ast::BoolLit(true))
-                )]
+                )],
+                None,
             )
         ]
     )
@@ -243,9 +244,45 @@ fn test_ast_gen_if_stmt_complex() {
                 vec![Ast::VarReassign(
                     Box::new("x".to_string()), 
                     Box::new(Ast::IntLit(4))
-                )]
+                )],
+                None
             ),
             Ast::VarRef(Box::new("x".to_string())),
+        ]
+    )
+}
+
+#[test]
+fn test_ast_gen_if_else() {
+    setup_ast!("if true && false {let x = 7;} else {let x = 8;}", ast);
+    assert_eq!(
+        ast,
+        vec![
+            Ast::IfStmt(
+                Box::new(
+                    Ast::InfixExpr(
+                        Box::new(Ast::BoolLit(true)), 
+                        Box::new(Ast::BoolLit(false)), 
+                        InfixOp::And,
+                    )
+                ), 
+                vec![
+                    Ast::VarDec(
+                        Box::new("x".to_string()), 
+                        TypeTok::Int, 
+                        Box::new(Ast::IntLit(7))
+                    )
+                ], 
+                Some(
+                    vec![
+                        Ast::VarDec(
+                            Box::new("x".to_string()), 
+                            TypeTok::Int, 
+                            Box::new(Ast::IntLit(8))
+                        )
+                    ]
+                )
+            )
         ]
     )
 }

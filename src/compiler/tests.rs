@@ -66,3 +66,9 @@ fn test_compiler_if_stmt() {
     compile_code!(code_fn, "let x:int = 8; if true {x = 4}; x;");
     assert_eq!(4, code_fn());
 }
+
+#[test]
+fn test_compiler_if_else() {
+    compile_code!(code_fn, "let x = 10; if x < 9 {x = 12;} else {x = 13;} x;");
+    assert_eq!(13, code_fn());
+}

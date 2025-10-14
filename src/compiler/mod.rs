@@ -169,7 +169,7 @@ impl Compiler {
         scope: &mut Scope,
     ) {
         if var_dec.node_type() != "VarDec" {
-            panic!("[ERROR] Expected variable declarations, got {}", var_dec);
+            panic!("[ERROR] Expected variable declarations, got {}, of type {}", var_dec, var_dec.node_type());
         }
         let name: String;
         let val: Ast;
@@ -201,8 +201,8 @@ impl Compiler {
         builder: &mut FunctionBuilder<'_>,
         scope: &mut Scope,
     ) {
-        let (cond_ast, body_asts) = match node {
-            Ast::IfStmt(cond, body) => (cond, body),
+        let (cond_ast, body_asts, alt_op) = match node {
+            Ast::IfStmt(cond, body, alt) => (cond, body, alt),
             _ => panic!("[ERROR] Expected IfStmt node, got {:?}", node),
         };
 
@@ -210,9 +210,10 @@ impl Compiler {
 
         let then_block = builder.create_block();
         let merge_block = builder.create_block();
+        let else_block = builder.create_block();
 
         // Branch: if condition is non-zero, go to then_block, otherwise go to merge_block
-        builder.ins().brif(cond_val, then_block, &[], merge_block, &[]);
+        builder.ins().brif(cond_val, then_block, &[], else_block, &[]);
 
         // Then block
         builder.switch_to_block(then_block);
@@ -222,6 +223,16 @@ impl Compiler {
             self.compile_stmt(stmt.clone(), _module, builder, scope);
         }
 
+        builder.ins().jump(merge_block, &[]);
+
+        // ELse block
+        builder.switch_to_block(else_block);
+        builder.seal_block(else_block);
+        if alt_op.is_some() {
+            for stmt in alt_op.as_ref().unwrap(){
+                self.compile_stmt(stmt.clone(), _module, builder, scope);
+            }
+        }
         builder.ins().jump(merge_block, &[]);
 
         // Merge block

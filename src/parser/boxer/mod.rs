@@ -148,7 +148,6 @@ impl Boxer {
 
         let mut i = 1;
 
-        // Parse condition tokens until we hit LBrace
         let mut cond: Vec<Token> = Vec::new();
         while i < input.len() && input[i].tok_type() != "LBrace" {
             cond.push(input[i].clone());
@@ -161,7 +160,6 @@ impl Boxer {
 
         i += 1; // skip '{'
 
-        // Parse body tokens until matching '}'
         let mut depth = 1;
         let mut body_toks: Vec<Token> = Vec::new();
         while i < input.len() && depth > 0 {
@@ -171,6 +169,7 @@ impl Boxer {
             } else if t.tok_type() == "RBrace" {
                 depth -= 1;
             }
+
             if depth > 0 {
                 body_toks.push(t);
             }
@@ -183,8 +182,41 @@ impl Boxer {
 
         let body_boxes = self.box_group(body_toks);
 
-        (TBox::IfStmt(cond, body_boxes), i)
+        let mut else_body_boxes = None;
+        if i < input.len() && input[i].tok_type() == "Else" {
+            i += 1; // skip 'Else'
+
+            if i >= input.len() || input[i].tok_type() != "LBrace" {
+                panic!("[ERROR] Expected '{{' after 'else'");
+            }
+            i += 1; // skip '{'
+
+            let mut depth = 1;
+            let mut else_toks: Vec<Token> = Vec::new();
+            while i < input.len() && depth > 0 {
+                let t = input[i].clone();
+                if t.tok_type() == "LBrace" {
+                    depth += 1;
+                } else if t.tok_type() == "RBrace" {
+                    depth -= 1;
+                }
+
+                if depth > 0 {
+                    else_toks.push(t);
+                }
+                i += 1;
+            }
+
+            if depth != 0 {
+                panic!("[ERROR] Unterminated '{{' block in else statement");
+            }
+
+            else_body_boxes = Some(self.box_group(else_toks));
+        }
+
+        (TBox::IfStmt(cond, body_boxes, else_body_boxes), i)
     }
+
 
     /// Recursively box tokens into structured TBoxes (proto-AST)
     pub fn box_toks(&mut self, input: Vec<Token>) -> Vec<TBox> {

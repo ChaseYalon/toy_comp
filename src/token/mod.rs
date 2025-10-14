@@ -27,6 +27,7 @@ pub enum Token {
     Let,
     Type(TypeTok),
     If,
+    Else,
 
     //Names
     VarName(Box<String>),
@@ -80,6 +81,7 @@ impl Token {
             Self::If => "If".to_string(),
             Self::LBrace => "LBrace".to_string(),
             Self::RBrace => "RBrace".to_string(),
+            Self::Else => "Else".to_string()
         };
     }
     ///Is used to get value out of an int literal
@@ -127,6 +129,7 @@ impl fmt::Display for Token {
                 Token::If => String::from("IF"),
                 Token::LBrace => String::from("LBRACE"),
                 Token::RBrace => String::from("RBRACE"),
+                Token::Else => String::from("ELSE"),
             }
         )
     }

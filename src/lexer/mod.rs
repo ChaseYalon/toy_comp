@@ -72,6 +72,9 @@ impl Lexer {
             if self.lex_keyword("if", Token::If) {
                 continue;
             }
+            if self.lex_keyword("else", Token::Else) {
+                continue;
+            }
 
             if c.is_ascii_digit() {
                 debug!(targets: ["lexer_verbose"], "In ascii print");

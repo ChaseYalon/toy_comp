@@ -225,3 +225,40 @@ fn test_lexer_if_stmt() {
         ]
     )
 }
+
+#[test]
+fn test_lexer_nested_if_else (){
+    let mut l = Lexer::new();
+    let out = l.lex("let x = 4; if x < 10{if true{x = 5}} else {x = 5};".to_string());
+
+    assert_eq!(
+        out,
+        vec![
+            Token::Let,
+            Token::VarName(Box::new("x".to_string())),
+            Token::Assign,
+            Token::IntLit(4),
+            Token::Semicolon,
+            Token::If,
+            Token::VarRef(Box::new("x".to_string())),
+            Token::LessThan,
+            Token::IntLit(10),
+            Token::LBrace,
+            Token::If,
+            Token::BoolLit(true),
+            Token::LBrace,
+            Token::VarRef(Box::new("x".to_string())),
+            Token::Assign,
+            Token::IntLit(5),
+            Token::RBrace,
+            Token::RBrace,
+            Token::Else,
+            Token::LBrace,
+            Token::VarRef(Box::new("x".to_string())),
+            Token::Assign,
+            Token::IntLit(5),
+            Token::RBrace,
+            Token::Semicolon,
+        ]
+    )
+}

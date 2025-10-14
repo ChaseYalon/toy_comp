@@ -13,8 +13,8 @@ pub enum Ast {
     ///Variable name and expression to assign it to
     VarReassign(Box<String>, Box<Ast>),
 
-    ///Condition, body
-    IfStmt(Box<Ast>, Vec<Ast>),
+    ///Condition, body, alt
+    IfStmt(Box<Ast>, Vec<Ast>, Option<Vec<Ast>>),
 }
 impl Ast {
     pub fn node_type(&self) -> String {
@@ -25,7 +25,7 @@ impl Ast {
             Ast::VarRef(_) => "VarRef".to_string(),
             Ast::VarReassign(_, _) => "VarReassign".to_string(),
             Ast::BoolLit(_) => "BoolLit".to_string(),
-            Ast::IfStmt(_, _) => "IfStmt".to_string(),
+            Ast::IfStmt(_, _, _) => "IfStmt".to_string(),
         };
     }
 }
@@ -59,7 +59,7 @@ impl fmt::Display for Ast {
                 Ast::VarRef(var) => format!("Var({})", *var),
                 Ast::VarReassign(var, val) => format!("Var({}) = Val({:?})", *var, *val),
                 Ast::BoolLit(b) => format!("BoolLit({})", b),
-                Ast::IfStmt(cond, body) => format!("IfStmt Cond({}), Body({:?})", cond, body),
+                Ast::IfStmt(cond, body, alt) => format!("IfStmt Cond({}), Body({:?}), Alt({:?})", cond, body, alt),
             }
         )
     }

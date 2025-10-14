@@ -155,7 +155,8 @@ fn test_boxer_if_stmt() {
                 vec![TBox::VarReassign(
                     Token::VarRef(Box::new("x".to_string())),
                     vec![Token::IntLit(6)],
-                )]
+                )],
+                None
             )
         ]
     )
@@ -188,9 +189,49 @@ fn test_boxer_nested_if() {
                     vec![TBox::VarReassign(
                         Token::VarRef(Box::new("x".to_string())),
                         vec![Token::IntLit(8)]
-                    )]
+                    )],
+                    None
                 )
-            ]
+            ],
+            None
         )]
+    )
+}
+
+#[test]
+fn test_boxer_if_else() {
+    let input = "if true && false{let x = 5;} else {let x: int = 6;}".to_string();
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let toks = l.lex(input);
+    let boxes = b.box_toks(toks);
+
+    assert_eq!(
+        boxes,
+        vec![
+            TBox::IfStmt(
+                vec![
+                    Token::BoolLit(true),
+                    Token::And,
+                    Token::BoolLit(false),
+                ], 
+                vec![
+                    TBox::VarDec(
+                        Token::VarName(Box::new("x".to_string())), 
+                        None, 
+                        vec![Token::IntLit(5)]
+                    )
+                ], 
+                Some(
+                    vec![
+                        TBox::VarDec(
+                            Token::VarName(Box::new("x".to_string())),
+                            Some(TypeTok::Int),
+                            vec![Token::IntLit(6)]
+                        )
+                    ]
+                )
+            )
+        ]
     )
 }

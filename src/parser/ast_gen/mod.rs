@@ -96,7 +96,7 @@ impl AstGenerator {
                 Token::Multiply => InfixOp::Multiply,
                 Token::Divide => InfixOp::Divide,
                 Token::Modulo => InfixOp::Modulo,
-                _ => panic!("[ERROR] WTF happened here, got opperator {}", best_tok),
+                _ => panic!("[ERROR] WTF happened here, got operator {}", best_tok),
             },
         );
     }
@@ -210,8 +210,8 @@ impl AstGenerator {
         return Ast::VarRef(Box::new(name_s));
     }
     fn parse_if_stmt(&mut self, stmt: TBox, should_eat: bool) -> Ast {
-        let (cond, body) = match stmt {
-            TBox::IfStmt(c, b) => (c, b),
+        let (cond, body, alt) = match stmt {
+            TBox::IfStmt(c, b, a) => (c, b, a),
             _ => panic!("[ERROR] Expected IfStmt, got {}", stmt),
         };
 
@@ -221,7 +221,15 @@ impl AstGenerator {
             debug!(targets: ["parser_verbose"], stmt);
             stmt_vec.push(self.parse_stmt(stmt, false));
         }
-        let if_stmt = Ast::IfStmt(Box::new(b_cond), stmt_vec);
+        let mut else_val: Option<Vec<Ast>> = None;
+        if alt.is_some() {
+            let mut else_vec: Vec<Ast> = Vec::new();
+            for stmt in alt.unwrap() {
+                else_vec.push(self.parse_stmt(stmt, false));
+            }
+            else_val = Some(else_vec);
+        }
+        let if_stmt = Ast::IfStmt(Box::new(b_cond), stmt_vec, else_val);
         
         if should_eat {
             self.eat();
@@ -256,7 +264,7 @@ impl AstGenerator {
                     Box::new(val_node),
                 )
             }
-            TBox::IfStmt(_, _) => {
+            TBox::IfStmt(_, _, _) => {
                 return self.parse_if_stmt(val, should_eat);
             }
         };

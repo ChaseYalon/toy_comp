@@ -10,8 +10,8 @@ pub enum TBox {
     #[allow(unused)] //Makes a yellow line go away, it is very much used
     VarRef(Token),
     VarReassign(Token, Vec<Token>),
-    ///Cond, body
-    IfStmt(Vec<Token>, Vec<TBox>),
+    ///Cond, body, Optional else
+    IfStmt(Vec<Token>, Vec<TBox>, Option<Vec<TBox>>),
 }
 
 impl fmt::Display for TBox {
@@ -28,8 +28,8 @@ impl fmt::Display for TBox {
                 TBox::VarRef(name) => format!("TBox_VAR_REF: Name({})", *name),
                 TBox::VarReassign(var, new_val) =>
                     format!("TBox_VAR_REASSIGN Var({}), NewVal({:?})", var, new_val),
-                TBox::IfStmt(cond, body) =>
-                    format!("TBox_If_Stmt Cond({:?}), Body({:?})", cond, body),
+                TBox::IfStmt(cond, body, alt) =>
+                    format!("TBox_If_Stmt Cond({:?}), Body({:?}), Alt({:?})", cond, body, alt),
             }
         )
     }
