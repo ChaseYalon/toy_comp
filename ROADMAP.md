@@ -26,7 +26,10 @@
         ii. Boolean infix operators and modulo --Done
 3. If statements
     a. If --Done
-    b. Scopes
-    c. Else
-    d. Else if
-    
+    b. Scopes --Done
+    c. Else --Done
+4. AOT Compiler
+    a. Compiler code
+    b. Building
+    c. Linking
+    *Supported triplets are x86-unknown-windows-msvc and x86-unknown-linux-gnu

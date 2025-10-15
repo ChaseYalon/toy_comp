@@ -5,13 +5,27 @@ use crate::{
 };
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
-use cranelift_module::{Linkage, Module};
+use cranelift_module::{Linkage, Module, default_libcall_names};
+use cranelift_codegen::isa;
+use cranelift_object::{ObjectBuilder, ObjectModule};
+use target_lexicon::Triple;
+use cranelift_codegen::settings::{self, Configurable};
+use cranelift_module::FuncId;
+use cranelift_codegen::Context;
+
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::env;
 use std::fs::File;
 use std::io::Write;
+
+mod vars;
+
+pub enum OutputType {
+    Jit(JITModule),
+    Aot(ObjectModule)
+}
 
 pub struct Compiler {
     ast: Vec<Ast>,
@@ -20,10 +34,11 @@ pub struct Compiler {
 }
 
 #[derive(Debug, Clone, Default)]
-struct Scope {
+pub struct Scope {
     vars: HashMap<String, (Variable, TypeTok)>,
     parent: Option<Rc<RefCell<Scope>>>,
 }
+
 impl Scope {
     fn new_child(parent: Rc<RefCell<Scope>>) -> Rc<RefCell<Scope>> {
         Rc::new(RefCell::new(Scope {
@@ -31,9 +46,11 @@ impl Scope {
             parent: Some(parent.clone()),
         }))
     }
+    
     fn set(&mut self, name: String, val: Variable, ty: TypeTok){
         self.vars.insert(name, (val, ty));
     }
+    
     fn get(&self, name: String) -> (Variable, TypeTok) {
         if self.vars.contains_key(&name) {
             return self.vars.get(&name).unwrap().clone();
@@ -42,9 +59,9 @@ impl Scope {
             panic!("[ERROR] Variable \"{}\" is undefined", name);
         }
         return self.parent.as_ref().unwrap().borrow().get(name);
-
     }
 }
+
 
 impl Compiler {
     pub fn new() -> Compiler {
@@ -57,16 +74,31 @@ impl Compiler {
             })),
         }
     }
-
+    
     fn make_jit(&self) -> JITModule {
-        let builder = JITBuilder::new(cranelift_module::default_libcall_names());
-        JITModule::new(builder.unwrap())
+        let jit_builder = JITBuilder::new(default_libcall_names());
+        JITModule::new(jit_builder.unwrap())
+    }
+    
+    fn make_object(&self) -> ObjectModule {
+        let triple = Triple::host();
+        let isa_builder = isa::lookup(triple).expect("ISA lookup failed");
+        
+        let mut flag_builder = settings::builder();
+        flag_builder.set("is_pic", "true").unwrap();
+        let flags = settings::Flags::new(flag_builder);
+        
+        let isa = isa_builder.finish(flags).expect("Failed to finish ISA");
+        
+        let obj_builder = ObjectBuilder::new(isa, "toy_lang".to_string(), default_libcall_names())
+            .expect("ObjectBuilder creation failed");
+        ObjectModule::new(obj_builder)
     }
 
-    fn compile_expr(
+    fn compile_expr<M: Module>(
         &self,
         expr: &Ast,
-        _module: &mut JITModule,
+        _module: &mut M,
         builder: &mut FunctionBuilder<'_>,
         scope: &Rc<RefCell<Scope>>,
     ) -> (Value, TypeTok) {
@@ -157,71 +189,13 @@ impl Compiler {
         }
     }
 
-    fn compile_var_reassign(
-        &mut self,
-        var_res: &Ast,
-        _module: &mut JITModule,
-        builder: &mut FunctionBuilder<'_>,
-        scope: &mut Rc<RefCell<Scope>>,
-    ) {
-        if var_res.node_type() != "VarReassign" {
-            panic!("[ERROR] Expecting VarReassign, got {}", var_res);
-        }
-        let var_name: String;
-        let new_val: Ast;
-        match var_res {
-            Ast::VarReassign(name, new_val_b) => {
-                var_name = *name.clone();
-                new_val = *new_val_b.clone()
-            }
-            _ => panic!("[ERROR] Expecting VarReassign, got {}", var_res),
-        }
-        let (var, _old_type) = scope.as_ref().borrow().get(var_name);
-        let var = var; // Copy the variable
-        let (val, _) = self.compile_expr(&new_val, _module, builder, scope);
-        // Use def_var to update the existing variable instead of creating a new one
-        builder.def_var(var, val);
-    }
 
-    fn compile_var_dec(
-        &mut self,
-        var_dec: &Ast,
-        _module: &mut JITModule,
-        builder: &mut FunctionBuilder<'_>,
-        scope: &mut Rc<RefCell<Scope>>,
-    ) {
-        if var_dec.node_type() != "VarDec" {
-            panic!("[ERROR] Expected variable declarations, got {}, of type {}", var_dec, var_dec.node_type());
-        }
-        let name: String;
-        let val: Ast;
-        let t_o: &TypeTok;
-        match var_dec {
-            Ast::VarDec(n, t, v) => {
-                name = *n.clone();
-                val = *v.clone();
-                t_o = t;
-            }
-            _ => {
-                panic!("[ERROR] Expected variable declarations, got {}", var_dec);
-            }
-        }
-        let (val, _) = self.compile_expr(&val, _module, builder, scope);
-        let var = Variable::new(self.var_count);
-        builder.declare_var(var, types::I64);
-        builder.def_var(var, val);
-        self.var_count += 1;
-        debug!(targets: ["compiler_verbose"], val);
-        debug!(targets: ["compiler_verbose"], var);
-        scope.borrow_mut().set(name, var, t_o.clone());
-    }
-
-    fn compile_if_stmt(
+    fn compile_if_stmt<M: Module>(
         &mut self,
         node: &Ast,
-        _module: &mut JITModule,
+        _module: &mut M,
         builder: &mut FunctionBuilder<'_>,
-        scope: &mut Rc<RefCell<Scope>>,
+        scope: &Rc<RefCell<Scope>>,
     ) {
         let (cond_ast, body_asts, alt_op) = match node {
             Ast::IfStmt(cond, body, alt) => (cond, body, alt),
@@ -231,10 +205,9 @@ impl Compiler {
         let (cond_val, _cond_type) = self.compile_expr(&cond_ast, _module, builder, scope);
 
         let then_block = builder.create_block();
-        let merge_block = builder.create_block();
         let else_block = builder.create_block();
+        let merge_block = builder.create_block();
 
-        // Branch: if condition is non-zero, go to then_block, otherwise go to merge_block
         builder.ins().brif(cond_val, then_block, &[], else_block, &[]);
 
         // Then block
@@ -247,11 +220,12 @@ impl Compiler {
 
         builder.ins().jump(merge_block, &[]);
 
-        // ELse block
+        // Else block
         builder.switch_to_block(else_block);
         builder.seal_block(else_block);
-        if alt_op.is_some() {
-            for stmt in alt_op.as_ref().unwrap(){
+        
+        if let Some(alt_stmts) = alt_op {
+            for stmt in alt_stmts {
                 self.compile_stmt(stmt.clone(), _module, builder, scope);
             }
         }
@@ -262,12 +236,12 @@ impl Compiler {
         builder.seal_block(merge_block);
     }
 
-    fn compile_stmt(
+    fn compile_stmt<M: Module>(
         &mut self,
         node: Ast,
-        _module: &mut JITModule,
+        _module: &mut M,
         func_builder: &mut FunctionBuilder<'_>,
-        scope: &mut Rc<RefCell<Scope>>,
+        scope: &Rc<RefCell<Scope>>,
     ) -> Option<(Value, TypeTok)> {
         let mut last_val = None;
 
@@ -290,16 +264,18 @@ impl Compiler {
         }
 
         if node.node_type() == "IfStmt" {
-            let mut child_scope = Scope::new_child(scope.clone()); // child points to parent
-            self.compile_if_stmt(&node, _module, func_builder, &mut child_scope);
+            let child_scope = Scope::new_child(scope.clone());
+            self.compile_if_stmt(&node, _module, func_builder, &child_scope);
         }
 
         last_val
     }
 
-    pub fn compile(&mut self, ast: Vec<Ast>) -> fn() -> i64 {
-        self.ast = ast.clone();
-        let mut module = self.make_jit();
+    fn compile_internal<M: Module>(
+        &mut self,
+        module: &mut M,
+        ast: Vec<Ast>,
+    ) -> (FuncId, Context) {
         let mut ctx = module.make_context();
 
         let mut sig = module.make_signature();
@@ -315,13 +291,11 @@ impl Compiler {
         func_builder.seal_block(main_block);
 
         let mut last_val: Option<(Value, TypeTok)> = None;
-        let mut sudo_main_scope =std::mem::take(&mut self.main_scope);
+        let sudo_main_scope = self.main_scope.clone();
         for node in ast {
-            last_val = self.compile_stmt(node, &mut module, &mut func_builder, &mut sudo_main_scope);
+            last_val = self.compile_stmt(node, module, &mut func_builder, &sudo_main_scope);
         }
 
-        self.main_scope = sudo_main_scope;
-        
         let (ret_val, _) =
             last_val.unwrap_or_else(|| (func_builder.ins().iconst(types::I64, 0), TypeTok::Int));
         func_builder.ins().return_(&[ret_val]);
@@ -341,10 +315,35 @@ impl Compiler {
 
         module.define_function(func_id, &mut ctx).unwrap();
         module.clear_context(&mut ctx);
-        let _ = module.finalize_definitions();
+        
+        (func_id, ctx)
+    }
+
+    pub fn compile(&mut self, ast: Vec<Ast>, should_jit: bool, path: Option<&str>) -> Option<fn() -> i64> {
+        if !should_jit {
+            let mut file = File::create(path.unwrap()).unwrap();
+            file.write_all(&self.compile_to_object(ast.clone())).unwrap();
+            return None;
+        }
+        self.ast = ast.clone();
+        let mut module = self.make_jit();
+        
+        let (func_id, _ctx) = self.compile_internal(&mut module, ast);
+        
+        module.finalize_definitions().unwrap();
 
         let code_ptr = module.get_finalized_function(func_id);
-        unsafe { std::mem::transmute::<_, fn() -> i64>(code_ptr) }
+        return Some(unsafe { std::mem::transmute::<_, fn() -> i64>(code_ptr) })
+    }
+
+    fn compile_to_object(&mut self, ast: Vec<Ast>) -> Vec<u8> {
+        self.ast = ast.clone();
+        let mut module = self.make_object();
+        
+        let (_func_id, _ctx) = self.compile_internal(&mut module, ast);
+        
+        let object_product = module.finish();
+        object_product.emit().unwrap()
     }
 }
 

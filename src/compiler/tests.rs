@@ -5,7 +5,7 @@ macro_rules! compile_code {
         let mut l = Lexer::new();
         let mut p = Parser::new();
         let mut c = Compiler::new();
-        let $o = c.compile(p.parse(l.lex($i.to_string())));
+        let $o = c.compile(p.parse(l.lex($i.to_string())), true, None).unwrap();
     };
 }
 
