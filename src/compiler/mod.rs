@@ -13,6 +13,8 @@ use cranelift_codegen::settings::{self, Configurable};
 use cranelift_module::FuncId;
 use cranelift_codegen::Context;
 
+use std::path::Path;
+use std::process::Command;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -310,7 +312,7 @@ impl Compiler {
         }
 
         let func_id = module
-            .declare_function("main", Linkage::Export, &ctx.func.signature)
+            .declare_function("user_main", Linkage::Export, &ctx.func.signature)
             .unwrap();
 
         module.define_function(func_id, &mut ctx).unwrap();
@@ -321,8 +323,43 @@ impl Compiler {
 
     pub fn compile(&mut self, ast: Vec<Ast>, should_jit: bool, path: Option<&str>) -> Option<fn() -> i64> {
         if !should_jit {
-            let mut file = File::create(path.unwrap()).unwrap();
-            file.write_all(&self.compile_to_object(ast.clone())).unwrap();
+            let o_path = path.unwrap_or("program.exe");
+
+            let obj_path = Path::new("stub.obj");
+            let mut obj_file = File::create(&obj_path).unwrap();
+            obj_file.write_all(&self.compile_to_object(ast.clone())).unwrap();
+            let stub_path = Path::new("stub.c");
+            let c_code = r#"#include <stdlib.h>
+        #include <stdio.h>
+        extern long user_main();
+
+        int main() {
+            long res = user_main();
+            printf("User main returned: %ld\n", res);
+            return (int) res;
+        }"#;
+            let mut stub_file = File::create(&stub_path).unwrap();
+            stub_file.write_all(c_code.as_bytes()).unwrap();
+
+            // Call GCC to link the object file and the stub
+            let status = Command::new("gcc")
+                .args(&[
+                    obj_path.to_str().unwrap(),
+                    stub_path.to_str().unwrap(),
+                    "-o",
+                    o_path,
+                ])
+                .status()
+                .expect("failed to execute gcc");
+
+            if !status.success() {
+                panic!("GCC failed with exit code {:?}", status.code());
+            }
+
+            // Cleanup temporary files
+            let _ = std::fs::remove_file(obj_path);
+            let _ = std::fs::remove_file(stub_path);
+
             return None;
         }
         self.ast = ast.clone();
