@@ -12,7 +12,7 @@ use target_lexicon::Triple;
 use cranelift_codegen::settings::{self, Configurable};
 use cranelift_module::FuncId;
 use cranelift_codegen::Context;
-
+use crate::compiler::tcc::{link_and_write_exe};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -20,6 +20,7 @@ use std::env;
 use std::fs::File;
 use std::io::Write;
 
+mod tcc;
 mod vars;
 
 pub enum OutputType {
@@ -31,6 +32,7 @@ pub struct Compiler {
     ast: Vec<Ast>,
     var_count: usize,
     main_scope: Rc<RefCell<Scope>>,
+
 }
 
 #[derive(Debug, Clone, Default)]
@@ -321,8 +323,7 @@ impl Compiler {
 
     pub fn compile(&mut self, ast: Vec<Ast>, should_jit: bool, path: Option<&str>) -> Option<fn() -> i64> {
         if !should_jit {
-            let mut file = File::create(path.unwrap()).unwrap();
-            file.write_all(&self.compile_to_object(ast.clone())).unwrap();
+            self.compile_to_exe(ast.clone(), path);
             return None;
         }
         self.ast = ast.clone();
@@ -336,14 +337,20 @@ impl Compiler {
         return Some(unsafe { std::mem::transmute::<_, fn() -> i64>(code_ptr) })
     }
 
-    fn compile_to_object(&mut self, ast: Vec<Ast>) -> Vec<u8> {
+    fn compile_to_exe(&mut self, ast: Vec<Ast>, path: Option<&str>) {
         self.ast = ast.clone();
         let mut module = self.make_object();
         
         let (_func_id, _ctx) = self.compile_internal(&mut module, ast);
         
         let object_product = module.finish();
-        object_product.emit().unwrap()
+        let obj_file = object_product.emit().unwrap();
+        if path.is_some() {
+            link_and_write_exe(&obj_file, path.unwrap());
+        } else {
+            link_and_write_exe(&obj_file, "output.exe");
+        }
+        
     }
 }
 

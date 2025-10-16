@@ -9,6 +9,7 @@
         "isub",
         "libcall",
         "opps",
+        "repr",
         "sdiv",
         "uextend"
     ]
