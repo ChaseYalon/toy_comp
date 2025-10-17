@@ -318,3 +318,44 @@ fn test_ast_gen_nested_parens() {
         ]
     )
 }
+
+#[test]
+fn test_ast_gen_consecutive_parens() {
+    setup_ast!("let x = (5 + 2) + (3 + 1);", ast);
+    assert_eq!(
+        ast,
+        vec![
+            Ast::VarDec(
+                Box::new("x".to_string()), 
+                TypeTok::Int, 
+                Box::new(
+                    Ast::InfixExpr(
+                        Box::new(
+                            Ast::EmptyExpr(
+                                Box::new(
+                                    Ast::InfixExpr(
+                                        Box::new(Ast::IntLit(5)), 
+                                        Box::new(Ast::IntLit(2)), 
+                                        InfixOp::Plus,
+                                    )
+                                )
+                            )
+                        ), 
+                        Box::new(
+                            Ast::EmptyExpr(
+                                Box::new(
+                                    Ast::InfixExpr(
+                                        Box::new(Ast::IntLit(3)), 
+                                        Box::new(Ast::IntLit(1)), 
+                                        InfixOp::Plus
+                                    )
+                                )
+                            )
+                        ), 
+                        InfixOp::Plus
+                    )
+                )
+            )
+        ]
+    )
+}

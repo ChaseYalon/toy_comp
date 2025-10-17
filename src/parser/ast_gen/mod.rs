@@ -199,7 +199,6 @@ impl AstGenerator {
         (Ast::EmptyExpr(Box::new(inner_node)), tok)
     }
 
-
     fn parse_expr(&self, toks: &Vec<Token>) -> (Ast, TypeTok) {
         if toks.len() == 1 {
             if toks[0].tok_type() == "IntLit" {
@@ -221,11 +220,32 @@ impl AstGenerator {
                 return (self.parse_var_ref(&toks[0]), var_ref_type.unwrap().clone());
             }
         }
+        
         if toks.first().unwrap().tok_type() == "LParen" && toks.last().unwrap().tok_type() == "RParen" {
-            let (inner, inner_type) = self.parse_expr(&toks[1..toks.len() - 1].to_vec());
-            let to_ret_ast = Ast::EmptyExpr(Box::new(inner));
-            return (to_ret_ast, inner_type);
+            let mut depth = 0;
+            let mut first_paren_closes_at = None;
+            
+            for (i, t) in toks.iter().enumerate() {
+                match t.tok_type().as_str() {
+                    "LParen" => depth += 1,
+                    "RParen" => {
+                        depth -= 1;
+                        if depth == 0 {
+                            first_paren_closes_at = Some(i);
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            
+            if first_paren_closes_at == Some(toks.len() - 1) {
+                let (inner, inner_type) = self.parse_expr(&toks[1..toks.len() - 1].to_vec());
+                let to_ret_ast = Ast::EmptyExpr(Box::new(inner));
+                return (to_ret_ast, inner_type);
+            }
         }
+        
         let (_, _, best_val) = self.find_top_val(toks);
         debug!(targets: ["parser", "parser_verbose"], best_val.clone());
         debug!(targets: ["parser", "parser_verbose"], toks.clone());
