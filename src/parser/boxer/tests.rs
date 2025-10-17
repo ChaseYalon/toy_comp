@@ -208,30 +208,48 @@ fn test_boxer_if_else() {
 
     assert_eq!(
         boxes,
-        vec![
-            TBox::IfStmt(
-                vec![
-                    Token::BoolLit(true),
-                    Token::And,
-                    Token::BoolLit(false),
-                ], 
-                vec![
-                    TBox::VarDec(
-                        Token::VarName(Box::new("x".to_string())), 
-                        None, 
-                        vec![Token::IntLit(5)]
-                    )
-                ], 
-                Some(
-                    vec![
-                        TBox::VarDec(
-                            Token::VarName(Box::new("x".to_string())),
-                            Some(TypeTok::Int),
-                            vec![Token::IntLit(6)]
-                        )
-                    ]
-                )
-            )
-        ]
+        vec![TBox::IfStmt(
+            vec![Token::BoolLit(true), Token::And, Token::BoolLit(false),],
+            vec![TBox::VarDec(
+                Token::VarName(Box::new("x".to_string())),
+                None,
+                vec![Token::IntLit(5)]
+            )],
+            Some(vec![TBox::VarDec(
+                Token::VarName(Box::new("x".to_string())),
+                Some(TypeTok::Int),
+                vec![Token::IntLit(6)]
+            )])
+        )]
+    )
+}
+
+#[test]
+fn test_boxer_parens() {
+    let input = "let x: int = (14 - 3 * (6/2));".to_string();
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let toks = l.lex(input);
+    let boxes = b.box_toks(toks);
+
+    assert_eq!(
+        boxes,
+        vec![TBox::VarDec(
+            Token::VarName(Box::new("x".to_string())),
+            Some(TypeTok::Int),
+            vec![
+                Token::LParen,
+                Token::IntLit(14),
+                Token::Minus,
+                Token::IntLit(3),
+                Token::Multiply,
+                Token::LParen,
+                Token::IntLit(6),
+                Token::Divide,
+                Token::IntLit(2),
+                Token::RParen,
+                Token::RParen
+            ]
+        )]
     )
 }

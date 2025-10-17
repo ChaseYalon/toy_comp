@@ -1,11 +1,11 @@
 use super::{Compiler, Scope};
-use crate::parser::ast::Ast;
 use crate::debug;
+use crate::parser::ast::Ast;
 use crate::token::TypeTok;
 use cranelift::prelude::*;
-use cranelift_module::{Module};
-use std::rc::Rc;
+use cranelift_module::Module;
 use std::cell::RefCell;
+use std::rc::Rc;
 
 impl Compiler {
     pub fn compile_var_reassign<M: Module>(
@@ -40,7 +40,11 @@ impl Compiler {
         scope: &Rc<RefCell<Scope>>,
     ) {
         if var_dec.node_type() != "VarDec" {
-            panic!("[ERROR] Expected variable declarations, got {}, of type {}", var_dec, var_dec.node_type());
+            panic!(
+                "[ERROR] Expected variable declarations, got {}, of type {}",
+                var_dec,
+                var_dec.node_type()
+            );
         }
         let name: String;
         let val: Ast;
@@ -64,5 +68,4 @@ impl Compiler {
         debug!(targets: ["compiler_verbose"], var);
         scope.borrow_mut().set(name, var, t_o.clone());
     }
-
 }

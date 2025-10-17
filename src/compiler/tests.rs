@@ -5,7 +5,9 @@ macro_rules! compile_code {
         let mut l = Lexer::new();
         let mut p = Parser::new();
         let mut c = Compiler::new();
-        let $o = c.compile(p.parse(l.lex($i.to_string())), true, None).unwrap();
+        let $o = c
+            .compile(p.parse(l.lex($i.to_string())), true, None)
+            .unwrap();
     };
 }
 
@@ -71,4 +73,10 @@ fn test_compiler_if_stmt() {
 fn test_compiler_if_else() {
     compile_code!(code_fn, "let x = 10; if x < 9 {x = 12;} else {x = 13;} x;");
     assert_eq!(13, code_fn());
+}
+
+#[test]
+fn test_compiler_nested_parens() {
+    compile_code!(code_fn, "let x = (5 * (3 + 4)) / 7; x;");
+    assert_eq!(5, code_fn());
 }

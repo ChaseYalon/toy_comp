@@ -217,7 +217,6 @@ impl Boxer {
         (TBox::IfStmt(cond, body_boxes, else_body_boxes), i)
     }
 
-
     /// Recursively box tokens into structured TBoxes (proto-AST)
     pub fn box_toks(&mut self, input: Vec<Token>) -> Vec<TBox> {
         self.toks = input.clone();

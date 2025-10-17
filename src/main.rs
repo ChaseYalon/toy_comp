@@ -1,6 +1,6 @@
 use crate::compiler::Compiler;
-use std::io::{self, Write};
 use std::env;
+use std::io::{self, Write};
 pub mod compiler;
 mod lexer;
 pub mod parser;
@@ -29,8 +29,12 @@ fn main() {
         }
         let args: Vec<String> = env::args().collect();
         let should_jit = args.contains(&"--aot".to_string());
-        let user_fn = c.compile(p.parse(l.lex(String::from(input))), !should_jit, Some("output.exe"));
-        if user_fn.is_some(){
+        let user_fn = c.compile(
+            p.parse(l.lex(String::from(input))),
+            !should_jit,
+            Some("output.exe"),
+        );
+        if user_fn.is_some() {
             println!(">>{}", user_fn.unwrap()());
         } else {
             continue;

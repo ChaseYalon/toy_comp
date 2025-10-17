@@ -227,7 +227,7 @@ fn test_lexer_if_stmt() {
 }
 
 #[test]
-fn test_lexer_nested_if_else (){
+fn test_lexer_nested_if_else() {
     let mut l = Lexer::new();
     let out = l.lex("let x = 4; if x < 10{if true{x = 5}} else {x = 5};".to_string());
 
@@ -258,6 +258,32 @@ fn test_lexer_nested_if_else (){
             Token::Assign,
             Token::IntLit(5),
             Token::RBrace,
+            Token::Semicolon,
+        ]
+    )
+}
+
+#[test]
+fn test_lexer_nested_parens() {
+    let mut l = Lexer::new();
+    let out = l.lex("let x = (5 * (3 + 4)) / 7;".to_string());
+    assert_eq!(
+        out,
+        vec![
+            Token::Let,
+            Token::VarName(Box::new("x".to_string())),
+            Token::Assign,
+            Token::LParen,
+            Token::IntLit(5),
+            Token::Multiply,
+            Token::LParen,
+            Token::IntLit(3),
+            Token::Plus,
+            Token::IntLit(4),
+            Token::RParen,
+            Token::RParen,
+            Token::Divide,
+            Token::IntLit(7),
             Token::Semicolon,
         ]
     )

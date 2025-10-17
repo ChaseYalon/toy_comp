@@ -235,14 +235,14 @@ fn test_ast_gen_if_stmt_complex() {
         ast,
         vec![
             Ast::VarDec(
-                Box::new("x".to_string()), 
-                TypeTok::Int, 
+                Box::new("x".to_string()),
+                TypeTok::Int,
                 Box::new(Ast::IntLit(8)),
             ),
             Ast::IfStmt(
                 Box::new(Ast::BoolLit(true)),
                 vec![Ast::VarReassign(
-                    Box::new("x".to_string()), 
+                    Box::new("x".to_string()),
                     Box::new(Ast::IntLit(4))
                 )],
                 None
@@ -257,30 +257,62 @@ fn test_ast_gen_if_else() {
     setup_ast!("if true && false {let x = 7;} else {let x = 8;}", ast);
     assert_eq!(
         ast,
+        vec![Ast::IfStmt(
+            Box::new(Ast::InfixExpr(
+                Box::new(Ast::BoolLit(true)),
+                Box::new(Ast::BoolLit(false)),
+                InfixOp::And,
+            )),
+            vec![Ast::VarDec(
+                Box::new("x".to_string()),
+                TypeTok::Int,
+                Box::new(Ast::IntLit(7))
+            )],
+            Some(vec![Ast::VarDec(
+                Box::new("x".to_string()),
+                TypeTok::Int,
+                Box::new(Ast::IntLit(8))
+            )])
+        )]
+    )
+}
+
+#[test]
+fn test_ast_gen_nested_parens() {
+    setup_ast!("let x = (5 * (3 + 4)) / 7;", ast);
+    //This nesting is a crime against humanity
+    assert_eq!(
+        ast,
         vec![
-            Ast::IfStmt(
+            Ast::VarDec(
+                Box::new("x".to_string()), 
+                TypeTok::Int, 
                 Box::new(
                     Ast::InfixExpr(
-                        Box::new(Ast::BoolLit(true)), 
-                        Box::new(Ast::BoolLit(false)), 
-                        InfixOp::And,
+                        Box::new(
+                            Ast::EmptyExpr(
+                                Box::new(
+                                    Ast::InfixExpr(
+                                        Box::new(Ast::IntLit(5)), 
+                                        Box::new(
+                                            Ast::EmptyExpr(
+                                                Box::new(
+                                                    Ast::InfixExpr(
+                                                        Box::new(Ast::IntLit(3)), 
+                                                        Box::new(Ast::IntLit(4)), 
+                                                        InfixOp::Plus
+                                                    )
+                                                )
+                                            )
+                                        ), 
+                                        InfixOp::Multiply
+                                    )
+                                )
+                            )
+                        ), 
+                        Box::new(Ast::IntLit(7)), 
+                        InfixOp::Divide
                     )
-                ), 
-                vec![
-                    Ast::VarDec(
-                        Box::new("x".to_string()), 
-                        TypeTok::Int, 
-                        Box::new(Ast::IntLit(7))
-                    )
-                ], 
-                Some(
-                    vec![
-                        Ast::VarDec(
-                            Box::new("x".to_string()), 
-                            TypeTok::Int, 
-                            Box::new(Ast::IntLit(8))
-                        )
-                    ]
                 )
             )
         ]

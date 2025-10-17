@@ -28,8 +28,10 @@ impl fmt::Display for TBox {
                 TBox::VarRef(name) => format!("TBox_VAR_REF: Name({})", *name),
                 TBox::VarReassign(var, new_val) =>
                     format!("TBox_VAR_REASSIGN Var({}), NewVal({:?})", var, new_val),
-                TBox::IfStmt(cond, body, alt) =>
-                    format!("TBox_If_Stmt Cond({:?}), Body({:?}), Alt({:?})", cond, body, alt),
+                TBox::IfStmt(cond, body, alt) => format!(
+                    "TBox_If_Stmt Cond({:?}), Body({:?}), Alt({:?})",
+                    cond, body, alt
+                ),
             }
         )
     }

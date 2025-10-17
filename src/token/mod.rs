@@ -39,6 +39,8 @@ pub enum Token {
     Assign,
     LBrace,
     RBrace,
+    LParen,
+    RParen,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TypeTok {
@@ -81,7 +83,9 @@ impl Token {
             Self::If => "If".to_string(),
             Self::LBrace => "LBrace".to_string(),
             Self::RBrace => "RBrace".to_string(),
-            Self::Else => "Else".to_string()
+            Self::Else => "Else".to_string(),
+            Self::LParen => "LParen".to_string(),
+            Self::RParen => "RParen".to_string(),
         };
     }
     ///Is used to get value out of an int literal
@@ -130,6 +134,8 @@ impl fmt::Display for Token {
                 Token::LBrace => String::from("LBRACE"),
                 Token::RBrace => String::from("RBRACE"),
                 Token::Else => String::from("ELSE"),
+                Token::LParen => String::from("LPAREN"),
+                Token::RParen => String::from("RPAREN"),
             }
         )
     }

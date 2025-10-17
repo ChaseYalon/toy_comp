@@ -29,7 +29,10 @@
     b. Scopes --Done
     c. Else --Done
 4. AOT Compiler
-    a. Compiler code
-    b. Building
-    c. Linking
-    *Supported triplets are x86-unknown-windows-msvc and x86-unknown-linux-gnu
+    a. Compiler code --Done
+    b. Building --Done
+    c. Linking --Done
+    *Supported triplets are x86-unknown-windows-gnu and x86-unknown-linux-gnu coming soon
+5. Misc
+    a. Parens
+    b. Fix debug macro

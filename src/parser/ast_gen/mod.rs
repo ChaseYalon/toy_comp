@@ -18,6 +18,8 @@ impl AstGenerator {
         let b_vec: Vec<TBox> = Vec::new();
         let n_vec: Vec<Ast> = Vec::new();
         let mut map: HashMap<String, u32> = HashMap::new();
+        map.insert(Token::LParen.tok_type(), 10000);
+        map.insert(Token::RParen.tok_type(), 10000); //Parens should never be bound too
         map.insert(Token::VarRef(Box::new("".to_string())).tok_type(), 100);
         map.insert(Token::IntLit(0).tok_type(), 100); //Zero is just an arbitrary value, it will be fine for all int literals
         map.insert(Token::BoolLit(true).tok_type(), 100);
@@ -51,27 +53,52 @@ impl AstGenerator {
     }
     fn find_top_val(&self, toks: &Vec<Token>) -> (usize, u32, Token) {
         let mut best_idx = 0_usize;
-        let mut best_val: u32 = 100000000; //Practical infinity
-        let mut best_tok: Token = Token::IntLit(0); //This will throw an error later if its val has not been changed
+        let mut best_val: u32 = 100_000_000; // practical infinity
+        let mut best_tok: Token = Token::IntLit(0);
+
+        let mut depth = 0;
+
         for (i, t) in toks.iter().enumerate() {
-            if t.tok_type() == "IntLit" {
+            match t.tok_type().as_str() {
+                "LParen" => {
+                    depth += 1;
+                    continue;
+                }
+                "RParen" => {
+                    if depth == 0 {
+                        panic!("[ERROR] Unmatched RParen at index {}", i);
+                    }
+                    depth -= 1;
+                    continue;
+                }
+                _ => {}
+            }
+
+            // Only consider tokens at depth 0 (outside parentheses)
+            if depth != 0 {
                 continue;
             }
-            let maybe_val = self.p_table.get(&t.tok_type());
 
-            if !maybe_val.is_some() {
+            let maybe_val = self.p_table.get(&t.tok_type());
+            if maybe_val.is_none() {
                 panic!("[ERROR] Unknown symbol, got {}", t);
             }
-            let val = *maybe_val.unwrap();
 
+            let val = *maybe_val.unwrap();
             if val < best_val {
                 best_val = val;
                 best_idx = i;
                 best_tok = t.clone();
             }
         }
-        return (best_idx, best_val, best_tok);
+
+        if depth != 0 {
+            panic!("[ERROR] Unmatched LParen in expression");
+        }
+
+        (best_idx, best_val, best_tok)
     }
+
     fn parse_int_expr(&self, toks: &Vec<Token>) -> Ast {
         if toks.len() == 1 {
             if toks[0].tok_type() == "IntLit" {
@@ -80,6 +107,9 @@ impl AstGenerator {
             if toks[0].tok_type() == "VarRef" {
                 return self.parse_var_ref(&toks[0]);
             }
+        }
+        if toks.len() == 0 {
+            panic!("[ERROR] Empty Expression");
         }
         let (best_idx, _, best_tok) = self.find_top_val(toks);
         let left = &toks[0..best_idx];
@@ -134,6 +164,42 @@ impl AstGenerator {
             },
         );
     }
+    fn parse_empty_expr(&self, toks: &Vec<Token>) -> (Ast, TypeTok) {
+        if toks.is_empty() {
+            panic!("[ERROR] No tokens provided for empty expression");
+        }
+
+        if toks[0].tok_type() != "LParen" {
+            panic!("[ERROR] Expecting LParen, got {}", toks[0].clone());
+        }
+
+        // Find the matching closing RParen
+        let mut depth = 0;
+        let mut end_idx = None;
+
+        for (i, t) in toks.iter().enumerate() {
+            match t.tok_type().as_str() {
+                "LParen" => depth += 1,
+                "RParen" => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end_idx = Some(i);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let end_idx = end_idx.expect("[ERROR] No matching RParen found");
+
+        let inner_toks = &toks[1..end_idx]; // skip first LParen and matching RParen
+        let (inner_node, tok) = self.parse_expr(&inner_toks.to_vec());
+
+        (Ast::EmptyExpr(Box::new(inner_node)), tok)
+    }
+
+
     fn parse_expr(&self, toks: &Vec<Token>) -> (Ast, TypeTok) {
         if toks.len() == 1 {
             if toks[0].tok_type() == "IntLit" {
@@ -155,6 +221,11 @@ impl AstGenerator {
                 return (self.parse_var_ref(&toks[0]), var_ref_type.unwrap().clone());
             }
         }
+        if toks.first().unwrap().tok_type() == "LParen" && toks.last().unwrap().tok_type() == "RParen" {
+            let (inner, inner_type) = self.parse_expr(&toks[1..toks.len() - 1].to_vec());
+            let to_ret_ast = Ast::EmptyExpr(Box::new(inner));
+            return (to_ret_ast, inner_type);
+        }
         let (_, _, best_val) = self.find_top_val(toks);
         debug!(targets: ["parser", "parser_verbose"], best_val.clone());
         debug!(targets: ["parser", "parser_verbose"], toks.clone());
@@ -174,6 +245,8 @@ impl AstGenerator {
             | Token::NotEquals
             | Token::And
             | Token::Or => (self.parse_bool_expr(toks), TypeTok::Bool),
+            Token::LParen
+            | Token::RBrace => self.parse_empty_expr(toks),
             _ => panic!("[ERROR] Unsupported type for expression, got {}", best_val),
         };
     }
@@ -230,17 +303,17 @@ impl AstGenerator {
             else_val = Some(else_vec);
         }
         let if_stmt = Ast::IfStmt(Box::new(b_cond), stmt_vec, else_val);
-        
+
         if should_eat {
             self.eat();
         }
-        
+
         return if_stmt;
     }
 
     fn parse_stmt(&mut self, val: TBox, should_eat: bool) -> Ast {
         debug!(targets: ["parser_verbose"], val);
-        
+
         let node = match val {
             TBox::Expr(i) => {
                 let (node, _) = self.parse_expr(&i);
@@ -268,11 +341,11 @@ impl AstGenerator {
                 return self.parse_if_stmt(val, should_eat);
             }
         };
-        
+
         if should_eat {
             self.eat();
         }
-        
+
         node
     }
     pub fn generate(&mut self, boxes: Vec<TBox>) -> Vec<Ast> {

@@ -106,6 +106,18 @@ impl Lexer {
                 self.eat();
                 continue;
             }
+            if c == '(' {
+                self.flush();
+                self.toks.push(Token::LParen);
+                self.eat();
+                continue;
+            }
+            if c == ')' {
+                self.flush();
+                self.toks.push(Token::RParen);
+                self.eat();
+                continue;
+            }
             if c == '%' {
                 self.flush();
                 self.toks.push(Token::Modulo);

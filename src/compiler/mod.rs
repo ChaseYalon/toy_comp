@@ -4,29 +4,29 @@ use crate::{
     token::TypeTok,
 };
 use cranelift::prelude::*;
-use cranelift_jit::{JITBuilder, JITModule};
-use cranelift_module::{Linkage, Module, default_libcall_names};
+use cranelift_codegen::Context;
 use cranelift_codegen::isa;
+use cranelift_codegen::settings::{self, Configurable};
+use cranelift_jit::{JITBuilder, JITModule};
+use cranelift_module::FuncId;
+use cranelift_module::{Linkage, Module, default_libcall_names};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use target_lexicon::Triple;
-use cranelift_codegen::settings::{self, Configurable};
-use cranelift_module::FuncId;
-use cranelift_codegen::Context;
 
-use std::path::Path;
-use std::process::Command;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
 use std::env;
 use std::fs::File;
 use std::io::Write;
+use std::path::Path;
+use std::process::Command;
+use std::rc::Rc;
 
 mod vars;
 
 pub enum OutputType {
     Jit(JITModule),
-    Aot(ObjectModule)
+    Aot(ObjectModule),
 }
 
 pub struct Compiler {
@@ -48,11 +48,11 @@ impl Scope {
             parent: Some(parent.clone()),
         }))
     }
-    
-    fn set(&mut self, name: String, val: Variable, ty: TypeTok){
+
+    fn set(&mut self, name: String, val: Variable, ty: TypeTok) {
         self.vars.insert(name, (val, ty));
     }
-    
+
     fn get(&self, name: String) -> (Variable, TypeTok) {
         if self.vars.contains_key(&name) {
             return self.vars.get(&name).unwrap().clone();
@@ -63,7 +63,6 @@ impl Scope {
         return self.parent.as_ref().unwrap().borrow().get(name);
     }
 }
-
 
 impl Compiler {
     pub fn new() -> Compiler {
@@ -76,22 +75,22 @@ impl Compiler {
             })),
         }
     }
-    
+
     fn make_jit(&self) -> JITModule {
         let jit_builder = JITBuilder::new(default_libcall_names());
         JITModule::new(jit_builder.unwrap())
     }
-    
+
     fn make_object(&self) -> ObjectModule {
         let triple = Triple::host();
         let isa_builder = isa::lookup(triple).expect("ISA lookup failed");
-        
+
         let mut flag_builder = settings::builder();
         flag_builder.set("is_pic", "true").unwrap();
         let flags = settings::Flags::new(flag_builder);
-        
+
         let isa = isa_builder.finish(flags).expect("Failed to finish ISA");
-        
+
         let obj_builder = ObjectBuilder::new(isa, "toy_lang".to_string(), default_libcall_names())
             .expect("ObjectBuilder creation failed");
         ObjectModule::new(obj_builder)
@@ -109,6 +108,7 @@ impl Compiler {
             && expr.node_type() != "InfixExpr"
             && expr.node_type() != "VarRef"
             && expr.node_type() != "BoolLit"
+            && expr.node_type() != "EmptyExpr"
         {
             panic!("[ERROR] Unknown AST node type: {}", expr.node_type());
         }
@@ -118,6 +118,9 @@ impl Compiler {
             Ast::BoolLit(b) => {
                 let is_true: i64 = if *b { 1 } else { 0 };
                 (builder.ins().iconst(types::I64, is_true), TypeTok::Bool)
+            },
+            Ast::EmptyExpr(child) => {
+                self.compile_expr(child, _module, builder, scope)
             }
             Ast::InfixExpr(left, right, op) => {
                 let (l, l_t) = self.compile_expr(left, _module, builder, scope);
@@ -191,7 +194,6 @@ impl Compiler {
         }
     }
 
-
     fn compile_if_stmt<M: Module>(
         &mut self,
         node: &Ast,
@@ -210,7 +212,9 @@ impl Compiler {
         let else_block = builder.create_block();
         let merge_block = builder.create_block();
 
-        builder.ins().brif(cond_val, then_block, &[], else_block, &[]);
+        builder
+            .ins()
+            .brif(cond_val, then_block, &[], else_block, &[]);
 
         // Then block
         builder.switch_to_block(then_block);
@@ -225,7 +229,7 @@ impl Compiler {
         // Else block
         builder.switch_to_block(else_block);
         builder.seal_block(else_block);
-        
+
         if let Some(alt_stmts) = alt_op {
             for stmt in alt_stmts {
                 self.compile_stmt(stmt.clone(), _module, builder, scope);
@@ -269,15 +273,18 @@ impl Compiler {
             let child_scope = Scope::new_child(scope.clone());
             self.compile_if_stmt(&node, _module, func_builder, &child_scope);
         }
+        if node.node_type() == "EmptyExpr" {
+            let child = match node {
+                Ast::EmptyExpr(c) => *c,
+                _ => panic!("[ERROR] Expected EmptyExpr, got {}", node)
+            };
+            self.compile_expr(&child, _module, func_builder, scope);
+        }
 
         last_val
     }
 
-    fn compile_internal<M: Module>(
-        &mut self,
-        module: &mut M,
-        ast: Vec<Ast>,
-    ) -> (FuncId, Context) {
+    fn compile_internal<M: Module>(&mut self, module: &mut M, ast: Vec<Ast>) -> (FuncId, Context) {
         let mut ctx = module.make_context();
 
         let mut sig = module.make_signature();
@@ -317,17 +324,24 @@ impl Compiler {
 
         module.define_function(func_id, &mut ctx).unwrap();
         module.clear_context(&mut ctx);
-        
+
         (func_id, ctx)
     }
 
-    pub fn compile(&mut self, ast: Vec<Ast>, should_jit: bool, path: Option<&str>) -> Option<fn() -> i64> {
+    pub fn compile(
+        &mut self,
+        ast: Vec<Ast>,
+        should_jit: bool,
+        path: Option<&str>,
+    ) -> Option<fn() -> i64> {
         if !should_jit {
             let o_path = path.unwrap_or("program.exe");
 
             let obj_path = Path::new("stub.obj");
             let mut obj_file = File::create(&obj_path).unwrap();
-            obj_file.write_all(&self.compile_to_object(ast.clone())).unwrap();
+            obj_file
+                .write_all(&self.compile_to_object(ast.clone()))
+                .unwrap();
             let stub_path = Path::new("stub.c");
             let c_code = r#"#include <stdlib.h>
         #include <stdio.h>
@@ -364,21 +378,21 @@ impl Compiler {
         }
         self.ast = ast.clone();
         let mut module = self.make_jit();
-        
+
         let (func_id, _ctx) = self.compile_internal(&mut module, ast);
-        
+
         module.finalize_definitions().unwrap();
 
         let code_ptr = module.get_finalized_function(func_id);
-        return Some(unsafe { std::mem::transmute::<_, fn() -> i64>(code_ptr) })
+        return Some(unsafe { std::mem::transmute::<_, fn() -> i64>(code_ptr) });
     }
 
     fn compile_to_object(&mut self, ast: Vec<Ast>) -> Vec<u8> {
         self.ast = ast.clone();
         let mut module = self.make_object();
-        
+
         let (_func_id, _ctx) = self.compile_internal(&mut module, ast);
-        
+
         let object_product = module.finish();
         object_product.emit().unwrap()
     }

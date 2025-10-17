@@ -7,6 +7,9 @@ pub enum Ast {
     IntLit(i64),
     BoolLit(bool),
     InfixExpr(Box<Ast>, Box<Ast>, InfixOp),
+    ///Used for Parens
+    EmptyExpr(Box<Ast>),
+
     ///Variable name, type, value
     VarDec(Box<String>, TypeTok, Box<Ast>),
     VarRef(Box<String>),
@@ -26,6 +29,7 @@ impl Ast {
             Ast::VarReassign(_, _) => "VarReassign".to_string(),
             Ast::BoolLit(_) => "BoolLit".to_string(),
             Ast::IfStmt(_, _, _) => "IfStmt".to_string(),
+            Ast::EmptyExpr(_) => "EmptyExpr".to_string(),
         };
     }
 }
@@ -59,7 +63,9 @@ impl fmt::Display for Ast {
                 Ast::VarRef(var) => format!("Var({})", *var),
                 Ast::VarReassign(var, val) => format!("Var({}) = Val({:?})", *var, *val),
                 Ast::BoolLit(b) => format!("BoolLit({})", b),
-                Ast::IfStmt(cond, body, alt) => format!("IfStmt Cond({}), Body({:?}), Alt({:?})", cond, body, alt),
+                Ast::IfStmt(cond, body, alt) =>
+                    format!("IfStmt Cond({}), Body({:?}), Alt({:?})", cond, body, alt),
+                Ast::EmptyExpr(child) => format!("EmptyExpr({})", child)
             }
         )
     }
