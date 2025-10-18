@@ -5,6 +5,7 @@ pub enum Token {
     //Lits
     IntLit(i64),
     BoolLit(bool),
+    StringLit(Box<String>),
 
     //Infix opps
     Plus,
@@ -50,6 +51,7 @@ pub enum TypeTok {
     Int,
     Bool,
     Void,
+    Str,
 }
 impl TypeTok {
     pub fn type_str(&self) -> String {
@@ -57,6 +59,7 @@ impl TypeTok {
             Self::Bool => "Bool".to_string(),
             Self::Int => "Int".to_string(),
             Self::Void => "Void".to_string(),
+            Self::Str => "Str".to_string(),
         };
     }
 }
@@ -94,6 +97,7 @@ impl Token {
             Self::Func => "Func".to_string(),
             Self::Return => "Return".to_string(),
             Self::Comma => "Comma".to_string(),
+            Self::StringLit(_) => "StringLit".to_string(),
         };
     }
     ///Is used to get value out of an int literal
@@ -147,6 +151,7 @@ impl fmt::Display for Token {
                 Token::Func => String::from("FUNC"),
                 Token::Return => String::from("RETURN"),
                 Token::Comma => String::from("COMMA"),
+                Token::StringLit(s) => format!("STRING_LIT({})", s),
             }
         )
     }

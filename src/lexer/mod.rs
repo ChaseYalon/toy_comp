@@ -8,6 +8,7 @@ pub struct Lexer {
     num_buf: Vec<char>,
     str_buf: Vec<char>,
     toks: Vec<Token>,
+    in_str_lit: bool,
 }
 impl Lexer {
     pub fn new() -> Lexer {
@@ -21,6 +22,7 @@ impl Lexer {
             num_buf: n_vec,
             str_buf: s_vec,
             toks: t_vec,
+            in_str_lit: false,
         };
     }
     pub fn peek(&self, i: usize) -> char {
@@ -37,6 +39,12 @@ impl Lexer {
                 return false;
             }
         }
+        //next char must flush buffer
+        let next_char = self.peek(word.len());
+        if next_char.is_alphanumeric() || next_char == '_' {
+            return false;
+        }
+        
         self.cp += word.len();
         self.toks.push(tok);
         return true;
@@ -49,7 +57,7 @@ impl Lexer {
             let c = self.chars[self.cp];
             debug!(targets: ["lexer_verbose"], c);
             debug!(targets: ["lexer_verbose"], self.cp);
-            if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
+            if (c == ' ' || c == '\t' || c == '\n' || c == '\r') && !self.in_str_lit {
                 self.eat();
                 continue;
             }
@@ -79,6 +87,9 @@ impl Lexer {
                 continue;
             }
             if self.lex_keyword("return", Token::Return) {
+                continue;
+            }
+            if self.lex_keyword("str", Token::Type(TypeTok::Str)) {
                 continue;
             }
 
@@ -175,6 +186,12 @@ impl Lexer {
                 self.eat();
                 continue;
             }
+            if c == '"' {
+                self.flush();
+                self.in_str_lit = !self.in_str_lit;
+                self.eat();
+                continue;
+            }
             if c == '!' {
                 self.flush();
                 if self.peek(1) == '=' {
@@ -249,6 +266,18 @@ impl Lexer {
     }
     fn flush_str(&mut self) {
         if self.str_buf.len() == 0 {
+            return;
+        }
+        if self.in_str_lit {
+            let proto_output: String = self.str_buf.clone().into_iter().collect();
+            self.toks.push(Token::StringLit(Box::new(proto_output)));
+            self.str_buf = Vec::new();
+            return;
+        }
+        if self.toks.len() == 0 {
+             let proto_output: String = self.str_buf.clone().into_iter().collect();
+            self.toks.push(Token::VarRef(Box::new(proto_output)));
+            self.str_buf = Vec::new();
             return;
         }
         if self.toks.last().unwrap().tok_type() == "Let"

@@ -293,3 +293,21 @@ fn test_boxer_func_dec_and_call() {
         ]
     )
 }
+
+#[test]
+fn test_boxer_string_lit() {
+    let input = r#"let x: str = "hello world""#.to_string();
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let toks = l.lex(input);
+    let boxes = b.box_toks(toks);
+
+    assert_eq!(
+        boxes,
+        vec![TBox::VarDec(
+            Token::VarName(Box::new("x".to_string())),
+            Some(TypeTok::Str),
+            vec![Token::StringLit(Box::new("hello world".to_string()))]
+        )]
+    )
+}

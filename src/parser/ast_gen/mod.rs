@@ -1,11 +1,10 @@
 use crate::debug;
 use crate::parser::ast::Ast;
-use crate::parser::ast::InfixOp;
 use crate::parser::toy_box::TBox;
 use crate::token::Token;
 use crate::token::TypeTok;
 use std::collections::HashMap;
-
+mod exprs;
 pub struct AstGenerator {
     boxes: Vec<TBox>,
     nodes: Vec<Ast>,
@@ -27,6 +26,7 @@ impl AstGenerator {
         map.insert(Token::VarRef(Box::new("".to_string())).tok_type(), 100);
         map.insert(Token::IntLit(0).tok_type(), 100);
         map.insert(Token::BoolLit(true).tok_type(), 100);
+        map.insert(Token::StringLit(Box::new("".to_string())).tok_type(), 100);
 
         map.insert(Token::Multiply.tok_type(), 4);
         map.insert(Token::Divide.tok_type(), 4);
@@ -48,8 +48,12 @@ impl AstGenerator {
         let mut var_type_scopes = Vec::new();
         var_type_scopes.push(HashMap::new());
 
-        let fptm: HashMap<String, Vec<TypeTok>> = HashMap::new();
-        let frtm: HashMap<String, TypeTok> = HashMap::new();
+        let mut fptm: HashMap<String, Vec<TypeTok>> = HashMap::new();
+        fptm.insert("print".to_string(), [TypeTok::Str].to_vec());
+        fptm.insert("println".to_string(), [TypeTok::Str].to_vec());
+        let mut frtm: HashMap<String, TypeTok> = HashMap::new();
+        frtm.insert("print".to_string(), TypeTok::Void);
+        frtm.insert("println".to_string(), TypeTok::Void);
 
         return AstGenerator {
             boxes: b_vec,
@@ -137,107 +141,6 @@ impl AstGenerator {
         (best_idx, best_val, best_tok)
     }
 
-    fn parse_int_expr(&self, toks: &Vec<Token>) -> Ast {
-        if toks.len() == 1 {
-            if toks[0].tok_type() == "IntLit" {
-                return Ast::IntLit(toks[0].get_val().unwrap());
-            }
-            if toks[0].tok_type() == "VarRef" {
-                return self.parse_var_ref(&toks[0]);
-            }
-        }
-        if toks.len() == 0 {
-            panic!("[ERROR] Empty Expression");
-        }
-        let (best_idx, _, best_tok) = self.find_top_val(toks);
-        let left = &toks[0..best_idx];
-        let right = &toks[best_idx + 1..toks.len()];
-
-        let (l_node, _) = self.parse_expr(&left.to_vec());
-        let (r_node, _) = self.parse_expr(&right.to_vec());
-        return Ast::InfixExpr(
-            Box::new(l_node),
-            Box::new(r_node),
-            match best_tok {
-                Token::Plus => InfixOp::Plus,
-                Token::Minus => InfixOp::Minus,
-                Token::Multiply => InfixOp::Multiply,
-                Token::Divide => InfixOp::Divide,
-                Token::Modulo => InfixOp::Modulo,
-                _ => panic!("[ERROR] WTF happened here, got operator {}", best_tok),
-            },
-        );
-    }
-
-    fn parse_bool_expr(&self, toks: &Vec<Token>) -> Ast {
-        if toks.len() == 1 {
-            if toks[0].tok_type() == "BoolLit" {
-                return Ast::BoolLit(match toks[0] {
-                    Token::BoolLit(b) => b,
-                    _ => panic!("this is impossible"),
-                });
-            }
-            if toks[0].tok_type() == "VarRef" {
-                return self.parse_var_ref(&toks[0]);
-            }
-        }
-        let (best_idx, _, best_tok) = self.find_top_val(toks);
-        let left = &toks[0..best_idx];
-        let right = &toks[best_idx + 1..toks.len()];
-
-        let (l_node, _) = self.parse_expr(&left.to_vec());
-        let (r_node, _) = self.parse_expr(&right.to_vec());
-        return Ast::InfixExpr(
-            Box::new(l_node),
-            Box::new(r_node),
-            match best_tok {
-                Token::LessThan => InfixOp::LessThan,
-                Token::GreaterThan => InfixOp::GreaterThan,
-                Token::LessThanEqt => InfixOp::LessThanEqt,
-                Token::GreaterThanEqt => InfixOp::GreaterThanEqt,
-                Token::And => InfixOp::And,
-                Token::Or => InfixOp::Or,
-                Token::Equals => InfixOp::Equals,
-                Token::NotEquals => InfixOp::NotEquals,
-                _ => panic!("[ERROR] Wtf happened here (bool)"),
-            },
-        );
-    }
-
-    fn parse_empty_expr(&self, toks: &Vec<Token>) -> (Ast, TypeTok) {
-        if toks.is_empty() {
-            panic!("[ERROR] No tokens provided for empty expression");
-        }
-
-        if toks[0].tok_type() != "LParen" {
-            panic!("[ERROR] Expecting LParen, got {}", toks[0].clone());
-        }
-
-        let mut depth = 0;
-        let mut end_idx = None;
-
-        for (i, t) in toks.iter().enumerate() {
-            match t.tok_type().as_str() {
-                "LParen" => depth += 1,
-                "RParen" => {
-                    depth -= 1;
-                    if depth == 0 {
-                        end_idx = Some(i);
-                        break;
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        let end_idx = end_idx.expect("[ERROR] No matching RParen found");
-
-        let inner_toks = &toks[1..end_idx];
-        let (inner_node, tok) = self.parse_expr(&inner_toks.to_vec());
-
-        (Ast::EmptyExpr(Box::new(inner_node)), tok)
-    }
-
     fn parse_func_call(&self, toks: &Vec<Token>) -> (Ast, TypeTok) {
         if toks[0].tok_type() != "VarRef" {
             panic!("[ERROR] Expected Var(Func) ref, got {}", toks[0]);
@@ -288,81 +191,6 @@ impl AstGenerator {
                 .unwrap()
                 .clone(),
         );
-    }
-
-    fn parse_expr(&self, toks: &Vec<Token>) -> (Ast, TypeTok) {
-        if toks.len() == 1 {
-            if toks[0].tok_type() == "IntLit" {
-                return (Ast::IntLit(toks[0].get_val().unwrap()), TypeTok::Int);
-            }
-            if toks[0].tok_type() == "VarRef" {
-                debug!(targets: ["parser_verbose"], "in var ref");
-                let s = match toks[0].clone() {
-                    Token::VarRef(name) => *name,
-                    _ => panic!("[ERROR] Expected variable name, got {}", toks[0]),
-                };
-                let var_ref_type = self.lookup_var_type(&s);
-                if var_ref_type.is_none() {
-                    panic!(
-                        "[ERROR] Could not figure out type of variable, {}",
-                        &toks[0]
-                    );
-                }
-                return (self.parse_var_ref(&toks[0]), var_ref_type.unwrap().clone());
-            }
-        }
-        if toks.first().unwrap().tok_type() == "VarRef" && toks[1].tok_type() == "LParen" {
-            return self.parse_func_call(toks);
-        }
-        if toks.first().unwrap().tok_type() == "LParen"
-            && toks.last().unwrap().tok_type() == "RParen"
-        {
-            let mut depth = 0;
-            let mut first_paren_closes_at = None;
-
-            for (i, t) in toks.iter().enumerate() {
-                match t.tok_type().as_str() {
-                    "LParen" => depth += 1,
-                    "RParen" => {
-                        depth -= 1;
-                        if depth == 0 {
-                            first_paren_closes_at = Some(i);
-                            break;
-                        }
-                    }
-                    _ => {}
-                }
-            }
-
-            if first_paren_closes_at == Some(toks.len() - 1) {
-                let (inner, inner_type) = self.parse_expr(&toks[1..toks.len() - 1].to_vec());
-                let to_ret_ast = Ast::EmptyExpr(Box::new(inner));
-                return (to_ret_ast, inner_type);
-            }
-        }
-
-        let (_, _, best_val) = self.find_top_val(toks);
-        debug!(targets: ["parser", "parser_verbose"], best_val.clone());
-        debug!(targets: ["parser", "parser_verbose"], toks.clone());
-        return match best_val {
-            Token::IntLit(_)
-            | Token::Plus
-            | Token::Minus
-            | Token::Divide
-            | Token::Multiply
-            | Token::Modulo => (self.parse_int_expr(toks), TypeTok::Int),
-            Token::BoolLit(_)
-            | Token::LessThan
-            | Token::LessThanEqt
-            | Token::GreaterThan
-            | Token::GreaterThanEqt
-            | Token::Equals
-            | Token::NotEquals
-            | Token::And
-            | Token::Or => (self.parse_bool_expr(toks), TypeTok::Bool),
-            Token::LParen | Token::RBrace => self.parse_empty_expr(toks),
-            _ => panic!("[ERROR] Unsupported type for expression, got {}", best_val),
-        };
     }
 
     pub fn eat(&mut self) {
@@ -557,6 +385,5 @@ impl AstGenerator {
         return self.nodes.clone();
     }
 }
-
 #[cfg(test)]
 mod test;

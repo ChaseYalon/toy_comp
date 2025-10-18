@@ -1,5 +1,14 @@
 use crate::{Compiler, Lexer, Parser};
+use std::process::{Command, Stdio};
 
+fn capture_program_output(program: String) -> String {
+    let output = Command::new(program)
+        .stdout(Stdio::piped())
+        .output()
+        .expect("Failed to run program");
+
+    String::from_utf8(output.stdout).expect("Invalid UTF-8 output")
+}
 macro_rules! compile_code {
     ($o:ident, $i:expr) => {
         let mut l = Lexer::new();
@@ -10,7 +19,15 @@ macro_rules! compile_code {
             .unwrap();
     };
 }
-
+macro_rules! compile_code_aot{
+    ($o:ident, $i:expr) => {
+        let mut l = Lexer::new();
+        let mut p = Parser::new();
+        let mut c = Compiler::new();
+        c.compile(p.parse(l.lex($i.to_string())), false, Some("output.exe"));
+        let $o = capture_program_output("output.exe".to_string());
+    }
+}
 #[test]
 fn test_compiler_int_lit() {
     compile_code!(code_fn, "6");
@@ -87,4 +104,18 @@ fn test_compiler_func_dec_and_call() {
         "fn add(a: int, b: int): int {return a + b;} let x = add(2, 4); x;"
     );
     assert_eq!(6, code_fn());
+}
+
+#[test]
+fn test_compiler_if_in_func() {
+    compile_code!(
+        code_fn,
+        "fn addIfEven(a: int, b: int): int {if a % 2 == 0 && b % 2 == 0 {return a + b;} else {return 0;}} let x = addIfEven(8, 2); x;"
+    );
+    assert_eq!(10, code_fn())
+}
+#[test]
+fn test_compiler_string_concat() {
+    compile_code_aot!(output, r#"let x = "foo"; let y = "bar; let z = x + y; println(z);"#);
+    assert!(output.contains("foobar"));
 }

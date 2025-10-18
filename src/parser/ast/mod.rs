@@ -30,6 +30,8 @@ pub enum Ast {
 
     ///Val
     Return(Box<Ast>),
+
+    StringLit(Box<String>),
 }
 impl Ast {
     pub fn node_type(&self) -> String {
@@ -46,6 +48,7 @@ impl Ast {
             Ast::FuncDec(_, _, _, _) => "FuncDec".to_string(),
             Ast::FuncCall(_, _) => "FuncCall".to_string(),
             Ast::Return(_) => "Return".to_string(),
+            Ast::StringLit(_) => "StringLit".to_string(),
         };
     }
 }
@@ -91,6 +94,7 @@ impl fmt::Display for Ast {
                 Ast::FuncCall(name, params) =>
                     format!("FuncCall, Name({}), Params({:?})", *name, params),
                 Ast::Return(val) => format!("Return Val({})", *val),
+                Ast::StringLit(s) => format!("StringLit Val({})", *s),
             }
         )
     }

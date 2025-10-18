@@ -362,3 +362,35 @@ fn test_ast_gen_func_dec_call() {
         ]
     )
 }
+
+#[test]
+fn test_ast_gen_str_lit_and_concatenation() {
+    setup_ast!(
+        r#"let x: str = "hello "; let y = "world"; let z = x + y;"#,
+        ast
+    );
+    assert_eq!(
+        ast,
+        vec![
+            Ast::VarDec(
+                Box::new("x".to_string()),
+                TypeTok::Str,
+                Box::new(Ast::StringLit(Box::new("hello ".to_string())))
+            ),
+            Ast::VarDec(
+                Box::new("y".to_string()),
+                TypeTok::Str,
+                Box::new(Ast::StringLit(Box::new("world".to_string())))
+            ),
+            Ast::VarDec(
+                Box::new("z".to_string()),
+                TypeTok::Str,
+                Box::new(Ast::InfixExpr(
+                    Box::new(Ast::VarRef(Box::new("x".to_string()))),
+                    Box::new(Ast::VarRef(Box::new("y".to_string()))),
+                    InfixOp::Plus
+                ))
+            )
+        ]
+    )
+}

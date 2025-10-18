@@ -8,7 +8,7 @@ use cranelift_codegen::Context;
 use cranelift_codegen::isa;
 use cranelift_codegen::settings::{self, Configurable};
 use cranelift_jit::{JITBuilder, JITModule};
-use cranelift_module::FuncId;
+use cranelift_module::{FuncId, DataDescription};
 use cranelift_module::{Linkage, Module, default_libcall_names};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use target_lexicon::Triple;
@@ -28,13 +28,14 @@ pub enum OutputType {
     Jit(JITModule),
     Aot(ObjectModule),
 }
+pub static STUB_C: &str = include_str!("../c/stub.c");
 
 pub struct Compiler {
     ast: Vec<Ast>,
     var_count: usize,
     main_scope: Rc<RefCell<Scope>>,
     funcs: HashMap<String, (TypeTok, FuncId)>,
-    func_ir: Vec<String>
+    func_ir: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -76,7 +77,7 @@ impl Compiler {
                 parent: None,
             })),
             funcs: HashMap::new(),
-            func_ir: Vec::new()
+            func_ir: Vec::new(),
         }
     }
 
@@ -99,6 +100,24 @@ impl Compiler {
             .expect("ObjectBuilder creation failed");
         ObjectModule::new(obj_builder)
     }
+    fn declare_builtin_funcs<M: Module>(&mut self,module: &mut M) {
+        let mut sig = module.make_signature();
+        sig.params.push(AbiParam::new(types::I64));
+        sig.returns.push(AbiParam::new(types::I64));
+        //Toy malloc takes a pointer to a string and allocates it in memory, returning the pointer to that allocation
+        let func = module.declare_function("toy_malloc", Linkage::Import, &sig).unwrap();
+        self.funcs.insert("malloc".to_string(), (TypeTok::Int, func));
+
+        let mut sig = module.make_signature();
+        sig.params.push(AbiParam::new(types::I64));
+        let func = module.declare_function("toy_print", Linkage::Import, &sig).unwrap();
+        self.funcs.insert("print".to_string(), (TypeTok::Void, func));
+
+        let mut sig = module.make_signature();
+        sig.params.push(AbiParam::new(types::I64));
+        let func = module.declare_function("toy_println", Linkage::Import, &sig).unwrap();
+        self.funcs.insert("println".to_string(), (TypeTok::Void, func));
+    }
 
     fn compile_expr<M: Module>(
         &self,
@@ -114,6 +133,7 @@ impl Compiler {
             && expr.node_type() != "BoolLit"
             && expr.node_type() != "EmptyExpr"
             && expr.node_type() != "FuncCall"
+            && expr.node_type() != "StringLit"
         {
             panic!("[ERROR] Unknown AST node type: {}", expr.node_type());
         }
@@ -135,14 +155,45 @@ impl Compiler {
 
                 let call_inst = builder.ins().call(func_ref, &param_values.as_slice());
                 let results = builder.inst_results(call_inst);
-                let ret_val = results[0];
+                if results.len() > 0{
 
-                return (ret_val, ret_type.clone());
+                    let ret_val = results[0];
+    
+                    return (ret_val, ret_type.clone());
+                } else {
+                    //This is a dummy, should not be sued
+                    return (builder.ins().iconst(types::I64, 0), TypeTok::Void);
+                }
             }
             Ast::IntLit(n) => (builder.ins().iconst(types::I64, *n), TypeTok::Int),
             Ast::BoolLit(b) => {
                 let is_true: i64 = if *b { 1 } else { 0 };
                 (builder.ins().iconst(types::I64, is_true), TypeTok::Bool)
+            }
+            Ast::StringLit(s) => {
+                let data_id = _module
+                    .declare_anonymous_data(false, false)
+                    .expect("Failed to declare data");
+                
+                //Create null terminated string in mem
+                let mut data_desc = DataDescription::new();
+                let mut string_bytes = s.as_bytes().to_vec();
+                string_bytes.push(0); // null terminator
+                data_desc.define(string_bytes.into_boxed_slice());
+                _module.define_data(data_id, &data_desc).expect("Failed to define data");
+                
+                // Get a global value reference to the data
+                let data_gv = _module.declare_data_in_func(data_id, builder.func);
+                let string_ptr = builder.ins().global_value(types::I64, data_gv);
+                
+                // Call toy_malloc with the string pointer
+                let malloc_func = self.funcs.get("malloc").expect("malloc not found");
+                let func_ref = _module.declare_func_in_func(malloc_func.1, builder.func);
+                let call_inst = builder.ins().call(func_ref, &[string_ptr]);
+                let results = builder.inst_results(call_inst);
+                let heap_ptr = results[0];
+                
+                (heap_ptr, TypeTok::Str)
             }
             Ast::EmptyExpr(child) => self.compile_expr(child, _module, builder, scope),
             Ast::InfixExpr(left, right, op) => {
@@ -216,7 +267,6 @@ impl Compiler {
             _ => todo!("Unknown expression type"),
         }
     }
-
     fn compile_if_stmt<M: Module>(
         &mut self,
         node: &Ast,
@@ -239,29 +289,51 @@ impl Compiler {
             .ins()
             .brif(cond_val, then_block, &[], else_block, &[]);
 
-        // Then block
         builder.switch_to_block(then_block);
         builder.seal_block(then_block);
 
+        let then_scope = Scope::new_child(scope);
+        let mut then_has_terminator = false;
         for stmt in body_asts {
-            self.compile_stmt(stmt.clone(), _module, builder, scope);
+            self.compile_stmt(stmt.clone(), _module, builder, &then_scope);
+            if let Some(current_block) = builder.current_block() {
+                if let Some(last_inst) = builder.func.layout.last_inst(current_block) {
+                    if builder.func.dfg.insts[last_inst].opcode().is_terminator() {
+                        then_has_terminator = true;
+                    }
+                }
+            }
         }
 
-        builder.ins().jump(merge_block, &[]);
+        if !then_has_terminator {
+            builder.ins().jump(merge_block, &[]);
+        }
 
-        // Else block
         builder.switch_to_block(else_block);
         builder.seal_block(else_block);
 
+        let mut else_has_terminator = false;
         if let Some(alt_stmts) = alt_op {
+            let else_scope = Scope::new_child(scope);
             for stmt in alt_stmts {
-                self.compile_stmt(stmt.clone(), _module, builder, scope);
+                self.compile_stmt(stmt.clone(), _module, builder, &else_scope);
+                // Check if we just added a return (or other terminator)
+                if let Some(current_block) = builder.current_block() {
+                    if let Some(last_inst) = builder.func.layout.last_inst(current_block) {
+                        if builder.func.dfg.insts[last_inst].opcode().is_terminator() {
+                            else_has_terminator = true;
+                        }
+                    }
+                }
             }
         }
-        builder.ins().jump(merge_block, &[]);
 
-        // Merge block
+        if !else_has_terminator {
+            builder.ins().jump(merge_block, &[]);
+        }
+
         builder.switch_to_block(merge_block);
+
         builder.seal_block(merge_block);
     }
 
@@ -319,30 +391,30 @@ impl Compiler {
                 Ast::FuncParam(param_name, param_type) => {
                     let var = Variable::new(self.var_count);
                     self.var_count += 1;
-                    
+
                     func_builder.declare_var(var, types::I64);
-                    
+
                     func_builder.def_var(var, block_params[i]);
-                    
+
                     func_scope
-                    .borrow_mut()
-                    .set((**param_name).clone(), var, param_type.clone());
+                        .borrow_mut()
+                        .set((**param_name).clone(), var, param_type.clone());
+                }
+                _ => panic!("[ERROR] Expected FuncParam, got {}", param),
             }
-            _ => panic!("[ERROR] Expected FuncParam, got {}", param),
         }
-    }
-    
-    for stmt in body {
-        let _ = self.compile_stmt(stmt, _module, &mut func_builder, &func_scope);
-    }
-        
-    _module.define_function(func_id, &mut ctx).unwrap();
-    let args: Vec<String> = env::args().collect();
-    if args.contains(&"--save-ir".to_string()) {
-        let str = ctx.func.display();
-        self.func_ir.push(format!("{}", str));
-    }
-    _module.clear_context(&mut ctx);
+
+        for stmt in body {
+            let _ = self.compile_stmt(stmt, _module, &mut func_builder, &func_scope);
+        }
+
+        _module.define_function(func_id, &mut ctx).unwrap();
+        let args: Vec<String> = env::args().collect();
+        if args.contains(&"--save-ir".to_string()) {
+            let str = ctx.func.display();
+            self.func_ir.push(format!("{}", str));
+        }
+        _module.clear_context(&mut ctx);
     }
     fn compile_stmt<M: Module>(
         &mut self,
@@ -353,12 +425,13 @@ impl Compiler {
     ) -> Option<(Value, TypeTok)> {
         let mut last_val = None;
         debug!(targets: ["compiler"], format!("compile_stmt: node_type={}", node.node_type()).as_str());
-        
+
         if node.node_type() == "IntLit"
-        || node.node_type() == "InfixExpr"
+            || node.node_type() == "InfixExpr"
             || node.node_type() == "VarRef"
             || node.node_type() == "BoolLit"
             || node.node_type() == "FuncCall"
+            || node.node_type() == "StrLit"
         {
             last_val = Some(self.compile_expr(&node, _module, func_builder, scope));
         }
@@ -413,6 +486,9 @@ impl Compiler {
         func_builder.seal_block(main_block);
 
         let mut last_val: Option<(Value, TypeTok)> = None;
+
+        self.declare_builtin_funcs(module);
+
         let sudo_main_scope = self.main_scope.clone();
         for node in ast {
             last_val = self.compile_stmt(node, module, &mut func_builder, &sudo_main_scope);
@@ -435,14 +511,14 @@ impl Compiler {
             let str = format!("{}", ctx.func.display());
             self.func_ir.push(str);
             let mut ir: String = String::new();
-            for s in self.func_ir.clone(){
+            for s in self.func_ir.clone() {
                 ir += &s;
             }
             let mut file = File::create("ir.clif").unwrap();
             file.write_all(ir.as_bytes()).unwrap();
         }
         module.clear_context(&mut ctx);
-        
+
         (func_id, ctx)
     }
 
@@ -461,18 +537,8 @@ impl Compiler {
                 .write_all(&self.compile_to_object(ast.clone()))
                 .unwrap();
             let stub_path = Path::new("stub.c");
-            let c_code = r#"
-            #include <stdlib.h>
-            #include <stdio.h>
-            extern long user_main();
-
-            int main() {
-                long res = user_main();
-                printf("User main returned: %ld\n", res);
-                return (int) res;
-            }"#;
             let mut stub_file = File::create(&stub_path).unwrap();
-            stub_file.write_all(c_code.as_bytes()).unwrap();
+            stub_file.write_all(STUB_C.as_bytes()).unwrap();
 
             // Call GCC to link the object file and the stub
             let status = Command::new("gcc")

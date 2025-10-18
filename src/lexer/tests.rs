@@ -291,7 +291,8 @@ fn test_lexer_nested_parens() {
 #[test]
 fn test_lexer_func() {
     let mut l = Lexer::new();
-    let out = l.lex("fn add(a: int, b: int): int { return a + b; }; let x = add(2, 3);".to_string());
+    let out =
+        l.lex("fn add(a: int, b: int): int { return a + b; }; let x = add(2, 3);".to_string());
 
     assert_eq!(
         out,
@@ -325,6 +326,38 @@ fn test_lexer_func() {
             Token::IntLit(2),
             Token::Comma,
             Token::IntLit(3),
+            Token::RParen,
+            Token::Semicolon
+        ]
+    )
+}
+
+#[test]
+fn test_lexer_string_lit() {
+    let mut l = Lexer::new();
+    let out = l.lex(r#"let x = "hello";"#.to_string());
+    assert_eq!(
+        out,
+        vec![
+            Token::Let,
+            Token::VarName(Box::new("x".to_string())),
+            Token::Assign,
+            Token::StringLit(Box::new("hello".to_string())),
+            Token::Semicolon,
+        ]
+    )
+}
+
+#[test]
+fn test_call_builtin() {
+    let mut l = Lexer::new();
+    let out = l.lex(r#"println("hello world");"#.to_string());
+    assert_eq!(
+        out,
+        vec![
+            Token::VarRef(Box::new("println".to_string())),
+            Token::LParen,
+            Token::StringLit(Box::new("hello world".to_string())),
             Token::RParen,
             Token::Semicolon
         ]
