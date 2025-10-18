@@ -288,3 +288,45 @@ fn test_lexer_nested_parens() {
         ]
     )
 }
+#[test]
+fn test_lexer_func() {
+    let mut l = Lexer::new();
+    let out = l.lex("fn add(a: int, b: int): int { return a + b; }; let x = add(2, 3);".to_string());
+
+    assert_eq!(
+        out,
+        vec![
+            Token::Func,
+            Token::VarName(Box::new("add".to_string())),
+            Token::LParen,
+            Token::VarRef(Box::new("a".to_string())),
+            Token::Colon,
+            Token::Type(TypeTok::Int),
+            Token::Comma,
+            Token::VarRef(Box::new("b".to_string())),
+            Token::Colon,
+            Token::Type(TypeTok::Int),
+            Token::RParen,
+            Token::Colon,
+            Token::Type(TypeTok::Int),
+            Token::LBrace,
+            Token::Return,
+            Token::VarRef(Box::new("a".to_string())),
+            Token::Plus,
+            Token::VarRef(Box::new("b".to_string())),
+            Token::Semicolon,
+            Token::RBrace,
+            Token::Semicolon,
+            Token::Let,
+            Token::VarName(Box::new("x".to_string())),
+            Token::Assign,
+            Token::VarRef(Box::new("add".to_string())),
+            Token::LParen,
+            Token::IntLit(2),
+            Token::Comma,
+            Token::IntLit(3),
+            Token::RParen,
+            Token::Semicolon
+        ]
+    )
+}

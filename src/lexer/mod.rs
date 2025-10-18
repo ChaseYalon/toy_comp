@@ -75,6 +75,12 @@ impl Lexer {
             if self.lex_keyword("else", Token::Else) {
                 continue;
             }
+            if self.lex_keyword("fn", Token::Func) {
+                continue;
+            }
+            if self.lex_keyword("return", Token::Return) {
+                continue;
+            }
 
             if c.is_ascii_digit() {
                 debug!(targets: ["lexer_verbose"], "In ascii print");
@@ -202,12 +208,19 @@ impl Lexer {
                 self.eat();
                 continue;
             }
+            if c == ',' {
+                self.flush();
+                self.toks.push(Token::Comma);
+                self.eat();
+                continue;
+            }
             if c.is_ascii() {
                 self.flush_int();
                 self.str_buf.push(c);
                 self.eat();
                 continue;
             }
+
             panic!("[ERROR] Unexpected token, got {}", c);
         }
         debug!(targets: ["lexer_verbose"], self.toks.clone());
@@ -238,7 +251,9 @@ impl Lexer {
         if self.str_buf.len() == 0 {
             return;
         }
-        if self.toks.last().unwrap().tok_type() == "Let" {
+        if self.toks.last().unwrap().tok_type() == "Let"
+            || self.toks.last().unwrap().tok_type() == "Func"
+        {
             let proto_output: String = self.str_buf.clone().into_iter().collect();
             self.toks.push(Token::VarName(Box::new(proto_output)));
             self.str_buf = Vec::new();

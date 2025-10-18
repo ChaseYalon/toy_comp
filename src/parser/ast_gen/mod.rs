@@ -5,23 +5,27 @@ use crate::parser::toy_box::TBox;
 use crate::token::Token;
 use crate::token::TypeTok;
 use std::collections::HashMap;
+
 pub struct AstGenerator {
     boxes: Vec<TBox>,
     nodes: Vec<Ast>,
     bp: usize,
-    //Static lifetime to make red line go away
     p_table: HashMap<String, u32>,
-    var_type_map: HashMap<String, TypeTok>,
+    // Scopes are stacked to avoid variable name collisions
+    var_type_scopes: Vec<HashMap<String, TypeTok>>,
+    func_param_type_map: HashMap<String, Vec<TypeTok>>,
+    func_return_type_map: HashMap<String, TypeTok>,
 }
+
 impl AstGenerator {
     pub fn new() -> AstGenerator {
         let b_vec: Vec<TBox> = Vec::new();
         let n_vec: Vec<Ast> = Vec::new();
         let mut map: HashMap<String, u32> = HashMap::new();
         map.insert(Token::LParen.tok_type(), 10000);
-        map.insert(Token::RParen.tok_type(), 10000); //Parens should never be bound too
+        map.insert(Token::RParen.tok_type(), 10000);
         map.insert(Token::VarRef(Box::new("".to_string())).tok_type(), 100);
-        map.insert(Token::IntLit(0).tok_type(), 100); //Zero is just an arbitrary value, it will be fine for all int literals
+        map.insert(Token::IntLit(0).tok_type(), 100);
         map.insert(Token::BoolLit(true).tok_type(), 100);
 
         map.insert(Token::Multiply.tok_type(), 4);
@@ -41,19 +45,54 @@ impl AstGenerator {
         map.insert(Token::And.tok_type(), 1);
         map.insert(Token::Or.tok_type(), 1);
 
-        let v_type_map: HashMap<String, TypeTok> = HashMap::new();
+        let mut var_type_scopes = Vec::new();
+        var_type_scopes.push(HashMap::new());
+
+        let fptm: HashMap<String, Vec<TypeTok>> = HashMap::new();
+        let frtm: HashMap<String, TypeTok> = HashMap::new();
 
         return AstGenerator {
             boxes: b_vec,
             nodes: n_vec,
             bp: 0_usize,
             p_table: map,
-            var_type_map: v_type_map,
+            var_type_scopes,
+            func_param_type_map: fptm,
+            func_return_type_map: frtm,
         };
     }
+
+    fn push_scope(&mut self) {
+        self.var_type_scopes.push(HashMap::new());
+    }
+
+    fn pop_scope(&mut self) {
+        if self.var_type_scopes.len() > 1 {
+            self.var_type_scopes.pop();
+        } else {
+            panic!("[ERROR] Cannot pop global scope");
+        }
+    }
+
+    fn lookup_var_type(&self, name: &str) -> Option<TypeTok> {
+        for scope in self.var_type_scopes.iter().rev() {
+            if let Some(ty) = scope.get(name) {
+                return Some(ty.clone());
+            }
+        }
+        None
+    }
+
+    ///Puts var the innermost scope
+    fn insert_var_type(&mut self, name: String, ty: TypeTok) {
+        if let Some(current_scope) = self.var_type_scopes.last_mut() {
+            current_scope.insert(name, ty);
+        }
+    }
+
     fn find_top_val(&self, toks: &Vec<Token>) -> (usize, u32, Token) {
         let mut best_idx = 0_usize;
-        let mut best_val: u32 = 100_000_000; // practical infinity
+        let mut best_val: u32 = 100_000_000;
         let mut best_tok: Token = Token::IntLit(0);
 
         let mut depth = 0;
@@ -74,7 +113,6 @@ impl AstGenerator {
                 _ => {}
             }
 
-            // Only consider tokens at depth 0 (outside parentheses)
             if depth != 0 {
                 continue;
             }
@@ -130,6 +168,7 @@ impl AstGenerator {
             },
         );
     }
+
     fn parse_bool_expr(&self, toks: &Vec<Token>) -> Ast {
         if toks.len() == 1 {
             if toks[0].tok_type() == "BoolLit" {
@@ -164,6 +203,7 @@ impl AstGenerator {
             },
         );
     }
+
     fn parse_empty_expr(&self, toks: &Vec<Token>) -> (Ast, TypeTok) {
         if toks.is_empty() {
             panic!("[ERROR] No tokens provided for empty expression");
@@ -173,7 +213,6 @@ impl AstGenerator {
             panic!("[ERROR] Expecting LParen, got {}", toks[0].clone());
         }
 
-        // Find the matching closing RParen
         let mut depth = 0;
         let mut end_idx = None;
 
@@ -193,10 +232,62 @@ impl AstGenerator {
 
         let end_idx = end_idx.expect("[ERROR] No matching RParen found");
 
-        let inner_toks = &toks[1..end_idx]; // skip first LParen and matching RParen
+        let inner_toks = &toks[1..end_idx];
         let (inner_node, tok) = self.parse_expr(&inner_toks.to_vec());
 
         (Ast::EmptyExpr(Box::new(inner_node)), tok)
+    }
+
+    fn parse_func_call(&self, toks: &Vec<Token>) -> (Ast, TypeTok) {
+        if toks[0].tok_type() != "VarRef" {
+            panic!("[ERROR] Expected Var(Func) ref, got {}", toks[0]);
+        }
+        if toks[1].tok_type() != "LParen" {
+            panic!("[ERROR] Expected \"(\", got {}", toks[1]);
+        }
+        if toks.last().unwrap().tok_type() != "RParen" {
+            panic!("[ERROR] Expected \")\", got {}", toks.last().unwrap());
+        }
+        let name = match toks[0].clone() {
+            Token::VarRef(n) => *n,
+            _ => unreachable!(),
+        };
+
+        let unprocessed_params: Vec<&[Token]> = toks[2..toks.len() - 1]
+            .split(|t| *t == Token::Comma)
+            .collect();
+        let mut processed_params: Vec<(Ast, TypeTok)> = Vec::new();
+        for p in unprocessed_params {
+            processed_params.push(self.parse_expr(&p.to_vec()));
+        }
+        let types = self.func_param_type_map.get(&name);
+        if types.is_none() {
+            panic!("[ERROR] Function {} is undefined", name);
+        }
+
+        let types = types.unwrap();
+        for (i, (_, type_tok)) in processed_params.iter().enumerate() {
+            if type_tok != &types[i] {
+                panic!(
+                    "[ERROR] Mismatched types at index {}, expected {:?}, got {:?}",
+                    i, types[i], type_tok
+                );
+            }
+        }
+        let vals: Vec<Ast> = processed_params
+            .iter()
+            .filter_map(|ast| {
+                let (a, _) = ast;
+                Some(a.clone())
+            })
+            .collect();
+        return (
+            Ast::FuncCall(Box::new(name.clone()), vals),
+            self.func_return_type_map
+                .get(&name.clone())
+                .unwrap()
+                .clone(),
+        );
     }
 
     fn parse_expr(&self, toks: &Vec<Token>) -> (Ast, TypeTok) {
@@ -210,7 +301,7 @@ impl AstGenerator {
                     Token::VarRef(name) => *name,
                     _ => panic!("[ERROR] Expected variable name, got {}", toks[0]),
                 };
-                let var_ref_type = self.var_type_map.get(&s);
+                let var_ref_type = self.lookup_var_type(&s);
                 if var_ref_type.is_none() {
                     panic!(
                         "[ERROR] Could not figure out type of variable, {}",
@@ -220,11 +311,15 @@ impl AstGenerator {
                 return (self.parse_var_ref(&toks[0]), var_ref_type.unwrap().clone());
             }
         }
-        
-        if toks.first().unwrap().tok_type() == "LParen" && toks.last().unwrap().tok_type() == "RParen" {
+        if toks.first().unwrap().tok_type() == "VarRef" && toks[1].tok_type() == "LParen" {
+            return self.parse_func_call(toks);
+        }
+        if toks.first().unwrap().tok_type() == "LParen"
+            && toks.last().unwrap().tok_type() == "RParen"
+        {
             let mut depth = 0;
             let mut first_paren_closes_at = None;
-            
+
             for (i, t) in toks.iter().enumerate() {
                 match t.tok_type().as_str() {
                     "LParen" => depth += 1,
@@ -238,14 +333,14 @@ impl AstGenerator {
                     _ => {}
                 }
             }
-            
+
             if first_paren_closes_at == Some(toks.len() - 1) {
                 let (inner, inner_type) = self.parse_expr(&toks[1..toks.len() - 1].to_vec());
                 let to_ret_ast = Ast::EmptyExpr(Box::new(inner));
                 return (to_ret_ast, inner_type);
             }
         }
-        
+
         let (_, _, best_val) = self.find_top_val(toks);
         debug!(targets: ["parser", "parser_verbose"], best_val.clone());
         debug!(targets: ["parser", "parser_verbose"], toks.clone());
@@ -265,14 +360,15 @@ impl AstGenerator {
             | Token::NotEquals
             | Token::And
             | Token::Or => (self.parse_bool_expr(toks), TypeTok::Bool),
-            Token::LParen
-            | Token::RBrace => self.parse_empty_expr(toks),
+            Token::LParen | Token::RBrace => self.parse_empty_expr(toks),
             _ => panic!("[ERROR] Unsupported type for expression, got {}", best_val),
         };
     }
+
     pub fn eat(&mut self) {
         self.bp += 1;
     }
+
     fn parse_var_dec(&mut self, name: &Token, val: &Vec<Token>, var_type: Option<TypeTok>) -> Ast {
         if name.tok_type() != "VarName" {
             panic!("[ERROR] Expected variable name, got {}", name);
@@ -290,10 +386,10 @@ impl AstGenerator {
             ret_var_type.clone(),
             Box::new(val_ast),
         );
-        self.var_type_map
-            .insert(name_str.clone(), ret_var_type.clone());
+        self.insert_var_type(name_str.clone(), ret_var_type.clone());
         return node;
     }
+
     fn parse_var_ref(&self, name: &Token) -> Ast {
         let name_s: String;
         match name {
@@ -302,6 +398,7 @@ impl AstGenerator {
         }
         return Ast::VarRef(Box::new(name_s));
     }
+
     fn parse_if_stmt(&mut self, stmt: TBox, should_eat: bool) -> Ast {
         let (cond, body, alt) = match stmt {
             TBox::IfStmt(c, b, a) => (c, b, a),
@@ -309,17 +406,23 @@ impl AstGenerator {
         };
 
         let b_cond = self.parse_bool_expr(&cond);
+
+        self.push_scope();
         let mut stmt_vec: Vec<Ast> = Vec::new();
         for stmt in body {
             debug!(targets: ["parser_verbose"], stmt);
             stmt_vec.push(self.parse_stmt(stmt, false));
         }
+        self.pop_scope();
+
         let mut else_val: Option<Vec<Ast>> = None;
         if alt.is_some() {
+            self.push_scope();
             let mut else_vec: Vec<Ast> = Vec::new();
             for stmt in alt.unwrap() {
                 else_vec.push(self.parse_stmt(stmt, false));
             }
+            self.pop_scope();
             else_val = Some(else_vec);
         }
         let if_stmt = Ast::IfStmt(Box::new(b_cond), stmt_vec, else_val);
@@ -329,6 +432,66 @@ impl AstGenerator {
         }
 
         return if_stmt;
+    }
+
+    fn parse_func_dec(&mut self, stmt: TBox, should_eat: bool) -> Ast {
+        let (name_tok, params, return_type, box_boxy) = match stmt {
+            TBox::FuncDec(n, p, r, b) => (n, p, r, b),
+            _ => panic!("[ERROR] Expected FuncDec, got {}", stmt),
+        };
+        let name = match name_tok {
+            Token::VarName(n) => *n,
+            _ => panic!(
+                "[ERROR] Expected function (variable) name, got {}",
+                name_tok
+            ),
+        };
+
+        let mut ast_params: Vec<Ast> = Vec::new();
+        let mut param_types: Vec<TypeTok> = Vec::new();
+
+        for param in params {
+            let (param_name, param_type) = match param {
+                TBox::FuncParam(name, type_tok) => {
+                    let n = match name {
+                        Token::VarRef(var) => *var,
+                        _ => panic!("[ERROR] Expected variable reference, got {}", name),
+                    };
+                    (n, type_tok)
+                }
+                _ => panic!("[ERROR] Expected function parameter, got {}", param),
+            };
+
+            ast_params.push(Ast::FuncParam(
+                Box::new(param_name.clone()),
+                param_type.clone(),
+            ));
+            param_types.push(param_type.clone());
+        }
+
+        self.func_param_type_map.insert(name.clone(), param_types);
+        self.func_return_type_map
+            .insert(name.clone(), return_type.clone());
+
+        self.push_scope();
+        for param_ast in &ast_params {
+            if let Ast::FuncParam(param_name, param_type) = param_ast {
+                self.insert_var_type((**param_name).clone(), param_type.clone());
+            }
+        }
+
+        let mut body: Vec<Ast> = Vec::new();
+        for stmt in box_boxy {
+            body.push(self.parse_stmt(stmt, false))
+        }
+
+        self.pop_scope();
+
+        if should_eat {
+            self.eat();
+        }
+
+        return Ast::FuncDec(Box::new(name), ast_params, return_type, body);
     }
 
     fn parse_stmt(&mut self, val: TBox, should_eat: bool) -> Ast {
@@ -360,6 +523,18 @@ impl AstGenerator {
             TBox::IfStmt(_, _, _) => {
                 return self.parse_if_stmt(val, should_eat);
             }
+            TBox::FuncDec(_, _, _, _) => return self.parse_func_dec(val, should_eat),
+            TBox::Return(val) => {
+                let expr = match *val {
+                    TBox::Expr(ref v) => v,
+                    _ => panic!("[ERROR] Return must return an expression, got {}", val),
+                };
+
+                let (res, _) = self.parse_expr(expr);
+                return Ast::Return(Box::new(res));
+            }
+
+            _ => todo!("Unimplemented stmt, {}", val),
         };
 
         if should_eat {
@@ -368,6 +543,7 @@ impl AstGenerator {
 
         node
     }
+
     pub fn generate(&mut self, boxes: Vec<TBox>) -> Vec<Ast> {
         self.boxes = boxes.clone();
         self.bp = 0_usize;

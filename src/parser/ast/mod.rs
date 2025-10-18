@@ -1,4 +1,4 @@
-use std::fmt;
+use std::fmt::{self};
 
 use crate::token::TypeTok;
 
@@ -18,6 +18,18 @@ pub enum Ast {
 
     ///Condition, body, alt
     IfStmt(Box<Ast>, Vec<Ast>, Option<Vec<Ast>>),
+
+    ///Name, type
+    FuncParam(Box<String>, TypeTok),
+
+    ///Name, Params, ReturnType, Body,
+    FuncDec(Box<String>, Vec<Ast>, TypeTok, Vec<Ast>),
+
+    ///Name, params as exprs
+    FuncCall(Box<String>, Vec<Ast>),
+
+    ///Val
+    Return(Box<Ast>),
 }
 impl Ast {
     pub fn node_type(&self) -> String {
@@ -30,6 +42,10 @@ impl Ast {
             Ast::BoolLit(_) => "BoolLit".to_string(),
             Ast::IfStmt(_, _, _) => "IfStmt".to_string(),
             Ast::EmptyExpr(_) => "EmptyExpr".to_string(),
+            Ast::FuncParam(_, _) => "FuncParam".to_string(),
+            Ast::FuncDec(_, _, _, _) => "FuncDec".to_string(),
+            Ast::FuncCall(_, _) => "FuncCall".to_string(),
+            Ast::Return(_) => "Return".to_string(),
         };
     }
 }
@@ -65,7 +81,16 @@ impl fmt::Display for Ast {
                 Ast::BoolLit(b) => format!("BoolLit({})", b),
                 Ast::IfStmt(cond, body, alt) =>
                     format!("IfStmt Cond({}), Body({:?}), Alt({:?})", cond, body, alt),
-                Ast::EmptyExpr(child) => format!("EmptyExpr({})", child)
+                Ast::EmptyExpr(child) => format!("EmptyExpr({})", child),
+                Ast::FuncParam(name, type_tok) =>
+                    format!("FuncParam Name({}), Type({:?})", *name, type_tok),
+                Ast::FuncDec(name, params, return_type, body) => format!(
+                    "FuncDec Name({}), Params({:?}), ReturnType({:?}), Body({:?})",
+                    *name, params, return_type, body
+                ),
+                Ast::FuncCall(name, params) =>
+                    format!("FuncCall, Name({}), Params({:?})", *name, params),
+                Ast::Return(val) => format!("Return Val({})", *val),
             }
         )
     }

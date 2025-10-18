@@ -253,3 +253,43 @@ fn test_boxer_parens() {
         )]
     )
 }
+
+#[test]
+fn test_boxer_func_dec_and_call() {
+    let input = "fn add(a: int, b: int): int {return a + b;} let x = add(2, 3);".to_string();
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let toks = l.lex(input);
+    let boxes = b.box_toks(toks);
+
+    assert_eq!(
+        boxes,
+        vec![
+            TBox::FuncDec(
+                Token::VarName(Box::new("add".to_string())),
+                vec![
+                    TBox::FuncParam(Token::VarRef(Box::new("a".to_string())), TypeTok::Int),
+                    TBox::FuncParam(Token::VarRef(Box::new("b".to_string())), TypeTok::Int,)
+                ],
+                TypeTok::Int,
+                vec![TBox::Return(Box::new(TBox::Expr(vec![
+                    Token::VarRef(Box::new("a".to_string())),
+                    Token::Plus,
+                    Token::VarRef(Box::new("b".to_string())),
+                ])))]
+            ),
+            TBox::VarDec(
+                Token::VarName(Box::new("x".to_string())),
+                None,
+                vec![
+                    Token::VarRef(Box::new("add".to_string())),
+                    Token::LParen,
+                    Token::IntLit(2),
+                    Token::Comma,
+                    Token::IntLit(3),
+                    Token::RParen
+                ]
+            )
+        ]
+    )
+}

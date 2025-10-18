@@ -28,6 +28,8 @@ pub enum Token {
     Type(TypeTok),
     If,
     Else,
+    Func,
+    Return,
 
     //Names
     VarName(Box<String>),
@@ -41,17 +43,20 @@ pub enum Token {
     RBrace,
     LParen,
     RParen,
+    Comma,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TypeTok {
     Int,
     Bool,
+    Void,
 }
 impl TypeTok {
     pub fn type_str(&self) -> String {
         return match self {
             Self::Bool => "Bool".to_string(),
             Self::Int => "Int".to_string(),
+            Self::Void => "Void".to_string(),
         };
     }
 }
@@ -86,6 +91,9 @@ impl Token {
             Self::Else => "Else".to_string(),
             Self::LParen => "LParen".to_string(),
             Self::RParen => "RParen".to_string(),
+            Self::Func => "Func".to_string(),
+            Self::Return => "Return".to_string(),
+            Self::Comma => "Comma".to_string(),
         };
     }
     ///Is used to get value out of an int literal
@@ -136,6 +144,9 @@ impl fmt::Display for Token {
                 Token::Else => String::from("ELSE"),
                 Token::LParen => String::from("LPAREN"),
                 Token::RParen => String::from("RPAREN"),
+                Token::Func => String::from("FUNC"),
+                Token::Return => String::from("RETURN"),
+                Token::Comma => String::from("COMMA"),
             }
         )
     }

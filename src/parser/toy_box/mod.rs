@@ -12,6 +12,12 @@ pub enum TBox {
     VarReassign(Token, Vec<Token>),
     ///Cond, body, Optional else
     IfStmt(Vec<Token>, Vec<TBox>, Option<Vec<TBox>>),
+    ///Name, type
+    FuncParam(Token, TypeTok),
+    ///Name, Params, Return Type, Body
+    FuncDec(Token, Vec<TBox>, TypeTok, Vec<TBox>),
+    ///Contains value to return
+    Return(Box<TBox>),
 }
 
 impl fmt::Display for TBox {
@@ -32,6 +38,13 @@ impl fmt::Display for TBox {
                     "TBox_If_Stmt Cond({:?}), Body({:?}), Alt({:?})",
                     cond, body, alt
                 ),
+                TBox::FuncParam(name, t) =>
+                    format!("TBox_Func_Param Name({}), Type({:?})", name, t),
+                TBox::FuncDec(name, params, return_type, body) => format!(
+                    "TBox_Func_Dec Name({}), Params({:?}), ReturnType({:?}, Body({:?})",
+                    name, params, return_type, body
+                ),
+                TBox::Return(val) => format!("TBox_Return Val({:?})", val),
             }
         )
     }

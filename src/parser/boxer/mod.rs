@@ -104,6 +104,44 @@ impl Boxer {
                 continue;
             }
 
+            if ty == "Func" && brace_depth == 0 && paren_depth == 0 {
+                if !curr.is_empty() {
+                    boxes.push(self.box_statement(curr.clone()));
+                    curr.clear();
+                }
+
+                let mut func_end = i + 1;
+                let mut depth = 0;
+                let mut found_body = false;
+
+                for j in i..input.len() {
+                    if input[j].tok_type() == "LBrace" {
+                        depth = 1;
+                        found_body = true;
+                        func_end = j + 1;
+                        break;
+                    }
+                }
+
+                if !found_body {
+                    panic!("[ERROR] Function declaration missing body");
+                }
+
+                while func_end < input.len() && depth > 0 {
+                    if input[func_end].tok_type() == "LBrace" {
+                        depth += 1;
+                    } else if input[func_end].tok_type() == "RBrace" {
+                        depth -= 1;
+                    }
+                    func_end += 1;
+                }
+
+                let func_slice = input[i..func_end].to_vec();
+                boxes.push(self.box_fn_stmt(func_slice));
+                i = func_end;
+                continue;
+            }
+
             curr.push(t);
             i += 1;
         }
@@ -112,7 +150,93 @@ impl Boxer {
             boxes.push(self.box_statement(curr.clone()));
         }
 
-        boxes
+        return boxes;
+    }
+
+    fn box_params(&mut self, input: Vec<Token>) -> Vec<TBox> {
+        //The structure of the input should be VarRef, Colon, Type, comma
+
+        //Split by comma
+        let triplets: Vec<&[Token]> = input.as_slice().split(|t| *t == Token::Comma).collect();
+
+        let mut func_params: Vec<TBox> = Vec::new();
+        for triple in triplets {
+            if triple[0].tok_type() != "VarRef" {
+                panic!("[ERROR] Expected VarRef got {}", triple[0]);
+            }
+            if triple[1].tok_type() != "Colon" {
+                panic!("[ERROR] Expected Colon, got {}", triple[1]);
+            }
+            if triple[2].tok_type() != "Type" {
+                panic!("[ERROR] Expected a type, got {}", triple[2]);
+            }
+            let param = TBox::FuncParam(
+                triple[0].clone(),
+                match triple[2].clone() {
+                    Token::Type(tok) => tok,
+                    _ => unreachable!(),
+                },
+            );
+            func_params.push(param);
+        }
+        return func_params;
+    }
+
+    fn box_fn_stmt(&mut self, input: Vec<Token>) -> TBox {
+        if input[0].tok_type() != "Func" {
+            panic!("[ERROR] Expected \"fn\" got {}", input[0]);
+        }
+        let func_name = input[1].clone();
+        if input[2].tok_type() != "LParen" {
+            panic!("[ERROR] Expected \"(\" got {}", input[2]);
+        }
+        let mut unboxed_params: Vec<Token> = Vec::new();
+        let mut return_type_begin: usize = 0;
+        for i in 3..input.len() {
+            if input[i].tok_type() == "RParen" {
+                return_type_begin = i;
+                break;
+            }
+            unboxed_params.push(input[i].clone());
+        }
+        let boxed_params: Vec<TBox> = self.box_params(unboxed_params);
+
+        if input[return_type_begin + 1].tok_type() != "Colon" {
+            panic!(
+                "[ERROR] Expected colon after function params, got {}",
+                input[return_type_begin + 1]
+            );
+        }
+        if input[return_type_begin + 2].tok_type() != "Type" {
+            panic!(
+                "[ERROR] Expected return type, got {}",
+                input[return_type_begin + 2]
+            );
+        }
+        if input[return_type_begin + 3].tok_type() != "LBrace" {
+            panic!(
+                "[ERROR] Expected Opening brace, got {}",
+                input[return_type_begin + 3]
+            );
+        }
+        let body_toks = &input[return_type_begin + 4..input.len() - 1];
+
+        if input.last().unwrap().tok_type() != "RBrace" {
+            panic!(
+                "[ERROR] Expected closing brace, got {}, input({:?})",
+                input.last().unwrap(),
+                input.clone()
+            );
+        }
+        let body_boxes: Vec<TBox> = self.box_group(body_toks.to_vec());
+        let return_type = match input[return_type_begin + 2].clone() {
+            Token::Type(t) => t,
+            _ => panic!(
+                "[ERROR] Expected type, got {}",
+                input[return_type_begin + 2]
+            ),
+        };
+        return TBox::FuncDec(func_name, boxed_params, return_type, body_boxes);
     }
 
     fn box_statement(&mut self, toks: Vec<Token>) -> TBox {
@@ -129,6 +253,9 @@ impl Boxer {
         if first == "If" {
             let (stmt, _) = self.box_if_standalone(&toks);
             return stmt;
+        }
+        if first == "Return" {
+            return TBox::Return(Box::new(TBox::Expr(toks[1..toks.len()].to_vec())));
         }
 
         if toks.len() > 2 && toks[0].tok_type() == "VarRef" && toks[1].tok_type() == "Assign" {

@@ -283,39 +283,23 @@ fn test_ast_gen_nested_parens() {
     //This nesting is a crime against humanity
     assert_eq!(
         ast,
-        vec![
-            Ast::VarDec(
-                Box::new("x".to_string()), 
-                TypeTok::Int, 
-                Box::new(
-                    Ast::InfixExpr(
-                        Box::new(
-                            Ast::EmptyExpr(
-                                Box::new(
-                                    Ast::InfixExpr(
-                                        Box::new(Ast::IntLit(5)), 
-                                        Box::new(
-                                            Ast::EmptyExpr(
-                                                Box::new(
-                                                    Ast::InfixExpr(
-                                                        Box::new(Ast::IntLit(3)), 
-                                                        Box::new(Ast::IntLit(4)), 
-                                                        InfixOp::Plus
-                                                    )
-                                                )
-                                            )
-                                        ), 
-                                        InfixOp::Multiply
-                                    )
-                                )
-                            )
-                        ), 
-                        Box::new(Ast::IntLit(7)), 
-                        InfixOp::Divide
-                    )
-                )
-            )
-        ]
+        vec![Ast::VarDec(
+            Box::new("x".to_string()),
+            TypeTok::Int,
+            Box::new(Ast::InfixExpr(
+                Box::new(Ast::EmptyExpr(Box::new(Ast::InfixExpr(
+                    Box::new(Ast::IntLit(5)),
+                    Box::new(Ast::EmptyExpr(Box::new(Ast::InfixExpr(
+                        Box::new(Ast::IntLit(3)),
+                        Box::new(Ast::IntLit(4)),
+                        InfixOp::Plus
+                    )))),
+                    InfixOp::Multiply
+                )))),
+                Box::new(Ast::IntLit(7)),
+                InfixOp::Divide
+            ))
+        )]
     )
 }
 
@@ -324,37 +308,56 @@ fn test_ast_gen_consecutive_parens() {
     setup_ast!("let x = (5 + 2) + (3 + 1);", ast);
     assert_eq!(
         ast,
+        vec![Ast::VarDec(
+            Box::new("x".to_string()),
+            TypeTok::Int,
+            Box::new(Ast::InfixExpr(
+                Box::new(Ast::EmptyExpr(Box::new(Ast::InfixExpr(
+                    Box::new(Ast::IntLit(5)),
+                    Box::new(Ast::IntLit(2)),
+                    InfixOp::Plus,
+                )))),
+                Box::new(Ast::EmptyExpr(Box::new(Ast::InfixExpr(
+                    Box::new(Ast::IntLit(3)),
+                    Box::new(Ast::IntLit(1)),
+                    InfixOp::Plus
+                )))),
+                InfixOp::Plus
+            ))
+        )]
+    )
+}
+
+#[test]
+fn test_ast_gen_func_dec_call() {
+    setup_ast!(
+        "fn add(a: int, b: int): int{return a + b;} let x = add(2, 3);",
+        ast
+    );
+
+    assert_eq!(
+        ast,
         vec![
+            Ast::FuncDec(
+                Box::new("add".to_string()),
+                vec![
+                    Ast::FuncParam(Box::new("a".to_string()), TypeTok::Int),
+                    Ast::FuncParam(Box::new("b".to_string()), TypeTok::Int)
+                ],
+                TypeTok::Int,
+                vec![Ast::Return(Box::new(Ast::InfixExpr(
+                    Box::new(Ast::VarRef(Box::new("a".to_string()))),
+                    Box::new(Ast::VarRef(Box::new("b".to_string()))),
+                    InfixOp::Plus
+                )))]
+            ),
             Ast::VarDec(
-                Box::new("x".to_string()), 
-                TypeTok::Int, 
-                Box::new(
-                    Ast::InfixExpr(
-                        Box::new(
-                            Ast::EmptyExpr(
-                                Box::new(
-                                    Ast::InfixExpr(
-                                        Box::new(Ast::IntLit(5)), 
-                                        Box::new(Ast::IntLit(2)), 
-                                        InfixOp::Plus,
-                                    )
-                                )
-                            )
-                        ), 
-                        Box::new(
-                            Ast::EmptyExpr(
-                                Box::new(
-                                    Ast::InfixExpr(
-                                        Box::new(Ast::IntLit(3)), 
-                                        Box::new(Ast::IntLit(1)), 
-                                        InfixOp::Plus
-                                    )
-                                )
-                            )
-                        ), 
-                        InfixOp::Plus
-                    )
-                )
+                Box::new("x".to_string()),
+                TypeTok::Int,
+                Box::new(Ast::FuncCall(
+                    Box::new("add".to_string()),
+                    vec![Ast::IntLit(2), Ast::IntLit(3),]
+                ))
             )
         ]
     )

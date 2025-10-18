@@ -33,6 +33,8 @@ pub struct Compiler {
     ast: Vec<Ast>,
     var_count: usize,
     main_scope: Rc<RefCell<Scope>>,
+    funcs: HashMap<String, (TypeTok, FuncId)>,
+    func_ir: Vec<String>
 }
 
 #[derive(Debug, Clone, Default)]
@@ -42,7 +44,7 @@ pub struct Scope {
 }
 
 impl Scope {
-    fn new_child(parent: Rc<RefCell<Scope>>) -> Rc<RefCell<Scope>> {
+    fn new_child(parent: &Rc<RefCell<Scope>>) -> Rc<RefCell<Scope>> {
         Rc::new(RefCell::new(Scope {
             vars: HashMap::new(),
             parent: Some(parent.clone()),
@@ -73,6 +75,8 @@ impl Compiler {
                 vars: HashMap::new(),
                 parent: None,
             })),
+            funcs: HashMap::new(),
+            func_ir: Vec::new()
         }
     }
 
@@ -109,19 +113,38 @@ impl Compiler {
             && expr.node_type() != "VarRef"
             && expr.node_type() != "BoolLit"
             && expr.node_type() != "EmptyExpr"
+            && expr.node_type() != "FuncCall"
         {
             panic!("[ERROR] Unknown AST node type: {}", expr.node_type());
         }
 
         match expr {
+            Ast::FuncCall(b_name, params) => {
+                let name = *b_name.clone();
+                let o_func = self.funcs.get(&name);
+                if o_func.is_none() {
+                    panic!("[ERROR] Function {} is undefined", name);
+                }
+                let (ret_type, id) = o_func.unwrap();
+                let mut param_values: Vec<Value> = Vec::new();
+                for p in params {
+                    let (v, _) = self.compile_expr(p, _module, builder, scope);
+                    param_values.push(v);
+                }
+                let func_ref = _module.declare_func_in_func(id.clone(), builder.func);
+
+                let call_inst = builder.ins().call(func_ref, &param_values.as_slice());
+                let results = builder.inst_results(call_inst);
+                let ret_val = results[0];
+
+                return (ret_val, ret_type.clone());
+            }
             Ast::IntLit(n) => (builder.ins().iconst(types::I64, *n), TypeTok::Int),
             Ast::BoolLit(b) => {
                 let is_true: i64 = if *b { 1 } else { 0 };
                 (builder.ins().iconst(types::I64, is_true), TypeTok::Bool)
-            },
-            Ast::EmptyExpr(child) => {
-                self.compile_expr(child, _module, builder, scope)
             }
+            Ast::EmptyExpr(child) => self.compile_expr(child, _module, builder, scope),
             Ast::InfixExpr(left, right, op) => {
                 let (l, l_t) = self.compile_expr(left, _module, builder, scope);
                 let (r, r_t) = self.compile_expr(right, _module, builder, scope);
@@ -242,6 +265,85 @@ impl Compiler {
         builder.seal_block(merge_block);
     }
 
+    fn compile_func_dec<M: Module>(
+        &mut self,
+        node: Ast,
+        _module: &mut M,
+        scope: &Rc<RefCell<Scope>>,
+    ) {
+        let mut sig = _module.make_signature();
+        let (name, params, return_type, body) = match node {
+            Ast::FuncDec(n, p, c, b) => (*n, p, c, b),
+            _ => unreachable!(),
+        };
+        let types: Vec<TypeTok> = params
+            .clone()
+            .iter()
+            .filter_map(|ast| {
+                if let Ast::FuncParam(_, t) = ast {
+                    Some(t.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        for _t in types {
+            //Right now everything is an int (either bool or int, but both represented as int)
+            sig.params.push(AbiParam::new(types::I64));
+        }
+        if return_type != TypeTok::Void {
+            //Again it is either a bool or an int, both represented as i64
+            sig.returns.push(AbiParam::new(types::I64));
+        }
+
+        //Cranelift stuff
+        let func_id = _module
+            .declare_function(&name, Linkage::Local, &sig)
+            .unwrap();
+        self.funcs.insert(name.clone(), (return_type, func_id));
+        let mut ctx = _module.make_context();
+        ctx.func.signature = sig;
+        let mut builder_ctx = FunctionBuilderContext::new();
+        let mut func_builder = FunctionBuilder::new(&mut ctx.func, &mut builder_ctx);
+        let entry_block = func_builder.create_block();
+        func_builder.append_block_params_for_function_params(entry_block);
+        func_builder.switch_to_block(entry_block);
+        func_builder.seal_block(entry_block);
+
+        let func_scope = Scope::new_child(scope);
+
+        let block_params: Vec<Value> = func_builder.block_params(entry_block).to_vec();
+        for (i, param) in params.iter().enumerate() {
+            match param {
+                Ast::FuncParam(param_name, param_type) => {
+                    let var = Variable::new(self.var_count);
+                    self.var_count += 1;
+                    
+                    func_builder.declare_var(var, types::I64);
+                    
+                    func_builder.def_var(var, block_params[i]);
+                    
+                    func_scope
+                    .borrow_mut()
+                    .set((**param_name).clone(), var, param_type.clone());
+            }
+            _ => panic!("[ERROR] Expected FuncParam, got {}", param),
+        }
+    }
+    
+    for stmt in body {
+        let _ = self.compile_stmt(stmt, _module, &mut func_builder, &func_scope);
+    }
+        
+    _module.define_function(func_id, &mut ctx).unwrap();
+    let args: Vec<String> = env::args().collect();
+    if args.contains(&"--save-ir".to_string()) {
+        let str = ctx.func.display();
+        self.func_ir.push(format!("{}", str));
+    }
+    _module.clear_context(&mut ctx);
+    }
     fn compile_stmt<M: Module>(
         &mut self,
         node: Ast,
@@ -250,13 +352,13 @@ impl Compiler {
         scope: &Rc<RefCell<Scope>>,
     ) -> Option<(Value, TypeTok)> {
         let mut last_val = None;
-
         debug!(targets: ["compiler"], format!("compile_stmt: node_type={}", node.node_type()).as_str());
-
+        
         if node.node_type() == "IntLit"
-            || node.node_type() == "InfixExpr"
+        || node.node_type() == "InfixExpr"
             || node.node_type() == "VarRef"
             || node.node_type() == "BoolLit"
+            || node.node_type() == "FuncCall"
         {
             last_val = Some(self.compile_expr(&node, _module, func_builder, scope));
         }
@@ -270,27 +372,38 @@ impl Compiler {
         }
 
         if node.node_type() == "IfStmt" {
-            let child_scope = Scope::new_child(scope.clone());
+            let child_scope = Scope::new_child(&scope);
             self.compile_if_stmt(&node, _module, func_builder, &child_scope);
         }
-        if node.node_type() == "EmptyExpr" {
-            let child = match node {
-                Ast::EmptyExpr(c) => *c,
-                _ => panic!("[ERROR] Expected EmptyExpr, got {}", node)
+        if node.node_type() == "FuncDec" {
+            let child_scope = Scope::new_child(&scope);
+            self.compile_func_dec(node.clone(), _module, &child_scope);
+        }
+        if node.clone().node_type() == "EmptyExpr" {
+            let child = match node.clone() {
+                Ast::EmptyExpr(chi) => *chi,
+                _ => panic!("[ERROR] Expected EmptyExpr, got {}", node),
             };
             self.compile_expr(&child, _module, func_builder, scope);
+        }
+        if node.node_type() == "Return" {
+            let expr = match node.clone() {
+                Ast::Return(v) => *v,
+                _ => unreachable!(),
+            };
+            let (val, _) = self.compile_expr(&expr, _module, func_builder, scope);
+            func_builder.ins().return_(&[val]);
         }
 
         last_val
     }
 
     fn compile_internal<M: Module>(&mut self, module: &mut M, ast: Vec<Ast>) -> (FuncId, Context) {
-        let mut ctx = module.make_context();
+        let mut ctx: Context = module.make_context();
 
         let mut sig = module.make_signature();
         sig.returns.push(AbiParam::new(types::I64));
         ctx.func.signature = sig;
-
         let mut builder_ctx = FunctionBuilderContext::new();
         let mut func_builder = FunctionBuilder::new(&mut ctx.func, &mut builder_ctx);
 
@@ -312,19 +425,24 @@ impl Compiler {
         func_builder.finalize();
 
         let args: Vec<String> = env::args().collect();
-        if args.contains(&"--save-ir".to_string()) {
-            let ir = format!("{}", ctx.func.display());
-            let mut file = File::create("ir.clif").unwrap();
-            file.write_all(ir.as_bytes()).unwrap();
-        }
 
         let func_id = module
             .declare_function("user_main", Linkage::Export, &ctx.func.signature)
             .unwrap();
 
         module.define_function(func_id, &mut ctx).unwrap();
+        if args.contains(&"--save-ir".to_string()) {
+            let str = format!("{}", ctx.func.display());
+            self.func_ir.push(str);
+            let mut ir: String = String::new();
+            for s in self.func_ir.clone(){
+                ir += &s;
+            }
+            let mut file = File::create("ir.clif").unwrap();
+            file.write_all(ir.as_bytes()).unwrap();
+        }
         module.clear_context(&mut ctx);
-
+        
         (func_id, ctx)
     }
 
@@ -343,15 +461,16 @@ impl Compiler {
                 .write_all(&self.compile_to_object(ast.clone()))
                 .unwrap();
             let stub_path = Path::new("stub.c");
-            let c_code = r#"#include <stdlib.h>
-        #include <stdio.h>
-        extern long user_main();
+            let c_code = r#"
+            #include <stdlib.h>
+            #include <stdio.h>
+            extern long user_main();
 
-        int main() {
-            long res = user_main();
-            printf("User main returned: %ld\n", res);
-            return (int) res;
-        }"#;
+            int main() {
+                long res = user_main();
+                printf("User main returned: %ld\n", res);
+                return (int) res;
+            }"#;
             let mut stub_file = File::create(&stub_path).unwrap();
             stub_file.write_all(c_code.as_bytes()).unwrap();
 
@@ -371,6 +490,7 @@ impl Compiler {
             }
 
             // Cleanup temporary files
+            #[cfg(not(debug_assertions))] //Enables objdumping .obj file in debug mode
             let _ = std::fs::remove_file(obj_path);
             let _ = std::fs::remove_file(stub_path);
 

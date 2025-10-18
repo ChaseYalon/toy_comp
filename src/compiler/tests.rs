@@ -80,3 +80,11 @@ fn test_compiler_nested_parens() {
     compile_code!(code_fn, "let x = (5 * (3 + 4)) / 7; x;");
     assert_eq!(5, code_fn());
 }
+#[test]
+fn test_compiler_func_dec_and_call() {
+    compile_code!(
+        code_fn,
+        "fn add(a: int, b: int): int {return a + b;} let x = add(2, 4); x;"
+    );
+    assert_eq!(6, code_fn());
+}
