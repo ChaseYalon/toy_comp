@@ -203,7 +203,6 @@ impl AstGenerator {
         return match best_val {
             Token::IntLit(_)
             | Token::Plus => {
-                println!("Toks {}", toks[best_idx - 1]);
                 //This is a screwy way to do it but I cant think of a better way
                 if toks[best_idx - 1].tok_type() == "StringLit" {
                     (self.parse_str_expr(toks), TypeTok::Str)

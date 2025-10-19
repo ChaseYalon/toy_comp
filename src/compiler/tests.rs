@@ -1,13 +1,22 @@
 use crate::{Compiler, Lexer, Parser};
 use std::process::{Command, Stdio};
+use std::env;
+use std::thread;
+use std::time::Duration;
 
 fn capture_program_output(program: String) -> String {
+
+    thread::sleep(Duration::from_millis(100));
     let output = Command::new(program)
         .stdout(Stdio::piped())
-        .output()
-        .expect("Failed to run program");
+        .stderr(Stdio::piped()) // capture stderr too
+        .spawn()
+        .expect("Failed to spawn process")
+        .wait_with_output()
+        .expect("Failed to wait on child");
 
-    String::from_utf8(output.stdout).expect("Invalid UTF-8 output")
+    let s = String::from_utf8(output.stdout).expect("Invalid UTF-8 output");
+    return s;
 }
 macro_rules! compile_code {
     ($o:ident, $i:expr) => {
@@ -21,11 +30,14 @@ macro_rules! compile_code {
 }
 macro_rules! compile_code_aot{
     ($o:ident, $i:expr) => {
+        let project_root_str = env!("CARGO_MANIFEST_DIR");
+        let _ = std::fs::remove_file(format!("{}\\temp\\{}", project_root_str, "output.exe"));
         let mut l = Lexer::new();
         let mut p = Parser::new();
         let mut c = Compiler::new();
-        c.compile(p.parse(l.lex($i.to_string())), false, Some("output.exe"));
-        let $o = capture_program_output("output.exe".to_string());
+        c.compile(p.parse(l.lex($i.to_string())), false, Some("temp/output.exe"));
+        let $o = capture_program_output(format!("{}\\temp\\{}", project_root_str, "output.exe"));
+
     }
 }
 #[test]
@@ -116,6 +128,7 @@ fn test_compiler_if_in_func() {
 }
 #[test]
 fn test_compiler_string_concat() {
-    compile_code_aot!(output, r#"let x = "foo"; let y = "bar; let z = x + y; println(z);"#);
+    compile_code_aot!(output, r#"let x = "foo"; let y = "bar"; let z = x + y; println(z);"#);
+    println!("out: {}", output);
     assert!(output.contains("foobar"));
 }

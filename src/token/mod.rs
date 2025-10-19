@@ -52,6 +52,7 @@ pub enum TypeTok {
     Bool,
     Void,
     Str,
+    Any,
 }
 impl TypeTok {
     pub fn type_str(&self) -> String {
@@ -60,6 +61,7 @@ impl TypeTok {
             Self::Int => "Int".to_string(),
             Self::Void => "Void".to_string(),
             Self::Str => "Str".to_string(),
+            Self::Any => "Any".to_string()
         };
     }
 }

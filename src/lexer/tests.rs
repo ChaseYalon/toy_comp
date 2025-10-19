@@ -363,3 +363,62 @@ fn test_call_builtin() {
         ]
     )
 }
+#[test]
+fn test_lexer_str_concat() {
+    let mut l = Lexer::new();
+    let out = l.lex(r#"let x = "foo" + "bar""#.to_string());
+    assert_eq!(
+        out,
+        vec![
+            Token::Let,
+            Token::VarName(Box::new("x".to_string())),
+            Token::Assign, 
+            Token::StringLit(Box::new("foo".to_string())),
+            Token::Plus,
+            Token::StringLit(Box::new("bar".to_string()))
+        ]
+    )
+}
+
+#[test]
+fn test_str_var_concat() {
+    let mut l = Lexer::new();
+    let out = l.lex(r#"let x = "foo"; let y = "bar"; let z = x + y;"#.to_string());
+    assert_eq!(
+        out,
+        vec![
+            Token::Let,
+            Token::VarName(Box::new("x".to_string())),
+            Token::Assign,
+            Token::StringLit(Box::new("foo".to_string())),
+            Token::Semicolon,
+            Token::Let,
+            Token::VarName(Box::new("y".to_string())),
+            Token::Assign,
+            Token::StringLit(Box::new("bar".to_string())),
+            Token::Semicolon,
+            Token::Let,
+            Token::VarName(Box::new("z".to_string())),
+            Token::Assign,
+            Token::VarRef(Box::new("x".to_string())),
+            Token::Plus,
+            Token::VarRef(Box::new("y".to_string())),
+            Token::Semicolon,
+        ]
+    )
+}
+#[test]
+fn test_lexer_print() {
+    let mut l = Lexer::new();
+    let out = l.lex("print(4);".to_string());
+    assert_eq!(
+        out,
+        vec![
+            Token::VarRef(Box::new("print".to_string())),
+            Token::LParen,
+            Token::IntLit(4),
+            Token::RParen,
+            Token::Semicolon,
+        ]
+    )
+}

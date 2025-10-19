@@ -23,13 +23,20 @@ use std::process::Command;
 use std::rc::Rc;
 
 mod vars;
+unsafe extern "C" {
+    fn toy_print(input: i64, datatype: i64);
+    fn toy_println(input: i64, datatype: i64);
+    fn toy_malloc(ptr: i64) -> i64;
+    fn toy_concat(sp1: i64, sp2: i64) -> i64;
+    fn toy_strequal(sp1: i64, sp2: i64) -> i64;
+}
 
 pub enum OutputType {
     Jit(JITModule),
     Aot(ObjectModule),
 }
 pub static STUB_C: &str = include_str!("../c/stub.c");
-
+pub static BUILTIN_C: &str = include_str!("../c/builtins.c");
 pub struct Compiler {
     ast: Vec<Ast>,
     var_count: usize,
@@ -82,8 +89,13 @@ impl Compiler {
     }
 
     fn make_jit(&self) -> JITModule {
-        let jit_builder = JITBuilder::new(default_libcall_names());
-        JITModule::new(jit_builder.unwrap())
+        let mut jit_builder = JITBuilder::new(default_libcall_names()).unwrap();
+        jit_builder.symbol("toy_print", toy_print as *const u8);
+        jit_builder.symbol("toy_println", toy_println as *const u8);
+        jit_builder.symbol("toy_malloc", toy_malloc as *const u8);
+        jit_builder.symbol("toy_concat", toy_concat as *const u8);
+        jit_builder.symbol("toy_strequal", toy_strequal as *const u8);
+        JITModule::new(jit_builder)
     }
 
     fn make_object(&self) -> ObjectModule {
@@ -110,13 +122,29 @@ impl Compiler {
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
+        sig.params.push(AbiParam::new(types::I64));
         let func = module.declare_function("toy_print", Linkage::Import, &sig).unwrap();
         self.funcs.insert("print".to_string(), (TypeTok::Void, func));
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
+        sig.params.push(AbiParam::new(types::I64));
         let func = module.declare_function("toy_println", Linkage::Import, &sig).unwrap();
         self.funcs.insert("println".to_string(), (TypeTok::Void, func));
+
+        let mut sig = module.make_signature();
+        sig.params.push(AbiParam::new(types::I64)); //str a
+        sig.params.push(AbiParam::new(types::I64)); //str b
+        sig.returns.push(AbiParam::new(types::I64)); //Ptr to a + b
+        let func = module.declare_function("toy_concat", Linkage::Import, &sig).unwrap();
+        self.funcs.insert("concat".to_string(), (TypeTok::Int, func)); //Returns a pointer to the new string
+
+        let mut sig = module.make_signature();
+        sig.params.push(AbiParam::new(types::I64));
+        sig.params.push(AbiParam::new(types::I64));
+        sig.returns.push(AbiParam::new(types::I64));
+        let func = module.declare_function("toy_strequal", Linkage::Import, &sig).unwrap();
+        self.funcs.insert("strequal".to_string(), (TypeTok::Bool, func));
     }
 
     fn compile_expr<M: Module>(
@@ -147,9 +175,26 @@ impl Compiler {
                 }
                 let (ret_type, id) = o_func.unwrap();
                 let mut param_values: Vec<Value> = Vec::new();
+                let mut last_type: TypeTok = TypeTok::Str;
                 for p in params {
-                    let (v, _) = self.compile_expr(p, _module, builder, scope);
+                    let (v, t) = self.compile_expr(p, _module, builder, scope);
+                    last_type = t;
                     param_values.push(v);
+                }
+                if name == "print".to_string() || name == "println".to_string(){
+                    //inject type params for print and println
+                    if last_type == TypeTok::Str{
+                        let v= builder.ins().iconst(types::I64, 0);
+                        param_values.push(v);
+                    }else if last_type == TypeTok::Bool{
+                        let v = builder.ins().iconst(types::I64, 1);
+                        param_values.push(v);
+                    } else if last_type == TypeTok::Int{
+                        let v = builder.ins().iconst(types::I64, 2);
+                        param_values.push(v);
+                    } else {
+                        panic!("[ERROR] Cannot pase type {:?} to print or println", last_type);
+                    }
                 }
                 let func_ref = _module.declare_func_in_func(id.clone(), builder.func);
 
@@ -250,6 +295,42 @@ impl Compiler {
                         InfixOp::Or => (builder.ins().bor(l, r), TypeTok::Bool),
                         _ => panic!("[ERROR] Cant use operator {} on two bools", op),
                     };
+                }
+                if l_type_str == "Str" && r_type_str == "Str" {
+                    match op {
+                        InfixOp::Plus => {
+                            let toy_concat = self.funcs.get("concat").expect("concat not found");
+                            let func_ref = _module.declare_func_in_func(toy_concat.1, builder.func);
+                            let call_inst = builder.ins().call(func_ref, &[l, r]);
+                            let results = builder.inst_results(call_inst);
+                            let heap_ptr = results[0];
+                            return (heap_ptr, TypeTok::Str);
+
+                        },
+                        InfixOp::Equals => {
+                            let toy_strequal = self.funcs.get("strequal").expect("strequal not found");
+                            let func_ref = _module.declare_func_in_func(toy_strequal.1, builder.func);
+                            let call_inst = builder.ins().call(func_ref, &[l, r]);
+                            let results = builder.inst_results(call_inst);
+                            let heap_ptr = results[0];
+                            return (heap_ptr, TypeTok::Bool);
+                        }
+                        InfixOp::NotEquals => {
+                            let toy_strequal = self.funcs.get("strequal").expect("strequal not found");
+                            let func_ref = _module.declare_func_in_func(toy_strequal.1, builder.func);
+                            let call_inst = builder.ins().call(func_ref, &[l, r]);
+                            let results = builder.inst_results(call_inst);
+                            let heap_ptr = results[0];
+
+                            //inverts result of eq
+                            let one = builder.ins().iconst(types::I64, 1);
+                            let flipped = builder.ins().bxor(heap_ptr, one);
+
+                            return (flipped, TypeTok::Bool);
+                        }
+                        _ => panic!()
+
+                    }
                 }
 
                 panic!(
@@ -539,12 +620,16 @@ impl Compiler {
             let stub_path = Path::new("stub.c");
             let mut stub_file = File::create(&stub_path).unwrap();
             stub_file.write_all(STUB_C.as_bytes()).unwrap();
+            let builtin_path = Path::new("builtins.c");
+            let mut builtin_file = File::create(&builtin_path).unwrap();
+            builtin_file.write_all(BUILTIN_C.as_bytes()).unwrap();
 
             // Call GCC to link the object file and the stub
             let status = Command::new("gcc")
                 .args(&[
                     obj_path.to_str().unwrap(),
                     stub_path.to_str().unwrap(),
+                    builtin_path.to_str().unwrap(),
                     "-o",
                     o_path,
                 ])

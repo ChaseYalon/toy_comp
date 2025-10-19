@@ -41,7 +41,8 @@ impl Lexer {
         }
         //next char must flush buffer
         let next_char = self.peek(word.len());
-        if next_char.is_alphanumeric() || next_char == '_' {
+        //lparen is not alphanumeric but otherwise int will match print()
+        if (next_char.is_alphanumeric() || next_char == '_') || next_char == '(' {
             return false;
         }
         
@@ -61,7 +62,6 @@ impl Lexer {
                 self.eat();
                 continue;
             }
-
             if self.lex_keyword("let", Token::Let) {
                 continue;
             }
@@ -187,8 +187,13 @@ impl Lexer {
                 continue;
             }
             if c == '"' {
-                self.flush();
-                self.in_str_lit = !self.in_str_lit;
+                if self.in_str_lit {
+                    self.flush_str();
+                    self.in_str_lit = false;
+                } else {
+                    self.flush();
+                    self.in_str_lit = true;
+                }
                 self.eat();
                 continue;
             }

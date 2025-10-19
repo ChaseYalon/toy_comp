@@ -49,8 +49,8 @@ impl AstGenerator {
         var_type_scopes.push(HashMap::new());
 
         let mut fptm: HashMap<String, Vec<TypeTok>> = HashMap::new();
-        fptm.insert("print".to_string(), [TypeTok::Str].to_vec());
-        fptm.insert("println".to_string(), [TypeTok::Str].to_vec());
+        fptm.insert("print".to_string(), [TypeTok::Any].to_vec());
+        fptm.insert("println".to_string(), [TypeTok::Any].to_vec());
         let mut frtm: HashMap<String, TypeTok> = HashMap::new();
         frtm.insert("print".to_string(), TypeTok::Void);
         frtm.insert("println".to_string(), TypeTok::Void);
@@ -170,7 +170,7 @@ impl AstGenerator {
 
         let types = types.unwrap();
         for (i, (_, type_tok)) in processed_params.iter().enumerate() {
-            if type_tok != &types[i] {
+            if type_tok != &types[i] && types[i] != TypeTok::Any {
                 panic!(
                     "[ERROR] Mismatched types at index {}, expected {:?}, got {:?}",
                     i, types[i], type_tok

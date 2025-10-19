@@ -2,6 +2,7 @@
 name = "toy_comp"
 version = "0.1.0"
 edition = "2024"
+build = "build.rs"
 
 [dependencies]
 cranelift = "0.104"
@@ -10,6 +11,9 @@ cranelift-jit = "0.104"
 cranelift-object = "0.104"
 cranelift-codegen = "0.104"
 target-lexicon = "0.12.16"
+
+[build-dependencies]
+cc = "1.2.41"
 
 
 [features]
