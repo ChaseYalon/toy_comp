@@ -407,3 +407,110 @@ fn test_ast_gen_print_int_bool() {
         ]
     )
 }
+
+#[test]
+fn test_ast_gen_fibonacci() {
+    setup_ast!(r#"
+        fn fib(n: int): int{
+            if n == 0 {
+                return 0;
+            }
+            if n == 1 {
+                return 1;
+            }
+            return fib(n - 1) + fib(n - 2);
+        }
+        println(fib(5));
+    "#, ast);
+    assert_eq!(
+        ast,
+        vec![
+            Ast::FuncDec(
+                Box::new("fib".to_string()), 
+                vec![
+                    Ast::FuncParam(
+                        Box::new("n".to_string()), 
+                        TypeTok::Int
+                    )
+                ], 
+                TypeTok::Int, 
+                vec![
+                    Ast::IfStmt(
+                        Box::new(
+                            Ast::InfixExpr(
+                                Box::new(Ast::VarRef(Box::new("n".to_string()))), 
+                                Box::new(Ast::IntLit(0)), 
+                                InfixOp::Equals
+                            )
+                        ), 
+                        vec![
+                            Ast::Return(
+                                Box::new(Ast::IntLit(0))
+                            )
+                        ], 
+                        None
+                    ),
+                    Ast::IfStmt(
+                        Box::new(
+                            Ast::InfixExpr(
+                                Box::new(Ast::VarRef(Box::new("n".to_string()))), 
+                                Box::new(Ast::IntLit(1)), 
+                                InfixOp::Equals
+                            )
+                        ), 
+                        vec![
+                            Ast::Return(
+                                Box::new(Ast::IntLit(1))
+                            )
+                        ], 
+                        None
+                    ),
+                    Ast::Return(
+                        Box::new(
+                            Ast::InfixExpr(
+                                Box::new(
+                                    Ast::FuncCall(
+                                        Box::new("fib".to_string()), 
+                                        vec![
+                                            Ast::InfixExpr(
+                                                Box::new(Ast::VarRef(Box::new("n".to_string()))), 
+                                                Box::new(Ast::IntLit(1)), 
+                                                InfixOp::Minus,
+                                            )
+                                        ]
+                                    )
+                                ), 
+                                Box::new(
+                                    Ast::FuncCall(
+                                        Box::new("fib".to_string()), 
+                                        vec![
+                                            Ast::InfixExpr(
+                                                Box::new(Ast::VarRef(Box::new("n".to_string()))),
+                                                Box::new(Ast::IntLit(2)), 
+                                                InfixOp::Minus,
+                                            )
+                                        ]
+                                    )
+                                ), 
+                                InfixOp::Plus
+                            )
+                        )
+                    )
+                ]
+            ),
+            Ast::FuncCall(
+                Box::new("println".to_string()), 
+                vec![
+                    Ast::FuncCall(
+                        Box::new("fib".to_string()), 
+                        vec![
+                            Ast::IntLit(
+                                5
+                            )
+                        ]
+                    )
+                ]
+            )
+        ]
+    )
+}

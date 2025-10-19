@@ -111,7 +111,7 @@ impl AstGenerator {
                 }
                 "RParen" => {
                     if depth == 0 {
-                        panic!("[ERROR] Unmatched RParen at index {}", i);
+                        panic!("[ERROR] Unmatched RParen at index {}, toks: {:?}", i, toks);
                     }
                     depth -= 1;
                     continue;

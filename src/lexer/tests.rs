@@ -422,3 +422,79 @@ fn test_lexer_print() {
         ]
     )
 }
+
+#[test]
+fn test_lexer_fib() {
+    let mut l = Lexer::new();
+    let out = l.lex(
+        r#"
+        fn fib(n: int): int{
+            if n == 0 {
+                return 0;
+            }
+            if n == 1 {
+                return 1;
+            }
+            return fib(n - 1) + fib(n - 2);
+        }
+        println(fib(5));
+        "#.to_string()
+    );
+    assert_eq!(
+        out,
+        vec![
+            Token::Func,
+            Token::VarName(Box::new("fib".to_string())),
+            Token::LParen,
+            Token::VarRef(Box::new("n".to_string())),
+            Token::Colon,
+            Token::Type(TypeTok::Int),
+            Token::RParen,
+            Token::Colon,
+            Token::Type(TypeTok::Int),
+            Token::LBrace,
+            Token::If,
+            Token::VarRef(Box::new("n".to_string())),
+            Token::Equals,
+            Token::IntLit(0),
+            Token::LBrace,
+            Token::Return,
+            Token::IntLit(0),
+            Token::Semicolon,
+            Token::RBrace,
+            Token::If,
+            Token::VarRef(Box::new("n".to_string())),
+            Token::Equals,
+            Token::IntLit(1),
+            Token::LBrace,
+            Token::Return,
+            Token::IntLit(1),
+            Token::Semicolon,
+            Token::RBrace,
+            Token::Return,
+            Token::VarRef(Box::new("fib".to_string())),
+            Token::LParen,
+            Token::VarRef(Box::new("n".to_string())),
+            Token::Minus,
+            Token::IntLit(1),
+            Token::RParen,
+            Token::Plus,
+            Token::VarRef(Box::new("fib".to_string())),
+            Token::LParen,
+            Token::VarRef(Box::new("n".to_string())),
+            Token::Minus,
+            Token::IntLit(2),
+            Token::RParen,
+            Token::Semicolon,
+            Token::RBrace,
+            Token::VarRef(Box::new("println".to_string())),
+            Token::LParen,
+            Token::VarRef(Box::new("fib".to_string())),
+            Token::LParen,
+            Token::IntLit(5),
+            Token::RParen,
+            Token::RParen,
+            Token::Semicolon
+        ]
+    )
+}

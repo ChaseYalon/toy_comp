@@ -56,8 +56,8 @@ fn main() {
     let mut l = Lexer::new();
     let mut p = Parser::new();
     let mut c = Compiler::new();
-    let should_jit = if args.contains(&"--aot".to_string()){true} else {false};
-    let path = if should_jit {Some("output.exe")} else {None};
+    let should_jit = if args.contains(&"--aot".to_string()){false} else {true};
+    let path = if !should_jit {Some("output.exe")} else {None};
     let res = c.compile(p.parse(l.lex(contents)), should_jit, path);
     if res.is_some() {
         println!("User fn: {}", res.unwrap()());

@@ -167,7 +167,28 @@ impl AstGenerator {
             }
         }
         if toks.first().unwrap().tok_type() == "VarRef" && toks[1].tok_type() == "LParen" {
-            return self.parse_func_call(toks);
+            let mut depth = 0;
+            let mut func_call_end = None;
+            
+            for (i, t) in toks.iter().enumerate().skip(1) {
+                match t.tok_type().as_str() {
+                    "LParen" => depth += 1,
+                    "RParen" => {
+                        depth -= 1;
+                        if depth == 0 {
+                            func_call_end = Some(i);
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            
+            if let Some(end_idx) = func_call_end {
+                if end_idx == toks.len() - 1 {
+                    return self.parse_func_call(toks);
+                }
+            }
         }
         if toks.first().unwrap().tok_type() == "LParen"
             && toks.last().unwrap().tok_type() == "RParen"
