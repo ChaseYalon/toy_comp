@@ -8,7 +8,7 @@ use cranelift_codegen::Context;
 use cranelift_codegen::isa;
 use cranelift_codegen::settings::{self, Configurable};
 use cranelift_jit::{JITBuilder, JITModule};
-use cranelift_module::{FuncId, DataDescription};
+use cranelift_module::{DataDescription, FuncId};
 use cranelift_module::{Linkage, Module, default_libcall_names};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use target_lexicon::Triple;
@@ -112,39 +112,54 @@ impl Compiler {
             .expect("ObjectBuilder creation failed");
         ObjectModule::new(obj_builder)
     }
-    fn declare_builtin_funcs<M: Module>(&mut self,module: &mut M) {
+    fn declare_builtin_funcs<M: Module>(&mut self, module: &mut M) {
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
         sig.returns.push(AbiParam::new(types::I64));
         //Toy malloc takes a pointer to a string and allocates it in memory, returning the pointer to that allocation
-        let func = module.declare_function("toy_malloc", Linkage::Import, &sig).unwrap();
-        self.funcs.insert("malloc".to_string(), (TypeTok::Int, func));
+        let func = module
+            .declare_function("toy_malloc", Linkage::Import, &sig)
+            .unwrap();
+        self.funcs
+            .insert("malloc".to_string(), (TypeTok::Int, func));
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
         sig.params.push(AbiParam::new(types::I64));
-        let func = module.declare_function("toy_print", Linkage::Import, &sig).unwrap();
-        self.funcs.insert("print".to_string(), (TypeTok::Void, func));
+        let func = module
+            .declare_function("toy_print", Linkage::Import, &sig)
+            .unwrap();
+        self.funcs
+            .insert("print".to_string(), (TypeTok::Void, func));
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
         sig.params.push(AbiParam::new(types::I64));
-        let func = module.declare_function("toy_println", Linkage::Import, &sig).unwrap();
-        self.funcs.insert("println".to_string(), (TypeTok::Void, func));
+        let func = module
+            .declare_function("toy_println", Linkage::Import, &sig)
+            .unwrap();
+        self.funcs
+            .insert("println".to_string(), (TypeTok::Void, func));
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64)); //str a
         sig.params.push(AbiParam::new(types::I64)); //str b
         sig.returns.push(AbiParam::new(types::I64)); //Ptr to a + b
-        let func = module.declare_function("toy_concat", Linkage::Import, &sig).unwrap();
-        self.funcs.insert("concat".to_string(), (TypeTok::Int, func)); //Returns a pointer to the new string
+        let func = module
+            .declare_function("toy_concat", Linkage::Import, &sig)
+            .unwrap();
+        self.funcs
+            .insert("concat".to_string(), (TypeTok::Int, func)); //Returns a pointer to the new string
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
         sig.params.push(AbiParam::new(types::I64));
         sig.returns.push(AbiParam::new(types::I64));
-        let func = module.declare_function("toy_strequal", Linkage::Import, &sig).unwrap();
-        self.funcs.insert("strequal".to_string(), (TypeTok::Bool, func));
+        let func = module
+            .declare_function("toy_strequal", Linkage::Import, &sig)
+            .unwrap();
+        self.funcs
+            .insert("strequal".to_string(), (TypeTok::Bool, func));
     }
 
     fn compile_expr<M: Module>(
@@ -181,29 +196,31 @@ impl Compiler {
                     last_type = t;
                     param_values.push(v);
                 }
-                if name == "print".to_string() || name == "println".to_string(){
+                if name == "print".to_string() || name == "println".to_string() {
                     //inject type params for print and println
-                    if last_type == TypeTok::Str{
-                        let v= builder.ins().iconst(types::I64, 0);
+                    if last_type == TypeTok::Str {
+                        let v = builder.ins().iconst(types::I64, 0);
                         param_values.push(v);
-                    }else if last_type == TypeTok::Bool{
+                    } else if last_type == TypeTok::Bool {
                         let v = builder.ins().iconst(types::I64, 1);
                         param_values.push(v);
-                    } else if last_type == TypeTok::Int{
+                    } else if last_type == TypeTok::Int {
                         let v = builder.ins().iconst(types::I64, 2);
                         param_values.push(v);
                     } else {
-                        panic!("[ERROR] Cannot pase type {:?} to print or println", last_type);
+                        panic!(
+                            "[ERROR] Cannot pase type {:?} to print or println",
+                            last_type
+                        );
                     }
                 }
                 let func_ref = _module.declare_func_in_func(id.clone(), builder.func);
 
                 let call_inst = builder.ins().call(func_ref, &param_values.as_slice());
                 let results = builder.inst_results(call_inst);
-                if results.len() > 0{
-
+                if results.len() > 0 {
                     let ret_val = results[0];
-    
+
                     return (ret_val, ret_type.clone());
                 } else {
                     //This is a dummy, should not be sued
@@ -219,25 +236,27 @@ impl Compiler {
                 let data_id = _module
                     .declare_anonymous_data(false, false)
                     .expect("Failed to declare data");
-                
+
                 //Create null terminated string in mem
                 let mut data_desc = DataDescription::new();
                 let mut string_bytes = s.as_bytes().to_vec();
                 string_bytes.push(0); // null terminator
                 data_desc.define(string_bytes.into_boxed_slice());
-                _module.define_data(data_id, &data_desc).expect("Failed to define data");
-                
+                _module
+                    .define_data(data_id, &data_desc)
+                    .expect("Failed to define data");
+
                 // Get a global value reference to the data
                 let data_gv = _module.declare_data_in_func(data_id, builder.func);
                 let string_ptr = builder.ins().global_value(types::I64, data_gv);
-                
+
                 // Call toy_malloc with the string pointer
                 let malloc_func = self.funcs.get("malloc").expect("malloc not found");
                 let func_ref = _module.declare_func_in_func(malloc_func.1, builder.func);
                 let call_inst = builder.ins().call(func_ref, &[string_ptr]);
                 let results = builder.inst_results(call_inst);
                 let heap_ptr = results[0];
-                
+
                 (heap_ptr, TypeTok::Str)
             }
             Ast::EmptyExpr(child) => self.compile_expr(child, _module, builder, scope),
@@ -305,19 +324,22 @@ impl Compiler {
                             let results = builder.inst_results(call_inst);
                             let heap_ptr = results[0];
                             return (heap_ptr, TypeTok::Str);
-
-                        },
+                        }
                         InfixOp::Equals => {
-                            let toy_strequal = self.funcs.get("strequal").expect("strequal not found");
-                            let func_ref = _module.declare_func_in_func(toy_strequal.1, builder.func);
+                            let toy_strequal =
+                                self.funcs.get("strequal").expect("strequal not found");
+                            let func_ref =
+                                _module.declare_func_in_func(toy_strequal.1, builder.func);
                             let call_inst = builder.ins().call(func_ref, &[l, r]);
                             let results = builder.inst_results(call_inst);
                             let heap_ptr = results[0];
                             return (heap_ptr, TypeTok::Bool);
                         }
                         InfixOp::NotEquals => {
-                            let toy_strequal = self.funcs.get("strequal").expect("strequal not found");
-                            let func_ref = _module.declare_func_in_func(toy_strequal.1, builder.func);
+                            let toy_strequal =
+                                self.funcs.get("strequal").expect("strequal not found");
+                            let func_ref =
+                                _module.declare_func_in_func(toy_strequal.1, builder.func);
                             let call_inst = builder.ins().call(func_ref, &[l, r]);
                             let results = builder.inst_results(call_inst);
                             let heap_ptr = results[0];
@@ -328,8 +350,7 @@ impl Compiler {
 
                             return (flipped, TypeTok::Bool);
                         }
-                        _ => panic!()
-
+                        _ => panic!(),
                     }
                 }
 
@@ -612,15 +633,26 @@ impl Compiler {
         if !should_jit {
             let o_path = path.unwrap_or("program.exe");
 
-            let obj_path = Path::new("stub.obj");
+            // Create unique intermediate file names based on output path
+            let base_name = Path::new(o_path)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("program");
+            let obj_temp = format!("{}.obj", base_name);
+            let stub_temp = format!("{}_stub.c", base_name);
+            let builtin_temp = format!("{}_builtins.c", base_name);
+            let obj_path = Path::new(&obj_temp);
+            let stub_path = Path::new(&stub_temp);
+            let builtin_path = Path::new(&builtin_temp);
+
             let mut obj_file = File::create(&obj_path).unwrap();
             obj_file
                 .write_all(&self.compile_to_object(ast.clone()))
                 .unwrap();
-            let stub_path = Path::new("stub.c");
+
             let mut stub_file = File::create(&stub_path).unwrap();
             stub_file.write_all(STUB_C.as_bytes()).unwrap();
-            let builtin_path = Path::new("builtins.c");
+
             let mut builtin_file = File::create(&builtin_path).unwrap();
             builtin_file.write_all(BUILTIN_C.as_bytes()).unwrap();
 
@@ -639,11 +671,13 @@ impl Compiler {
             if !status.success() {
                 panic!("GCC failed with exit code {:?}", status.code());
             }
-
-            // Cleanup temporary files
-            #[cfg(not(debug_assertions))] //Enables objdumping .obj file in debug mode
-            let _ = std::fs::remove_file(obj_path);
+            //remove c objs
             let _ = std::fs::remove_file(stub_path);
+            let _ = std::fs::remove_file(builtin_path);
+            let args: Vec<String> = env::args().collect();
+            if !args.contains(&"--save-temp".to_string()){
+                let _ = std::fs::remove_file(obj_path);
+            }
 
             return None;
         }

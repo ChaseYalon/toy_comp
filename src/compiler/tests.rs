@@ -1,11 +1,10 @@
 use crate::{Compiler, Lexer, Parser};
-use std::process::{Command, Stdio};
 use std::env;
+use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
 
 fn capture_program_output(program: String) -> String {
-
     thread::sleep(Duration::from_millis(100));
     let output = Command::new(program)
         .stdout(Stdio::piped())
@@ -28,17 +27,27 @@ macro_rules! compile_code {
             .unwrap();
     };
 }
-macro_rules! compile_code_aot{
-    ($o:ident, $i:expr) => {
+macro_rules! compile_code_aot {
+    ($o:ident, $i:expr, $test_name:expr) => {
         let project_root_str = env!("CARGO_MANIFEST_DIR");
-        let _ = std::fs::remove_file(format!("{}\\temp\\{}", project_root_str, "output.exe"));
+        let output_name = format!("output_{}.exe", $test_name);
+        let output_path = format!("{}\\temp\\{}", project_root_str, output_name);
+
+        let _ = std::fs::remove_file(&output_path);
+        thread::sleep(Duration::from_millis(100)); // Wait for file deletion
+
         let mut l = Lexer::new();
         let mut p = Parser::new();
         let mut c = Compiler::new();
-        c.compile(p.parse(l.lex($i.to_string())), false, Some("temp/output.exe"));
-        let $o = capture_program_output(format!("{}\\temp\\{}", project_root_str, "output.exe"));
+        c.compile(
+            p.parse(l.lex($i.to_string())),
+            false,
+            Some(&format!("temp/{}", output_name)),
+        );
 
-    }
+        thread::sleep(Duration::from_millis(200)); // Wait for compilation
+        let $o = capture_program_output(output_path);
+    };
 }
 #[test]
 fn test_compiler_int_lit() {
@@ -128,7 +137,18 @@ fn test_compiler_if_in_func() {
 }
 #[test]
 fn test_compiler_string_concat() {
-    compile_code_aot!(output, r#"let x = "foo"; let y = "bar"; let z = x + y; println(z);"#);
+    compile_code_aot!(
+        output,
+        r#"let x = "foo"; let y = "bar"; let z = x + y; println(z);"#,
+        "string_concat"
+    );
     println!("out: {}", output);
     assert!(output.contains("foobar"));
+}
+
+#[test]
+fn test_compiler_print_bool() {
+    compile_code_aot!(output, r#"print(true);"#, "print_bool");
+    println!("out: {}", output);
+    assert!(output.contains("true"));
 }

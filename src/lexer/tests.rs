@@ -372,7 +372,7 @@ fn test_lexer_str_concat() {
         vec![
             Token::Let,
             Token::VarName(Box::new("x".to_string())),
-            Token::Assign, 
+            Token::Assign,
             Token::StringLit(Box::new("foo".to_string())),
             Token::Plus,
             Token::StringLit(Box::new("bar".to_string()))

@@ -90,14 +90,13 @@ impl AstGenerator {
         let (l_node, _) = self.parse_expr(&left.to_vec());
         let (r_node, _) = self.parse_expr(&right.to_vec());
         return Ast::InfixExpr(
-            Box::new(l_node), 
-            Box::new(r_node), 
+            Box::new(l_node),
+            Box::new(r_node),
             match best_tok {
                 Token::Plus => InfixOp::Plus,
                 _ => unreachable!(),
-            }
+            },
         );
-
     }
     pub fn parse_empty_expr(&self, toks: &Vec<Token>) -> (Ast, TypeTok) {
         if toks.is_empty() {
@@ -138,16 +137,16 @@ impl AstGenerator {
                 return (Ast::IntLit(toks[0].get_val().unwrap()), TypeTok::Int);
             }
             if toks[0].tok_type() == "StrLit" {
-                let val = match toks[0].clone(){
+                let val = match toks[0].clone() {
                     Token::StringLit(s) => s,
-                    _ => unreachable!()
+                    _ => unreachable!(),
                 };
-                return (Ast::StringLit(val), TypeTok::Str)
+                return (Ast::StringLit(val), TypeTok::Str);
             }
             if toks[0].tok_type() == "BoolLit" {
                 let val = match toks[0].clone() {
                     Token::BoolLit(b) => b,
-                    _ => unreachable!()
+                    _ => unreachable!(),
                 };
                 return (Ast::BoolLit(val), TypeTok::Bool);
             }
@@ -201,15 +200,14 @@ impl AstGenerator {
         debug!(targets: ["parser", "parser_verbose"], best_val.clone());
         debug!(targets: ["parser", "parser_verbose"], toks.clone());
         return match best_val {
-            Token::IntLit(_)
-            | Token::Plus => {
+            Token::IntLit(_) | Token::Plus => {
                 //This is a screwy way to do it but I cant think of a better way
                 if toks[best_idx - 1].tok_type() == "StringLit" {
                     (self.parse_str_expr(toks), TypeTok::Str)
                 } else if toks[best_idx - 1].tok_type() == "VarRef" {
                     let var = match toks[best_idx - 1].clone() {
                         Token::VarRef(v) => *v,
-                        _ => unreachable!()
+                        _ => unreachable!(),
                     };
                     let t = self.lookup_var_type(&var);
                     if t.is_none() {
@@ -217,20 +215,19 @@ impl AstGenerator {
                     }
                     let ty = t.unwrap();
                     if ty == TypeTok::Str {
-                        return (self.parse_str_expr(toks), TypeTok::Str)
+                        return (self.parse_str_expr(toks), TypeTok::Str);
                     } else if ty == TypeTok::Int {
-                        return (self.parse_int_expr(toks), TypeTok::Int)
+                        return (self.parse_int_expr(toks), TypeTok::Int);
                     } else {
-                        return (self.parse_bool_expr(toks), TypeTok::Bool)
+                        return (self.parse_bool_expr(toks), TypeTok::Bool);
                     }
-                } else{
+                } else {
                     (self.parse_str_expr(toks), TypeTok::Int)
                 }
             }
-            | Token::Minus
-            | Token::Divide
-            | Token::Multiply
-            | Token::Modulo => (self.parse_int_expr(toks), TypeTok::Int),
+            Token::Minus | Token::Divide | Token::Multiply | Token::Modulo => {
+                (self.parse_int_expr(toks), TypeTok::Int)
+            }
             Token::BoolLit(_)
             | Token::LessThan
             | Token::LessThanEqt

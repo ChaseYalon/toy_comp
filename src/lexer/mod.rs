@@ -45,7 +45,7 @@ impl Lexer {
         if (next_char.is_alphanumeric() || next_char == '_') || next_char == '(' {
             return false;
         }
-        
+
         self.cp += word.len();
         self.toks.push(tok);
         return true;
@@ -280,7 +280,7 @@ impl Lexer {
             return;
         }
         if self.toks.len() == 0 {
-             let proto_output: String = self.str_buf.clone().into_iter().collect();
+            let proto_output: String = self.str_buf.clone().into_iter().collect();
             self.toks.push(Token::VarRef(Box::new(proto_output)));
             self.str_buf = Vec::new();
             return;

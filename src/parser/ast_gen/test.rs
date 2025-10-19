@@ -396,25 +396,14 @@ fn test_ast_gen_str_lit_and_concatenation() {
 }
 
 #[test]
-fn test_ast_gen_print_int_bool(){
+fn test_ast_gen_print_int_bool() {
     setup_ast!("println(true); println(1);", ast);
 
     assert_eq!(
         ast,
         vec![
-            Ast::FuncCall(
-                Box::new("println".to_string()), 
-                vec![
-                    Ast::BoolLit(true)
-                ]
-            ),
-            Ast::FuncCall(
-                Box::new("println".to_string()), 
-                vec![
-                    Ast::IntLit(1),
-                ]
-            )
+            Ast::FuncCall(Box::new("println".to_string()), vec![Ast::BoolLit(true)]),
+            Ast::FuncCall(Box::new("println".to_string()), vec![Ast::IntLit(1),])
         ]
     )
-
 }
