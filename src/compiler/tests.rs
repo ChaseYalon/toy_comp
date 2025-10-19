@@ -142,13 +142,17 @@ fn test_compiler_string_concat() {
         r#"let x = "foo"; let y = "bar"; let z = x + y; println(z);"#,
         "string_concat"
     );
-    println!("out: {}", output);
     assert!(output.contains("foobar"));
 }
 
 #[test]
 fn test_compiler_print_bool() {
     compile_code_aot!(output, r#"print(true);"#, "print_bool");
-    println!("out: {}", output);
     assert!(output.contains("true"));
+}
+
+#[test]
+fn test_compiler_strlen() {
+    compile_code_aot!(output, r#"println(len("hi"));"#, "strlen");
+    assert!(output.contains("2"));
 }

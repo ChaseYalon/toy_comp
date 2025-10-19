@@ -100,8 +100,8 @@ int64_t toy_concat(int64_t sp1, int64_t sp2) {
         abort();
     }
     
-    strcpy(out, str1);
-    strcat(out, str2);
+    strcpy_s(out, combinedLen, str1);
+    strcat_s(out,combinedLen, str2);
     return (int64_t) out;
 }
 
@@ -114,4 +114,13 @@ int64_t toy_strequal(int64_t sp1, int64_t sp2) {
     } else {
         return 0; //boolean false
     }
+}
+
+int64_t toy_strlen(int64_t sp1) {
+    if (sp1 == 0) {
+        fprintf(stderr, "[ERROR] toy_strlen received a null pointer\n");
+        abort();
+    }
+    char* str1 = (char*) sp1;
+    return strlen(str1);
 }

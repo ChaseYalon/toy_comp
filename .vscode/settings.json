@@ -11,8 +11,11 @@
         "imul",
         "isub",
         "libcall",
+        "msys",
+        "msystem",
         "objdumping",
         "opps",
+        "println",
         "sdiv",
         "strequal",
         "uextend"

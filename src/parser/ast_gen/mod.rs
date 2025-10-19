@@ -51,9 +51,11 @@ impl AstGenerator {
         let mut fptm: HashMap<String, Vec<TypeTok>> = HashMap::new();
         fptm.insert("print".to_string(), [TypeTok::Any].to_vec());
         fptm.insert("println".to_string(), [TypeTok::Any].to_vec());
+        fptm.insert("len".to_string(), [TypeTok::Str].to_vec());
         let mut frtm: HashMap<String, TypeTok> = HashMap::new();
         frtm.insert("print".to_string(), TypeTok::Void);
         frtm.insert("println".to_string(), TypeTok::Void);
+        frtm.insert("len".to_string(), TypeTok::Int);
 
         return AstGenerator {
             boxes: b_vec,

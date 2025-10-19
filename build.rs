@@ -1,3 +1,3 @@
 fn main() {
-    cc::Build::new().file("src/c/builtins.c").compile("stub");
+    cc::Build::new().file("src/c/builtins.c").compile("builtins");
 }

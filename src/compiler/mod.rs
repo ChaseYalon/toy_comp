@@ -29,6 +29,7 @@ unsafe extern "C" {
     fn toy_malloc(ptr: i64) -> i64;
     fn toy_concat(sp1: i64, sp2: i64) -> i64;
     fn toy_strequal(sp1: i64, sp2: i64) -> i64;
+    fn toy_strlen(sp1: i64) -> i64;
 }
 
 pub enum OutputType {
@@ -95,6 +96,7 @@ impl Compiler {
         jit_builder.symbol("toy_malloc", toy_malloc as *const u8);
         jit_builder.symbol("toy_concat", toy_concat as *const u8);
         jit_builder.symbol("toy_strequal", toy_strequal as *const u8);
+        jit_builder.symbol("toy_strlen", toy_strlen as *const u8);
         JITModule::new(jit_builder)
     }
 
@@ -160,6 +162,14 @@ impl Compiler {
             .unwrap();
         self.funcs
             .insert("strequal".to_string(), (TypeTok::Bool, func));
+
+        let mut sig = module.make_signature();
+        sig.params.push(AbiParam::new(types::I64));
+        sig.returns.push(AbiParam::new(types::I64));
+        let func = module
+            .declare_function("toy_strlen", Linkage::Import, &sig)
+            .unwrap();
+        self.funcs.insert("len".to_string(), (TypeTok::Int, func));
     }
 
     fn compile_expr<M: Module>(
@@ -675,7 +685,7 @@ impl Compiler {
             let _ = std::fs::remove_file(stub_path);
             let _ = std::fs::remove_file(builtin_path);
             let args: Vec<String> = env::args().collect();
-            if !args.contains(&"--save-temp".to_string()){
+            if !args.contains(&"--save-temp".to_string()) {
                 let _ = std::fs::remove_file(obj_path);
             }
 
