@@ -34,5 +34,14 @@
     c. Linking --Done
     *Supported triplets are x86-unknown-windows-gnu and x86-unknown-linux-gnu coming soon
 5. Misc
-    a. Parens
-    b. Fix debug macro
+    a. Parens --Done
+    b. Fix debug macro -- TODO!!!
+6. Funcs
+    a. Regular --Done
+    b. Builtin --Done
+    c. Recursion --Done
+7. Strings
+    a. Literals --Done
+    b. Operations --Done
+8. Loops
+    a. While

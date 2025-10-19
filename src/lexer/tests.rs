@@ -498,3 +498,40 @@ fn test_lexer_fib() {
         ]
     )
 }
+#[test]
+fn test_lexer_compound_ops() {
+    let mut l = Lexer::new();
+    let out = l.lex("let x = 5; x += 2; x -= 1; x *= 3; x /= 2; x++; x--;".to_string());
+    assert_eq!(
+        out,
+        vec![
+            Token::Let,
+            Token::VarName(Box::new("x".to_string())),
+            Token::Assign,
+            Token::IntLit(5),
+            Token::Semicolon,
+            Token::VarRef(Box::new("x".to_string())),
+            Token::CompoundPlus,
+            Token::IntLit(2),
+            Token::Semicolon,
+            Token::VarRef(Box::new("x".to_string())),
+            Token::CompoundMinus,
+            Token::IntLit(1),
+            Token::Semicolon,
+            Token::VarRef(Box::new("x".to_string())),
+            Token::CompoundMultiply,
+            Token::IntLit(3),
+            Token::Semicolon,
+            Token::VarRef(Box::new("x".to_string())),
+            Token::CompoundDivide,
+            Token::IntLit(2),
+            Token::Semicolon,
+            Token::VarRef(Box::new("x".to_string())),
+            Token::PlusPlus,
+            Token::Semicolon,
+            Token::VarRef(Box::new("x".to_string())),
+            Token::MinusMinus,
+            Token::Semicolon,
+        ]
+    )
+}

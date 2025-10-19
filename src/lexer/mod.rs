@@ -100,24 +100,60 @@ impl Lexer {
                 continue;
             }
             if c == '+' {
+                if self.peek(1) == '=' {
+                    self.flush();
+                    self.toks.push(Token::CompoundPlus);
+                    self.cp += 2;
+                    continue;
+                }
+                if self.peek(1) == '+' {
+                    self.flush();
+                    self.toks.push(Token::PlusPlus);
+                    self.cp += 2;
+                    continue;
+                }
                 self.flush();
                 self.toks.push(Token::Plus);
                 self.eat();
                 continue;
             }
             if c == '-' {
+                if self.peek(1) == '=' {
+                    self.flush();
+                    self.toks.push(Token::CompoundMinus);
+                    self.cp += 2;
+                    continue;
+                }
+                if self.peek(1) == '-' {
+                    self.flush();
+                    self.toks.push(Token::MinusMinus);
+                    self.cp += 2;
+                    continue;
+                }
                 self.flush();
                 self.toks.push(Token::Minus);
                 self.eat();
                 continue;
             }
             if c == '*' {
+                if self.peek(1) == '=' {
+                    self.flush();
+                    self.toks.push(Token::CompoundMultiply);
+                    self.cp += 2;
+                    continue;
+                }
                 self.flush();
                 self.toks.push(Token::Multiply);
                 self.eat();
                 continue;
             }
             if c == '/' {
+                if self.peek(1) == '=' {
+                    self.flush();
+                    self.toks.push(Token::CompoundDivide);
+                    self.cp += 2;
+                    continue;
+                }
                 self.flush();
                 self.toks.push(Token::Divide);
                 self.eat();

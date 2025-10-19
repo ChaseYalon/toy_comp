@@ -14,7 +14,51 @@ impl Boxer {
             tp: 0,
         }
     }
-
+    fn pre_process(&self, input: &Vec<Token>) -> Vec<Token> {
+        let mut toks: Vec<Token> = Vec::new();
+        for (i, t) in input.iter().enumerate() {
+            if t.tok_type() == "CompoundPlus" {
+                toks.push(Token::Assign);
+                toks.push(input[i - 1].clone());
+                toks.push(Token::Plus);
+                continue;
+            }
+            if t.tok_type() == "CompoundMinus" {
+                toks.push(Token::Assign);
+                toks.push(input[i - 1].clone());
+                toks.push(Token::Minus);
+                continue;
+            }
+            if t.tok_type() == "CompoundMultiply" {
+                toks.push(Token::Assign);
+                toks.push(input[i - 1].clone());
+                toks.push(Token::Multiply);
+                continue;
+            }
+            if t.tok_type() == "CompoundDivide" {
+                toks.push(Token::Assign);
+                toks.push(input[i - 1].clone());
+                toks.push(Token::Divide);
+                continue;
+            }
+            if t.tok_type() == "PlusPlus" {
+                toks.push(Token::Assign);
+                toks.push(input[i - 1].clone());
+                toks.push(Token::Plus);
+                toks.push(Token::IntLit(1));
+                continue;
+            }
+            if t.tok_type() == "CompoundMinus" {
+                toks.push(Token::Assign);
+                toks.push(input[i - 1].clone());
+                toks.push(Token::Minus);
+                toks.push(Token::IntLit(1));
+                continue;
+            }
+            toks.push(t.clone());
+        }
+        return toks;
+    }
     fn box_var_dec(&self, input: &Vec<Token>) -> TBox {
         if input[0].tok_type() != "Let" {
             panic!(
@@ -346,7 +390,8 @@ impl Boxer {
 
     /// Recursively box tokens into structured TBoxes (proto-AST)
     pub fn box_toks(&mut self, input: Vec<Token>) -> Vec<TBox> {
-        self.toks = input.clone();
+        self.toks = self.pre_process(&input);
+        //self.toks = input.clone();
         self.tp = 0;
         self.box_group(self.toks.clone())
     }

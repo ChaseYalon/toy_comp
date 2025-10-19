@@ -45,8 +45,10 @@ fn main() {
             }
         }
     }
-
-    let filename = &args[1];
+    let mut filename: &String = &"NULL".to_string();
+    if args.len() > 1 {
+        filename = &args[1];
+    }
 
     let contents = fs::read_to_string(filename)
         .unwrap_or_else(|err| {

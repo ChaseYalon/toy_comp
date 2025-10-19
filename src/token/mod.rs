@@ -13,6 +13,12 @@ pub enum Token {
     Multiply,
     Divide,
     Modulo,
+    CompoundPlus,
+    CompoundMinus,
+    CompoundDivide,
+    CompoundMultiply,
+    PlusPlus,
+    MinusMinus,
 
     //Boolean infix opps
     Equals,
@@ -31,6 +37,9 @@ pub enum Token {
     Else,
     Func,
     Return,
+    Break,
+    Continue,
+    While,
 
     //Names
     VarName(Box<String>),
@@ -100,6 +109,15 @@ impl Token {
             Self::Return => "Return".to_string(),
             Self::Comma => "Comma".to_string(),
             Self::StringLit(_) => "StringLit".to_string(),
+            Self::While => "While".to_string(),
+            Self::Break => "BreaK".to_string(),
+            Self::Continue => "Continue".to_string(),
+            Self::CompoundPlus => "CompoundPlus".to_string(),
+            Self::CompoundMinus => "CompoundMinus".to_string(),
+            Self::CompoundDivide => "CompoundDivide".to_string(),
+            Self::CompoundMultiply => "CompoundMultiply".to_string(),
+            Self::PlusPlus => "PlusPlus".to_string(),
+            Self::MinusMinus => "MinusMinus".to_string()
         };
     }
     ///Is used to get value out of an int literal
@@ -154,6 +172,15 @@ impl fmt::Display for Token {
                 Token::Return => String::from("RETURN"),
                 Token::Comma => String::from("COMMA"),
                 Token::StringLit(s) => format!("STRING_LIT({})", s),
+                Token::While => String::from("WHILE"),
+                Token::Continue => String::from("CONTINUE"),
+                Token::Break => String::from("BREAK"),
+                Token::CompoundPlus => String::from("COMPOUND_PLUS"),
+                Token::CompoundMinus => String::from("COMPOUND_MINUS"),
+                Token::CompoundDivide => String::from("COMPOUND_MULTIPLY"),
+                Token::CompoundMultiply => String::from("COMPOUND_MULTIPLY"),
+                Token::PlusPlus => String::from("PLUS_PLUS"),
+                Token::MinusMinus => String::from("MINUS_MINUS"),
             }
         )
     }
