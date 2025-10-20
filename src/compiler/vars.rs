@@ -1,11 +1,13 @@
-use super::{Compiler, Scope};
+use super::{Compiler};
 use crate::debug;
 use crate::parser::ast::Ast;
 use crate::token::TypeTok;
+
 use cranelift::prelude::*;
 use cranelift_module::Module;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::collections::HashMap;
 
 impl Compiler {
     pub fn compile_var_reassign<M: Module>(
@@ -67,5 +69,33 @@ impl Compiler {
         debug!(targets: ["compiler_verbose"], val);
         debug!(targets: ["compiler_verbose"], var);
         scope.borrow_mut().set(name, var, t_o.clone());
+    }
+}
+#[derive(Debug, Clone, Default)]
+pub struct Scope {
+    pub vars: HashMap<String, (Variable, TypeTok)>,
+    pub parent: Option<Rc<RefCell<Scope>>>,
+}
+
+impl Scope {
+    pub fn new_child(parent: &Rc<RefCell<Scope>>) -> Rc<RefCell<Scope>> {
+        Rc::new(RefCell::new(Scope {
+            vars: HashMap::new(),
+            parent: Some(parent.clone()),
+        }))
+    }
+
+    pub fn set(&mut self, name: String, val: Variable, ty: TypeTok) {
+        self.vars.insert(name, (val, ty));
+    }
+
+    pub fn get(&self, name: String) -> (Variable, TypeTok) {
+        if self.vars.contains_key(&name) {
+            return self.vars.get(&name).unwrap().clone();
+        }
+        if self.parent.is_none() {
+            panic!("[ERROR] Variable \"{}\" is undefined", name);
+        }
+        return self.parent.as_ref().unwrap().borrow().get(name);
     }
 }
