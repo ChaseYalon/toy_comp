@@ -156,3 +156,11 @@ fn test_compiler_strlen() {
     compile_code_aot!(output, r#"println(len("hi"));"#, "strlen");
     assert!(output.contains("2"));
 }
+#[test]
+fn test_compiler_while() {
+    compile_code!(
+        code_fn,
+        "let x = 0; while x < 10 {if x == 0{x++;continue;} if x == 7{break;} x++;} x;"
+    );
+    assert_eq!(code_fn(), 7)
+}

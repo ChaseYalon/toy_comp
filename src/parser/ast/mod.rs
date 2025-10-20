@@ -32,6 +32,12 @@ pub enum Ast {
     Return(Box<Ast>),
 
     StringLit(Box<String>),
+
+    ///Condition, Body
+    WhileStmt(Box<Ast>, Vec<Ast>),
+
+    Break,
+    Continue,
 }
 impl Ast {
     pub fn node_type(&self) -> String {
@@ -49,6 +55,9 @@ impl Ast {
             Ast::FuncCall(_, _) => "FuncCall".to_string(),
             Ast::Return(_) => "Return".to_string(),
             Ast::StringLit(_) => "StringLit".to_string(),
+            Ast::WhileStmt(_, _) => "WhileStmt".to_string(),
+            Ast::Continue => "Continue".to_string(),
+            Ast::Break => "Break".to_string(),
         };
     }
 }
@@ -95,6 +104,10 @@ impl fmt::Display for Ast {
                     format!("FuncCall, Name({}), Params({:?})", *name, params),
                 Ast::Return(val) => format!("Return Val({})", *val),
                 Ast::StringLit(s) => format!("StringLit Val({})", *s),
+                Ast::WhileStmt(cond, body) =>
+                    format!("WhileStmt Cond({}), Body({:?})", *cond, body),
+                Ast::Break => "Break".to_string(),
+                Ast::Continue => "Continue".to_string(),
             }
         )
     }

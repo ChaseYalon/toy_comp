@@ -311,3 +311,157 @@ fn test_boxer_string_lit() {
         )]
     )
 }
+#[test]
+fn test_boxer_while_loops() {
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let toks =
+        l.lex("let x = 0; while x < 10{if x == 0{continue;} if x == 7{break;} x++;}x;".to_string());
+    let boxes = b.box_toks(toks);
+    assert_eq!(
+        boxes,
+        vec![
+            TBox::VarDec(
+                Token::VarName(Box::new("x".to_string())),
+                None,
+                vec![Token::IntLit(0)]
+            ),
+            TBox::While(
+                vec![
+                    Token::VarRef(Box::new("x".to_string())),
+                    Token::LessThan,
+                    Token::IntLit(10)
+                ],
+                vec![
+                    TBox::IfStmt(
+                        vec![
+                            Token::VarRef(Box::new("x".to_string())),
+                            Token::Equals,
+                            Token::IntLit(0),
+                        ],
+                        vec![TBox::Continue],
+                        None,
+                    ),
+                    TBox::IfStmt(
+                        vec![
+                            Token::VarRef(Box::new("x".to_string())),
+                            Token::Equals,
+                            Token::IntLit(7)
+                        ],
+                        vec![TBox::Break],
+                        None
+                    ),
+                    TBox::VarReassign(
+                        Token::VarRef(Box::new("x".to_string())),
+                        vec![
+                            Token::VarRef(Box::new("x".to_string())),
+                            Token::Plus,
+                            Token::IntLit(1),
+                        ]
+                    )
+                ]
+            ),
+            TBox::Expr(vec![Token::VarRef(Box::new("x".to_string()))])
+        ]
+    )
+}
+
+#[test]
+fn test_boxer_fn_loop() {
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let toks = l.lex("fn loop(): int{let x = 0; while x<10{if x == 1{x++; continue;} if x == 7{break} x++;} return x;} loop();".to_string());
+    let boxes = b.box_toks(toks);
+    assert_eq!(
+        boxes,
+        vec![
+            TBox::FuncDec(
+                Token::VarName(Box::new("loop".to_string())),
+                vec![],
+                TypeTok::Int,
+                vec![
+                    TBox::VarDec(
+                        Token::VarName(Box::new("x".to_string())),
+                        None,
+                        vec![Token::IntLit(0)]
+                    ),
+                    TBox::While(
+                        vec![
+                            Token::VarRef(Box::new("x".to_string())),
+                            Token::LessThan,
+                            Token::IntLit(10)
+                        ],
+                        vec![
+                            TBox::IfStmt(
+                                vec![
+                                    Token::VarRef(Box::new("x".to_string())),
+                                    Token::Equals,
+                                    Token::IntLit(1)
+                                ],
+                                vec![
+                                    TBox::VarReassign(
+                                        Token::VarRef(Box::new("x".to_string())),
+                                        vec![
+                                            Token::VarRef(Box::new("x".to_string())),
+                                            Token::Plus,
+                                            Token::IntLit(1)
+                                        ]
+                                    ),
+                                    TBox::Continue
+                                ],
+                                None
+                            ),
+                            TBox::IfStmt(
+                                vec![
+                                    Token::VarRef(Box::new("x".to_string())),
+                                    Token::Equals,
+                                    Token::IntLit(7)
+                                ],
+                                vec![TBox::Break],
+                                None
+                            ),
+                            TBox::VarReassign(
+                                Token::VarRef(Box::new("x".to_string())),
+                                vec![
+                                    Token::VarRef(Box::new("x".to_string())),
+                                    Token::Plus,
+                                    Token::IntLit(1)
+                                ]
+                            )
+                        ]
+                    ),
+                    TBox::Return(Box::new(TBox::Expr(vec![Token::VarRef(Box::new("x".to_string()))])))
+                ]
+            ),
+            TBox::Expr(vec![
+                Token::VarRef(Box::new("loop".to_string())),
+                Token::LParen,
+                Token::RParen
+            ])
+        ]
+    );
+}
+
+#[test]
+fn test_boxer_fn_no_params() {
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let toks = l.lex("fn foo(): int{ return 1;} foo();".to_string());
+    let boxes = b.box_toks(toks);
+    assert_eq!(
+        boxes,
+        vec![
+            TBox::FuncDec(
+                Token::VarName(Box::new("foo".to_string())),
+                vec![],
+                TypeTok::Int,
+                vec![TBox::Return(Box::new(TBox::Expr(vec![Token::IntLit(1)])))]
+            ),
+            TBox::Expr(vec![
+                Token::VarRef(Box::new("foo".to_string())),
+                Token::LParen,
+                Token::RParen
+            ])
+        ]
+    )
+}

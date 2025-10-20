@@ -103,6 +103,34 @@ impl Boxer {
         }
         TBox::VarReassign(input[0].clone(), input[2..].to_vec())
     }
+    fn box_while_stmt(&mut self, input: &Vec<Token>) -> TBox {
+        if input[0].tok_type() != "While" {
+            panic!("[ERROR] Expected a while token, got {}", input[0].clone());
+        }
+
+        let mut cond: Vec<Token> = Vec::new();
+        let mut brace_start_idx = None;
+
+        for (i, t) in input.iter().enumerate().skip(1) {
+            if t.tok_type() == "LBrace" {
+                brace_start_idx = Some(i);
+                break;
+            }
+            cond.push(t.clone());
+        }
+
+        let brace_start_idx =
+            brace_start_idx.unwrap_or_else(|| panic!("[ERROR] Expected '{{' in while statement"));
+
+        if input.last().unwrap().tok_type() != "RBrace" {
+            panic!("[ERROR] Expected closing brace in while statement");
+        }
+
+        let body_toks = input[brace_start_idx + 1..input.len() - 1].to_vec();
+        let boxed_body = self.box_group(body_toks);
+
+        TBox::While(cond, boxed_body)
+    }
 
     fn box_group(&mut self, input: Vec<Token>) -> Vec<TBox> {
         let mut boxes: Vec<TBox> = Vec::new();
@@ -147,7 +175,43 @@ impl Boxer {
                 i += consumed;
                 continue;
             }
+            if ty == "While" && brace_depth == 0 && paren_depth == 0 {
+                if !curr.is_empty() {
+                    boxes.push(self.box_statement(curr.clone()));
+                    curr.clear();
+                }
 
+                let mut while_end = i + 1;
+
+                while while_end < input.len() && input[while_end].tok_type() != "LBrace" {
+                    while_end += 1;
+                }
+
+                if while_end >= input.len() {
+                    panic!("[ERROR] While loop missing body");
+                }
+
+                let mut depth = 1;
+                while_end += 1; // Move past the opening brace
+
+                while while_end < input.len() && depth > 0 {
+                    if input[while_end].tok_type() == "LBrace" {
+                        depth += 1;
+                    } else if input[while_end].tok_type() == "RBrace" {
+                        depth -= 1;
+                    }
+                    while_end += 1;
+                }
+
+                if depth != 0 {
+                    panic!("[ERROR] Unterminated while loop");
+                }
+
+                let while_slice = input[i..while_end].to_vec();
+                boxes.push(self.box_while_stmt(&while_slice));
+                i = while_end;
+                continue;
+            }
             if ty == "Func" && brace_depth == 0 && paren_depth == 0 {
                 if !curr.is_empty() {
                     boxes.push(self.box_statement(curr.clone()));
@@ -199,10 +263,12 @@ impl Boxer {
 
     fn box_params(&mut self, input: Vec<Token>) -> Vec<TBox> {
         //The structure of the input should be VarRef, Colon, Type, comma
-
+        if input.len() < 3 {
+            //no params
+            return [].to_vec();
+        }
         //Split by comma
         let triplets: Vec<&[Token]> = input.as_slice().split(|t| *t == Token::Comma).collect();
-
         let mut func_params: Vec<TBox> = Vec::new();
         for triple in triplets {
             if triple[0].tok_type() != "VarRef" {
@@ -301,11 +367,15 @@ impl Boxer {
         if first == "Return" {
             return TBox::Return(Box::new(TBox::Expr(toks[1..toks.len()].to_vec())));
         }
-
+        if first == "Break" {
+            return TBox::Break;
+        }
+        if first == "Continue" {
+            return TBox::Continue;
+        }
         if toks.len() > 2 && toks[0].tok_type() == "VarRef" && toks[1].tok_type() == "Assign" {
             return self.box_var_ref(&toks);
         }
-
         TBox::Expr(toks)
     }
 

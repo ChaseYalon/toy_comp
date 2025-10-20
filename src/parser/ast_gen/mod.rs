@@ -364,7 +364,20 @@ impl AstGenerator {
                 return Ast::Return(Box::new(res));
             }
 
-            _ => todo!("Unimplemented stmt, {}", val),
+            TBox::While(expr, body) => {
+                let parsed_expr = self.parse_bool_expr(&expr);
+                let mut parsed_body: Vec<Ast> = Vec::new();
+                for stmt in body {
+                    parsed_body.push(self.parse_stmt(stmt, false))
+                }
+                if should_eat{
+                    self.eat();
+                }
+                return Ast::WhileStmt(Box::new(parsed_expr), parsed_body);
+            }
+            TBox::Continue => Ast::Continue,
+            TBox::Break => Ast::Break,
+            _ => todo!("Unimplemented statement"),
         };
 
         if should_eat {

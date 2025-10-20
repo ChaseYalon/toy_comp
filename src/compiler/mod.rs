@@ -44,6 +44,8 @@ pub struct Compiler {
     main_scope: Rc<RefCell<Scope>>,
     funcs: HashMap<String, (TypeTok, FuncId)>,
     func_ir: Vec<String>,
+    loop_cond_block: Option<Block>,
+    loop_merge_block: Option<Block>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -86,6 +88,8 @@ impl Compiler {
             })),
             funcs: HashMap::new(),
             func_ir: Vec::new(),
+            loop_cond_block: None,
+            loop_merge_block: None,
         }
     }
 
@@ -407,11 +411,19 @@ impl Compiler {
         let then_scope = Scope::new_child(scope);
         let mut then_has_terminator = false;
         for stmt in body_asts {
+            if matches!(stmt, Ast::Break | Ast::Continue) {
+                self.compile_stmt(stmt.clone(), _module, builder, &then_scope);
+                then_has_terminator = true;
+                break;
+            }
+
             self.compile_stmt(stmt.clone(), _module, builder, &then_scope);
+
             if let Some(current_block) = builder.current_block() {
                 if let Some(last_inst) = builder.func.layout.last_inst(current_block) {
                     if builder.func.dfg.insts[last_inst].opcode().is_terminator() {
                         then_has_terminator = true;
+                        break;
                     }
                 }
             }
@@ -428,12 +440,19 @@ impl Compiler {
         if let Some(alt_stmts) = alt_op {
             let else_scope = Scope::new_child(scope);
             for stmt in alt_stmts {
+                if matches!(stmt, Ast::Break | Ast::Continue) {
+                    self.compile_stmt(stmt.clone(), _module, builder, &else_scope);
+                    else_has_terminator = true;
+                    break;
+                }
+
                 self.compile_stmt(stmt.clone(), _module, builder, &else_scope);
-                // Check if we just added a return (or other terminator)
+
                 if let Some(current_block) = builder.current_block() {
                     if let Some(last_inst) = builder.func.layout.last_inst(current_block) {
                         if builder.func.dfg.insts[last_inst].opcode().is_terminator() {
                             else_has_terminator = true;
+                            break;
                         }
                     }
                 }
@@ -445,10 +464,8 @@ impl Compiler {
         }
 
         builder.switch_to_block(merge_block);
-
         builder.seal_block(merge_block);
     }
-
     fn compile_func_dec<M: Module>(
         &mut self,
         node: Ast,
@@ -528,6 +545,80 @@ impl Compiler {
         }
         _module.clear_context(&mut ctx);
     }
+    fn compile_while_stmt<M: Module>(
+        &mut self,
+        node: &Ast,
+        _module: &mut M,
+        func_builder: &mut FunctionBuilder<'_>,
+        scope: &Rc<RefCell<Scope>>,
+    ) {
+        let (cond, body) = match node.clone() {
+            Ast::WhileStmt(c, b) => (*c, b),
+            _ => unreachable!(),
+        };
+
+        let cond_block = func_builder.create_block();
+        let body_block = func_builder.create_block();
+        let merge_block = func_builder.create_block();
+
+        let prev_cond = self.loop_cond_block;
+        let prev_merge = self.loop_merge_block;
+
+        self.loop_cond_block = Some(cond_block);
+        self.loop_merge_block = Some(merge_block);
+
+        func_builder.ins().jump(cond_block, &[]);
+
+        func_builder.switch_to_block(cond_block);
+        let (v, t) = self.compile_expr(&cond, _module, func_builder, scope);
+        if t != TypeTok::Bool {
+            panic!("[ERROR] While statement must have boolean expression");
+        }
+        func_builder
+            .ins()
+            .brif(v, body_block, &[], merge_block, &[]);
+
+        func_builder.switch_to_block(body_block);
+        let child_scope = Scope::new_child(scope);
+
+        for stmt in body {
+            if let Some(current_block) = func_builder.current_block() {
+                if let Some(last_inst) = func_builder.func.layout.last_inst(current_block) {
+                    if func_builder.func.dfg.insts[last_inst]
+                        .opcode()
+                        .is_terminator()
+                    {
+                        break;
+                    }
+                }
+            }
+
+            debug!(targets: ["compiler", "compiler_verbose"], format!("Current stmt {}", stmt));
+            self.compile_stmt(stmt, _module, func_builder, &child_scope);
+        }
+
+        if let Some(current_block) = func_builder.current_block() {
+            if let Some(last_inst) = func_builder.func.layout.last_inst(current_block) {
+                if !func_builder.func.dfg.insts[last_inst]
+                    .opcode()
+                    .is_terminator()
+                {
+                    func_builder.ins().jump(cond_block, &[]);
+                }
+            } else {
+                func_builder.ins().jump(cond_block, &[]);
+            }
+        }
+
+        func_builder.switch_to_block(merge_block);
+        func_builder.seal_block(cond_block);
+        func_builder.seal_block(body_block);
+        func_builder.seal_block(merge_block);
+
+        self.loop_cond_block = prev_cond;
+        self.loop_merge_block = prev_merge;
+    }
+
     fn compile_stmt<M: Module>(
         &mut self,
         node: Ast,
@@ -535,9 +626,27 @@ impl Compiler {
         func_builder: &mut FunctionBuilder<'_>,
         scope: &Rc<RefCell<Scope>>,
     ) -> Option<(Value, TypeTok)> {
+        debug!(targets: ["compiler_verbose"], "in compile stmt");
         let mut last_val = None;
-        debug!(targets: ["compiler"], format!("compile_stmt: node_type={}", node.node_type()).as_str());
 
+        if node.node_type() == "Break" {
+            if let Some(merge_block) = self.loop_merge_block {
+                func_builder.ins().jump(merge_block, &[]);
+            } else {
+                panic!("[ERROR] Break statement outside of loop");
+            }
+            return None;
+        }
+
+        if node.node_type() == "Continue" {
+            if let Some(cond_block) = self.loop_cond_block {
+                func_builder.ins().jump(cond_block, &[]);
+            } else {
+                panic!("[ERROR] Continue statement outside of loop");
+            }
+            return None;
+        }
+        println!("Stmt: {}", node);
         if node.node_type() == "IntLit"
             || node.node_type() == "InfixExpr"
             || node.node_type() == "VarRef"
@@ -560,10 +669,12 @@ impl Compiler {
             let child_scope = Scope::new_child(&scope);
             self.compile_if_stmt(&node, _module, func_builder, &child_scope);
         }
+
         if node.node_type() == "FuncDec" {
             let child_scope = Scope::new_child(&scope);
             self.compile_func_dec(node.clone(), _module, &child_scope);
         }
+
         if node.clone().node_type() == "EmptyExpr" {
             let child = match node.clone() {
                 Ast::EmptyExpr(chi) => *chi,
@@ -571,6 +682,7 @@ impl Compiler {
             };
             self.compile_expr(&child, _module, func_builder, scope);
         }
+
         if node.node_type() == "Return" {
             let expr = match node.clone() {
                 Ast::Return(v) => *v,
@@ -578,6 +690,10 @@ impl Compiler {
             };
             let (val, _) = self.compile_expr(&expr, _module, func_builder, scope);
             func_builder.ins().return_(&[val]);
+        }
+
+        if node.node_type() == "WhileStmt" {
+            self.compile_while_stmt(&node, _module, func_builder, scope);
         }
 
         last_val
@@ -606,6 +722,7 @@ impl Compiler {
             last_val = self.compile_stmt(node, module, &mut func_builder, &sudo_main_scope);
         }
 
+        debug!(targets: ["compiler_verbose"], format!("Last val: {:?}", last_val));
         let (ret_val, _) =
             last_val.unwrap_or_else(|| (func_builder.ins().iconst(types::I64, 0), TypeTok::Int));
         func_builder.ins().return_(&[ret_val]);
@@ -643,7 +760,6 @@ impl Compiler {
         if !should_jit {
             let o_path = path.unwrap_or("program.exe");
 
-            // Create unique intermediate file names based on output path
             let base_name = Path::new(o_path)
                 .file_stem()
                 .and_then(|s| s.to_str())
@@ -666,7 +782,6 @@ impl Compiler {
             let mut builtin_file = File::create(&builtin_path).unwrap();
             builtin_file.write_all(BUILTIN_C.as_bytes()).unwrap();
 
-            // Call GCC to link the object file and the stub
             let status = Command::new("gcc")
                 .args(&[
                     obj_path.to_str().unwrap(),

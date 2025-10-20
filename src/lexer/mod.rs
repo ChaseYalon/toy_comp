@@ -92,6 +92,15 @@ impl Lexer {
             if self.lex_keyword("str", Token::Type(TypeTok::Str)) {
                 continue;
             }
+            if self.lex_keyword("while", Token::While) {
+                continue;
+            }
+            if self.lex_keyword("break", Token::Break) {
+                continue;
+            }
+            if self.lex_keyword("continue", Token::Continue) {
+                continue;
+            }
 
             if c.is_ascii_digit() {
                 debug!(targets: ["lexer_verbose"], "In ascii print");

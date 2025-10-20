@@ -76,7 +76,7 @@ int64_t toy_malloc(int64_t ptr) {
         fprintf(stderr, "[ERROR] Toy malloc failed\n");
         abort();
     }
-    strcpy(out, input);
+    strcpy_s(out, len + 1, input);
     
     return (int64_t) out;
 }

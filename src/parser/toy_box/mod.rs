@@ -18,6 +18,10 @@ pub enum TBox {
     FuncDec(Token, Vec<TBox>, TypeTok, Vec<TBox>),
     ///Contains value to return
     Return(Box<TBox>),
+    ///Condition, body
+    While(Vec<Token>, Vec<TBox>),
+    Break,
+    Continue,
 }
 
 impl fmt::Display for TBox {
@@ -45,6 +49,9 @@ impl fmt::Display for TBox {
                     name, params, return_type, body
                 ),
                 TBox::Return(val) => format!("TBox_Return Val({:?})", val),
+                TBox::While(cond, body) => format!("TBox_While Cond({:?}), Body({:?})", cond, body),
+                TBox::Break => "TBox_break".to_string(),
+                TBox::Continue => "TBox_continue".to_string(),
             }
         )
     }

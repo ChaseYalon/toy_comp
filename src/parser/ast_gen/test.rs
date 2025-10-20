@@ -410,7 +410,8 @@ fn test_ast_gen_print_int_bool() {
 
 #[test]
 fn test_ast_gen_fibonacci() {
-    setup_ast!(r#"
+    setup_ast!(
+        r#"
         fn fib(n: int): int{
             if n == 0 {
                 return 0;
@@ -421,96 +422,117 @@ fn test_ast_gen_fibonacci() {
             return fib(n - 1) + fib(n - 2);
         }
         println(fib(5));
-    "#, ast);
+    "#,
+        ast
+    );
     assert_eq!(
         ast,
         vec![
             Ast::FuncDec(
-                Box::new("fib".to_string()), 
-                vec![
-                    Ast::FuncParam(
-                        Box::new("n".to_string()), 
-                        TypeTok::Int
-                    )
-                ], 
-                TypeTok::Int, 
+                Box::new("fib".to_string()),
+                vec![Ast::FuncParam(Box::new("n".to_string()), TypeTok::Int)],
+                TypeTok::Int,
                 vec![
                     Ast::IfStmt(
-                        Box::new(
-                            Ast::InfixExpr(
-                                Box::new(Ast::VarRef(Box::new("n".to_string()))), 
-                                Box::new(Ast::IntLit(0)), 
-                                InfixOp::Equals
-                            )
-                        ), 
-                        vec![
-                            Ast::Return(
-                                Box::new(Ast::IntLit(0))
-                            )
-                        ], 
+                        Box::new(Ast::InfixExpr(
+                            Box::new(Ast::VarRef(Box::new("n".to_string()))),
+                            Box::new(Ast::IntLit(0)),
+                            InfixOp::Equals
+                        )),
+                        vec![Ast::Return(Box::new(Ast::IntLit(0)))],
                         None
                     ),
                     Ast::IfStmt(
-                        Box::new(
-                            Ast::InfixExpr(
-                                Box::new(Ast::VarRef(Box::new("n".to_string()))), 
-                                Box::new(Ast::IntLit(1)), 
-                                InfixOp::Equals
-                            )
-                        ), 
-                        vec![
-                            Ast::Return(
-                                Box::new(Ast::IntLit(1))
-                            )
-                        ], 
+                        Box::new(Ast::InfixExpr(
+                            Box::new(Ast::VarRef(Box::new("n".to_string()))),
+                            Box::new(Ast::IntLit(1)),
+                            InfixOp::Equals
+                        )),
+                        vec![Ast::Return(Box::new(Ast::IntLit(1)))],
                         None
                     ),
-                    Ast::Return(
-                        Box::new(
-                            Ast::InfixExpr(
-                                Box::new(
-                                    Ast::FuncCall(
-                                        Box::new("fib".to_string()), 
-                                        vec![
-                                            Ast::InfixExpr(
-                                                Box::new(Ast::VarRef(Box::new("n".to_string()))), 
-                                                Box::new(Ast::IntLit(1)), 
-                                                InfixOp::Minus,
-                                            )
-                                        ]
-                                    )
-                                ), 
-                                Box::new(
-                                    Ast::FuncCall(
-                                        Box::new("fib".to_string()), 
-                                        vec![
-                                            Ast::InfixExpr(
-                                                Box::new(Ast::VarRef(Box::new("n".to_string()))),
-                                                Box::new(Ast::IntLit(2)), 
-                                                InfixOp::Minus,
-                                            )
-                                        ]
-                                    )
-                                ), 
-                                InfixOp::Plus
-                            )
-                        )
-                    )
+                    Ast::Return(Box::new(Ast::InfixExpr(
+                        Box::new(Ast::FuncCall(
+                            Box::new("fib".to_string()),
+                            vec![Ast::InfixExpr(
+                                Box::new(Ast::VarRef(Box::new("n".to_string()))),
+                                Box::new(Ast::IntLit(1)),
+                                InfixOp::Minus,
+                            )]
+                        )),
+                        Box::new(Ast::FuncCall(
+                            Box::new("fib".to_string()),
+                            vec![Ast::InfixExpr(
+                                Box::new(Ast::VarRef(Box::new("n".to_string()))),
+                                Box::new(Ast::IntLit(2)),
+                                InfixOp::Minus,
+                            )]
+                        )),
+                        InfixOp::Plus
+                    )))
                 ]
             ),
             Ast::FuncCall(
-                Box::new("println".to_string()), 
-                vec![
-                    Ast::FuncCall(
-                        Box::new("fib".to_string()), 
-                        vec![
-                            Ast::IntLit(
-                                5
-                            )
-                        ]
-                    )
-                ]
+                Box::new("println".to_string()),
+                vec![Ast::FuncCall(
+                    Box::new("fib".to_string()),
+                    vec![Ast::IntLit(5)]
+                )]
             )
+        ]
+    )
+}
+
+#[test]
+fn test_ast_gen_while() {
+    setup_ast!(
+        "let x = 0; while x < 10 { if x == 0{continue;} if x == 7{break;} x++;} x;",
+        ast
+    );
+    assert_eq!(
+        ast,
+        vec![
+            Ast::VarDec(
+                Box::new("x".to_string()),
+                TypeTok::Int,
+                Box::new(Ast::IntLit(0))
+            ),
+            Ast::WhileStmt(
+                Box::new(Ast::InfixExpr(
+                    Box::new(Ast::VarRef(Box::new("x".to_string()))),
+                    Box::new(Ast::IntLit(10)),
+                    InfixOp::LessThan
+                )),
+                vec![
+                    Ast::IfStmt(
+                        Box::new(Ast::InfixExpr(
+                            Box::new(Ast::VarRef(Box::new("x".to_string()))),
+                            Box::new(Ast::IntLit(0)),
+                            InfixOp::Equals
+                        )),
+                        vec![Ast::Continue],
+                        None
+                    ),
+                    Ast::IfStmt(
+                        Box::new(Ast::InfixExpr(
+                            Box::new(Ast::VarRef(Box::new("x".to_string()))),
+                            Box::new(Ast::IntLit(7)),
+                            InfixOp::Equals
+                        )),
+                        vec![Ast::Break],
+                        None
+                    ),
+                    Ast::VarReassign(
+                        Box::new("x".to_string()),
+                        Box::new(Ast::InfixExpr(
+                            Box::new(Ast::VarRef(Box::new("x".to_string()))),
+                            Box::new(Ast::IntLit(1)),
+                            InfixOp::Plus
+                        ))
+                    ),
+                ]
+            ),
+            Ast::VarRef(Box::new("x".to_string()))
         ]
     )
 }

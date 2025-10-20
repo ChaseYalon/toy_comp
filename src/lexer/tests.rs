@@ -438,7 +438,8 @@ fn test_lexer_fib() {
             return fib(n - 1) + fib(n - 2);
         }
         println(fib(5));
-        "#.to_string()
+        "#
+        .to_string(),
     );
     assert_eq!(
         out,
@@ -532,6 +533,48 @@ fn test_lexer_compound_ops() {
             Token::VarRef(Box::new("x".to_string())),
             Token::MinusMinus,
             Token::Semicolon,
+        ]
+    )
+}
+
+#[test]
+fn test_lexer_while_loop() {
+    let mut l = Lexer::new();
+    let out =
+        l.lex("let x = 0; while x < 10 {if x == 0{continue;} if x == 7 {break;} x++;}".to_string());
+    assert_eq!(
+        out,
+        vec![
+            Token::Let,
+            Token::VarName(Box::new("x".to_string())),
+            Token::Assign,
+            Token::IntLit(0),
+            Token::Semicolon,
+            Token::While,
+            Token::VarRef(Box::new("x".to_string())),
+            Token::LessThan,
+            Token::IntLit(10),
+            Token::LBrace,
+            Token::If,
+            Token::VarRef(Box::new("x".to_string())),
+            Token::Equals,
+            Token::IntLit(0),
+            Token::LBrace,
+            Token::Continue,
+            Token::Semicolon,
+            Token::RBrace,
+            Token::If,
+            Token::VarRef(Box::new("x".to_string())),
+            Token::Equals,
+            Token::IntLit(7),
+            Token::LBrace,
+            Token::Break,
+            Token::Semicolon,
+            Token::RBrace,
+            Token::VarRef(Box::new("x".to_string())),
+            Token::PlusPlus,
+            Token::Semicolon,
+            Token::RBrace,
         ]
     )
 }

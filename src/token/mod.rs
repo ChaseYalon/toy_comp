@@ -110,14 +110,14 @@ impl Token {
             Self::Comma => "Comma".to_string(),
             Self::StringLit(_) => "StringLit".to_string(),
             Self::While => "While".to_string(),
-            Self::Break => "BreaK".to_string(),
+            Self::Break => "Break".to_string(),
             Self::Continue => "Continue".to_string(),
             Self::CompoundPlus => "CompoundPlus".to_string(),
             Self::CompoundMinus => "CompoundMinus".to_string(),
             Self::CompoundDivide => "CompoundDivide".to_string(),
             Self::CompoundMultiply => "CompoundMultiply".to_string(),
             Self::PlusPlus => "PlusPlus".to_string(),
-            Self::MinusMinus => "MinusMinus".to_string()
+            Self::MinusMinus => "MinusMinus".to_string(),
         };
     }
     ///Is used to get value out of an int literal
