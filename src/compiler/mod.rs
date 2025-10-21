@@ -1,9 +1,5 @@
 use crate::debug;
-use crate::{
-    parser::ast::{Ast},
-    token::TypeTok,
-    compiler::vars::Scope
-};
+use crate::{compiler::vars::Scope, parser::ast::Ast, token::TypeTok};
 use cranelift::prelude::*;
 use cranelift_codegen::Context;
 use cranelift_jit::JITModule;
@@ -20,10 +16,10 @@ use std::path::Path;
 use std::process::Command;
 use std::rc::Rc;
 
-mod vars;
 mod exprs;
 mod internals;
 mod stmts;
+mod vars;
 
 pub enum OutputType {
     Jit(JITModule),
@@ -40,7 +36,6 @@ pub struct Compiler {
     loop_cond_block: Option<Block>,
     loop_merge_block: Option<Block>,
 }
-
 
 impl Compiler {
     pub fn new() -> Compiler {
@@ -175,7 +170,6 @@ impl Compiler {
         let code_ptr = module.get_finalized_function(func_id);
         Some(unsafe { std::mem::transmute::<_, fn() -> i64>(code_ptr) })
     }
-
 }
 
 #[cfg(test)]

@@ -1,7 +1,7 @@
 use super::{Compiler, Scope};
+use crate::debug;
 use crate::parser::ast::Ast;
 use crate::token::TypeTok;
-use crate::debug;
 use cranelift::prelude::*;
 use cranelift_module::{Linkage, Module};
 
@@ -9,8 +9,8 @@ use std::cell::RefCell;
 use std::env;
 use std::rc::Rc;
 
-impl Compiler{
-        fn compile_if_stmt<M: Module>(
+impl Compiler {
+    fn compile_if_stmt<M: Module>(
         &mut self,
         node: &Ast,
         _module: &mut M,
@@ -324,5 +324,4 @@ impl Compiler{
 
         last_val
     }
-
 }

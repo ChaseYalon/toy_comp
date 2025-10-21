@@ -430,7 +430,9 @@ fn test_boxer_fn_loop() {
                             )
                         ]
                     ),
-                    TBox::Return(Box::new(TBox::Expr(vec![Token::VarRef(Box::new("x".to_string()))])))
+                    TBox::Return(Box::new(TBox::Expr(vec![Token::VarRef(Box::new(
+                        "x".to_string()
+                    ))])))
                 ]
             ),
             TBox::Expr(vec![

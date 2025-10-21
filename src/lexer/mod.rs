@@ -1,5 +1,6 @@
 use crate::debug;
 use crate::token::{Token, TypeTok};
+use ordered_float::OrderedFloat;
 
 #[derive(Debug)]
 pub struct Lexer {
@@ -111,8 +112,11 @@ impl Lexer {
             if self.lex_keyword("continue", Token::Continue) {
                 continue;
             }
+            if self.lex_keyword("float", Token::Type(TypeTok::Float)) {
+                continue;
+            }
 
-            if c.is_ascii_digit() {
+            if c.is_ascii_digit() || c == '.' {
                 debug!(targets: ["lexer_verbose"], "In ascii print");
                 self.num_buf.push(c);
                 self.eat();
@@ -292,7 +296,7 @@ impl Lexer {
                 continue;
             }
             if c.is_ascii() {
-                self.flush_int();
+                self.flush_num();
                 self.str_buf.push(c);
                 self.eat();
                 continue;
@@ -303,7 +307,7 @@ impl Lexer {
         debug!(targets: ["lexer_verbose"], self.toks.clone());
 
         //Catch any trailing its
-        self.flush_int();
+        self.flush_num();
         let to_ret = self.toks.clone();
         self.clean_up();
         return to_ret;
@@ -312,30 +316,38 @@ impl Lexer {
         self.cp += 1;
     }
     fn flush(&mut self) {
-        self.flush_int();
+        self.flush_num();
         self.flush_str();
     }
-    fn flush_int(&mut self) {
+    fn flush_num(&mut self) {
         if self.num_buf.len() == 0 {
             return;
         }
         let proto_output: String = self.num_buf.clone().into_iter().collect();
-        let output: i64 = proto_output.parse().unwrap();
+        if proto_output.contains('.') {
+            println!("{:?}", proto_output);
+            let output: f64 = proto_output.parse().unwrap();
+            self.num_buf = Vec::new();
+            self.toks.push(Token::FloatLit(OrderedFloat(output)));
+            return;
+        }
+        let output:i64  = proto_output.parse().unwrap();
+
         self.num_buf = Vec::new();
         self.toks.push(Token::IntLit(output));
     }
-fn flush_str(&mut self) {
+    fn flush_str(&mut self) {
         if self.in_str_lit {
             let proto_output: String = self.str_buf.clone().into_iter().collect();
             self.toks.push(Token::StringLit(Box::new(proto_output)));
             self.str_buf = Vec::new();
             return;
         }
-        
+
         if self.str_buf.len() == 0 {
             return;
         }
-        
+
         if self.toks.len() == 0 {
             let proto_output: String = self.str_buf.clone().into_iter().collect();
             self.toks.push(Token::VarRef(Box::new(proto_output)));
@@ -354,7 +366,7 @@ fn flush_str(&mut self) {
             self.str_buf = Vec::new();
         }
     }
-    
+
     fn clean_up(&mut self) {
         self.chars = Vec::new();
         self.cp = 0;

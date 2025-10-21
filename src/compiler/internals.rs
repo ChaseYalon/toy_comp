@@ -1,6 +1,6 @@
 use super::Compiler;
-use crate::token::TypeTok;
 use crate::parser::ast::Ast;
+use crate::token::TypeTok;
 
 use cranelift::prelude::*;
 use cranelift_codegen::isa;
@@ -111,21 +111,27 @@ impl Compiler {
         sig.params.push(AbiParam::new(types::I64));
         sig.params.push(AbiParam::new(types::I64));
         sig.returns.push(AbiParam::new(types::I64));
-        let func = module.declare_function("toy_type_to_str", Linkage::Import, &sig).unwrap();
+        let func = module
+            .declare_function("toy_type_to_str", Linkage::Import, &sig)
+            .unwrap();
         self.funcs.insert("str".to_string(), (TypeTok::Str, func));
-        
+
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
         sig.params.push(AbiParam::new(types::I64));
         sig.returns.push(AbiParam::new(types::I64));
-        let func = module.declare_function("toy_type_to_bool", Linkage::Import, &sig).unwrap();
+        let func = module
+            .declare_function("toy_type_to_bool", Linkage::Import, &sig)
+            .unwrap();
         self.funcs.insert("bool".to_string(), (TypeTok::Bool, func));
-        
+
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
         sig.params.push(AbiParam::new(types::I64));
         sig.returns.push(AbiParam::new(types::I64));
-        let func = module.declare_function("toy_type_to_int", Linkage::Import, &sig).unwrap();
+        let func = module
+            .declare_function("toy_type_to_int", Linkage::Import, &sig)
+            .unwrap();
         self.funcs.insert("int".to_string(), (TypeTok::Int, func));
     }
 

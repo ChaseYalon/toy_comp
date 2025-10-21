@@ -1,24 +1,23 @@
 use super::Compiler;
 use super::Scope;
-use crate::token::TypeTok;
-use crate::parser::ast::{Ast, InfixOp};
 use crate::debug;
-
+use crate::parser::ast::{Ast, InfixOp};
+use crate::token::TypeTok;
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use cranelift::prelude::*;
-use cranelift_module::{DataDescription};
-use cranelift_module::{Module};
+use cranelift_module::DataDescription;
+use cranelift_module::Module;
 
-impl Compiler{
+impl Compiler {
     fn inject_type_param<M: Module>(
         &self,
         t: &TypeTok,
         _module: &M,
         builder: &mut FunctionBuilder<'_>,
-        param_values: &mut Vec<Value>
+        param_values: &mut Vec<Value>,
     ) {
         if t == &TypeTok::Str {
             let v = builder.ins().iconst(types::I64, 0);
@@ -51,7 +50,7 @@ impl Compiler{
         {
             panic!("[ERROR] Unknown AST node type: {}", expr.node_type());
         }
-    
+
         match expr {
             Ast::FuncCall(b_name, params) => {
                 let name = *b_name.clone();
@@ -67,16 +66,21 @@ impl Compiler{
                     last_type = t;
                     param_values.push(v);
                 }
-                if name == "print".to_string() || name == "println".to_string() || name == "str".to_string() || name == "bool".to_string() || name == "int"{
+                if name == "print".to_string()
+                    || name == "println".to_string()
+                    || name == "str".to_string()
+                    || name == "bool".to_string()
+                    || name == "int"
+                {
                     self.inject_type_param(&last_type, _module, builder, &mut param_values);
                 }
                 let func_ref = _module.declare_func_in_func(id.clone(), builder.func);
-    
+
                 let call_inst = builder.ins().call(func_ref, &param_values.as_slice());
                 let results = builder.inst_results(call_inst);
                 if results.len() > 0 {
                     let ret_val = results[0];
-    
+
                     return (ret_val, ret_type.clone());
                 } else {
                     //This is a dummy, should not be sued
@@ -92,7 +96,7 @@ impl Compiler{
                 let data_id = _module
                     .declare_anonymous_data(false, false)
                     .expect("Failed to declare data");
-    
+
                 //Create null terminated string in mem
                 let mut data_desc = DataDescription::new();
                 let mut string_bytes = s.as_bytes().to_vec();
@@ -101,18 +105,18 @@ impl Compiler{
                 _module
                     .define_data(data_id, &data_desc)
                     .expect("Failed to define data");
-    
+
                 // Get a global value reference to the data
                 let data_gv = _module.declare_data_in_func(data_id, builder.func);
                 let string_ptr = builder.ins().global_value(types::I64, data_gv);
-    
+
                 // Call toy_malloc with the string pointer
                 let malloc_func = self.funcs.get("malloc").expect("malloc not found");
                 let func_ref = _module.declare_func_in_func(malloc_func.1, builder.func);
                 let call_inst = builder.ins().call(func_ref, &[string_ptr]);
                 let results = builder.inst_results(call_inst);
                 let heap_ptr = results[0];
-    
+
                 (heap_ptr, TypeTok::Str)
             }
             Ast::EmptyExpr(child) => self.compile_expr(child, _module, builder, scope),
@@ -121,7 +125,7 @@ impl Compiler{
                 let (r, r_t) = self.compile_expr(right, _module, builder, scope);
                 let l_type_str = l_t.type_str();
                 let r_type_str = r_t.type_str();
-    
+
                 if l_type_str == "Int" && r_type_str == "Int" {
                     return match op {
                         InfixOp::Plus => (builder.ins().iadd(l, r), TypeTok::Int),
@@ -199,17 +203,17 @@ impl Compiler{
                             let call_inst = builder.ins().call(func_ref, &[l, r]);
                             let results = builder.inst_results(call_inst);
                             let heap_ptr = results[0];
-    
+
                             //inverts result of eq
                             let one = builder.ins().iconst(types::I64, 1);
                             let flipped = builder.ins().bxor(heap_ptr, one);
-    
+
                             return (flipped, TypeTok::Bool);
                         }
                         _ => panic!(),
                     }
                 }
-    
+
                 panic!(
                     "[ERROR] Unknown type combination, got l_type: {}, r_type: {}",
                     l_type_str, r_type_str
@@ -221,7 +225,7 @@ impl Compiler{
                 debug!(targets: ["compiler_verbose"], var);
                 (builder.use_var(var), var_type.clone())
             }
-    
+
             _ => todo!("Unknown expression type"),
         }
     }

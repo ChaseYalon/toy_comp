@@ -55,7 +55,7 @@ impl AstGenerator {
         fptm.insert("str".to_string(), [TypeTok::Any].to_vec());
         fptm.insert("bool".to_string(), [TypeTok::Any].to_vec());
         fptm.insert("int".to_string(), [TypeTok::Any].to_vec());
-        
+
         let mut frtm: HashMap<String, TypeTok> = HashMap::new();
         frtm.insert("print".to_string(), TypeTok::Void);
         frtm.insert("println".to_string(), TypeTok::Void);
@@ -377,7 +377,7 @@ impl AstGenerator {
                 for stmt in body {
                     parsed_body.push(self.parse_stmt(stmt, false))
                 }
-                if should_eat{
+                if should_eat {
                     self.eat();
                 }
                 return Ast::WhileStmt(Box::new(parsed_expr), parsed_body);

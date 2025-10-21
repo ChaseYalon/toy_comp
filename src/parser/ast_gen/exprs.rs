@@ -224,12 +224,15 @@ impl AstGenerator {
             Token::IntLit(_) | Token::Plus => {
                 let left = &toks[0..best_idx];
                 let (_, left_type) = self.parse_expr(&left.to_vec());
-                
+
                 match left_type {
                     TypeTok::Str => (self.parse_str_expr(toks), TypeTok::Str),
                     TypeTok::Int => (self.parse_int_expr(toks), TypeTok::Int),
                     TypeTok::Bool => (self.parse_bool_expr(toks), TypeTok::Bool),
-                    _ => panic!("[ERROR] Unsupported type for Plus operation: {:?}", left_type),
+                    _ => panic!(
+                        "[ERROR] Unsupported type for Plus operation: {:?}",
+                        left_type
+                    ),
                 }
             }
             Token::Minus | Token::Divide | Token::Multiply | Token::Modulo => {

@@ -1,4 +1,4 @@
-use super::{Compiler};
+use super::Compiler;
 use crate::debug;
 use crate::parser::ast::Ast;
 use crate::token::TypeTok;
@@ -6,8 +6,8 @@ use crate::token::TypeTok;
 use cranelift::prelude::*;
 use cranelift_module::Module;
 use std::cell::RefCell;
-use std::rc::Rc;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 impl Compiler {
     pub fn compile_var_reassign<M: Module>(

@@ -1,4 +1,5 @@
 use std::fmt;
+use ordered_float::OrderedFloat;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Token {
@@ -6,7 +7,7 @@ pub enum Token {
     IntLit(i64),
     BoolLit(bool),
     StringLit(Box<String>),
-
+    FloatLit(OrderedFloat<f64>), 
     //Infix opps
     Plus,
     Minus,
@@ -62,6 +63,7 @@ pub enum TypeTok {
     Void,
     Str,
     Any,
+    Float,
 }
 impl TypeTok {
     pub fn type_str(&self) -> String {
@@ -71,6 +73,7 @@ impl TypeTok {
             Self::Void => "Void".to_string(),
             Self::Str => "Str".to_string(),
             Self::Any => "Any".to_string(),
+            Self::Float => "Float".to_string()
         };
     }
 }
@@ -118,6 +121,7 @@ impl Token {
             Self::CompoundMultiply => "CompoundMultiply".to_string(),
             Self::PlusPlus => "PlusPlus".to_string(),
             Self::MinusMinus => "MinusMinus".to_string(),
+            Self::FloatLit(_) => "Float".to_string()
         };
     }
     ///Is used to get value out of an int literal
@@ -181,6 +185,7 @@ impl fmt::Display for Token {
                 Token::CompoundMultiply => String::from("COMPOUND_MULTIPLY"),
                 Token::PlusPlus => String::from("PLUS_PLUS"),
                 Token::MinusMinus => String::from("MINUS_MINUS"),
+                Token::FloatLit(f) => format!("Float({})", *f)
             }
         )
     }

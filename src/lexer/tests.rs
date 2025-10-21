@@ -1,4 +1,5 @@
 use crate::token::TypeTok;
+use ordered_float::OrderedFloat;
 
 use super::{Lexer, Token};
 #[test]
@@ -592,7 +593,7 @@ fn test_lexer_str_type_conv() {
             Token::Assign,
             Token::StringLit(Box::new("1".to_string())),
             Token::Semicolon,
-            Token::Let, 
+            Token::Let,
             Token::VarName(Box::new("y".to_string())),
             Token::Assign,
             Token::VarRef(Box::new("str".to_string())),
@@ -625,4 +626,33 @@ fn test_lexer_empty_string() {
             Token::Semicolon
         ]
     )
+}
+
+#[test]
+fn test_lexer_float() {
+    let mut l = Lexer::new();
+    let out = l.lex("let pi = 3.1415; let x = 5; let z: float = 3.242;".to_string());
+    assert_eq!(
+        out,
+        vec![
+            Token::Let,
+            Token::VarName(Box::new("pi".to_string())),
+            Token::Assign,
+            Token::FloatLit(OrderedFloat(3.1415)),
+            Token::Semicolon,
+            Token::Let, 
+            Token::VarName(Box::new("x".to_string())),
+            Token::Assign,
+            Token::IntLit(5),
+            Token::Semicolon,
+            Token::Let,
+            Token::VarName(Box::new("z".to_string())),
+            Token::Colon,
+            Token::Type(TypeTok::Float),
+            Token::Assign, 
+            Token::FloatLit(OrderedFloat(3.242)),
+            Token::Semicolon
+        ]
+    )
+
 }
