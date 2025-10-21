@@ -324,16 +324,18 @@ impl Lexer {
         self.num_buf = Vec::new();
         self.toks.push(Token::IntLit(output));
     }
-    fn flush_str(&mut self) {
-        if self.str_buf.len() == 0 {
-            return;
-        }
+fn flush_str(&mut self) {
         if self.in_str_lit {
             let proto_output: String = self.str_buf.clone().into_iter().collect();
             self.toks.push(Token::StringLit(Box::new(proto_output)));
             self.str_buf = Vec::new();
             return;
         }
+        
+        if self.str_buf.len() == 0 {
+            return;
+        }
+        
         if self.toks.len() == 0 {
             let proto_output: String = self.str_buf.clone().into_iter().collect();
             self.toks.push(Token::VarRef(Box::new(proto_output)));
@@ -352,6 +354,7 @@ impl Lexer {
             self.str_buf = Vec::new();
         }
     }
+    
     fn clean_up(&mut self) {
         self.chars = Vec::new();
         self.cp = 0;

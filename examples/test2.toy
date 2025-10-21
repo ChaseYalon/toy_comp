@@ -1,0 +1,17 @@
+let i = 0;
+
+while i < 100 {
+    let s: str = "";
+
+    if i % 3 == 0 {
+        s += "fizz";
+    }
+    if i % 5 == 0 {
+        s += "buzz";
+    }
+    if s == "" {
+        s += str(i);
+    }
+    println(s);
+    i++;
+}

@@ -610,3 +610,19 @@ fn test_lexer_str_type_conv() {
         ]
     )
 }
+
+#[test]
+fn test_lexer_empty_string() {
+    let mut l = Lexer::new();
+    let out = l.lex(r#"let x = "";"#.to_string());
+    assert_eq!(
+        out,
+        vec![
+            Token::Let,
+            Token::VarName(Box::new("x".to_string())),
+            Token::Assign,
+            Token::StringLit(Box::new("".to_string())),
+            Token::Semicolon
+        ]
+    )
+}
