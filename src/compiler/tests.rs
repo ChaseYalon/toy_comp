@@ -172,3 +172,14 @@ fn test_compiler_str_conv() {
     );
     assert!(output.contains("11"));
 }
+
+#[test]
+fn test_compiler_bool_conv() {
+    compile_code_aot!(output, r#"let x = bool("true"); let y = x && true; println(y);"#, "bool_conv");
+    assert!(output.contains("true"));
+}
+#[test]
+fn test_compiler_int_conv() {
+    compile_code_aot!(output, r#"let x = int("12"); let y = x + 2; println(y);"#, "int_conv");
+    assert!(output.contains("14"));
+}

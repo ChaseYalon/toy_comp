@@ -13,6 +13,26 @@ use cranelift_module::{DataDescription};
 use cranelift_module::{Module};
 
 impl Compiler{
+    fn inject_type_param<M: Module>(
+        &self,
+        t: &TypeTok,
+        _module: &M,
+        builder: &mut FunctionBuilder<'_>,
+        param_values: &mut Vec<Value>
+    ) {
+        if t == &TypeTok::Str {
+            let v = builder.ins().iconst(types::I64, 0);
+            param_values.push(v);
+        } else if t == &TypeTok::Bool {
+            let v = builder.ins().iconst(types::I64, 1);
+            param_values.push(v);
+        } else if t == &TypeTok::Int {
+            let v = builder.ins().iconst(types::I64, 2);
+            param_values.push(v);
+        } else {
+            panic!("[ERROR] Unknown type of {:?}", t);
+        }
+    }
     pub fn compile_expr<M: Module>(
         &self,
         expr: &Ast,
@@ -47,40 +67,8 @@ impl Compiler{
                     last_type = t;
                     param_values.push(v);
                 }
-                if name == "print".to_string() || name == "println".to_string() {
-                    //inject type params for print and println
-                    if last_type == TypeTok::Str {
-                        let v = builder.ins().iconst(types::I64, 0);
-                        param_values.push(v);
-                    } else if last_type == TypeTok::Bool {
-                        let v = builder.ins().iconst(types::I64, 1);
-                        param_values.push(v);
-                    } else if last_type == TypeTok::Int {
-                        let v = builder.ins().iconst(types::I64, 2);
-                        param_values.push(v);
-                    } else {
-                        panic!(
-                            "[ERROR] Cannot pase type {:?} to print or println",
-                            last_type
-                        );
-                    }
-                }
-                if name == "str" {
-                    if last_type == TypeTok::Str {
-                        let v = builder.ins().iconst(types::I64, 0);
-                        param_values.push(v);
-                    } else if last_type == TypeTok::Bool {
-                        let v = builder.ins().iconst(types::I64, 1);
-                        param_values.push(v);
-                    } else if last_type == TypeTok::Int {
-                        let v = builder.ins().iconst(types::I64, 2);
-                        param_values.push(v);
-                    } else {
-                        panic!(
-                            "[ERROR] Cannot pase type {:?} to str",
-                            last_type
-                        );
-                    }
+                if name == "print".to_string() || name == "println".to_string() || name == "str".to_string() || name == "bool".to_string() || name == "int"{
+                    self.inject_type_param(&last_type, _module, builder, &mut param_values);
                 }
                 let func_ref = _module.declare_func_in_func(id.clone(), builder.func);
     

@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 //datatype is 0 for string, 1 for bool, 2 for int
 //if datatype is 0 (input is string) then nput is a pointer
@@ -140,19 +141,11 @@ int64_t toy_type_to_str(int64_t val, int64_t type) {
             char* str = "true";
             return toy_malloc((int64_t) str);
         }
-        fprintf(stderr, "[ERROR] Tried to convert non boolean to string as bool");
+        fprintf(stderr, "[ERROR] Tried to convert non boolean to string as bool\n");
         abort();
     }
     if (type == 2) {
-        int64_t tmp = val;
-        int len = (tmp <= 0) ? 1 : 0; // negative or zero
-        int64_t t = tmp;
-        while (t != 0) {
-            t /= 10;
-            len++;
-        }
-
-        char* str = malloc(len + 1); // +1 for null terminator
+        char* str = malloc(21);
         if (!str) {
             fprintf(stderr, "[ERROR] Memory allocation failed\n");
             abort();
@@ -163,6 +156,74 @@ int64_t toy_type_to_str(int64_t val, int64_t type) {
         free(str); //not actual value, temp buffer
         return out;
     }
-    fprintf(stderr, "[ERROR] Can only convert strings, bools and ints to strings, got type %lld", type);
+    fprintf(stderr, "[ERROR] Can only convert strings, bools and ints to strings, got type %lld\n", type);
+    abort();
+}
+
+int64_t toy_type_to_bool(int64_t val, int64_t type) {
+    if (type == 0){
+        char* t = "true";
+        char* f = "false";
+        if ( toy_strequal(val, (int64_t) t) ) {
+            return 1;
+        }
+        if ( toy_strequal(val, (int64_t) f)) {
+            return 0;
+        }
+        fprintf(stderr, "[ERROR] tried to convert string to bool that was not \"true\" or \"false\"\n");
+        abort();
+    }
+    if (type == 1) {
+        return val;
+    }
+    if (type == 2) {
+        if (val == 1) {
+            return 1;
+        }
+        if (val == 0) {
+            return 0;
+        }
+        fprintf(stderr, "[ERROR] Tried to convert int (that was not 1 or 0) to bool\n");
+        abort();
+    }
+    fprintf(stderr, "[ERROR] Tried to convert type %lld to bool, that is not supported\n", type);
+    abort();
+}
+
+int64_t toy_type_to_int(int64_t val, int64_t type) {
+    if (type == 0){
+        char* str = (char*) val;
+        if (str == NULL){
+            fprintf(stderr, "[ERROR] toy_type_to_int received a null pointer");
+            abort();
+        }
+        errno = 0;
+        char* endptr;
+        int64_t endval = strtoll(str, &endptr, 10);
+
+        if (errno != 0) {
+            perror("[ERROR] strtoll failed");
+            abort();
+        }
+        if (*endptr != '\0') {
+            fprintf(stderr, "[ERROR] String contains non-numeric characters: '%s'\n", str);
+            abort();
+        }
+        return (int64_t) endval;
+    }
+    if (type == 1) {
+        if (val == 1){
+            return 1;
+        }
+        if (val == 0){
+            return 0;
+        }
+        fprintf(stderr, "[ERROR] Tried to convert boolean to integer but input was not boolean\n");
+        abort();
+    }
+    if (type == 2){
+        return val;
+    }
+    fprintf(stderr, "[ERROR] Type %lld unsupported for conversion to int\n", type);
     abort();
 }

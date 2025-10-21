@@ -17,6 +17,8 @@ unsafe extern "C" {
     unsafe fn toy_strequal(sp1: i64, sp2: i64) -> i64;
     unsafe fn toy_strlen(sp1: i64) -> i64;
     unsafe fn toy_type_to_str(ptr: i64, ptr_type: i64) -> i64;
+    unsafe fn toy_type_to_bool(ptr: i64, ptr_type: i64) -> i64;
+    unsafe fn toy_type_to_int(ptr: i64, ptr_type: i64) -> i64;
 }
 
 impl Compiler {
@@ -29,6 +31,8 @@ impl Compiler {
         jit_builder.symbol("toy_strequal", toy_strequal as *const u8);
         jit_builder.symbol("toy_strlen", toy_strlen as *const u8);
         jit_builder.symbol("toy_type_to_str", toy_type_to_str as *const u8);
+        jit_builder.symbol("toy_type_to_bool", toy_type_to_bool as *const u8);
+        jit_builder.symbol("toy_type_to_int", toy_type_to_int as *const u8);
         JITModule::new(jit_builder)
     }
 
@@ -109,6 +113,20 @@ impl Compiler {
         sig.returns.push(AbiParam::new(types::I64));
         let func = module.declare_function("toy_type_to_str", Linkage::Import, &sig).unwrap();
         self.funcs.insert("str".to_string(), (TypeTok::Str, func));
+        
+        let mut sig = module.make_signature();
+        sig.params.push(AbiParam::new(types::I64));
+        sig.params.push(AbiParam::new(types::I64));
+        sig.returns.push(AbiParam::new(types::I64));
+        let func = module.declare_function("toy_type_to_bool", Linkage::Import, &sig).unwrap();
+        self.funcs.insert("bool".to_string(), (TypeTok::Bool, func));
+        
+        let mut sig = module.make_signature();
+        sig.params.push(AbiParam::new(types::I64));
+        sig.params.push(AbiParam::new(types::I64));
+        sig.returns.push(AbiParam::new(types::I64));
+        let func = module.declare_function("toy_type_to_int", Linkage::Import, &sig).unwrap();
+        self.funcs.insert("int".to_string(), (TypeTok::Int, func));
     }
 
     pub fn compile_to_object(&mut self, ast: Vec<Ast>) -> Vec<u8> {
