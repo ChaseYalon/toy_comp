@@ -222,28 +222,14 @@ impl AstGenerator {
         debug!(targets: ["parser", "parser_verbose"], toks.clone());
         return match best_val {
             Token::IntLit(_) | Token::Plus => {
-                //This is a screwy way to do it but I cant think of a better way
-                if toks[best_idx - 1].tok_type() == "StringLit" {
-                    (self.parse_str_expr(toks), TypeTok::Str)
-                } else if toks[best_idx - 1].tok_type() == "VarRef" {
-                    let var = match toks[best_idx - 1].clone() {
-                        Token::VarRef(v) => *v,
-                        _ => unreachable!(),
-                    };
-                    let t = self.lookup_var_type(&var);
-                    if t.is_none() {
-                        panic!("[ERROR] Variable {} is undefined", var);
-                    }
-                    let ty = t.unwrap();
-                    if ty == TypeTok::Str {
-                        return (self.parse_str_expr(toks), TypeTok::Str);
-                    } else if ty == TypeTok::Int {
-                        return (self.parse_int_expr(toks), TypeTok::Int);
-                    } else {
-                        return (self.parse_bool_expr(toks), TypeTok::Bool);
-                    }
-                } else {
-                    (self.parse_str_expr(toks), TypeTok::Int)
+                let left = &toks[0..best_idx];
+                let (_, left_type) = self.parse_expr(&left.to_vec());
+                
+                match left_type {
+                    TypeTok::Str => (self.parse_str_expr(toks), TypeTok::Str),
+                    TypeTok::Int => (self.parse_int_expr(toks), TypeTok::Int),
+                    TypeTok::Bool => (self.parse_bool_expr(toks), TypeTok::Bool),
+                    _ => panic!("[ERROR] Unsupported type for Plus operation: {:?}", left_type),
                 }
             }
             Token::Minus | Token::Divide | Token::Multiply | Token::Modulo => {

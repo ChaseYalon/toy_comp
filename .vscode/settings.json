@@ -3,6 +3,7 @@
         "brif",
         "clif",
         "codegen",
+        "conv",
         "cranelift",
         "fptm",
         "frtm",

@@ -56,6 +56,16 @@ impl Lexer {
 
         while self.cp < self.chars.len() {
             let c = self.chars[self.cp];
+            if self.in_str_lit {
+                self.eat();
+                if c == '"' {
+                    self.flush();
+                    self.in_str_lit = false;
+                    continue;
+                }
+                self.str_buf.push(c);
+                continue;
+            }
             debug!(targets: ["lexer_verbose"], c);
             debug!(targets: ["lexer_verbose"], self.cp);
             if (c == ' ' || c == '\t' || c == '\n' || c == '\r') && !self.in_str_lit {

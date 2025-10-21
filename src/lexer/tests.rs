@@ -578,3 +578,35 @@ fn test_lexer_while_loop() {
         ]
     )
 }
+
+#[test]
+fn test_lexer_str_type_conv() {
+    let mut l = Lexer::new();
+    let out = l.lex(r#"let x = "1"; let y = str(x) + "11"; println(y); "#.to_string());
+
+    assert_eq!(
+        out,
+        vec![
+            Token::Let,
+            Token::VarName(Box::new("x".to_string())),
+            Token::Assign,
+            Token::StringLit(Box::new("1".to_string())),
+            Token::Semicolon,
+            Token::Let, 
+            Token::VarName(Box::new("y".to_string())),
+            Token::Assign,
+            Token::VarRef(Box::new("str".to_string())),
+            Token::LParen,
+            Token::VarRef(Box::new("x".to_string())),
+            Token::RParen,
+            Token::Plus,
+            Token::StringLit(Box::new("11".to_string())),
+            Token::Semicolon,
+            Token::VarRef(Box::new("println".to_string())),
+            Token::LParen,
+            Token::VarRef(Box::new("y".to_string())),
+            Token::RParen,
+            Token::Semicolon,
+        ]
+    )
+}

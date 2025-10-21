@@ -124,3 +124,45 @@ int64_t toy_strlen(int64_t sp1) {
     char* str1 = (char*) sp1;
     return strlen(str1);
 }
+
+//val is the value and t is the input type, 0 for str, 1 for bool, 2 for int
+int64_t toy_type_to_str(int64_t val, int64_t type) {
+    if (type == 0) {
+        //It is a string, return the value without changing it
+        return val;
+    }
+    if (type == 1) {
+        if (val == 0) {
+            char* str = "false";
+            return toy_malloc((int64_t)str);
+        }
+        if (val == 1) {
+            char* str = "true";
+            return toy_malloc((int64_t) str);
+        }
+        fprintf(stderr, "[ERROR] Tried to convert non boolean to string as bool");
+        abort();
+    }
+    if (type == 2) {
+        int64_t tmp = val;
+        int len = (tmp <= 0) ? 1 : 0; // negative or zero
+        int64_t t = tmp;
+        while (t != 0) {
+            t /= 10;
+            len++;
+        }
+
+        char* str = malloc(len + 1); // +1 for null terminator
+        if (!str) {
+            fprintf(stderr, "[ERROR] Memory allocation failed\n");
+            abort();
+        }
+
+        sprintf(str, "%lld", (long long)val);
+        int64_t out = toy_malloc((int64_t)str);
+        free(str); //not actual value, temp buffer
+        return out;
+    }
+    fprintf(stderr, "[ERROR] Can only convert strings, bools and ints to strings, got type %lld", type);
+    abort();
+}

@@ -164,3 +164,11 @@ fn test_compiler_while() {
     );
     assert_eq!(code_fn(), 7)
 }
+
+#[test]
+fn test_compiler_str_conv() {
+    compile_code_aot!(
+        output, r#"let x = "1"; let y = str(x) + "1"; println(y);"#, "str_concat"
+    );
+    assert!(output.contains("11"));
+}

@@ -52,10 +52,12 @@ impl AstGenerator {
         fptm.insert("print".to_string(), [TypeTok::Any].to_vec());
         fptm.insert("println".to_string(), [TypeTok::Any].to_vec());
         fptm.insert("len".to_string(), [TypeTok::Str].to_vec());
+        fptm.insert("str".to_string(), [TypeTok::Any].to_vec());
         let mut frtm: HashMap<String, TypeTok> = HashMap::new();
         frtm.insert("print".to_string(), TypeTok::Void);
         frtm.insert("println".to_string(), TypeTok::Void);
         frtm.insert("len".to_string(), TypeTok::Int);
+        frtm.insert("str".to_string(), TypeTok::Str);
 
         return AstGenerator {
             boxes: b_vec,

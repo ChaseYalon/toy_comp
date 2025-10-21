@@ -536,3 +536,34 @@ fn test_ast_gen_while() {
         ]
     )
 }
+
+#[test]
+fn test_ast_gen_str_concat() {
+    setup_ast!(r#"let x = "1"; let y = str(x) + "1"; println(y);"#, ast);
+    assert_eq!(
+        ast,
+        vec![
+            Ast::VarDec(
+                Box::new("x".to_string()),
+                TypeTok::Str,
+                Box::new(Ast::StringLit(Box::new("1".to_string())))
+            ),
+            Ast::VarDec(
+                Box::new("y".to_string()),
+                TypeTok::Str,
+                Box::new(Ast::InfixExpr(
+                    Box::new(Ast::FuncCall(
+                        Box::new("str".to_string()),
+                        vec![Ast::VarRef(Box::new("x".to_string()))]
+                    )),
+                    Box::new(Ast::StringLit(Box::new("1".to_string()))),
+                    InfixOp::Plus
+                ))
+            ),
+            Ast::FuncCall(
+                Box::new("println".to_string()),
+                vec![Ast::VarRef(Box::new("y".to_string()))]
+            )
+        ]
+    )
+}

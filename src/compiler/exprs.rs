@@ -65,6 +65,23 @@ impl Compiler{
                         );
                     }
                 }
+                if name == "str" {
+                    if last_type == TypeTok::Str {
+                        let v = builder.ins().iconst(types::I64, 0);
+                        param_values.push(v);
+                    } else if last_type == TypeTok::Bool {
+                        let v = builder.ins().iconst(types::I64, 1);
+                        param_values.push(v);
+                    } else if last_type == TypeTok::Int {
+                        let v = builder.ins().iconst(types::I64, 2);
+                        param_values.push(v);
+                    } else {
+                        panic!(
+                            "[ERROR] Cannot pase type {:?} to str",
+                            last_type
+                        );
+                    }
+                }
                 let func_ref = _module.declare_func_in_func(id.clone(), builder.func);
     
                 let call_inst = builder.ins().call(func_ref, &param_values.as_slice());
