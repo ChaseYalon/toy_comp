@@ -4,13 +4,20 @@ use crate::parser::ast::{Ast, InfixOp};
 use crate::token::{Token, TypeTok};
 
 impl AstGenerator {
-    pub fn parse_int_expr(&self, toks: &Vec<Token>) -> Ast {
+    pub fn parse_num_expr(&self, toks: &Vec<Token>) -> Ast {
         if toks.len() == 1 {
             if toks[0].tok_type() == "IntLit" {
                 return Ast::IntLit(toks[0].get_val().unwrap());
             }
             if toks[0].tok_type() == "VarRef" {
                 return self.parse_var_ref(&toks[0]);
+            }
+            if toks[0].tok_type() == "FloatLit" {
+                let val = match toks[0] {
+                    Token::FloatLit(f) => f,
+                    _ => unreachable!(),
+                };
+                return Ast::FloatLit(val);
             }
         }
         if toks.len() == 0 {
@@ -136,6 +143,13 @@ impl AstGenerator {
             if toks[0].tok_type() == "IntLit" {
                 return (Ast::IntLit(toks[0].get_val().unwrap()), TypeTok::Int);
             }
+            if toks[0].tok_type() == "FloatLit" {
+                let val = match toks[0] {
+                    Token::FloatLit(f) => f,
+                    _ => unreachable!(),
+                };
+                return (Ast::FloatLit(val), TypeTok::Float);
+            }
             if toks[0].tok_type() == "StrLit" {
                 let val = match toks[0].clone() {
                     Token::StringLit(s) => s,
@@ -221,14 +235,19 @@ impl AstGenerator {
         debug!(targets: ["parser", "parser_verbose"], best_val.clone());
         debug!(targets: ["parser", "parser_verbose"], toks.clone());
         return match best_val {
-            Token::IntLit(_) | Token::Plus => {
+            Token::IntLit(_) | Token::Plus | Token::FloatLit(_) => {
                 let left = &toks[0..best_idx];
                 let (_, left_type) = self.parse_expr(&left.to_vec());
 
+                // if either side has float, type promote
+                let has_float = toks.iter().any(|t| t.tok_type() == "FloatLit");
+
                 match left_type {
                     TypeTok::Str => (self.parse_str_expr(toks), TypeTok::Str),
-                    TypeTok::Int => (self.parse_int_expr(toks), TypeTok::Int),
+                    TypeTok::Int if has_float => (self.parse_num_expr(toks), TypeTok::Float),
+                    TypeTok::Int => (self.parse_num_expr(toks), TypeTok::Int),
                     TypeTok::Bool => (self.parse_bool_expr(toks), TypeTok::Bool),
+                    TypeTok::Float => (self.parse_num_expr(toks), TypeTok::Float),
                     _ => panic!(
                         "[ERROR] Unsupported type for Plus operation: {:?}",
                         left_type
@@ -236,7 +255,14 @@ impl AstGenerator {
                 }
             }
             Token::Minus | Token::Divide | Token::Multiply | Token::Modulo => {
-                (self.parse_int_expr(toks), TypeTok::Int)
+                // if there is any float should type promote to float
+                let has_float = toks.iter().any(|t| t.tok_type() == "FloatLit");
+
+                if has_float {
+                    (self.parse_num_expr(toks), TypeTok::Float)
+                } else {
+                    (self.parse_num_expr(toks), TypeTok::Int)
+                }
             }
             Token::BoolLit(_)
             | Token::LessThan

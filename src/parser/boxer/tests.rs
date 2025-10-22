@@ -1,6 +1,6 @@
 use super::{Boxer, TBox, Token};
 use crate::{lexer::Lexer, token::TypeTok};
-
+use ordered_float::OrderedFloat;
 #[test]
 fn test_boxer_int_literal() {
     let input = String::from("4");
@@ -464,6 +464,29 @@ fn test_boxer_fn_no_params() {
                 Token::LParen,
                 Token::RParen
             ])
+        ]
+    )
+}
+
+#[test]
+fn test_boxer_float() {
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let toks = l.lex("let x = 3.14159; let y: float = 9.3;".to_string());
+    let boxes = b.box_toks(toks);
+    assert_eq!(
+        boxes,
+        vec![
+            TBox::VarDec(
+                Token::VarName(Box::new("x".to_string())),
+                None,
+                vec![Token::FloatLit(OrderedFloat(3.14159))]
+            ),
+            TBox::VarDec(
+                Token::VarName(Box::new("y".to_string())),
+                Some(TypeTok::Float),
+                vec![Token::FloatLit(OrderedFloat(9.3))]
+            )
         ]
     )
 }

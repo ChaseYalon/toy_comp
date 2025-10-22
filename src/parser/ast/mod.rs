@@ -1,7 +1,7 @@
 use std::fmt::{self};
 
 use crate::token::TypeTok;
-
+use ordered_float::OrderedFloat;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Ast {
     IntLit(i64),
@@ -38,6 +38,7 @@ pub enum Ast {
 
     Break,
     Continue,
+    FloatLit(OrderedFloat<f64>),
 }
 impl Ast {
     pub fn node_type(&self) -> String {
@@ -58,6 +59,7 @@ impl Ast {
             Ast::WhileStmt(_, _) => "WhileStmt".to_string(),
             Ast::Continue => "Continue".to_string(),
             Ast::Break => "Break".to_string(),
+            Ast::FloatLit(_) => "FloatLit".to_string(),
         };
     }
 }
@@ -108,6 +110,7 @@ impl fmt::Display for Ast {
                     format!("WhileStmt Cond({}), Body({:?})", *cond, body),
                 Ast::Break => "Break".to_string(),
                 Ast::Continue => "Continue".to_string(),
+                Ast::FloatLit(f) => format!("FloatLit({})", *f),
             }
         )
     }

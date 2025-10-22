@@ -4,6 +4,7 @@ use crate::{
     parser::{ast::Ast, ast_gen::AstGenerator, boxer::Boxer},
     token::TypeTok,
 };
+use ordered_float::OrderedFloat;
 macro_rules! setup_ast {
     ($i: expr, $ast: ident) => {
         let input = $i.to_string();
@@ -563,6 +564,34 @@ fn test_ast_gen_str_concat() {
             Ast::FuncCall(
                 Box::new("println".to_string()),
                 vec![Ast::VarRef(Box::new("y".to_string()))]
+            )
+        ]
+    )
+}
+
+#[test]
+fn test_ast_gen_float_infix() {
+    setup_ast!("let pi = 3 + 0.1415; let e: float = 2.7 + 0.08;", ast);
+    assert_eq!(
+        ast,
+        vec![
+            Ast::VarDec(
+                Box::new("pi".to_string()),
+                TypeTok::Float,
+                Box::new(Ast::InfixExpr(
+                    Box::new(Ast::IntLit(3)),
+                    Box::new(Ast::FloatLit(OrderedFloat(0.1415))),
+                    InfixOp::Plus
+                ))
+            ),
+            Ast::VarDec(
+                Box::new("e".to_string()),
+                TypeTok::Float,
+                Box::new(Ast::InfixExpr(
+                    Box::new(Ast::FloatLit(OrderedFloat(2.7))),
+                    Box::new(Ast::FloatLit(OrderedFloat(0.08))),
+                    InfixOp::Plus
+                ))
             )
         ]
     )

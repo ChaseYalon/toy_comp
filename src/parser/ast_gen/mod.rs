@@ -1,3 +1,5 @@
+use ordered_float::OrderedFloat;
+
 use crate::debug;
 use crate::parser::ast::Ast;
 use crate::parser::toy_box::TBox;
@@ -27,6 +29,7 @@ impl AstGenerator {
         map.insert(Token::IntLit(0).tok_type(), 100);
         map.insert(Token::BoolLit(true).tok_type(), 100);
         map.insert(Token::StringLit(Box::new("".to_string())).tok_type(), 100);
+        map.insert(Token::FloatLit(OrderedFloat(0.0)).tok_type(), 100);
 
         map.insert(Token::Multiply.tok_type(), 4);
         map.insert(Token::Divide.tok_type(), 4);

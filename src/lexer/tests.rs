@@ -640,7 +640,7 @@ fn test_lexer_float() {
             Token::Assign,
             Token::FloatLit(OrderedFloat(3.1415)),
             Token::Semicolon,
-            Token::Let, 
+            Token::Let,
             Token::VarName(Box::new("x".to_string())),
             Token::Assign,
             Token::IntLit(5),
@@ -649,10 +649,27 @@ fn test_lexer_float() {
             Token::VarName(Box::new("z".to_string())),
             Token::Colon,
             Token::Type(TypeTok::Float),
-            Token::Assign, 
+            Token::Assign,
             Token::FloatLit(OrderedFloat(3.242)),
             Token::Semicolon
         ]
     )
+}
 
+#[test]
+fn test_lexer_zero_float() {
+    let mut l = Lexer::new();
+    let out = l.lex("let pi = 3 + 0.1415;".to_string());
+    assert_eq!(
+        out,
+        vec![
+            Token::Let,
+            Token::VarName(Box::new("pi".to_string())),
+            Token::Assign,
+            Token::IntLit(3),
+            Token::Plus,
+            Token::FloatLit(OrderedFloat(0.1415)),
+            Token::Semicolon
+        ]
+    )
 }

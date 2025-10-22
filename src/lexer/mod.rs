@@ -325,13 +325,12 @@ impl Lexer {
         }
         let proto_output: String = self.num_buf.clone().into_iter().collect();
         if proto_output.contains('.') {
-            println!("{:?}", proto_output);
             let output: f64 = proto_output.parse().unwrap();
             self.num_buf = Vec::new();
             self.toks.push(Token::FloatLit(OrderedFloat(output)));
             return;
         }
-        let output:i64  = proto_output.parse().unwrap();
+        let output: i64 = proto_output.parse().unwrap();
 
         self.num_buf = Vec::new();
         self.toks.push(Token::IntLit(output));
