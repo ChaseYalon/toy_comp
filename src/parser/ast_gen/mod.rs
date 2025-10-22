@@ -25,6 +25,8 @@ impl AstGenerator {
         let mut map: HashMap<String, u32> = HashMap::new();
         map.insert(Token::LParen.tok_type(), 10000);
         map.insert(Token::RParen.tok_type(), 10000);
+        map.insert(Token::LBrack.tok_type(), 10000); //should absolutely never be bound to
+        map.insert(Token::RBrack.tok_type(), 10000);
         map.insert(Token::VarRef(Box::new("".to_string())).tok_type(), 100);
         map.insert(Token::IntLit(0).tok_type(), 100);
         map.insert(Token::BoolLit(true).tok_type(), 100);

@@ -596,3 +596,67 @@ fn test_ast_gen_float_infix() {
         ]
     )
 }
+#[test]
+fn test_ast_gen_arr_lit() {
+    setup_ast!("let arr: int[] = [1, 2 - 1, int(3.0)];", ast);
+
+    assert_eq!(
+        ast, 
+        vec![
+
+            Ast::VarDec(
+                Box::new("arr".to_string()), 
+                TypeTok::IntArr, 
+                Box::new(
+                    Ast::ArrLit(
+                        TypeTok::IntArr, 
+                        vec![
+                            Ast::IntLit(1),
+                            Ast::InfixExpr(
+                                Box::new(Ast::IntLit(2)), 
+                                Box::new(Ast::IntLit(1)), 
+                                InfixOp::Minus
+                            ),
+                            Ast::FuncCall(
+                                Box::new("int".to_string()), 
+                                vec![Ast::FloatLit(OrderedFloat(3.0))]
+                            )
+                        ]
+                    )
+                )
+            )
+        ]
+    )
+}
+
+#[test]
+fn test_ast_gen_arr_reassign() {
+    setup_ast!("let ao: bool[] = [true, false]; ao = [false];", ast);
+    assert_eq!(
+        ast,
+        vec![
+            Ast::VarDec(
+                Box::new("ao".to_string()), 
+                TypeTok::BoolArr, 
+                Box::new(
+                    Ast::ArrLit(
+                        TypeTok::BoolArr, 
+                        vec![
+                            Ast::BoolLit(true),
+                            Ast::BoolLit(false)
+                        ]
+                    )
+                )
+            ),
+            Ast::VarReassign(
+                Box::new("ao".to_string()), 
+                Box::new(
+                    Ast::ArrLit(
+                        TypeTok::BoolArr, 
+                        vec![Ast::BoolLit(false)]
+                    )
+                )
+            )
+        ]
+    )
+}

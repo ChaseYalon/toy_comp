@@ -490,3 +490,27 @@ fn test_boxer_float() {
         ]
     )
 }
+
+#[test]
+fn test_boxer_arr_lit() {
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let toks = l.lex(r#"let arr: str[] = ["foo", "bar"];"#.to_string());
+    let boxes = b.box_toks(toks);
+    assert_eq!(
+        boxes,
+        vec![
+            TBox::VarDec(
+                Token::VarName(Box::new("arr".to_string())), 
+                Some(TypeTok::StrArr), 
+                vec![
+                    Token::LBrack,
+                    Token::StringLit(Box::new("foo".to_string())),
+                    Token::Comma,
+                    Token::StringLit(Box::new("bar".to_string())),
+                    Token::RBrack
+                ]
+            )
+        ]
+    )
+}

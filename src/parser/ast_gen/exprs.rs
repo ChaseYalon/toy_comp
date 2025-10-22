@@ -138,7 +138,44 @@ impl AstGenerator {
 
         (Ast::EmptyExpr(Box::new(inner_node)), tok)
     }
+    pub fn parse_arr_lit(&self, toks: &Vec<Token>) -> (Ast, TypeTok) {
+        //first, scan until the closing ] (rbrack), this will break nested arrays
+        let mut arr_toks: Vec<Token> = Vec::new();
+        for t in toks[1..toks.len()].iter() {
+            if t.tok_type() == "RBrack" {
+                break;
+            }
+            arr_toks.push(t.clone());
+        }
+        let arr_elems: Vec<Vec<Token>> = arr_toks.split(|x| *x == Token::Comma)  
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_vec())
+            .collect(); //split by comma
+
+        let mut arr_types: Vec<TypeTok> = Vec::new();
+        let mut arr_vals: Vec<Ast> = Vec::new();
+        for elem in arr_elems {
+            let (elem, t_elem) = self.parse_expr(&elem);
+            arr_vals.push(elem);
+            arr_types.push(t_elem);
+        }
+        let all_types_same = arr_types.windows(2).all(|w| w[0] == w[1]);
+        let mut arr_type = TypeTok::Any;
+        if all_types_same.clone() {
+            let match_type = match arr_types[0].clone() {
+                TypeTok::Int => TypeTok::IntArr,
+                TypeTok::Bool => TypeTok::BoolArr,
+                TypeTok::Float => TypeTok::FloatArr,
+                TypeTok::Str => TypeTok::StrArr,
+                TypeTok::Any => TypeTok::AnyArr,
+                _ => arr_types[0].clone()
+            };
+            arr_type = match_type;
+        }
+        return (Ast::ArrLit(arr_type.clone(), arr_vals), arr_type.clone());
+    }
     pub fn parse_expr(&self, toks: &Vec<Token>) -> (Ast, TypeTok) {
+        //guard clause for single tokens
         if toks.len() == 1 {
             if toks[0].tok_type() == "IntLit" {
                 return (Ast::IntLit(toks[0].get_val().unwrap()), TypeTok::Int);
@@ -180,6 +217,7 @@ impl AstGenerator {
                 return (self.parse_var_ref(&toks[0]), var_ref_type.unwrap().clone());
             }
         }
+        //guard clause for function calls
         if toks.first().unwrap().tok_type() == "VarRef" && toks[1].tok_type() == "LParen" {
             let mut depth = 0;
             let mut func_call_end = None;
@@ -204,9 +242,8 @@ impl AstGenerator {
                 }
             }
         }
-        if toks.first().unwrap().tok_type() == "LParen"
-            && toks.last().unwrap().tok_type() == "RParen"
-        {
+        //guard calls for empty expressions
+        if toks.first().unwrap().tok_type() == "LParen" && toks.last().unwrap().tok_type() == "RParen" {
             let mut depth = 0;
             let mut first_paren_closes_at = None;
 
@@ -229,6 +266,10 @@ impl AstGenerator {
                 let to_ret_ast = Ast::EmptyExpr(Box::new(inner));
                 return (to_ret_ast, inner_type);
             }
+        }
+        //Arr literals
+        if toks.first().unwrap().tok_type() == "LBrack" {
+            return self.parse_arr_lit(toks);
         }
 
         let (best_idx, _, best_val) = self.find_top_val(toks);

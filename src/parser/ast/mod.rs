@@ -2,6 +2,7 @@ use std::fmt::{self};
 
 use crate::token::TypeTok;
 use ordered_float::OrderedFloat;
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Ast {
     IntLit(i64),
@@ -39,6 +40,9 @@ pub enum Ast {
     Break,
     Continue,
     FloatLit(OrderedFloat<f64>),
+
+    ///Type, elements
+    ArrLit(TypeTok, Vec<Ast>)
 }
 impl Ast {
     pub fn node_type(&self) -> String {
@@ -60,6 +64,7 @@ impl Ast {
             Ast::Continue => "Continue".to_string(),
             Ast::Break => "Break".to_string(),
             Ast::FloatLit(_) => "FloatLit".to_string(),
+            Ast::ArrLit(_, _) => "ArrLit".to_string()
         };
     }
 }
@@ -111,6 +116,7 @@ impl fmt::Display for Ast {
                 Ast::Break => "Break".to_string(),
                 Ast::Continue => "Continue".to_string(),
                 Ast::FloatLit(f) => format!("FloatLit({})", *f),
+                Ast::ArrLit(t, v) => format!("ArrLit Type({:?}), Val({:?})", t, v)
             }
         )
     }
