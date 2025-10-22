@@ -1,10 +1,14 @@
 {
     "cSpell.words": [
+        "bitcast",
         "brif",
         "clif",
         "codegen",
         "conv",
         "cranelift",
+        "fcmp",
+        "fdiv",
+        "fmul",
         "fptm",
         "frtm",
         "funcs",

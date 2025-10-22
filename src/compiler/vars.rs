@@ -5,6 +5,8 @@ use crate::token::TypeTok;
 
 use cranelift::prelude::*;
 use cranelift_module::Module;
+#[allow(unused_imports)] //Used for debugging
+use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -63,11 +65,11 @@ impl Compiler {
         }
         let (val, _) = self.compile_expr(&val, _module, builder, scope);
         let var = Variable::new(self.var_count);
+        debug!(targets: ["compiler_verbose"], format!("Value: {:?}", val.type_id()));
+        debug!(targets: ["compiler_verbose"], format!("Value {:?}", var.type_id()));
         builder.declare_var(var, types::I64);
         builder.def_var(var, val);
         self.var_count += 1;
-        debug!(targets: ["compiler_verbose"], val);
-        debug!(targets: ["compiler_verbose"], var);
         scope.borrow_mut().set(name, var, t_o.clone());
     }
 }

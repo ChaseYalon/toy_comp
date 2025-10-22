@@ -58,6 +58,7 @@ impl AstGenerator {
         fptm.insert("str".to_string(), [TypeTok::Any].to_vec());
         fptm.insert("bool".to_string(), [TypeTok::Any].to_vec());
         fptm.insert("int".to_string(), [TypeTok::Any].to_vec());
+        fptm.insert("float".to_string(), [TypeTok::Any].to_vec());
 
         let mut frtm: HashMap<String, TypeTok> = HashMap::new();
         frtm.insert("print".to_string(), TypeTok::Void);
@@ -66,6 +67,7 @@ impl AstGenerator {
         frtm.insert("str".to_string(), TypeTok::Str);
         frtm.insert("bool".to_string(), TypeTok::Bool);
         frtm.insert("int".to_string(), TypeTok::Int);
+        frtm.insert("float".to_string(), TypeTok::Float);
 
         return AstGenerator {
             boxes: b_vec,

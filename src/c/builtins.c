@@ -3,8 +3,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <math.h>
 
-//datatype is 0 for string, 1 for bool, 2 for int
+//datatype is 0 for string, 1 for bool, 2 for int, 3 for float
 //if datatype is 0 (input is string) then nput is a pointer
 void toy_print(int64_t input, int64_t datatype) {
     if (datatype == 0) {
@@ -29,6 +30,12 @@ void toy_print(int64_t input, int64_t datatype) {
     if (datatype == 2) {
         // Int - input is the actual value
         printf("%lld", input);
+        return;
+    }
+    if (datatype == 3) {
+        union { int64_t i; double d; } u;
+        u.i = input;
+        printf("%f", u.d);
         return;
     }
     fprintf(stderr, "[ERROR] Unknown datatype of %lld\n", datatype);
@@ -57,6 +64,12 @@ void toy_println(int64_t input, int64_t datatype) {
     }
     if (datatype == 2) {
         printf("%lld\n", input);
+        return;
+    }
+    if (datatype == 3) {
+        union { int64_t i; double d; } u;
+        u.i = input;
+        printf("%f\n", u.d);
         return;
     }
     fprintf(stderr, "[ERROR] Unknown datatype of %lld\n", datatype);
@@ -156,6 +169,19 @@ int64_t toy_type_to_str(int64_t val, int64_t type) {
         free(str); //not actual value, temp buffer
         return out;
     }
+    if (type == 3) {
+        union { int64_t i; double d; } u;
+        u.i = val;
+
+        char buffer[64];
+        snprintf(buffer, sizeof(buffer), "%g", u.d);
+
+        char* out = (char*) toy_malloc(strlen(buffer) + 1);
+        strcpy_s(out, strlen(out) + 1, buffer);
+
+        return (int64_t)out;
+    }
+
     fprintf(stderr, "[ERROR] Can only convert strings, bools and ints to strings, got type %lld\n", type);
     abort();
 }
@@ -185,6 +211,12 @@ int64_t toy_type_to_bool(int64_t val, int64_t type) {
         }
         fprintf(stderr, "[ERROR] Tried to convert int (that was not 1 or 0) to bool\n");
         abort();
+    }
+    if (type == 3) {
+        union { int64_t i; double d; } u;
+        u.i = val;
+        return (u.d < 0.0) ? 0 : 1; //negative false, positive true
+
     }
     fprintf(stderr, "[ERROR] Tried to convert type %lld to bool, that is not supported\n", type);
     abort();
@@ -224,6 +256,73 @@ int64_t toy_type_to_int(int64_t val, int64_t type) {
     if (type == 2){
         return val;
     }
+    if (type == 3){
+        union { int64_t i; double d; } u;
+        u.i = val;
+
+        double rounded = round(u.d); 
+
+        return (int64_t) rounded;
+    }
     fprintf(stderr, "[ERROR] Type %lld unsupported for conversion to int\n", type);
     abort();
+}
+
+int64_t toy_type_to_float(int64_t val, int64_t type) {
+    if (type == 0) {
+        char* str = (char*) val;
+
+        errno = 0;
+        char* endptr;
+        double d = strtod(str, &endptr);
+
+        if (errno != 0) {
+            perror("[ERROR] strtod failed");
+            abort();
+        }
+        if (*endptr != '\0') {
+            fprintf(stderr, "[ERROR] String contains non-numeric characters: '%s'\n", str);
+            abort();
+        }
+
+        union { double d; int64_t i; } u;
+        u.d = d;
+        return u.i;
+    }
+    if (type == 1) {
+        if (val == 0) {
+            return 0.0;
+        }
+        if (val == 1){
+            return 1.0;
+        }
+        fprintf(stderr, "[ERROR] Attempted to cast non boolean, as boolean, to float (%llx)\n", val);
+        abort();
+    }
+    if (type == 2) {
+        union { double d; int64_t i; } u;
+        u.d = (double)val;
+        return u.i;      
+    }
+    if (type == 3) {
+        return val;
+    }
+    fprintf(stderr, "[ERROR] Passed unsupported type %lld\n", type);
+    abort();
+}
+
+double toy_int_to_float(int64_t i) {
+    return (double)i;
+}
+
+double toy_float_bits_to_double(int64_t f_bits) {
+    union { int64_t i; double d; } u;
+    u.i = f_bits;
+    return u.d;
+}
+
+int64_t toy_double_to_float_bits(double d) {
+    union { int64_t i; double d; } u;
+    u.d = d;
+    return u.i;
 }

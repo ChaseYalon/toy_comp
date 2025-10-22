@@ -193,3 +193,9 @@ fn test_compiler_int_conv() {
     );
     assert!(output.contains("14"));
 }
+
+#[test]
+fn test_compiler_float_infix() {
+    compile_code_aot!(output, "let pi = 3 + 0.1415; println(pi);", "float_print");
+    assert!(output.contains("3.1415"));
+}

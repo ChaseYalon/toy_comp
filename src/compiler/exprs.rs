@@ -28,6 +28,9 @@ impl Compiler {
         } else if t == &TypeTok::Int {
             let v = builder.ins().iconst(types::I64, 2);
             param_values.push(v);
+        } else if t == &TypeTok::Float {
+            let v = builder.ins().iconst(types::I64, 3);
+            param_values.push(v);
         } else {
             panic!("[ERROR] Unknown type of {:?}", t);
         }
@@ -47,6 +50,7 @@ impl Compiler {
             && expr.node_type() != "EmptyExpr"
             && expr.node_type() != "FuncCall"
             && expr.node_type() != "StringLit"
+            && expr.node_type() != "FloatLit"
         {
             panic!("[ERROR] Unknown AST node type: {}", expr.node_type());
         }
@@ -88,6 +92,14 @@ impl Compiler {
                 }
             }
             Ast::IntLit(n) => (builder.ins().iconst(types::I64, *n), TypeTok::Int),
+            Ast::FloatLit(f) => {
+                let float = *f;
+                //I have this
+                (
+                    builder.ins().iconst(types::I64, float.to_bits() as i64),
+                    TypeTok::Float,
+                )
+            }
             Ast::BoolLit(b) => {
                 let is_true: i64 = if *b { 1 } else { 0 };
                 (builder.ins().iconst(types::I64, is_true), TypeTok::Bool)
@@ -212,6 +224,97 @@ impl Compiler {
                         }
                         _ => panic!(),
                     }
+                }
+                if (l_type_str == "Float" && r_type_str == "Float")
+                    || (l_type_str == "Float" && r_type_str == "Int")
+                    || (l_type_str == "Int" && r_type_str == "Float")
+                {
+                    let lf = if l_type_str == "Int" {
+                        let int_to_float = self
+                            .funcs
+                            .get("toy_int_to_float")
+                            .expect("int_to_float not found");
+                        let func_ref = _module.declare_func_in_func(int_to_float.1, builder.func);
+                        let call_inst = builder.ins().call(func_ref, &[l]);
+                        builder.inst_results(call_inst)[0]
+                    } else {
+                        let float_bits_to_double = self
+                            .funcs
+                            .get("toy_float_bits_to_double")
+                            .expect("float_bits_to_double not found");
+                        let func_ref =
+                            _module.declare_func_in_func(float_bits_to_double.1, builder.func);
+                        let call_inst = builder.ins().call(func_ref, &[l]);
+                        builder.inst_results(call_inst)[0]
+                    };
+
+                    let rf = if r_type_str == "Int" {
+                        let int_to_float = self
+                            .funcs
+                            .get("toy_int_to_float")
+                            .expect("int_to_float not found");
+                        let func_ref = _module.declare_func_in_func(int_to_float.1, builder.func);
+                        let call_inst = builder.ins().call(func_ref, &[r]);
+                        builder.inst_results(call_inst)[0]
+                    } else {
+                        let float_bits_to_double = self
+                            .funcs
+                            .get("toy_float_bits_to_double")
+                            .expect("float_bits_to_double not found");
+                        let func_ref =
+                            _module.declare_func_in_func(float_bits_to_double.1, builder.func);
+                        let call_inst = builder.ins().call(func_ref, &[r]);
+                        builder.inst_results(call_inst)[0]
+                    };
+
+                    let result_f64 = match op {
+                        InfixOp::Plus => builder.ins().fadd(lf, rf),
+                        InfixOp::Minus => builder.ins().fsub(lf, rf),
+                        InfixOp::Multiply => builder.ins().fmul(lf, rf),
+                        InfixOp::Divide => builder.ins().fdiv(lf, rf),
+                        InfixOp::Modulo => {
+                            let div = builder.ins().fdiv(lf, rf);
+                            let floored = builder.ins().floor(div);
+                            let prod = builder.ins().fmul(rf, floored);
+                            builder.ins().fsub(lf, prod)
+                        }
+                        InfixOp::LessThan => {
+                            let cmp = builder.ins().fcmp(FloatCC::LessThan, lf, rf);
+                            return (builder.ins().uextend(types::I64, cmp), TypeTok::Bool);
+                        }
+                        InfixOp::LessThanEqt => {
+                            let cmp = builder.ins().fcmp(FloatCC::LessThanOrEqual, lf, rf);
+                            return (builder.ins().uextend(types::I64, cmp), TypeTok::Bool);
+                        }
+                        InfixOp::GreaterThan => {
+                            let cmp = builder.ins().fcmp(FloatCC::GreaterThan, lf, rf);
+                            return (builder.ins().uextend(types::I64, cmp), TypeTok::Bool);
+                        }
+                        InfixOp::GreaterThanEqt => {
+                            let cmp = builder.ins().fcmp(FloatCC::GreaterThanOrEqual, lf, rf);
+                            return (builder.ins().uextend(types::I64, cmp), TypeTok::Bool);
+                        }
+                        InfixOp::Equals => {
+                            let cmp = builder.ins().fcmp(FloatCC::Equal, lf, rf);
+                            return (builder.ins().uextend(types::I64, cmp), TypeTok::Bool);
+                        }
+                        InfixOp::NotEquals => {
+                            let cmp = builder.ins().fcmp(FloatCC::NotEqual, lf, rf);
+                            return (builder.ins().uextend(types::I64, cmp), TypeTok::Bool);
+                        }
+                        _ => panic!("[ERROR] Unsupported floating-point operation: {}", op),
+                    };
+
+                    // Convert result back to I64 bit representation
+                    let double_to_bits = self
+                        .funcs
+                        .get("toy_double_to_float_bits")
+                        .expect("double_to_float_bits not found");
+                    let func_ref = _module.declare_func_in_func(double_to_bits.1, builder.func);
+                    let call_inst = builder.ins().call(func_ref, &[result_f64]);
+                    let result_bits = builder.inst_results(call_inst)[0];
+
+                    return (result_bits, TypeTok::Float);
                 }
 
                 panic!(

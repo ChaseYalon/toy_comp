@@ -19,6 +19,11 @@ unsafe extern "C" {
     unsafe fn toy_type_to_str(ptr: i64, ptr_type: i64) -> i64;
     unsafe fn toy_type_to_bool(ptr: i64, ptr_type: i64) -> i64;
     unsafe fn toy_type_to_int(ptr: i64, ptr_type: i64) -> i64;
+    //Makes float stuff work
+    unsafe fn toy_int_to_float(i: i64) -> f64;
+    unsafe fn toy_float_bits_to_double(f_bits: i64) -> f64;
+    unsafe fn toy_double_to_float_bits(d: f64) -> i64;
+    unsafe fn toy_type_to_float(ptr: i64, ptr_type: i64) -> i64;
 }
 
 impl Compiler {
@@ -33,6 +38,10 @@ impl Compiler {
         jit_builder.symbol("toy_type_to_str", toy_type_to_str as *const u8);
         jit_builder.symbol("toy_type_to_bool", toy_type_to_bool as *const u8);
         jit_builder.symbol("toy_type_to_int", toy_type_to_int as *const u8);
+        jit_builder.symbol("toy_int_to_float", toy_int_to_float as *const u8);
+        jit_builder.symbol("toy_float_bits_to_double", toy_float_bits_to_double as *const u8);
+        jit_builder.symbol("toy_double_to_float_bits", toy_double_to_float_bits as *const u8);
+        jit_builder.symbol("toy_type_to_float", toy_type_to_float as *const u8);
         JITModule::new(jit_builder)
     }
 
@@ -133,6 +142,32 @@ impl Compiler {
             .declare_function("toy_type_to_int", Linkage::Import, &sig)
             .unwrap();
         self.funcs.insert("int".to_string(), (TypeTok::Int, func));
+
+        let mut sig = module.make_signature();
+        sig.params.push(AbiParam::new(types::I64));
+        sig.returns.push(AbiParam::new(types::F64));
+        let func = module.declare_function("toy_int_to_float", Linkage::Import, &sig).unwrap();
+        self.funcs.insert("toy_int_to_float".to_string(), (TypeTok::Float, func));
+
+        let mut sig = module.make_signature();
+        sig.params.push(AbiParam::new(types::I64));
+        sig.returns.push(AbiParam::new(types::F64));
+        let func = module.declare_function("toy_float_bits_to_double", Linkage::Import, &sig).unwrap();
+        self.funcs.insert("toy_float_bits_to_double".to_string(), (TypeTok::Float, func));
+
+        let mut sig = module.make_signature();
+        sig.params.push(AbiParam::new(types::F64));
+        sig.returns.push(AbiParam::new(types::I64));
+        let func = module.declare_function("toy_double_to_float_bits", Linkage::Import, &sig).unwrap();
+        self.funcs.insert("toy_double_to_float_bits".to_string(), (TypeTok::Int, func));
+
+        let mut sig = module.make_signature();
+        sig.params.push(AbiParam::new(types::I64));
+        sig.params.push(AbiParam::new(types::I64));
+        sig.returns.push(AbiParam::new(types::I64));
+        let func = module.declare_function("toy_type_to_float", Linkage::Import, &sig).unwrap();
+        self.funcs.insert("float".to_string(), (TypeTok:: Float, func));
+
     }
 
     pub fn compile_to_object(&mut self, ast: Vec<Ast>) -> Vec<u8> {

@@ -279,11 +279,13 @@ impl Compiler {
             || node.node_type() == "BoolLit"
             || node.node_type() == "FuncCall"
             || node.node_type() == "StrLit"
+            || node.node_type() == "FloatLit"
         {
             last_val = Some(self.compile_expr(&node, _module, func_builder, scope));
         }
 
         if node.node_type() == "VarDec" {
+            debug!(targets: ["compiler_verbose"], format!("Node: {}", node));
             self.compile_var_dec(&node, _module, func_builder, scope);
         }
 
