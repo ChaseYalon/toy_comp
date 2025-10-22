@@ -74,7 +74,8 @@ impl Compiler {
                     || name == "println".to_string()
                     || name == "str".to_string()
                     || name == "bool".to_string()
-                    || name == "int"
+                    || name == "int".to_string()
+                    || name == "float".to_string()
                 {
                     self.inject_type_param(&last_type, _module, builder, &mut param_values);
                 }
