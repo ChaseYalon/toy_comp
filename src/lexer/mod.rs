@@ -73,6 +73,22 @@ impl Lexer {
                 self.eat();
                 continue;
             }
+            //lex arrs before regular type to avoid int[] becoming (int) empty array
+            if self.lex_keyword("int[]", Token::Type(TypeTok::IntArr)) {
+                continue;
+            }
+            if self.lex_keyword("bool[]", Token::Type(TypeTok::BoolArr)) {
+                continue;
+            }
+            if self.lex_keyword("float[]", Token::Type(TypeTok::FloatArr)) {
+                continue;
+            }
+            if self.lex_keyword("str[]", Token::Type(TypeTok::StrArr)) {
+                continue;
+            }
+            if self.lex_keyword("any[]", Token::Type(TypeTok::AnyArr)) {
+                continue;
+            }
             if self.lex_keyword("let", Token::Let) {
                 continue;
             }
@@ -113,6 +129,9 @@ impl Lexer {
                 continue;
             }
             if self.lex_keyword("float", Token::Type(TypeTok::Float)) {
+                continue;
+            }
+            if self.lex_keyword("any", Token::Type(TypeTok::Any)) {
                 continue;
             }
 
@@ -292,6 +311,18 @@ impl Lexer {
             if c == ',' {
                 self.flush();
                 self.toks.push(Token::Comma);
+                self.eat();
+                continue;
+            }
+            if c == '[' {
+                self.flush();
+                self.toks.push(Token::LBrack);
+                self.eat();
+                continue;
+            }
+            if c == ']' {
+                self.flush();
+                self.toks.push(Token::RBrack);
                 self.eat();
                 continue;
             }

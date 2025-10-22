@@ -1,5 +1,6 @@
 {
     "cSpell.words": [
+        "arrs",
         "bitcast",
         "brif",
         "clif",
@@ -16,12 +17,14 @@
         "iconst",
         "imul",
         "isub",
+        "LBRACK",
         "libcall",
         "msys",
         "msystem",
         "objdumping",
         "opps",
         "println",
+        "RBRACK",
         "sdiv",
         "strequal",
         "uextend"

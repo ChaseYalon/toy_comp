@@ -673,3 +673,71 @@ fn test_lexer_zero_float() {
         ]
     )
 }
+
+#[test]
+fn test_lexer_arr_lit_and_index() {
+    let mut l = Lexer::new();
+    let out = l.lex("let arr = [1, 2, 3]; let t = arr[2];".to_string());
+    assert_eq!(
+        out,
+        vec![
+            Token::Let,
+            Token::VarName(Box::new("arr".to_string())),
+            Token::Assign,
+            Token::LBrack,
+            Token::IntLit(1),
+            Token::Comma,
+            Token::IntLit(2),
+            Token::Comma,
+            Token::IntLit(3),
+            Token::RBrack,
+            Token::Semicolon,
+            Token::Let,
+            Token::VarName(Box::new("t".to_string())),
+            Token::Assign,
+            Token::VarRef(Box::new("arr".to_string())),
+            Token::LBrack,
+            Token::IntLit(2),
+            Token::RBrack,
+            Token::Semicolon,
+        ]
+    )
+}
+
+#[test]
+fn test_lexer_static_arr_types() {
+    let mut l = Lexer::new();
+    let out = l.lex("let arrA: any[] = [1, 2, true]; let arrI: int[] = [1, 2, 3];".to_string());
+    assert_eq!(
+        out,
+        vec![
+            Token::Let,
+            Token::VarName(Box::new("arrA".to_string())),
+            Token::Colon,
+            Token::Type(TypeTok::AnyArr),
+            Token::Assign, 
+            Token::LBrack,
+            Token::IntLit(1),
+            Token::Comma,
+            Token::IntLit(2),
+            Token::Comma,
+            Token::BoolLit(true),
+            Token::RBrack,
+            Token::Semicolon,
+            Token::Let,
+            Token::VarName(Box::new("arrI".to_string())),
+            Token::Colon,
+            Token::Type(TypeTok::IntArr),
+            Token::Assign,
+            Token::LBrack,
+            Token::IntLit(1),
+            Token::Comma,
+            Token::IntLit(2),
+            Token::Comma,
+            Token::IntLit(3),
+            Token::RBrack,
+            Token::Semicolon,
+        ]
+    )
+
+}

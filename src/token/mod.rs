@@ -55,6 +55,8 @@ pub enum Token {
     LParen,
     RParen,
     Comma,
+    LBrack,
+    RBrack,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TypeTok {
@@ -64,6 +66,11 @@ pub enum TypeTok {
     Str,
     Any,
     Float,
+    IntArr,
+    BoolArr,
+    StrArr,
+    AnyArr,
+    FloatArr
 }
 impl TypeTok {
     pub fn type_str(&self) -> String {
@@ -74,6 +81,11 @@ impl TypeTok {
             Self::Str => "Str".to_string(),
             Self::Any => "Any".to_string(),
             Self::Float => "Float".to_string(),
+            Self::IntArr => "IntArr".to_string(),
+            Self::BoolArr => "BoolArr".to_string(),
+            Self::StrArr => "StrArr".to_string(),
+            Self::FloatArr => "FloatArr".to_string(),
+            Self::AnyArr => "AnyArr".to_string(),
         };
     }
 }
@@ -122,6 +134,8 @@ impl Token {
             Self::PlusPlus => "PlusPlus".to_string(),
             Self::MinusMinus => "MinusMinus".to_string(),
             Self::FloatLit(_) => "FloatLit".to_string(),
+            Self::LBrack => "LBrack".to_string(),
+            Self::RBrack => "RBrack".to_string()
         };
     }
     ///Is used to get value out of an int literal
@@ -186,6 +200,8 @@ impl fmt::Display for Token {
                 Token::PlusPlus => String::from("PLUS_PLUS"),
                 Token::MinusMinus => String::from("MINUS_MINUS"),
                 Token::FloatLit(f) => format!("Float({})", *f),
+                Token::LBrack => String::from("LBRACK"),
+                Token::RBrack => String::from("RBRACK")
             }
         )
     }
