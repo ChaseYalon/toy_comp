@@ -26,6 +26,7 @@
         "opps",
         "println",
         "RBRACK",
+        "repr",
         "sdiv",
         "strequal",
         "uextend"

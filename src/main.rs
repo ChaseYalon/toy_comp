@@ -9,7 +9,7 @@ pub mod parser;
 mod token;
 #[macro_use]
 mod macros;
-
+mod ffi;
 use crate::{lexer::Lexer, parser::Parser};
 
 fn main() {

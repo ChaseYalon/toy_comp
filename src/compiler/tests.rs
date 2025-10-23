@@ -204,3 +204,9 @@ fn test_compiler_float_conv() {
     compile_code_aot!(output, "let x = float(1); println(x);", "float_conv");
     assert!(output.contains("1.0"));
 }
+
+#[test]
+fn test_compiler_arr_lits() {
+    compile_code_aot!(output, "let x: int[] = [1, 2, 3]; println(x);", "arr_lit");
+    assert!(output.contains("[1, 2, 3];"));
+}

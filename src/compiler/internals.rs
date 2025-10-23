@@ -9,22 +9,7 @@ use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{Linkage, Module, default_libcall_names};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use target_lexicon::Triple;
-unsafe extern "C" {
-    unsafe fn toy_print(input: i64, datatype: i64);
-    unsafe fn toy_println(input: i64, datatype: i64);
-    unsafe fn toy_malloc(ptr: i64) -> i64;
-    unsafe fn toy_concat(sp1: i64, sp2: i64) -> i64;
-    unsafe fn toy_strequal(sp1: i64, sp2: i64) -> i64;
-    unsafe fn toy_strlen(sp1: i64) -> i64;
-    unsafe fn toy_type_to_str(ptr: i64, ptr_type: i64) -> i64;
-    unsafe fn toy_type_to_bool(ptr: i64, ptr_type: i64) -> i64;
-    unsafe fn toy_type_to_int(ptr: i64, ptr_type: i64) -> i64;
-    //Makes float stuff work
-    unsafe fn toy_int_to_float(i: i64) -> f64;
-    unsafe fn toy_float_bits_to_double(f_bits: i64) -> f64;
-    unsafe fn toy_double_to_float_bits(d: f64) -> i64;
-    unsafe fn toy_type_to_float(ptr: i64, ptr_type: i64) -> i64;
-}
+use crate::ffi::*;
 
 impl Compiler {
     pub fn make_jit(&self) -> JITModule {

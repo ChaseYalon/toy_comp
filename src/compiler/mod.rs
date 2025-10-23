@@ -27,6 +27,7 @@ pub enum OutputType {
 }
 pub static STUB_C: &str = include_str!("../c/stub.c");
 pub static BUILTIN_C: &str = include_str!("../c/builtins.c");
+pub static BUILTIN_H: &str = include_str!("../c/builtins.h");
 pub struct Compiler {
     ast: Vec<Ast>,
     var_count: usize,
@@ -124,6 +125,7 @@ impl Compiler {
             let obj_path = Path::new(&obj_temp);
             let stub_path = Path::new(&stub_temp);
             let builtin_path = Path::new(&builtin_temp);
+            let builtin_h = Path::new("builtins.h");
 
             let mut obj_file = File::create(obj_path).unwrap();
             obj_file
@@ -135,7 +137,9 @@ impl Compiler {
 
             let mut builtin_file = File::create(builtin_path).unwrap();
             builtin_file.write_all(BUILTIN_C.as_bytes()).unwrap();
-
+            let mut builtin_h = File::create(builtin_h).unwrap();
+            builtin_h.write_all(BUILTIN_H.as_bytes()).unwrap();
+            
             let status = Command::new("gcc")
                 .args(&[
                     obj_path.to_str().unwrap(),
