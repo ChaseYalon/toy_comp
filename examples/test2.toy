@@ -1,6 +1,6 @@
 let i = 0;
 
-while i < 100 {
+while i < 10000 {
     let s = "";
 
     if i % 3 == 0 {

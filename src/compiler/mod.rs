@@ -125,7 +125,7 @@ impl Compiler {
             let obj_path = Path::new(&obj_temp);
             let stub_path = Path::new(&stub_temp);
             let builtin_path = Path::new(&builtin_temp);
-            let builtin_h = Path::new("builtins.h");
+            let builtin_h_p = Path::new("builtins.h");
 
             let mut obj_file = File::create(obj_path).unwrap();
             obj_file
@@ -137,7 +137,7 @@ impl Compiler {
 
             let mut builtin_file = File::create(builtin_path).unwrap();
             builtin_file.write_all(BUILTIN_C.as_bytes()).unwrap();
-            let mut builtin_h = File::create(builtin_h).unwrap();
+            let mut builtin_h = File::create(builtin_h_p).unwrap();
             builtin_h.write_all(BUILTIN_H.as_bytes()).unwrap();
             
             let status = Command::new("gcc")
@@ -157,6 +157,7 @@ impl Compiler {
             //remove c objs
             let _ = std::fs::remove_file(stub_path);
             let _ = std::fs::remove_file(builtin_path);
+            let _ = std::fs::remove_file(builtin_h_p);
             let args: Vec<String> = env::args().collect();
             if !args.contains(&"--save-temp".to_string()) {
                 let _ = std::fs::remove_file(obj_path);
