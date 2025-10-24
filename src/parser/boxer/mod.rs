@@ -376,6 +376,22 @@ impl Boxer {
         if toks.len() > 2 && toks[0].tok_type() == "VarRef" && toks[1].tok_type() == "Assign" {
             return self.box_var_ref(&toks);
         }
+        if toks.len() > 2 && toks[0].tok_type() == "VarRef" && toks[1].tok_type() == "LBrack" {
+            let mut idx_toks: Vec<Token> = Vec::new();
+            let mut final_idx = 0;
+            for (i, tok) in toks[2..toks.len() - 1].to_vec().iter().enumerate() {
+                if tok.tok_type() == "RBrack" {
+                    final_idx = i + 2;
+                    break;
+                }
+                idx_toks.push(tok.clone());
+            }
+            if toks[final_idx + 1].tok_type() != "Assign" {
+                panic!("[ERROR] Expected '=', got {}", toks[final_idx + 1]);
+            }
+            let val_toks = toks[final_idx + 2..toks.len()].to_vec();
+            return TBox::ArrReassign(toks[0].clone(), idx_toks, val_toks);
+        }
         TBox::Expr(toks)
     }
 

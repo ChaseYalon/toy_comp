@@ -22,6 +22,8 @@ pub enum TBox {
     While(Vec<Token>, Vec<TBox>),
     Break,
     Continue,
+    ///Array, idx, new val
+    ArrReassign(Token, Vec<Token>, Vec<Token>)
 }
 
 impl fmt::Display for TBox {
@@ -52,6 +54,7 @@ impl fmt::Display for TBox {
                 TBox::While(cond, body) => format!("TBox_While Cond({:?}), Body({:?})", cond, body),
                 TBox::Break => "TBox_break".to_string(),
                 TBox::Continue => "TBox_continue".to_string(),
+                TBox::ArrReassign(a, i, n) => format!("TBox_Arr_Reassign Arr({:?}), Index({:?}), NewVal({:?})", a, i, n)
             }
         )
     }

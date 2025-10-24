@@ -210,3 +210,15 @@ fn test_compiler_arr_lits() {
     compile_code_aot!(output, "let x: int[] = [1, 2, 3]; println(x);", "arr_lit");
     assert!(output.contains("[1, 2, 3]"));
 }
+
+#[test]
+fn test_compiler_arr_ref() {
+    compile_code_aot!(output, r#"let x: str[] = ["hi", "bye", "hello", "goodbye"]; let b= x[2]; println(b)"#, "arr_ref");
+    assert!(output.contains("hello"));
+}
+
+#[test]
+fn test_compiler_arr_idx_reassign() {
+    compile_code_aot!(output, "let x = [1, 2, 3, 4, 5]; x[2] = 7; println(x);", "arr_idx_reassign");
+    assert!(output.contains("[1, 2, 7, 4, 5]"))
+}

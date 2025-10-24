@@ -514,3 +514,34 @@ fn test_boxer_arr_lit() {
         ]
     )
 }
+
+#[test]
+fn test_boxer_arr_item_reassign() {
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let toks = l.lex("let arr = [1, 2, 3]; arr[1] = 4;".to_string());
+    let boxes = b.box_toks(toks);
+    assert_eq!(
+        boxes,
+        vec![
+            TBox::VarDec(
+                Token::VarName(Box::new("arr".to_string())),
+                None,
+                vec![
+                    Token::LBrack,
+                    Token::IntLit(1),
+                    Token::Comma,
+                    Token::IntLit(2),
+                    Token::Comma,
+                    Token::IntLit(3),
+                    Token::RBrack
+                ]
+            ),
+            TBox::ArrReassign(
+                Token::VarRef(Box::new("arr".to_string())),
+                vec![Token::IntLit(1)],
+                vec![Token::IntLit(4)]
+            )
+        ]
+    )
+}

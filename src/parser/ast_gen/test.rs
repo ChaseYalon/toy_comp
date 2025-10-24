@@ -696,3 +696,32 @@ fn test_ast_gen_arr_idx_ref() {
         ]
     )
 }
+
+#[test]
+fn test_ast_gen_arr_idx_reassign() {
+    setup_ast!("let arr = [1.0, 1.1, 1.2, 1.3]; arr[1] = 1.7;", ast);
+    assert_eq!(
+        ast,
+        vec![
+            Ast::VarDec(
+                Box::new("arr".to_string()),
+                TypeTok::FloatArr,
+                Box::new(Ast::ArrLit(
+                    TypeTok::FloatArr,
+                    vec![
+                        Ast::FloatLit(OrderedFloat(1.0)),
+                        Ast::FloatLit(OrderedFloat(1.1)),
+                        Ast::FloatLit(OrderedFloat(1.2)),
+                        Ast::FloatLit(OrderedFloat(1.3))
+                    ]
+                ))
+            ),
+            Ast::ArrReassign(
+                Box::new("arr".to_string()),
+                Box::new(Ast::IntLit(1)),
+                Box::new(Ast::FloatLit(OrderedFloat(1.7)))
+            )
+        ]
+    )
+
+}

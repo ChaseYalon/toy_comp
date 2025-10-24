@@ -391,6 +391,20 @@ impl AstGenerator {
             }
             TBox::Continue => Ast::Continue,
             TBox::Break => Ast::Break,
+            TBox::ArrReassign(a, i, v) => {
+                let arr_name = match a {
+                    Token::VarRef(a) => *a, 
+                    _=> unreachable!()
+                };
+                let idx = self.parse_num_expr(&i);
+                let (value, v_type) = self.parse_expr(&v);
+
+                let arr_type = self.lookup_var_type(&arr_name).unwrap();
+                if !arr_type.type_str().contains(&v_type.type_str()) && arr_type != TypeTok::AnyArr {
+                    panic!("[ERROR] Element of type {:?} cannot be inserted into array of type {:?}", arr_type, arr_name);
+                }
+                Ast::ArrReassign(Box::new(arr_name), Box::new(idx), Box::new(value))
+            }
             _ => todo!("Unimplemented statement"),
         };
 

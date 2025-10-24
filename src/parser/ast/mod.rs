@@ -44,7 +44,9 @@ pub enum Ast {
     ///Type, elements
     ArrLit(TypeTok, Vec<Ast>),
     ///Arr, idx
-    ArrRef(Box<String>, Box<Ast>)
+    ArrRef(Box<String>, Box<Ast>),
+    ///Arr, idx, val
+    ArrReassign(Box<String>, Box<Ast>, Box<Ast>)
 }
 impl Ast {
     pub fn node_type(&self) -> String {
@@ -67,7 +69,8 @@ impl Ast {
             Ast::Break => "Break".to_string(),
             Ast::FloatLit(_) => "FloatLit".to_string(),
             Ast::ArrLit(_, _) => "ArrLit".to_string(),
-            Ast::ArrRef(_, _) => "ArrRef".to_string()
+            Ast::ArrRef(_, _) => "ArrRef".to_string(),
+            Ast::ArrReassign(_, _, _) => "ArrReassign".to_string()
         };
     }
 }
@@ -120,7 +123,8 @@ impl fmt::Display for Ast {
                 Ast::Continue => "Continue".to_string(),
                 Ast::FloatLit(f) => format!("FloatLit({})", *f),
                 Ast::ArrLit(t, v) => format!("ArrLit Type({:?}), Val({:?})", t, v),
-                Ast::ArrRef(a, i) => format!("ArrRef Arr({:?}), Index({:?})", a, i)
+                Ast::ArrRef(a, i) => format!("ArrRef Arr({:?}), Index({:?})", a, i),
+                Ast::ArrReassign(a, i, v) => format!("ArrReassign Arr({}), Index({}), Value({})", *a, *i, *v)
             }
         )
     }

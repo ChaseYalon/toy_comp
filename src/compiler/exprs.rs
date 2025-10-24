@@ -3,7 +3,6 @@ use super::Scope;
 use crate::debug;
 use crate::parser::ast::{Ast, InfixOp};
 use crate::token::TypeTok;
-
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -12,7 +11,7 @@ use cranelift_module::DataDescription;
 use cranelift_module::Module;
 
 impl Compiler {
-    fn inject_type_param<M: Module>(
+    pub fn inject_type_param<M: Module>(
         &self,
         t: &TypeTok,
         _module: &M,
@@ -100,6 +99,7 @@ impl Compiler {
             && expr.node_type() != "StringLit"
             && expr.node_type() != "FloatLit"
             && expr.node_type() != "ArrLit"
+            && expr.node_type() != "ArrRef"
         {
             panic!("[ERROR] Unknown AST node type: {}", expr.node_type());
         }
@@ -141,6 +141,26 @@ impl Compiler {
                     return (builder.ins().iconst(types::I64, 0), TypeTok::Void);
                 }
             }
+            Ast::ArrRef(a, i) => {
+                let a_s = *a.clone();
+                let (arr, arr_type) = scope.as_ref().borrow().get(a_s);
+                let (_, arr_read_global) = self.funcs.get("toy_read_from_arr").unwrap();
+                let arr_read = _module.declare_func_in_func(*arr_read_global, &mut builder.func);
+                let (idx, _) = self.compile_expr(i, _module, builder, scope);
+
+                let params = [builder.use_var(arr), idx].to_vec();
+                let call_res = builder.ins().call(arr_read, params.as_slice());
+                let res = builder.inst_results(call_res)[0];
+                let elem_type = match arr_type {
+                    TypeTok::IntArr => TypeTok::Int,
+                    TypeTok::BoolArr => TypeTok::Bool,
+                    TypeTok::StrArr => TypeTok::Str,
+                    TypeTok::FloatArr => TypeTok::Float,
+                    TypeTok::AnyArr => TypeTok::Any,
+                    _ => unreachable!()
+                };
+                return (res, elem_type);
+            },
             Ast::ArrLit(t, val) => (self.compile_arr_lit(val, _module, builder, scope),t.clone()),
             Ast::IntLit(n) => (builder.ins().iconst(types::I64, *n), TypeTok::Int),
             Ast::FloatLit(f) => {
