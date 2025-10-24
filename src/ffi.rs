@@ -55,3 +55,12 @@ unsafe extern "C" {
 unsafe extern "C" {
     pub fn toy_double_to_float_bits(d: f64) -> i64;
 }
+unsafe extern "C" {
+    pub fn toy_malloc_arr(len: i64, type_: i64) -> i64;
+}
+unsafe extern "C" {
+    pub fn toy_write_to_arr(arr_in_ptr: i64, value: i64, idx: i64, type_: i64);
+}
+unsafe extern "C" {
+    pub fn toy_read_from_arr(arr_in_ptr: i64, idx: i64) -> i64;
+}

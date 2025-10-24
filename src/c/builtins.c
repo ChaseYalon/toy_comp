@@ -9,72 +9,102 @@
 
 //datatype is 0 for string, 1 for bool, 2 for int, 3 for float, 4 for str[], 5 for bool[], 6 for int[], 7 for float[]
 //if datatype is 0 (input is string) then nput is a pointer
+char* _toy_format(int64_t input, int64_t datatype) {
+    switch(datatype) {
+        case 0: { // string
+            if (input == 0) {
+                const char* literal = "NULL_STRING";
+                size_t len = strlen(literal);
+                char* buff = malloc(len + 1);
+                strcpy(buff, literal);
+                return buff;
+            } else {
+                const char* str = (const char*)input;
+                size_t len = strlen(str);
+                char* buff = malloc(len + 1);
+                strcpy(buff, str);
+                return buff;
+            }
+        }
+        case 1: { // boolean
+            const char* literal;
+            if (input == 1) literal = "true";
+            else if (input == 0) literal = "false";
+            else {
+                fprintf(stderr, "[ERROR] Expected boolean but value was %lld\n", input);
+                abort();
+            }
+            size_t len = strlen(literal);
+            char* buff = malloc(len + 1);
+            strcpy(buff, literal);
+            return buff;
+        }
+        case 2: { // int
+            char* buff = malloc(21); // max 64-bit signed int
+            sprintf(buff, "%lld", input);
+            return buff;
+        }
+        case 3: { // double
+            union { int64_t i; double d; } u;
+            u.i = input;
+            char* buff = malloc(64);
+            snprintf(buff, 64, "%f", u.d);
+            return buff;
+        }
+        case 4: 
+        case 5:
+        case 6:
+        case 7: {
+            int64_t total_len = 2; // '[' and ']'
+            ToyArr* array = (ToyArr*) input;
+            char** element_strs = malloc(sizeof(char*) * array->length);
+
+            for (int64_t i = 0; i < array->length; i++) {
+                element_strs[i] = _toy_format(array->arr[i].value, array->arr[i].type);
+                total_len += strlen(element_strs[i]);
+                if (i != array->length - 1) total_len += 2; // ", "
+            }
+
+            // allocate final buffer
+            char* buff = malloc(total_len + 1);
+            char* ptr = buff;
+
+            *ptr++ = '[';
+            for (int64_t i = 0; i < array->length; i++) {
+                size_t len = strlen(element_strs[i]);
+                memcpy(ptr, element_strs[i], len);
+                ptr += len;
+
+                if (i != array->length - 1) {
+                    *ptr++ = ',';
+                    *ptr++ = ' ';
+                }
+
+                free(element_strs[i]); // free element string after copying
+            }
+            *ptr++ = ']';
+            *ptr = '\0';
+
+            free(element_strs);
+            return buff;
+        }
+        default:
+            fprintf(stderr, "[ERROR] Unknown datatype: %lld\n", datatype);
+            abort();
+    }
+}
+
+
 void toy_print(int64_t input, int64_t datatype) {
-    if (datatype == 0) {
-        if (input == 0) {
-            return;
-        }
-        printf("%s", (char*)input);
-        return;
-    }
-    if (datatype == 1) {
-        if (input == 1) {
-            printf("true");
-            return;
-        }
-        if (input == 0) {
-            printf("false");
-            return;
-        }
-        fprintf(stderr, "[ERROR] Expected boolean but value was %lld\n", input);
-        return;
-    }
-    if (datatype == 2) {
-        // Int - input is the actual value
-        printf("%lld", input);
-        return;
-    }
-    if (datatype == 3) {
-        union { int64_t i; double d; } u;
-        u.i = input;
-        printf("%f", u.d);
-        return;
-    }
-    fprintf(stderr, "[ERROR] Unknown datatype of %lld\n", datatype);
+    char* buff = (char*) _toy_format(input, datatype);
+    printf("%s", buff);
+    free(buff);
 }
 
 void toy_println(int64_t input, int64_t datatype) {
-    if (datatype == 0) {
-        if (input == 0) {
-            printf("\n");
-            return;
-        }
-        printf("%s\n", (char*)input);
-        return;
-    }
-    if (datatype == 1) {
-        if (input == 1) {
-            printf("true\n");
-            return;
-        }
-        if (input == 0) {
-            printf("false\n");
-            return;
-        }
-        fprintf(stderr, "[ERROR] Expected boolean but value was %lld\n", input);
-        return;
-    }
-    if (datatype == 2) {
-        printf("%lld\n", input);
-        return;
-    }
-    if (datatype == 3) {
-        union { int64_t i; double d; } u;
-        u.i = input;
-        printf("%f\n", u.d);
-        return;
-    }
-    fprintf(stderr, "[ERROR] Unknown datatype of %lld\n", datatype);
+    char* buff = (char*) _toy_format(input, datatype);
+    printf("%s\n", buff);
+    free(buff);
 }
 
 
@@ -328,15 +358,78 @@ int64_t toy_double_to_float_bits(double d) {
     u.d = d;
     return u.i;
 }
-
-int64_t toy_malloc_arr(int64_t len) {
-    size_t size = len * 16;
-
+int64_t toy_malloc_arr(int64_t len, int64_t type) {
+    size_t size = (size_t)(len * 16 * 1.4); // allocate 40% more space
     ToyArrVal* arr_ptr = malloc(size);
+
     ToyArrVal empty = { .value = 0, .type = 2, ._pad = {0} };
 
     for (int64_t i = 0; i < len; i++) {
-        memcpy(arr_ptr + i * 16, &empty, 16);
+        memcpy((uint8_t*)arr_ptr + i * 16, &empty, 16);
     }
-    return (int64_t) arr_ptr;
+
+    ToyArr* arr = malloc(sizeof(ToyArr));
+    arr->length = len;
+    arr->capacity = (int64_t)(len * 1.4);
+    arr->arr = arr_ptr;
+    arr->type = type;
+
+    return (int64_t)arr;
+}
+
+void toy_write_to_arr(int64_t arr_in_ptr, int64_t value, int64_t idx, int64_t type) {
+    ToyArr* arr_ptr = (ToyArr*) arr_in_ptr;
+    if (arr_ptr == NULL){
+        fprintf(stderr, "[ERROR] toy_write_to_arr received a null pointer");
+        abort();
+    }
+    if (idx < 0) {
+        fprintf(stderr, "[ERROR] Index must be bellow 0, got %lld", idx);
+        abort();
+    }
+    if (arr_ptr->type != type) {
+        fprintf(stderr, "[ERROR] Was expecting type of %lld, got %lld", arr_ptr->type ,type);
+        abort();
+    }
+    if (idx >= arr_ptr->capacity){
+        int64_t new_capacity = (int64_t)(arr_ptr->capacity * 1.4);
+        if (idx >= new_capacity) {
+            new_capacity = idx * 1.4;
+        }
+
+        ToyArrVal* new_data = malloc(new_capacity * sizeof(ToyArrVal));
+        if (!new_data) {
+            fprintf(stderr, "[ERROR] Failed to allocate new array buffer\n");
+            abort();
+        }
+        // Copy old arr into new arr
+        memcpy(new_data, arr_ptr->arr, arr_ptr->length * sizeof(ToyArrVal));
+
+        // Free old arr
+        free(arr_ptr->arr);
+
+        // Update metadata
+        arr_ptr->arr = new_data;
+        arr_ptr->capacity = new_capacity;
+        arr_ptr->length = idx;
+    }
+    //If we get here everything is good so we can write the value to the array
+    ToyArrVal* elem_ptr = arr_ptr->arr + idx;
+    elem_ptr->value = value;
+    elem_ptr->type = type;
+}
+
+int64_t toy_read_from_arr(int64_t arr_in_ptr, int64_t idx) {
+    ToyArr* arr_ptr = (ToyArr*) arr_in_ptr;
+    if (arr_ptr == NULL) {
+        fprintf(stderr, "[ERROR] toy_read_from_arr got a null pointer");
+        abort();
+    }
+    if (idx > arr_ptr->length) {
+        fprintf(stderr, "[ERROR] Tried to read from index %lld but array is only %lld elements long", idx, arr_ptr->length);
+        abort();
+    }
+    ToyArrVal* elem = arr_ptr->arr + idx;
+    return (int64_t) elem->value; 
+
 }

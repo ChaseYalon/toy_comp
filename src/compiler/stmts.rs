@@ -280,6 +280,7 @@ impl Compiler {
             || node.node_type() == "FuncCall"
             || node.node_type() == "StrLit"
             || node.node_type() == "FloatLit"
+            || node.node_type() == "ArrLit"
         {
             last_val = Some(self.compile_expr(&node, _module, func_builder, scope));
         }

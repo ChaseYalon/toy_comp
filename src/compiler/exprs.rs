@@ -31,9 +31,57 @@ impl Compiler {
         } else if t == &TypeTok::Float {
             let v = builder.ins().iconst(types::I64, 3);
             param_values.push(v);
+        } else if t == &TypeTok::StrArr {
+            let v = builder.ins().iconst(types::I64, 4);
+            param_values.push(v);
+        } else if t == &TypeTok::BoolArr {
+            let v = builder.ins().iconst(types::I64, 5);
+            param_values.push(v);
+        } else if t == &TypeTok::IntArr {
+            let v = builder.ins().iconst(types::I64, 6);
+            param_values.push(v);
+        } else if t == &TypeTok::FloatArr {
+            let v = builder.ins().iconst(types::I64, 7);
+            param_values.push(v);
         } else {
-            panic!("[ERROR] Unknown type of {:?}", t);
+            panic!("[ERROR] Type {:?} is unknown", t);
         }
+    }
+    pub fn compile_arr_lit<M: Module>(
+        &self,
+        arr: &Vec<Ast>,
+        module: &mut M,
+        builder: &mut FunctionBuilder<'_>,
+        scope: &Rc<RefCell<Scope>>
+    )-> Value{
+        let mut arr_items: Vec<Value> = Vec::new();
+        let mut arr_types: Vec<TypeTok> = Vec::new();
+        for expr in arr {
+            let (val, t) = self.compile_expr(expr, module, builder, scope);
+            arr_items.push(val);
+            arr_types.push(t);
+        }
+        let (_, arr_malloc_global) = self.funcs.get("toy_malloc_arr").unwrap();
+        let (_, arr_write_global) = self.funcs.get("toy_write_to_arr").unwrap();
+        let arr_malloc = module.declare_func_in_func(*arr_malloc_global, &mut builder.func);
+        let arr_write = module.declare_func_in_func(*arr_write_global, &mut builder.func);
+        
+        //Calls toy malloc with the correct params
+        let len = builder.ins().iconst(types::I64, arr_items.len() as i64);
+        let mut params = [len].to_vec();
+        self.inject_type_param(&arr_types[0], module, builder, &mut params);
+        let call_res = builder.ins().call(arr_malloc, params.as_slice());
+        let arr_ptr = builder.inst_results(call_res)[0];
+
+        for (i, item) in arr_items.iter().enumerate(){
+            let mut params = [arr_ptr, item.clone()].to_vec();
+            let idx = builder.ins().iconst(types::I64, i as i64);
+            params.push(idx);
+            self.inject_type_param(&arr_types[i], module, builder, &mut params);
+            builder.ins().call(arr_write, params.as_slice());
+        }
+
+        return arr_ptr;
     }
     pub fn compile_expr<M: Module>(
         &self,
@@ -51,6 +99,7 @@ impl Compiler {
             && expr.node_type() != "FuncCall"
             && expr.node_type() != "StringLit"
             && expr.node_type() != "FloatLit"
+            && expr.node_type() != "ArrLit"
         {
             panic!("[ERROR] Unknown AST node type: {}", expr.node_type());
         }
@@ -92,6 +141,7 @@ impl Compiler {
                     return (builder.ins().iconst(types::I64, 0), TypeTok::Void);
                 }
             }
+            Ast::ArrLit(t, val) => (self.compile_arr_lit(val, _module, builder, scope),t.clone()),
             Ast::IntLit(n) => (builder.ins().iconst(types::I64, *n), TypeTok::Int),
             Ast::FloatLit(f) => {
                 let float = *f;

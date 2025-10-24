@@ -208,5 +208,5 @@ fn test_compiler_float_conv() {
 #[test]
 fn test_compiler_arr_lits() {
     compile_code_aot!(output, "let x: int[] = [1, 2, 3]; println(x);", "arr_lit");
-    assert!(output.contains("[1, 2, 3];"));
+    assert!(output.contains("[1, 2, 3]"));
 }

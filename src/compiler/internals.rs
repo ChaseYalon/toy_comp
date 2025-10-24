@@ -27,6 +27,9 @@ impl Compiler {
         jit_builder.symbol("toy_float_bits_to_double", toy_float_bits_to_double as *const u8);
         jit_builder.symbol("toy_double_to_float_bits", toy_double_to_float_bits as *const u8);
         jit_builder.symbol("toy_type_to_float", toy_type_to_float as *const u8);
+        jit_builder.symbol("toy_write_to_arr", toy_write_to_arr as *const u8);
+        jit_builder.symbol("toy_read_from_arr", toy_read_from_arr as *const u8);
+        jit_builder.symbol("toy_malloc_arr", toy_malloc_arr as *const u8);
         JITModule::new(jit_builder)
     }
 
@@ -151,7 +154,29 @@ impl Compiler {
         sig.params.push(AbiParam::new(types::I64));
         sig.returns.push(AbiParam::new(types::I64));
         let func = module.declare_function("toy_type_to_float", Linkage::Import, &sig).unwrap();
-        self.funcs.insert("float".to_string(), (TypeTok:: Float, func));
+        self.funcs.insert("float".to_string(), (TypeTok::Float, func));
+
+        let mut sig = module.make_signature();
+        sig.params.push(AbiParam::new(types::I64));
+        sig.params.push(AbiParam::new(types::I64));
+        sig.params.push(AbiParam::new(types::I64));
+        sig.params.push(AbiParam::new(types::I64));
+        let func = module.declare_function("toy_write_to_arr", Linkage::Import, &sig).unwrap();
+        self.funcs.insert("toy_write_to_arr".to_string(), (TypeTok::Void, func));
+
+        let mut sig = module.make_signature();
+        sig.params.push(AbiParam::new(types::I64));
+        sig.params.push(AbiParam::new(types::I64));
+        sig.returns.push(AbiParam::new(types::I64));
+        let func = module.declare_function("toy_read_from_arr", Linkage::Import, &sig).unwrap();
+        self.funcs.insert("toy_read_from_arr".to_string(), (TypeTok::Any, func));
+
+        let mut sig = module.make_signature();
+        sig.params.push(AbiParam::new(types::I64));
+        sig.params.push(AbiParam::new(types::I64));
+        sig.returns.push(AbiParam::new(types::I64));
+        let func = module.declare_function("toy_malloc_arr", Linkage::Import, &sig).unwrap();
+        self.funcs.insert("toy_malloc_arr".to_string(), (TypeTok::Any, func));
 
     }
 

@@ -267,11 +267,32 @@ impl AstGenerator {
                 return (to_ret_ast, inner_type);
             }
         }
+        //arr ref like arr[0]
+        if toks.first().unwrap().tok_type() == "VarRef" && toks[1].tok_type() == "LBrack" {
+            let name = match toks[0].clone() {
+                Token::VarRef(a) => *a,
+                _ => unreachable!()
+            };
+            let idx = self.parse_num_expr(&toks[2..toks.len() - 1].to_vec());
+            let arr_type = match self.lookup_var_type(&name){
+                Some(t) => t,
+                None => panic!("[ERROR] Variable {} is undefined", name)
+            };
+            let item_type = match arr_type {
+                TypeTok::IntArr => TypeTok::Int,
+                TypeTok::StrArr => TypeTok::Str,
+                TypeTok::BoolArr => TypeTok::Bool,
+                TypeTok::FloatArr => TypeTok::Float,
+                TypeTok::AnyArr => TypeTok::Any,
+                _ => panic!("[ERROR] {:?} is not an array type", arr_type)
+            };
+            return (Ast::ArrRef(Box::new(name), Box::new(idx)), item_type);
+        }
         //Arr literals
         if toks.first().unwrap().tok_type() == "LBrack" {
             return self.parse_arr_lit(toks);
         }
-
+        
         let (best_idx, _, best_val) = self.find_top_val(toks);
         debug!(targets: ["parser", "parser_verbose"], best_val.clone());
         debug!(targets: ["parser", "parser_verbose"], toks.clone());

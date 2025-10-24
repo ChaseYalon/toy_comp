@@ -660,3 +660,39 @@ fn test_ast_gen_arr_reassign() {
         ]
     )
 }
+
+#[test]
+fn test_ast_gen_arr_idx_ref() {
+    setup_ast!("let a: int[] = [1, 2, 3, 4]; let b = a[0];", ast);
+
+    assert_eq!(
+        ast,
+        vec![
+            Ast::VarDec(
+                Box::new("a".to_string()), 
+                TypeTok::IntArr, 
+                Box::new(
+                    Ast::ArrLit(
+                        TypeTok::IntArr, 
+                        vec![
+                            Ast::IntLit(1),
+                            Ast::IntLit(2),
+                            Ast::IntLit(3),
+                            Ast::IntLit(4)
+                        ]
+                    )
+                )
+            ),
+            Ast::VarDec(
+                Box::new("b".to_string()), 
+                TypeTok::Int, 
+                Box::new(
+                    Ast::ArrRef(
+                        Box::new("a".to_string()), 
+                        Box::new(Ast::IntLit(0))
+                    )
+                )
+            )
+        ]
+    )
+}

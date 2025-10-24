@@ -42,7 +42,9 @@ pub enum Ast {
     FloatLit(OrderedFloat<f64>),
 
     ///Type, elements
-    ArrLit(TypeTok, Vec<Ast>)
+    ArrLit(TypeTok, Vec<Ast>),
+    ///Arr, idx
+    ArrRef(Box<String>, Box<Ast>)
 }
 impl Ast {
     pub fn node_type(&self) -> String {
@@ -64,7 +66,8 @@ impl Ast {
             Ast::Continue => "Continue".to_string(),
             Ast::Break => "Break".to_string(),
             Ast::FloatLit(_) => "FloatLit".to_string(),
-            Ast::ArrLit(_, _) => "ArrLit".to_string()
+            Ast::ArrLit(_, _) => "ArrLit".to_string(),
+            Ast::ArrRef(_, _) => "ArrRef".to_string()
         };
     }
 }
@@ -116,7 +119,8 @@ impl fmt::Display for Ast {
                 Ast::Break => "Break".to_string(),
                 Ast::Continue => "Continue".to_string(),
                 Ast::FloatLit(f) => format!("FloatLit({})", *f),
-                Ast::ArrLit(t, v) => format!("ArrLit Type({:?}), Val({:?})", t, v)
+                Ast::ArrLit(t, v) => format!("ArrLit Type({:?}), Val({:?})", t, v),
+                Ast::ArrRef(a, i) => format!("ArrRef Arr({:?}), Index({:?})", a, i)
             }
         )
     }
