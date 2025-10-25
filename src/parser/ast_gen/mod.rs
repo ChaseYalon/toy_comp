@@ -56,7 +56,7 @@ impl AstGenerator {
         let mut fptm: HashMap<String, Vec<TypeTok>> = HashMap::new();
         fptm.insert("print".to_string(), [TypeTok::Any].to_vec());
         fptm.insert("println".to_string(), [TypeTok::Any].to_vec());
-        fptm.insert("len".to_string(), [TypeTok::Str].to_vec());
+        fptm.insert("len".to_string(), [TypeTok::Any].to_vec());
         fptm.insert("str".to_string(), [TypeTok::Any].to_vec());
         fptm.insert("bool".to_string(), [TypeTok::Any].to_vec());
         fptm.insert("int".to_string(), [TypeTok::Any].to_vec());

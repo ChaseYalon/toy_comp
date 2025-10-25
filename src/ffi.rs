@@ -64,3 +64,6 @@ unsafe extern "C" {
 unsafe extern "C" {
     pub fn toy_read_from_arr(arr_in_ptr: i64, idx: i64) -> i64;
 }
+unsafe extern "C" {
+    pub fn toy_arrlen(arr_in_ptr: i64) -> i64;
+}

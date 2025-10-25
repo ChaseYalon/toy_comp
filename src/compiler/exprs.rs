@@ -106,12 +106,7 @@ impl Compiler {
 
         match expr {
             Ast::FuncCall(b_name, params) => {
-                let name = *b_name.clone();
-                let o_func = self.funcs.get(&name);
-                if o_func.is_none() {
-                    panic!("[ERROR] Function {} is undefined", name);
-                }
-                let (ret_type, id) = o_func.unwrap();
+                let mut name = *b_name.clone();
                 let mut param_values: Vec<Value> = Vec::new();
                 let mut last_type: TypeTok = TypeTok::Str;
                 for p in params {
@@ -119,6 +114,18 @@ impl Compiler {
                     last_type = t;
                     param_values.push(v);
                 }
+                if name == "len".to_string() {
+                    if last_type == TypeTok::Str {
+                        name = "strlen".to_string();
+                    } else {
+                        name = "arrlen".to_string();
+                    }
+                }
+                let o_func = self.funcs.get(&name);
+                if o_func.is_none() {
+                    panic!("[ERROR] Function {} is undefined", name);
+                }
+                let (ret_type, id) = o_func.unwrap();
                 if name == "print".to_string()
                     || name == "println".to_string()
                     || name == "str".to_string()

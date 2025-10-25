@@ -222,3 +222,9 @@ fn test_compiler_arr_idx_reassign() {
     compile_code_aot!(output, "let x = [1, 2, 3, 4, 5]; x[2] = 7; println(x);", "arr_idx_reassign");
     assert!(output.contains("[1, 2, 7, 4, 5]"))
 }
+
+#[test]
+fn test_compiler_arr_len() {
+    compile_code_aot!(output, "let arr = [true, false, false, true]; println(len(arr));", "arr_len");
+    assert!(output.contains("4"));
+}

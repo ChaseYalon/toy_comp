@@ -433,3 +433,8 @@ int64_t toy_read_from_arr(int64_t arr_in_ptr, int64_t idx) {
     return (int64_t) elem->value; 
 
 }
+
+int64_t toy_arrlen(int64_t arr_in_ptr) {
+    ToyArr* arr_ptr = (ToyArr*) arr_in_ptr;
+    return arr_ptr->length;
+}

@@ -30,6 +30,7 @@ impl Compiler {
         jit_builder.symbol("toy_write_to_arr", toy_write_to_arr as *const u8);
         jit_builder.symbol("toy_read_from_arr", toy_read_from_arr as *const u8);
         jit_builder.symbol("toy_malloc_arr", toy_malloc_arr as *const u8);
+        jit_builder.symbol("toy_arrlen", toy_arrlen as *const u8);
         JITModule::new(jit_builder)
     }
 
@@ -102,7 +103,7 @@ impl Compiler {
         let func = module
             .declare_function("toy_strlen", Linkage::Import, &sig)
             .unwrap();
-        self.funcs.insert("len".to_string(), (TypeTok::Int, func));
+        self.funcs.insert("strlen".to_string(), (TypeTok::Int, func));
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
@@ -177,6 +178,12 @@ impl Compiler {
         sig.returns.push(AbiParam::new(types::I64));
         let func = module.declare_function("toy_malloc_arr", Linkage::Import, &sig).unwrap();
         self.funcs.insert("toy_malloc_arr".to_string(), (TypeTok::Any, func));
+
+        let mut sig = module.make_signature();
+        sig.params.push(AbiParam::new(types::I64));
+        sig.returns.push(AbiParam::new(types::I64));
+        let func = module.declare_function("toy_arrlen", Linkage::Import, &sig).unwrap();
+        self.funcs.insert("arrlen".to_string(), (TypeTok::Int, func));
 
     }
 

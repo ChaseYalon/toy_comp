@@ -28,3 +28,4 @@ int64_t toy_double_to_float_bits(double d);
 int64_t toy_malloc_arr(int64_t len, int64_t type);
 void toy_write_to_arr(int64_t arr_in_ptr, int64_t value, int64_t idx, int64_t type);
 int64_t toy_read_from_arr(int64_t arr_in_ptr, int64_t idx);
+int64_t toy_arrlen(int64_t arr_in_ptr);
