@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <math.h>
 #include "builtins.h"
+#include <inttypes.h>
 
 //datatype is 0 for string, 1 for bool, 2 for int, 3 for float, 4 for str[], 5 for bool[], 6 for int[], 7 for float[]
 //if datatype is 0 (input is string) then nput is a pointer
@@ -122,7 +123,7 @@ int64_t toy_malloc(int64_t ptr) {
         fprintf(stderr, "[ERROR] Toy malloc failed\n");
         abort();
     }
-    strcpy_s(out, len + 1, input);
+    strcpy(out, input);
     
     return (int64_t) out;
 }
@@ -146,8 +147,8 @@ int64_t toy_concat(int64_t sp1, int64_t sp2) {
         abort();
     }
     
-    strcpy_s(out, combinedLen, str1);
-    strcat_s(out,combinedLen, str2);
+    strcpy(out, str1);
+    strcat(out, str2);
     return (int64_t) out;
 }
 
@@ -209,7 +210,7 @@ int64_t toy_type_to_str(int64_t val, int64_t type) {
         snprintf(buffer, sizeof(buffer), "%g", u.d);
 
         char* out = (char*) toy_malloc(strlen(buffer) + 1);
-        strcpy_s(out, strlen(out) + 1, buffer);
+        strcpy(out,  buffer);
 
         return (int64_t)out;
     }
