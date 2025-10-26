@@ -3,7 +3,8 @@ use std::env;
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
-use super::FILE_EXTENTION_EXE;
+use super::FILE_EXTENSION_EXE;
+use std::path::PathBuf;
 
 fn capture_program_output(program: String) -> String {
     thread::sleep(Duration::from_millis(100));
@@ -30,12 +31,12 @@ macro_rules! compile_code {
 }
 macro_rules! compile_code_aot {
     ($o:ident, $i:expr, $test_name:expr) => {
-        let project_root_str = env!("CARGO_MANIFEST_DIR");
-        let output_name = format!("output_{}{}", FILE_EXTENTION_EXE, $test_name);
-        let output_path = format!("{}/temp/{}", project_root_str, output_name);
+        let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let output_name = format!("output_{}{}", $test_name, FILE_EXTENSION_EXE);
+        let output_path = project_root.join("temp").join(&output_name);
 
         let _ = std::fs::remove_file(&output_path);
-        thread::sleep(Duration::from_millis(100)); // Wait for file deletion
+        thread::sleep(Duration::from_millis(100)); 
 
         let mut l = Lexer::new();
         let mut p = Parser::new();
@@ -43,11 +44,13 @@ macro_rules! compile_code_aot {
         c.compile(
             p.parse(l.lex($i.to_string())),
             false,
-            Some(&format!("temp/{}", output_name)),
+            Some(&format!("temp/{}", output_name)), 
         );
 
-        thread::sleep(Duration::from_millis(200)); // Wait for compilation
-        let $o = capture_program_output(output_path);
+        thread::sleep(Duration::from_millis(200)); 
+
+        let output_str = output_path.to_string_lossy().to_string();
+        let $o = capture_program_output(output_str);
     };
 }
 #[test]

@@ -25,7 +25,7 @@ pub enum OutputType {
     Jit(JITModule),
     Aot(ObjectModule),
 }
-pub static FILE_EXTENTION_O: &str = if cfg!(target_os = "windows") {
+pub static FILE_EXTENSION_O: &str = if cfg!(target_os = "windows") {
     "obj"
 } else if cfg!(target_os = "linux") {
     "o"
@@ -33,7 +33,7 @@ pub static FILE_EXTENTION_O: &str = if cfg!(target_os = "windows") {
     panic!("[ERROR] Only supported OS's are windows and linux")
 };
 
-pub static FILE_EXTENTION_EXE: &str = if cfg!(target_os = "windows") {
+pub static FILE_EXTENSION_EXE: &str = if cfg!(target_os = "windows") {
     ".exe"
 } else if cfg!(target_os = "linux") {
     ""
@@ -129,14 +129,14 @@ impl Compiler {
         path: Option<&str>,
     ) -> Option<fn() -> i64> {
         if !should_jit {
-            let exe_val = format!("program{}", FILE_EXTENTION_EXE);
+            let exe_val = format!("program{}", FILE_EXTENSION_EXE);
             let o_path = path.unwrap_or(&exe_val);
 
             let base_name = Path::new(o_path)
                 .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or("program");
-            let obj_temp = format!("{}.{}", base_name, FILE_EXTENTION_O);
+            let obj_temp = format!("{}.{}", base_name, FILE_EXTENSION_O);
             let stub_temp = format!("{}_stub.c", base_name);
             let builtin_temp = format!("{}_builtins.c", base_name);
             let obj_path = Path::new(&obj_temp);
@@ -173,7 +173,6 @@ impl Compiler {
                 panic!("GCC failed with exit code {:?}", status.code());
             }
             //remove c objs
-            println!("Stub path: {}", stub_path.display());
             let _ = std::fs::remove_file(stub_path);
             let _ = std::fs::remove_file(builtin_path);
             let _ = std::fs::remove_file(builtin_h_p);
