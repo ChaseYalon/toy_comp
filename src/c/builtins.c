@@ -32,7 +32,7 @@ char* _toy_format(int64_t input, int64_t datatype) {
             if (input == 1) literal = "true";
             else if (input == 0) literal = "false";
             else {
-                fprintf(stderr, "[ERROR] Expected boolean but value was %lld\n", input);
+                fprintf(stderr, "[ERROR] Expected boolean but value was %" PRId64 "\n", input);
                 abort();
             }
             size_t len = strlen(literal);
@@ -42,7 +42,7 @@ char* _toy_format(int64_t input, int64_t datatype) {
         }
         case 2: { // int
             char* buff = malloc(21); // max 64-bit signed int
-            sprintf(buff, "%lld", input);
+            sprintf(buff, "%" PRId64 "", input);
             return buff;
         }
         case 3: { // double
@@ -90,7 +90,7 @@ char* _toy_format(int64_t input, int64_t datatype) {
             return buff;
         }
         default:
-            fprintf(stderr, "[ERROR] Unknown datatype: %lld\n", datatype);
+            fprintf(stderr, "[ERROR] Unknown datatype: %"PRId64"\n", datatype);
             abort();
     }
 }
@@ -197,7 +197,7 @@ int64_t toy_type_to_str(int64_t val, int64_t type) {
             abort();
         }
 
-        sprintf(str, "%lld", (long long)val);
+        sprintf(str, "%"PRId64"", val);
         int64_t out = toy_malloc((int64_t)str);
         free(str); //not actual value, temp buffer
         return out;
@@ -215,7 +215,7 @@ int64_t toy_type_to_str(int64_t val, int64_t type) {
         return (int64_t)out;
     }
 
-    fprintf(stderr, "[ERROR] Can only convert strings, bools and ints to strings, got type %lld\n", type);
+    fprintf(stderr, "[ERROR] Can only convert strings, bools and ints to strings, got type %"PRId64"\n", type);
     abort();
 }
 
@@ -251,7 +251,7 @@ int64_t toy_type_to_bool(int64_t val, int64_t type) {
         return (u.d < 0.0) ? 0 : 1; //negative false, positive true
 
     }
-    fprintf(stderr, "[ERROR] Tried to convert type %lld to bool, that is not supported\n", type);
+    fprintf(stderr, "[ERROR] Tried to convert type %"PRId64" to bool, that is not supported\n", type);
     abort();
 }
 
@@ -297,7 +297,7 @@ int64_t toy_type_to_int(int64_t val, int64_t type) {
 
         return (int64_t) rounded;
     }
-    fprintf(stderr, "[ERROR] Type %lld unsupported for conversion to int\n", type);
+    fprintf(stderr, "[ERROR] Type %"PRId64" unsupported for conversion to int\n", type);
     abort();
 }
 
@@ -329,7 +329,7 @@ int64_t toy_type_to_float(int64_t val, int64_t type) {
         if (val == 1){
             return 1.0;
         }
-        fprintf(stderr, "[ERROR] Attempted to cast non boolean, as boolean, to float (%llx)\n", val);
+        fprintf(stderr, "[ERROR] Attempted to cast non boolean, as boolean, to float (%"PRId64")\n", val);
         abort();
     }
     if (type == 2) {
@@ -340,7 +340,7 @@ int64_t toy_type_to_float(int64_t val, int64_t type) {
     if (type == 3) {
         return val;
     }
-    fprintf(stderr, "[ERROR] Passed unsupported type %lld\n", type);
+    fprintf(stderr, "[ERROR] Passed unsupported type %"PRId64"\n", type);
     abort();
 }
 
@@ -385,11 +385,11 @@ void toy_write_to_arr(int64_t arr_in_ptr, int64_t value, int64_t idx, int64_t ty
         abort();
     }
     if (idx < 0) {
-        fprintf(stderr, "[ERROR] Index must be bellow 0, got %lld", idx);
+        fprintf(stderr, "[ERROR] Index must be bellow 0, got %"PRId64"", idx);
         abort();
     }
     if (arr_ptr->type != type) {
-        fprintf(stderr, "[ERROR] Was expecting type of %lld, got %lld", arr_ptr->type ,type);
+        fprintf(stderr, "[ERROR] Was expecting type of %"PRId64", got %"PRId64"", arr_ptr->type ,type);
         abort();
     }
     if (idx >= arr_ptr->capacity){
@@ -427,7 +427,7 @@ int64_t toy_read_from_arr(int64_t arr_in_ptr, int64_t idx) {
         abort();
     }
     if (idx > arr_ptr->length) {
-        fprintf(stderr, "[ERROR] Tried to read from index %lld but array is only %lld elements long", idx, arr_ptr->length);
+        fprintf(stderr, "[ERROR] Tried to read from index %"PRId64" but array is only %"PRId64" elements long", idx, arr_ptr->length);
         abort();
     }
     ToyArrVal* elem = arr_ptr->arr + idx;

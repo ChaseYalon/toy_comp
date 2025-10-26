@@ -3,6 +3,7 @@ use std::env;
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
+use super::FILE_EXTENTION_EXE;
 
 fn capture_program_output(program: String) -> String {
     thread::sleep(Duration::from_millis(100));
@@ -30,8 +31,8 @@ macro_rules! compile_code {
 macro_rules! compile_code_aot {
     ($o:ident, $i:expr, $test_name:expr) => {
         let project_root_str = env!("CARGO_MANIFEST_DIR");
-        let output_name = format!("output_{}.exe", $test_name);
-        let output_path = format!("{}\\temp\\{}", project_root_str, output_name);
+        let output_name = format!("output_{}{}", FILE_EXTENTION_EXE, $test_name);
+        let output_path = format!("{}/temp/{}", project_root_str, output_name);
 
         let _ = std::fs::remove_file(&output_path);
         thread::sleep(Duration::from_millis(100)); // Wait for file deletion
