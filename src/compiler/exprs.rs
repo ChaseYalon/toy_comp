@@ -30,16 +30,16 @@ impl Compiler {
         } else if t == &TypeTok::Float {
             let v = builder.ins().iconst(types::I64, 3);
             param_values.push(v);
-        } else if t == &TypeTok::StrArr {
+        } else if t == &TypeTok::StrArr(1) {
             let v = builder.ins().iconst(types::I64, 4);
             param_values.push(v);
-        } else if t == &TypeTok::BoolArr {
+        } else if t == &TypeTok::BoolArr(1) {
             let v = builder.ins().iconst(types::I64, 5);
             param_values.push(v);
-        } else if t == &TypeTok::IntArr {
+        } else if t == &TypeTok::IntArr(1) {
             let v = builder.ins().iconst(types::I64, 6);
             param_values.push(v);
-        } else if t == &TypeTok::FloatArr {
+        } else if t == &TypeTok::FloatArr(1) {
             let v = builder.ins().iconst(types::I64, 7);
             param_values.push(v);
         } else {
@@ -159,11 +159,16 @@ impl Compiler {
                 let call_res = builder.ins().call(arr_read, params.as_slice());
                 let res = builder.inst_results(call_res)[0];
                 let elem_type = match arr_type {
-                    TypeTok::IntArr => TypeTok::Int,
-                    TypeTok::BoolArr => TypeTok::Bool,
-                    TypeTok::StrArr => TypeTok::Str,
-                    TypeTok::FloatArr => TypeTok::Float,
-                    TypeTok::AnyArr => TypeTok::Any,
+                    TypeTok::IntArr(1) => TypeTok::Int,
+                    TypeTok::BoolArr(1) => TypeTok::Bool,
+                    TypeTok::StrArr(1) => TypeTok::Str,
+                    TypeTok::FloatArr(1) => TypeTok::Float,
+                    TypeTok::AnyArr(1) => TypeTok::Any,
+                    TypeTok::IntArr(n) => TypeTok::IntArr(n - 1),
+                    TypeTok::BoolArr(n) => TypeTok::BoolArr(n - 1),
+                    TypeTok::StrArr(n) => TypeTok::StrArr(n - 1),
+                    TypeTok::FloatArr(n) => TypeTok::FloatArr(n - 1),
+                    TypeTok::AnyArr(n) => TypeTok::AnyArr(n - 1),
                     _ => unreachable!()
                 };
                 return (res, elem_type);

@@ -714,7 +714,7 @@ fn test_lexer_static_arr_types() {
             Token::Let,
             Token::VarName(Box::new("arrA".to_string())),
             Token::Colon,
-            Token::Type(TypeTok::AnyArr),
+            Token::Type(TypeTok::AnyArr(1)),
             Token::Assign, 
             Token::LBrack,
             Token::IntLit(1),
@@ -727,7 +727,7 @@ fn test_lexer_static_arr_types() {
             Token::Let,
             Token::VarName(Box::new("arrI".to_string())),
             Token::Colon,
-            Token::Type(TypeTok::IntArr),
+            Token::Type(TypeTok::IntArr(1)),
             Token::Assign,
             Token::LBrack,
             Token::IntLit(1),
@@ -740,4 +740,35 @@ fn test_lexer_static_arr_types() {
         ]
     )
 
+}
+
+#[test]
+fn test_lexer_n_dimensional_arrays() {
+    let mut l = Lexer::new();
+    let toks = l.lex("int[][] = [[1, 2, 3], [4, 5, 6]];".to_string());
+    assert_eq!(
+        toks,
+        vec![
+            Token::Type(TypeTok::IntArr(1)),
+            Token::Assign,
+            Token::LBrack,
+            Token::LBrack,
+            Token::IntLit(1),
+            Token::Comma,
+            Token::IntLit(2),
+            Token::Comma, 
+            Token::IntLit(3),
+            Token::RBrack,
+            Token::Comma,
+            Token::LBrack,
+            Token::IntLit(4),
+            Token::Comma,
+            Token::IntLit(5), 
+            Token::Comma,
+            Token::IntLit(6),
+            Token::RBrack,
+            Token::RBrack,
+            Token::Semicolon
+        ]
+    )
 }

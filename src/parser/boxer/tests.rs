@@ -502,7 +502,7 @@ fn test_boxer_arr_lit() {
         vec![
             TBox::VarDec(
                 Token::VarName(Box::new("arr".to_string())), 
-                Some(TypeTok::StrArr), 
+                Some(TypeTok::StrArr(1)), 
                 vec![
                     Token::LBrack,
                     Token::StringLit(Box::new("foo".to_string())),

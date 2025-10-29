@@ -66,11 +66,12 @@ pub enum TypeTok {
     Str,
     Any,
     Float,
-    IntArr,
-    BoolArr,
-    StrArr,
-    AnyArr,
-    FloatArr
+    ///number is arr dimenstion
+    IntArr(u64),
+    BoolArr(u64),
+    StrArr(u64),
+    AnyArr(u64),
+    FloatArr(u64)
 }
 impl TypeTok {
     pub fn type_str(&self) -> String {
@@ -81,11 +82,11 @@ impl TypeTok {
             Self::Str => "Str".to_string(),
             Self::Any => "Any".to_string(),
             Self::Float => "Float".to_string(),
-            Self::IntArr => "IntArr".to_string(),
-            Self::BoolArr => "BoolArr".to_string(),
-            Self::StrArr => "StrArr".to_string(),
-            Self::FloatArr => "FloatArr".to_string(),
-            Self::AnyArr => "AnyArr".to_string(),
+            Self::IntArr(_) => "IntArr".to_string(),
+            Self::BoolArr(_) => "BoolArr".to_string(),
+            Self::StrArr(_) => "StrArr".to_string(),
+            Self::FloatArr(_) => "FloatArr".to_string(),
+            Self::AnyArr(_) => "AnyArr".to_string(),
         };
     }
 }

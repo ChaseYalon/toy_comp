@@ -606,10 +606,10 @@ fn test_ast_gen_arr_lit() {
 
             Ast::VarDec(
                 Box::new("arr".to_string()), 
-                TypeTok::IntArr, 
+                TypeTok::IntArr(1), 
                 Box::new(
                     Ast::ArrLit(
-                        TypeTok::IntArr, 
+                        TypeTok::IntArr(1), 
                         vec![
                             Ast::IntLit(1),
                             Ast::InfixExpr(
@@ -637,10 +637,10 @@ fn test_ast_gen_arr_reassign() {
         vec![
             Ast::VarDec(
                 Box::new("ao".to_string()), 
-                TypeTok::BoolArr, 
+                TypeTok::BoolArr(1), 
                 Box::new(
                     Ast::ArrLit(
-                        TypeTok::BoolArr, 
+                        TypeTok::BoolArr(1), 
                         vec![
                             Ast::BoolLit(true),
                             Ast::BoolLit(false)
@@ -652,7 +652,7 @@ fn test_ast_gen_arr_reassign() {
                 Box::new("ao".to_string()), 
                 Box::new(
                     Ast::ArrLit(
-                        TypeTok::BoolArr, 
+                        TypeTok::BoolArr(1), 
                         vec![Ast::BoolLit(false)]
                     )
                 )
@@ -670,10 +670,10 @@ fn test_ast_gen_arr_idx_ref() {
         vec![
             Ast::VarDec(
                 Box::new("a".to_string()), 
-                TypeTok::IntArr, 
+                TypeTok::IntArr(1), 
                 Box::new(
                     Ast::ArrLit(
-                        TypeTok::IntArr, 
+                        TypeTok::IntArr(1), 
                         vec![
                             Ast::IntLit(1),
                             Ast::IntLit(2),
@@ -705,9 +705,9 @@ fn test_ast_gen_arr_idx_reassign() {
         vec![
             Ast::VarDec(
                 Box::new("arr".to_string()),
-                TypeTok::FloatArr,
+                TypeTok::FloatArr(1),
                 Box::new(Ast::ArrLit(
-                    TypeTok::FloatArr,
+                    TypeTok::FloatArr(1),
                     vec![
                         Ast::FloatLit(OrderedFloat(1.0)),
                         Ast::FloatLit(OrderedFloat(1.1)),

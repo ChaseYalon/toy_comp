@@ -163,11 +163,16 @@ impl AstGenerator {
         let mut arr_type = TypeTok::Any;
         if all_types_same.clone() {
             let match_type = match arr_types[0].clone() {
-                TypeTok::Int => TypeTok::IntArr,
-                TypeTok::Bool => TypeTok::BoolArr,
-                TypeTok::Float => TypeTok::FloatArr,
-                TypeTok::Str => TypeTok::StrArr,
-                TypeTok::Any => TypeTok::AnyArr,
+                TypeTok::Int => TypeTok::IntArr(1),
+                TypeTok::Bool => TypeTok::BoolArr(1),
+                TypeTok::Float => TypeTok::FloatArr(1),
+                TypeTok::Str => TypeTok::StrArr(1),
+                TypeTok::Any => TypeTok::AnyArr(1),
+                TypeTok::IntArr(n) => TypeTok::IntArr(n + 1),
+                TypeTok::BoolArr(n) => TypeTok::BoolArr(n + 1),
+                TypeTok::FloatArr(n) => TypeTok::FloatArr(n + 1),
+                TypeTok::StrArr(n) => TypeTok::StrArr(n + 1),
+                TypeTok::AnyArr(n) => TypeTok::AnyArr(n + 1),
                 _ => arr_types[0].clone()
             };
             arr_type = match_type;
@@ -279,11 +284,16 @@ impl AstGenerator {
                 None => panic!("[ERROR] Variable {} is undefined", name)
             };
             let item_type = match arr_type {
-                TypeTok::IntArr => TypeTok::Int,
-                TypeTok::StrArr => TypeTok::Str,
-                TypeTok::BoolArr => TypeTok::Bool,
-                TypeTok::FloatArr => TypeTok::Float,
-                TypeTok::AnyArr => TypeTok::Any,
+                TypeTok::IntArr(1) => TypeTok::Int,
+                TypeTok::StrArr(1) => TypeTok::Str,
+                TypeTok::BoolArr(1) => TypeTok::Bool,
+                TypeTok::FloatArr(1) => TypeTok::Float,
+                TypeTok::AnyArr(1) => TypeTok::Any,
+                TypeTok::IntArr(n) => TypeTok::IntArr(n - 1),
+                TypeTok::StrArr(n) => TypeTok::StrArr(n - 1),
+                TypeTok::BoolArr(n) => TypeTok::BoolArr(n - 1),
+                TypeTok::FloatArr(n) => TypeTok::FloatArr(n - 1),
+                TypeTok::AnyArr(n) => TypeTok::AnyArr(n - 1),
                 _ => panic!("[ERROR] {:?} is not an array type", arr_type)
             };
             return (Ast::ArrRef(Box::new(name), Box::new(idx)), item_type);

@@ -10,6 +10,7 @@
         "codegen",
         "conv",
         "cranelift",
+        "dimenstion",
         "elems",
         "fadd",
         "fcmp",

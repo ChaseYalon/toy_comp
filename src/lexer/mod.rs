@@ -28,7 +28,7 @@ impl Lexer {
     }
     pub fn peek(&self, i: usize) -> char {
         if self.chars.len() < self.cp + i {
-            //Not sure what to do here
+            //Not sure what to do hereP
             return '\0';
         }
         debug!(targets: ["lexer", "lexer_verbose"], i, self.cp, &self.chars);
@@ -49,6 +49,39 @@ impl Lexer {
 
         self.cp += word.len();
         self.toks.push(tok);
+        return true;
+    }
+    fn lex_arr_def(&mut self, word: &str, base_type: TypeTok) -> bool {
+        for (_, c) in word.char_indices() {
+            if self.peek(1) != c {
+                return false;
+            }
+        }
+        let mut arr_count = 0;
+        let after_vec: Vec<char> = self.chars.clone()[self.cp + word.len()..self.chars.len()].to_vec();
+        let mut should_skip = false;
+        for c in after_vec{
+            if should_skip{
+                continue;
+            }
+            if c == '[' {
+                arr_count += 1;
+            } else {
+                return false;
+            }
+            should_skip = !should_skip;
+        }
+        let arr_type = match base_type {
+            TypeTok::Int => TypeTok::IntArr(arr_count),
+            TypeTok::Bool => TypeTok::BoolArr(arr_count),
+            TypeTok::Str => TypeTok::StrArr(arr_count),
+            TypeTok::Float => TypeTok::FloatArr(arr_count),
+            TypeTok::Any => TypeTok::AnyArr(arr_count),
+            _ => panic!("[ERROR] Unimplemented base type")
+        };
+        self.toks.push(Token::Type(arr_type));
+
+        self.cp += word.len() + 2 * arr_count as usize;
         return true;
     }
     pub fn lex(&mut self, input: String) -> Vec<Token> {
@@ -74,19 +107,19 @@ impl Lexer {
                 continue;
             }
             //lex arrs before regular type to avoid int[] becoming (int) empty array
-            if self.lex_keyword("int[]", Token::Type(TypeTok::IntArr)) {
+            if self.lex_arr_def("int", TypeTok::Int) {
                 continue;
             }
-            if self.lex_keyword("bool[]", Token::Type(TypeTok::BoolArr)) {
+            if self.lex_arr_def("bool", TypeTok::Bool) {
                 continue;
             }
-            if self.lex_keyword("float[]", Token::Type(TypeTok::FloatArr)) {
+            if self.lex_arr_def("str", TypeTok::Str) {
                 continue;
             }
-            if self.lex_keyword("str[]", Token::Type(TypeTok::StrArr)) {
+            if self.lex_arr_def("float", TypeTok::Float) {
                 continue;
             }
-            if self.lex_keyword("any[]", Token::Type(TypeTok::AnyArr)) {
+            if self.lex_arr_def("any", TypeTok::Any) {
                 continue;
             }
             if self.lex_keyword("let", Token::Let) {

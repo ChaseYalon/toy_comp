@@ -400,7 +400,8 @@ impl AstGenerator {
                 let (value, v_type) = self.parse_expr(&v);
 
                 let arr_type = self.lookup_var_type(&arr_name).unwrap();
-                if !arr_type.type_str().contains(&v_type.type_str()) && arr_type != TypeTok::AnyArr {
+                //should not just be one but cannot figure out how to do it
+                if !arr_type.type_str().contains(&v_type.type_str()) && arr_type != TypeTok::AnyArr(1) {
                     panic!("[ERROR] Element of type {:?} cannot be inserted into array of type {:?}", arr_type, arr_name);
                 }
                 Ast::ArrReassign(Box::new(arr_name), Box::new(idx), Box::new(value))
