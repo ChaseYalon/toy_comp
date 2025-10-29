@@ -745,11 +745,14 @@ fn test_lexer_static_arr_types() {
 #[test]
 fn test_lexer_n_dimensional_arrays() {
     let mut l = Lexer::new();
-    let toks = l.lex("int[][] = [[1, 2, 3], [4, 5, 6]];".to_string());
+    let toks = l.lex("let x: int[][] = [[1, 2, 3], [4, 5, 6]];".to_string());
     assert_eq!(
         toks,
         vec![
-            Token::Type(TypeTok::IntArr(1)),
+            Token::Let,
+            Token::VarName(Box::new("x".to_string())),
+            Token::Colon,
+            Token::Type(TypeTok::IntArr(2)),
             Token::Assign,
             Token::LBrack,
             Token::LBrack,

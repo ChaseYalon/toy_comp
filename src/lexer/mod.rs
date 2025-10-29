@@ -52,38 +52,39 @@ impl Lexer {
         return true;
     }
     fn lex_arr_def(&mut self, word: &str, base_type: TypeTok) -> bool {
-        for (_, c) in word.char_indices() {
-            if self.peek(1) != c {
+        for (i, c) in word.char_indices() {
+            if self.peek(i) != c {
                 return false;
             }
         }
+
         let mut arr_count = 0;
-        let after_vec: Vec<char> = self.chars.clone()[self.cp + word.len()..self.chars.len()].to_vec();
-        let mut should_skip = false;
-        for c in after_vec{
-            if should_skip{
-                continue;
-            }
-            if c == '[' {
-                arr_count += 1;
-            } else {
-                return false;
-            }
-            should_skip = !should_skip;
+        let mut i = self.cp + word.len();
+        let len = self.chars.len();
+
+        while i + 1 < len && self.chars[i] == '[' && self.chars[i + 1] == ']' {
+            arr_count += 1;
+            i += 2;
         }
+
+        if arr_count == 0 {
+            return false;
+        }
+
         let arr_type = match base_type {
             TypeTok::Int => TypeTok::IntArr(arr_count),
             TypeTok::Bool => TypeTok::BoolArr(arr_count),
             TypeTok::Str => TypeTok::StrArr(arr_count),
             TypeTok::Float => TypeTok::FloatArr(arr_count),
             TypeTok::Any => TypeTok::AnyArr(arr_count),
-            _ => panic!("[ERROR] Unimplemented base type")
+            _ => panic!("[ERROR] Unimplemented base type"),
         };
-        self.toks.push(Token::Type(arr_type));
 
-        self.cp += word.len() + 2 * arr_count as usize;
-        return true;
+        self.toks.push(Token::Type(arr_type));
+        self.cp = i;
+        true
     }
+
     pub fn lex(&mut self, input: String) -> Vec<Token> {
         self.chars = input.chars().collect();
         self.cp = 0;
