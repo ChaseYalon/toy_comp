@@ -62,6 +62,7 @@ impl Compiler {
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
         sig.params.push(AbiParam::new(types::I64));
+        sig.params.push(AbiParam::new(types::I64));
         let func = module
             .declare_function("toy_print", Linkage::Import, &sig)
             .unwrap();
@@ -69,6 +70,7 @@ impl Compiler {
             .insert("print".to_string(), (TypeTok::Void, func));
 
         let mut sig = module.make_signature();
+        sig.params.push(AbiParam::new(types::I64));
         sig.params.push(AbiParam::new(types::I64));
         sig.params.push(AbiParam::new(types::I64));
         let func = module

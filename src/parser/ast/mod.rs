@@ -44,9 +44,9 @@ pub enum Ast {
     ///Type, elements
     ArrLit(TypeTok, Vec<Ast>),
     ///Arr, idx
-    ArrRef(Box<String>, Box<Ast>),
+    ArrRef(Box<String>, Vec<Ast>),
     ///Arr, idx, val
-    ArrReassign(Box<String>, Box<Ast>, Box<Ast>)
+    ArrReassign(Box<String>, Vec<Ast>, Box<Ast>)
 }
 impl Ast {
     pub fn node_type(&self) -> String {
@@ -124,7 +124,7 @@ impl fmt::Display for Ast {
                 Ast::FloatLit(f) => format!("FloatLit({})", *f),
                 Ast::ArrLit(t, v) => format!("ArrLit Type({:?}), Val({:?})", t, v),
                 Ast::ArrRef(a, i) => format!("ArrRef Arr({:?}), Index({:?})", a, i),
-                Ast::ArrReassign(a, i, v) => format!("ArrReassign Arr({}), Index({}), Value({})", *a, *i, *v)
+                Ast::ArrReassign(a, i, v) => format!("ArrReassign Arr({}), Index({:?}), Value({})", *a, i, *v)
             }
         )
     }

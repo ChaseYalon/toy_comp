@@ -539,8 +539,52 @@ fn test_boxer_arr_item_reassign() {
             ),
             TBox::ArrReassign(
                 Token::VarRef(Box::new("arr".to_string())),
-                vec![Token::IntLit(1)],
+                vec![vec![Token::IntLit(1)]],
                 vec![Token::IntLit(4)]
+            )
+        ]
+    )
+}
+#[test]
+fn test_n_dimensional_arr_reassign() {
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let toks = l.lex("let arr = [[true, true, false], [false, false, true]]; arr[0][1] = false;".to_string());
+    let boxes = b.box_toks(toks);
+
+    assert_eq!(
+        boxes,
+        vec![
+            TBox::VarDec(
+            Token::VarName(Box::new("arr".to_string())),
+            None,
+            vec![
+                Token::LBrack,
+                Token::LBrack,
+                Token::BoolLit(true),
+                Token::Comma,
+                Token::BoolLit(true), 
+                Token::Comma,
+                Token::BoolLit(false),
+                Token::RBrack,
+                Token::Comma,
+                Token::LBrack,
+                Token::BoolLit(false),
+                Token::Comma,
+                Token::BoolLit(false),
+                Token::Comma,
+                Token::BoolLit(true),
+                Token::RBrack,
+                Token::RBrack
+            ]
+            ),
+            TBox::ArrReassign(
+            Token::VarRef(Box::new("arr".to_string())),
+            vec![
+                vec![Token::IntLit(0)],
+                vec![Token::IntLit(1)]
+            ],
+            vec![Token::BoolLit(false)]
             )
         ]
     )

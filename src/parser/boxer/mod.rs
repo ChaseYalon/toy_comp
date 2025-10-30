@@ -377,21 +377,41 @@ impl Boxer {
             return self.box_var_ref(&toks);
         }
         if toks.len() > 2 && toks[0].tok_type() == "VarRef" && toks[1].tok_type() == "LBrack" {
-            let mut idx_toks: Vec<Token> = Vec::new();
-            let mut final_idx = 0;
-            for (i, tok) in toks[2..toks.len() - 1].to_vec().iter().enumerate() {
-                if tok.tok_type() == "RBrack" {
-                    final_idx = i + 2;
-                    break;
+            let mut idx_groups: Vec<Vec<Token>> = Vec::new();
+            let mut i = 2; 
+            let len = toks.len();
+
+            while i < len {
+                let mut idx_toks: Vec<Token> = Vec::new();
+
+                while i < len && toks[i].tok_type() != "RBrack" {
+                    idx_toks.push(toks[i].clone());
+                    i += 1;
                 }
-                idx_toks.push(tok.clone());
+
+                if i >= len {
+                    panic!("[ERROR] Unclosed array index brackets");
+                }
+
+                idx_groups.push(idx_toks);
+                i += 1; 
+
+                if i < len && toks[i].tok_type() == "LBrack" {
+                    i += 1; 
+                    continue;
+                } else {
+                    break; 
+                }
             }
-            if toks[final_idx + 1].tok_type() != "Assign" {
-                panic!("[ERROR] Expected '=', got {}", toks[final_idx + 1]);
+
+            if i >= len || toks[i].tok_type() != "Assign" {
+                panic!("[ERROR] Expected '=', got {:?}", toks);
             }
-            let val_toks = toks[final_idx + 2..toks.len()].to_vec();
-            return TBox::ArrReassign(toks[0].clone(), idx_toks, val_toks);
+            let val_toks = toks[i + 1..].to_vec();
+
+            return TBox::ArrReassign(toks[0].clone(), idx_groups, val_toks);
         }
+
         TBox::Expr(toks)
     }
 

@@ -689,7 +689,7 @@ fn test_ast_gen_arr_idx_ref() {
                 Box::new(
                     Ast::ArrRef(
                         Box::new("a".to_string()), 
-                        Box::new(Ast::IntLit(0))
+                        vec![Ast::IntLit(0)]
                     )
                 )
             )
@@ -718,10 +718,88 @@ fn test_ast_gen_arr_idx_reassign() {
             ),
             Ast::ArrReassign(
                 Box::new("arr".to_string()),
-                Box::new(Ast::IntLit(1)),
+                vec![Ast::IntLit(1)],
                 Box::new(Ast::FloatLit(OrderedFloat(1.7)))
             )
         ]
     )
 
+}
+
+
+#[test]
+fn test_ast_gen_n_dimensional_arr_dec_and_reassign() {
+    setup_ast!(r#"let arr: str[][] = [["hi", "bye"], ["goodbye"]]; arr[0][1] = "bye bye"; "#, ast);
+
+    assert_eq!(
+        ast,
+        vec![
+            Ast::VarDec(
+                Box::new("arr".to_string()),
+                TypeTok::StrArr(2), 
+                Box::new(Ast::ArrLit(
+                    TypeTok::StrArr(2),
+                    vec![
+                        Ast::ArrLit(
+                            TypeTok::StrArr(1),
+                            vec![
+                                Ast::StringLit(Box::new("hi".to_string())),
+                                Ast::StringLit(Box::new("bye".to_string()))
+                            ]
+                        ),
+                        Ast::ArrLit(
+                            TypeTok::StrArr(1),
+                            vec![Ast::StringLit(Box::new("goodbye".to_string()))]
+                        )
+                    ]
+                ))
+            ),
+            Ast::ArrReassign(
+                Box::new("arr".to_string()),
+                vec![Ast::IntLit(0), Ast::IntLit(1)],
+                Box::new(Ast::StringLit(Box::new("bye bye".to_string())))
+            )
+        ]
+    )
+}
+
+#[test]
+fn test_ast_gen_nd_arr_ref() {
+    setup_ast!("let arr = [[2.3, 4.3], [0.2, 9.5]]; let x = arr[1][0];", ast);
+    assert_eq!(
+        ast,
+        vec![
+            Ast::VarDec(
+                Box::new("arr".to_string()),
+                TypeTok::FloatArr(2),
+                Box::new(Ast::ArrLit(
+                    TypeTok::FloatArr(2),
+                    vec![
+                        Ast::ArrLit(
+                            TypeTok::FloatArr(1),
+                            vec![
+                                Ast::FloatLit(OrderedFloat(2.3)),
+                                Ast::FloatLit(OrderedFloat(4.3))
+                            ]
+                        ),
+                        Ast::ArrLit(
+                            TypeTok::FloatArr(1),
+                            vec![
+                                Ast::FloatLit(OrderedFloat(0.2)),
+                                Ast::FloatLit(OrderedFloat(9.5))
+                            ]
+                        )
+                    ]
+                ))
+            ),
+            Ast::VarDec(
+                Box::new("x".to_string()),
+                TypeTok::Float,
+                Box::new(Ast::ArrRef(
+                    Box::new("arr".to_string()),
+                    vec![Ast::IntLit(1), Ast::IntLit(0)]
+                ))
+            )
+        ]
+    )
 }

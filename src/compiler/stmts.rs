@@ -305,18 +305,18 @@ impl Compiler {
             self.compile_func_dec(node.clone(), _module, &child_scope);
         }
         if node.node_type() == "ArrReassign" {
-            let (a, i, v) = match node.clone(){
-                Ast::ArrReassign(aa,ii, vv ) => (*aa, *ii, *vv),
+            let (a, i, v) = match &node{
+                Ast::ArrReassign(aa,ii, vv ) => (*aa.clone(), ii.clone(), *vv.clone()),
                 _ => unreachable!()
             };
             let (_, arr_write_global) = self.funcs.get("toy_write_to_arr").unwrap();
             let arr_write = _module.declare_func_in_func(*arr_write_global, &mut func_builder.func);
-            let (idx, _) = self.compile_expr(&i, _module, func_builder, scope);
+            let (idx, _) = self.compile_expr(&i[0], _module, func_builder, scope);
             let (val, t) = self.compile_expr(&v, _module, func_builder, scope);
             let (arr_v, _) = scope.as_ref().borrow().get(a);
             let arr = func_builder.use_var(arr_v);
             let mut params = [arr, val, idx].to_vec();
-            self.inject_type_param(&t, _module, func_builder, &mut params);
+            self.inject_type_param(&t, false, _module, func_builder, &mut params);
             func_builder.ins().call(arr_write, params.as_slice());
 
         }

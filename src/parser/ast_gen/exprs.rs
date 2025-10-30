@@ -139,30 +139,55 @@ impl AstGenerator {
         (Ast::EmptyExpr(Box::new(inner_node)), tok)
     }
     pub fn parse_arr_lit(&self, toks: &Vec<Token>) -> (Ast, TypeTok) {
-        //first, scan until the closing ] (rbrack), this will break nested arrays
         let mut arr_toks: Vec<Token> = Vec::new();
-        for t in toks[1..toks.len()].iter() {
-            if t.tok_type() == "RBrack" {
-                break;
+        let mut depth = 0;
+        for t in toks[1..].iter() {
+            if t.tok_type() == "LBrack" {
+                depth += 1;
+            } else if t.tok_type() == "RBrack" {
+                if depth == 0 {
+                    break;
+                } else {
+                    depth -= 1;
+                }
             }
             arr_toks.push(t.clone());
         }
-        let arr_elems: Vec<Vec<Token>> = arr_toks.split(|x| *x == Token::Comma)  
-            .filter(|s| !s.is_empty())
-            .map(|s| s.to_vec())
-            .collect(); //split by comma
 
+        let mut arr_elems: Vec<Vec<Token>> = Vec::new();
+        let mut current: Vec<Token> = Vec::new();
+        let mut nest = 0;
+        for t in arr_toks {
+            if t.tok_type() == "LBrack" {
+                nest += 1;
+            } else if t.tok_type() == "RBrack" {
+                nest -= 1;
+            }
+
+            if t.tok_type() == "Comma" && nest == 0 {
+                arr_elems.push(current.clone());
+                current.clear();
+            } else {
+                current.push(t);
+            }
+        }
+        if !current.is_empty() {
+            arr_elems.push(current);
+        }
+
+        // parse subexpressions
         let mut arr_types: Vec<TypeTok> = Vec::new();
         let mut arr_vals: Vec<Ast> = Vec::new();
         for elem in arr_elems {
-            let (elem, t_elem) = self.parse_expr(&elem);
-            arr_vals.push(elem);
-            arr_types.push(t_elem);
+            let (elem_ast, elem_type) = self.parse_expr(&elem);
+            arr_vals.push(elem_ast);
+            arr_types.push(elem_type);
         }
+
         let all_types_same = arr_types.windows(2).all(|w| w[0] == w[1]);
         let mut arr_type = TypeTok::Any;
-        if all_types_same.clone() {
-            let match_type = match arr_types[0].clone() {
+        if all_types_same {
+            arr_type = match arr_types[0].clone() {
                 TypeTok::Int => TypeTok::IntArr(1),
                 TypeTok::Bool => TypeTok::BoolArr(1),
                 TypeTok::Float => TypeTok::FloatArr(1),
@@ -173,12 +198,13 @@ impl AstGenerator {
                 TypeTok::FloatArr(n) => TypeTok::FloatArr(n + 1),
                 TypeTok::StrArr(n) => TypeTok::StrArr(n + 1),
                 TypeTok::AnyArr(n) => TypeTok::AnyArr(n + 1),
-                _ => arr_types[0].clone()
+                other => other,
             };
-            arr_type = match_type;
         }
-        return (Ast::ArrLit(arr_type.clone(), arr_vals), arr_type.clone());
+
+        (Ast::ArrLit(arr_type.clone(), arr_vals), arr_type)
     }
+
     pub fn parse_expr(&self, toks: &Vec<Token>) -> (Ast, TypeTok) {
         //guard clause for single tokens
         if toks.len() == 1 {
@@ -276,28 +302,65 @@ impl AstGenerator {
         if toks.first().unwrap().tok_type() == "VarRef" && toks[1].tok_type() == "LBrack" {
             let name = match toks[0].clone() {
                 Token::VarRef(a) => *a,
-                _ => unreachable!()
+                _ => unreachable!(),
             };
-            let idx = self.parse_num_expr(&toks[2..toks.len() - 1].to_vec());
-            let arr_type = match self.lookup_var_type(&name){
+
+            let mut i = 2;
+            let mut idx_exprs: Vec<Ast> = Vec::new();
+
+            while i < toks.len() {
+                // find closing bracket
+                let mut bracket_depth = 1;
+                let mut j = i;
+                while j < toks.len() && bracket_depth > 0 {
+                    if toks[j].tok_type() == "LBrack" {
+                        bracket_depth += 1;
+                    } else if toks[j].tok_type() == "RBrack" {
+                        bracket_depth -= 1;
+                    }
+                    j += 1;
+                }
+
+                if bracket_depth != 0 {
+                    panic!("[ERROR] Unclosed brackets in array access for '{}'", name);
+                }
+
+                let inner_toks = &toks[i..j - 1];
+                let idx_expr = self.parse_num_expr(&inner_toks.to_vec());
+                idx_exprs.push(idx_expr);
+
+                if j >= toks.len() || toks[j].tok_type() != "LBrack" {
+                    break;
+                }
+
+                i = j + 1;
+            }
+
+            let arr_type = match self.lookup_var_type(&name) {
                 Some(t) => t,
-                None => panic!("[ERROR] Variable {} is undefined", name)
+                None => panic!("[ERROR] Variable {} is undefined", name),
             };
-            let item_type = match arr_type {
-                TypeTok::IntArr(1) => TypeTok::Int,
-                TypeTok::StrArr(1) => TypeTok::Str,
-                TypeTok::BoolArr(1) => TypeTok::Bool,
-                TypeTok::FloatArr(1) => TypeTok::Float,
-                TypeTok::AnyArr(1) => TypeTok::Any,
-                TypeTok::IntArr(n) => TypeTok::IntArr(n - 1),
-                TypeTok::StrArr(n) => TypeTok::StrArr(n - 1),
-                TypeTok::BoolArr(n) => TypeTok::BoolArr(n - 1),
-                TypeTok::FloatArr(n) => TypeTok::FloatArr(n - 1),
-                TypeTok::AnyArr(n) => TypeTok::AnyArr(n - 1),
-                _ => panic!("[ERROR] {:?} is not an array type", arr_type)
-            };
-            return (Ast::ArrRef(Box::new(name), Box::new(idx)), item_type);
+
+            let mut item_type = arr_type.clone();
+            for _ in &idx_exprs {
+                item_type = match item_type {
+                    TypeTok::IntArr(1) => TypeTok::Int,
+                    TypeTok::StrArr(1) => TypeTok::Str,
+                    TypeTok::BoolArr(1) => TypeTok::Bool,
+                    TypeTok::FloatArr(1) => TypeTok::Float,
+                    TypeTok::AnyArr(1) => TypeTok::Any,
+                    TypeTok::IntArr(n) => TypeTok::IntArr(n - 1),
+                    TypeTok::StrArr(n) => TypeTok::StrArr(n - 1),
+                    TypeTok::BoolArr(n) => TypeTok::BoolArr(n - 1),
+                    TypeTok::FloatArr(n) => TypeTok::FloatArr(n - 1),
+                    TypeTok::AnyArr(n) => TypeTok::AnyArr(n - 1),
+                    _ => panic!("[ERROR] {:?} is not an array type or dimension mismatch", item_type),
+                };
+            }
+
+            return (Ast::ArrRef(Box::new(name), idx_exprs), item_type);
         }
+
         //Arr literals
         if toks.first().unwrap().tok_type() == "LBrack" {
             return self.parse_arr_lit(toks);

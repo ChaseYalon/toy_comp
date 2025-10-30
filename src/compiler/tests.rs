@@ -232,3 +232,9 @@ fn test_compiler_arr_len() {
     compile_code_aot!(output, "let arr = [true, false, false, true]; println(len(arr));", "arr_len");
     assert!(output.contains("4"));
 }
+
+#[test]
+fn test_compiler_n_dimensional_arrays() {
+    compile_code_aot!(output, "let arr: int[][] = [[1, 2], [3, 4]]; let x = arr[1][0]; println(x);", "nd_arr");
+    assert!(output.contains("3"));
+}

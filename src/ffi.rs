@@ -17,10 +17,10 @@ const _: () = {
     ["Offset of field: ToyArrVal::_pad"][::std::mem::offset_of!(ToyArrVal, _pad) - 9usize];
 };
 unsafe extern "C" {
-    pub fn toy_print(input: i64, datatype: i64);
+    pub fn toy_print(input: i64, datatype: i64, degree: i64);
 }
 unsafe extern "C" {
-    pub fn toy_println(input: i64, datatype: i64);
+    pub fn toy_println(input: i64, datatype: i64, degree: i64);
 }
 unsafe extern "C" {
     pub fn toy_malloc(ptr: i64) -> i64;

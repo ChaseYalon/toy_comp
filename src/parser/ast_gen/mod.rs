@@ -396,7 +396,11 @@ impl AstGenerator {
                     Token::VarRef(a) => *a, 
                     _=> unreachable!()
                 };
-                let idx = self.parse_num_expr(&i);
+                let mut idx: Vec<Ast> = Vec::new();
+                for item in i {
+                    let l_idx = self.parse_num_expr(&item);
+                    idx.push(l_idx);
+                }
                 let (value, v_type) = self.parse_expr(&v);
 
                 let arr_type = self.lookup_var_type(&arr_name).unwrap();
@@ -404,7 +408,7 @@ impl AstGenerator {
                 if !arr_type.type_str().contains(&v_type.type_str()) && arr_type != TypeTok::AnyArr(1) {
                     panic!("[ERROR] Element of type {:?} cannot be inserted into array of type {:?}", arr_type, arr_name);
                 }
-                Ast::ArrReassign(Box::new(arr_name), Box::new(idx), Box::new(value))
+                Ast::ArrReassign(Box::new(arr_name), idx, Box::new(value))
             }
             _ => todo!("Unimplemented statement"),
         };

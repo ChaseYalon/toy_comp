@@ -12,8 +12,8 @@ typedef struct {
     ToyArrVal* arr;
 } ToyArr;
 
-void toy_print(int64_t input, int64_t datatype);
-void toy_println(int64_t input, int64_t datatype);
+void toy_print(int64_t input, int64_t datatype, int64_t degree);
+void toy_println(int64_t input, int64_t datatype, int64_t degree);
 int64_t toy_malloc(int64_t ptr);
 int64_t toy_concat(int64_t sp1, int64_t sp2);
 int64_t toy_strequal(int64_t sp1, int64_t sp2);

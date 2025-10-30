@@ -10,7 +10,7 @@
 
 //datatype is 0 for string, 1 for bool, 2 for int, 3 for float, 4 for str[], 5 for bool[], 6 for int[], 7 for float[]
 //if datatype is 0 (input is string) then nput is a pointer
-char* _toy_format(int64_t input, int64_t datatype) {
+char* _toy_format(int64_t input, int64_t datatype, int64_t degree) {
     switch(datatype) {
         case 0: { // string
             if (input == 0) {
@@ -61,7 +61,7 @@ char* _toy_format(int64_t input, int64_t datatype) {
             char** element_strs = malloc(sizeof(char*) * array->length);
 
             for (int64_t i = 0; i < array->length; i++) {
-                element_strs[i] = _toy_format(array->arr[i].value, array->arr[i].type);
+                element_strs[i] = _toy_format(array->arr[i].value, array->arr[i].type, degree - 1);
                 total_len += strlen(element_strs[i]);
                 if (i != array->length - 1) total_len += 2; // ", "
             }
@@ -96,14 +96,14 @@ char* _toy_format(int64_t input, int64_t datatype) {
 }
 
 
-void toy_print(int64_t input, int64_t datatype) {
-    char* buff = (char*) _toy_format(input, datatype);
+void toy_print(int64_t input, int64_t datatype, int64_t degree) {
+    char* buff = (char*) _toy_format(input, datatype, degree);
     printf("%s", buff);
     free(buff);
 }
 
-void toy_println(int64_t input, int64_t datatype) {
-    char* buff = (char*) _toy_format(input, datatype);
+void toy_println(int64_t input, int64_t datatype, int64_t degree) {
+    char* buff = (char*) _toy_format(input, datatype, degree);
     printf("%s\n", buff);
     free(buff);
 }

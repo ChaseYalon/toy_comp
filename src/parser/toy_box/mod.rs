@@ -22,8 +22,8 @@ pub enum TBox {
     While(Vec<Token>, Vec<TBox>),
     Break,
     Continue,
-    ///Array, idx, new val
-    ArrReassign(Token, Vec<Token>, Vec<Token>)
+    ///Array, idx's, new val
+    ArrReassign(Token, Vec<Vec<Token>>, Vec<Token>)
 }
 
 impl fmt::Display for TBox {

@@ -30,6 +30,7 @@
         "msystem",
         "objdumping",
         "opps",
+        "peekable",
         "println",
         "RBRACK",
         "repr",

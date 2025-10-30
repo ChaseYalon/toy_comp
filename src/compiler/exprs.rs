@@ -14,36 +14,29 @@ impl Compiler {
     pub fn inject_type_param<M: Module>(
         &self,
         t: &TypeTok,
+        inject_dimension: bool,
         _module: &M,
         builder: &mut FunctionBuilder<'_>,
         param_values: &mut Vec<Value>,
     ) {
-        if t == &TypeTok::Str {
-            let v = builder.ins().iconst(types::I64, 0);
-            param_values.push(v);
-        } else if t == &TypeTok::Bool {
-            let v = builder.ins().iconst(types::I64, 1);
-            param_values.push(v);
-        } else if t == &TypeTok::Int {
-            let v = builder.ins().iconst(types::I64, 2);
-            param_values.push(v);
-        } else if t == &TypeTok::Float {
-            let v = builder.ins().iconst(types::I64, 3);
-            param_values.push(v);
-        } else if t == &TypeTok::StrArr(1) {
-            let v = builder.ins().iconst(types::I64, 4);
-            param_values.push(v);
-        } else if t == &TypeTok::BoolArr(1) {
-            let v = builder.ins().iconst(types::I64, 5);
-            param_values.push(v);
-        } else if t == &TypeTok::IntArr(1) {
-            let v = builder.ins().iconst(types::I64, 6);
-            param_values.push(v);
-        } else if t == &TypeTok::FloatArr(1) {
-            let v = builder.ins().iconst(types::I64, 7);
-            param_values.push(v);
-        } else {
-            panic!("[ERROR] Type {:?} is unknown", t);
+      
+        let (n, degree ) = match t {
+            &TypeTok::Str => (0, 0),
+            &TypeTok::Bool => (1, 0),
+            &TypeTok::Int => (2, 0),
+            &TypeTok::Float => (3, 0),
+            &TypeTok::StrArr(n) => (4, n),
+            &TypeTok::BoolArr(n) => (5, n),
+            &TypeTok::IntArr(n) => (6, n),
+            &TypeTok::FloatArr(n) => (7, n),
+            _ => panic!("[ERROR] Cannot parse type {:?}", t)
+        };
+        let v = builder.ins().iconst(types::I64, n);
+        param_values.push(v);
+        if inject_dimension {
+
+            let d = builder.ins().iconst(types::I64, degree as i64);
+            param_values.push(d);
         }
     }
     pub fn compile_arr_lit<M: Module>(
@@ -68,7 +61,7 @@ impl Compiler {
         //Calls toy malloc with the correct params
         let len = builder.ins().iconst(types::I64, arr_items.len() as i64);
         let mut params = [len].to_vec();
-        self.inject_type_param(&arr_types[0], module, builder, &mut params);
+        self.inject_type_param(&arr_types[0], false, module, builder, &mut params);
         let call_res = builder.ins().call(arr_malloc, params.as_slice());
         let arr_ptr = builder.inst_results(call_res)[0];
 
@@ -76,7 +69,7 @@ impl Compiler {
             let mut params = [arr_ptr, item.clone()].to_vec();
             let idx = builder.ins().iconst(types::I64, i as i64);
             params.push(idx);
-            self.inject_type_param(&arr_types[i], module, builder, &mut params);
+            self.inject_type_param(&arr_types[i], false, module, builder, &mut params);
             builder.ins().call(arr_write, params.as_slice());
         }
 
@@ -126,14 +119,15 @@ impl Compiler {
                     panic!("[ERROR] Function {} is undefined", name);
                 }
                 let (ret_type, id) = o_func.unwrap();
-                if name == "print".to_string()
-                    || name == "println".to_string()
-                    || name == "str".to_string()
+                if name == "str".to_string()
                     || name == "bool".to_string()
                     || name == "int".to_string()
                     || name == "float".to_string()
                 {
-                    self.inject_type_param(&last_type, _module, builder, &mut param_values);
+                    self.inject_type_param(&last_type, false, _module, builder, &mut param_values);
+                }
+                if name == "print".to_string() || name == "println".to_string() {
+                    self.inject_type_param(&last_type, true, _module, builder, &mut param_values);
                 }
                 let func_ref = _module.declare_func_in_func(id.clone(), builder.func);
 
@@ -148,31 +142,42 @@ impl Compiler {
                     return (builder.ins().iconst(types::I64, 0), TypeTok::Void);
                 }
             }
-            Ast::ArrRef(a, i) => {
-                let a_s = *a.clone();
-                let (arr, arr_type) = scope.as_ref().borrow().get(a_s);
+            Ast::ArrRef(a, indices) => {
+                let name = *a.clone();
+                let (arr_var, mut arr_type) = scope.as_ref().borrow().get(name);
                 let (_, arr_read_global) = self.funcs.get("toy_read_from_arr").unwrap();
                 let arr_read = _module.declare_func_in_func(*arr_read_global, &mut builder.func);
-                let (idx, _) = self.compile_expr(i, _module, builder, scope);
 
-                let params = [builder.use_var(arr), idx].to_vec();
-                let call_res = builder.ins().call(arr_read, params.as_slice());
-                let res = builder.inst_results(call_res)[0];
-                let elem_type = match arr_type {
-                    TypeTok::IntArr(1) => TypeTok::Int,
-                    TypeTok::BoolArr(1) => TypeTok::Bool,
-                    TypeTok::StrArr(1) => TypeTok::Str,
-                    TypeTok::FloatArr(1) => TypeTok::Float,
-                    TypeTok::AnyArr(1) => TypeTok::Any,
-                    TypeTok::IntArr(n) => TypeTok::IntArr(n - 1),
-                    TypeTok::BoolArr(n) => TypeTok::BoolArr(n - 1),
-                    TypeTok::StrArr(n) => TypeTok::StrArr(n - 1),
-                    TypeTok::FloatArr(n) => TypeTok::FloatArr(n - 1),
-                    TypeTok::AnyArr(n) => TypeTok::AnyArr(n - 1),
-                    _ => unreachable!()
-                };
-                return (res, elem_type);
-            },
+                let mut current_ptr = builder.use_var(arr_var);
+
+                for (dim, idx_expr) in indices.iter().enumerate() {
+                    let (idx_val, _) = self.compile_expr(idx_expr, _module, builder, scope);
+
+                    let call_params = [current_ptr, idx_val].to_vec();
+                    let call_inst = builder.ins().call(arr_read, call_params.as_slice());
+                    current_ptr = builder.inst_results(call_inst)[0];
+
+                    arr_type = match arr_type {
+                        TypeTok::IntArr(n) if n > 1 => TypeTok::IntArr(n - 1),
+                        TypeTok::BoolArr(n) if n > 1 => TypeTok::BoolArr(n - 1),
+                        TypeTok::StrArr(n) if n > 1 => TypeTok::StrArr(n - 1),
+                        TypeTok::FloatArr(n) if n > 1 => TypeTok::FloatArr(n - 1),
+                        TypeTok::AnyArr(n) if n > 1 => TypeTok::AnyArr(n - 1),
+                        TypeTok::IntArr(1) => TypeTok::Int,
+                        TypeTok::BoolArr(1) => TypeTok::Bool,
+                        TypeTok::StrArr(1) => TypeTok::Str,
+                        TypeTok::FloatArr(1) => TypeTok::Float,
+                        TypeTok::AnyArr(1) => TypeTok::Any,
+                        _ => panic!(
+                            "[ERROR] Type mismatch while indexing array {:?} at dimension {}",
+                            arr_type, dim + 1
+                        ),
+                    };
+                }
+
+                (current_ptr, arr_type)
+            }
+
             Ast::ArrLit(t, val) => (self.compile_arr_lit(val, _module, builder, scope),t.clone()),
             Ast::IntLit(n) => (builder.ins().iconst(types::I64, *n), TypeTok::Int),
             Ast::FloatLit(f) => {

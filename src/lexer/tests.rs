@@ -775,3 +775,39 @@ fn test_lexer_n_dimensional_arrays() {
         ]
     )
 }
+
+#[test]
+fn test_lexer_n_dimensional_arr_reassign() {
+    let mut l = Lexer::new();
+    l.lex(r#"let arr: str[][] = [["hello"], ["world"]]; arr[0][0] = "hi";"#.to_string());
+    assert_eq!(
+        l.lex(r#"let arr: str[][] = [["hello"], ["world"]]; arr[0][0] = "hi";"#.to_string()),
+        vec![
+            Token::Let,
+            Token::VarName(Box::new("arr".to_string())),
+            Token::Colon,
+            Token::Type(TypeTok::StrArr(2)),
+            Token::Assign,
+            Token::LBrack,
+            Token::LBrack,
+            Token::StringLit(Box::new("hello".to_string())),
+            Token::RBrack,
+            Token::Comma,
+            Token::LBrack,
+            Token::StringLit(Box::new("world".to_string())),
+            Token::RBrack,
+            Token::RBrack,
+            Token::Semicolon,
+            Token::VarRef(Box::new("arr".to_string())),
+            Token::LBrack,
+            Token::IntLit(0),
+            Token::RBrack,
+            Token::LBrack,
+            Token::IntLit(0),
+            Token::RBrack,
+            Token::Assign,
+            Token::StringLit(Box::new("hi".to_string())),
+            Token::Semicolon,
+        ]
+    )
+}
