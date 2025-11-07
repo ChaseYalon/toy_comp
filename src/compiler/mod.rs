@@ -129,6 +129,7 @@ impl Compiler {
         path: Option<&str>,
     ) -> Option<fn() -> i64> {
         if !should_jit {
+            /*
             let exe_val = format!("program{}", FILE_EXTENSION_EXE);
             let o_path = path.unwrap_or(&exe_val);
 
@@ -180,7 +181,52 @@ impl Compiler {
             if !args.contains(&"--save-temp".to_string()) {
                 let _ = std::fs::remove_file(obj_path);
             }
+            */
+            let exe_val = format!("program{}", FILE_EXTENSION_EXE);
+            let output_path = path.unwrap_or(&exe_val);
+            let base_name = Path::new(output_path)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("program");
+            let temp_obj_name = format!("{}.{}", base_name, FILE_EXTENSION_O);
+            let obj_path = Path::new("temp").join(temp_obj_name);
+            let mut obj_file = File::create(obj_path.clone()).unwrap();
+            let target = env!("TARGET").replace("\"", "");
+            let lib_str = format!("lib/{}/", target);
+            let lib_path = Path::new(&lib_str);
+            obj_file
+                .write_all(&self.compile_to_object(ast.clone()))
+                .unwrap();
+            let crt2_path = lib_path.join("crt2.o");
+            let crtbegin_path = lib_path.join("crtbegin.o");
 
+            let args = vec![
+                "-m", 
+                "i386pep",
+                crt2_path.to_str().unwrap(),
+                crtbegin_path.to_str().unwrap(),
+                obj_path.to_str().unwrap(),
+                "-L", lib_path.to_str().unwrap(),
+                "-lruntime",
+                "-lmingw32",
+                "-lmingwex",
+                "-lmsvcrt",
+                "-lkernel32",
+                "-luser32",
+                "-lshell32",
+                "-lgcc",
+                "-o",
+                path.unwrap()
+            ];
+
+            let status = Command::new(lib_path.join("ld.lld.exe"))
+            .args(args)
+            .status()
+            .expect("Failed to link");
+            
+            if !status.success() {
+                panic!("[ERROR] ld failed with exit code {:?}", status.code());
+            }
             return None;
         }
         self.ast = ast.clone();

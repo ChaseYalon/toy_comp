@@ -33,6 +33,9 @@ fn main() {
 
     println!("cargo:rustc-link-search=native={}", out_dir.display());
     println!("cargo:rustc-link-lib=static=runtime");
+    //inject environment variables
+    println!("cargo:rustc-env=TARGET={}", std::env::var("TARGET").unwrap());
+
 
 
 }
