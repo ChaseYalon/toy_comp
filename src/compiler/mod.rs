@@ -197,35 +197,59 @@ impl Compiler {
             obj_file
                 .write_all(&self.compile_to_object(ast.clone()))
                 .unwrap();
+            //fuck the borrow checker
             let crt2_path = lib_path.join("crt2.o");
             let crtbegin_path = lib_path.join("crtbegin.o");
+            let crt1_path =  lib_path.join("crt1.o");
+            let crti_path = lib_path.join("crti.o");
+            let lbruntime_path = lib_path.join("libruntime.a");
+            let crtn_path = lib_path.join("crtn.o");
+            let libc_path = lib_path.join("libc.so.6");
+            let libm_path = lib_path.join("libm.so.6");
+            let args: Vec<&str> = if env::consts::OS == "windows" {
+                vec![
+                    "-m", 
+                    "i386pep",
+                    crt2_path.to_str().unwrap(),
+                    crtbegin_path.to_str().unwrap(),
+                    obj_path.to_str().unwrap(),
+                    "-L", lib_path.to_str().unwrap(),
+                    "-lruntime",
+                    "-lmingw32",
+                    "-lmingwex",
+                    "-lmsvcrt",
+                    "-lkernel32",
+                    "-luser32",
+                    "-lshell32",
+                    "-lgcc",
+                    "-o",
+                    path.unwrap()
+                ]
+            } else {
+                vec![
+                    "-m",
+                    "elf_x86_64",
+                    "-o",
+                    path.unwrap(),
+                    crt1_path.to_str().unwrap(),
+                    crti_path.to_str().unwrap(),
+                    obj_path.to_str().unwrap(),
+                    lbruntime_path.to_str().unwrap(),
+                    crtn_path.to_str().unwrap(),
+                    libc_path.to_str().unwrap(),
+                    libm_path.to_str().unwrap(),
+                    "-dynamic-linker",
+                    "/lib64/ld-linux-x86-64.so.2"
+                ]
+            };
 
-            let args = vec![
-                "-m", 
-                "i386pep",
-                crt2_path.to_str().unwrap(),
-                crtbegin_path.to_str().unwrap(),
-                obj_path.to_str().unwrap(),
-                "-L", lib_path.to_str().unwrap(),
-                "-lruntime",
-                "-lmingw32",
-                "-lmingwex",
-                "-lmsvcrt",
-                "-lkernel32",
-                "-luser32",
-                "-lshell32",
-                "-lgcc",
-                "-o",
-                path.unwrap()
-            ];
-
-            let status = Command::new(lib_path.join("ld.lld.exe"))
+            let status = Command::new(lib_path.join("ld.lld"))
             .args(args)
             .status()
             .expect("Failed to link");
             
             if !status.success() {
-                panic!("[ERROR] ld failed with exit code {:?}", status.code());
+                panic!("[ERROR] ld failed with exit code {:?}, Error: {:?}", status.code(), status);
             }
             return None;
         }
