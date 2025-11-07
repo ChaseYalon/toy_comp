@@ -1,5 +1,6 @@
 {
     "cSpell.words": [
+        "advapi",
         "arrlen",
         "arrs",
         "bindgen",
@@ -11,6 +12,7 @@
         "conv",
         "cranelift",
         "dimenstion",
+        "dylib",
         "elems",
         "fadd",
         "fcmp",
@@ -26,6 +28,7 @@
         "isub",
         "LBRACK",
         "libcall",
+        "libruntime",
         "msys",
         "msystem",
         "objdumping",
