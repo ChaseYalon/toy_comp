@@ -1,6 +1,7 @@
 use ordered_float::OrderedFloat;
 use std::fmt;
-
+use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Token {
     //Lits
@@ -41,11 +42,14 @@ pub enum Token {
     Break,
     Continue,
     While,
-
+    Struct(Box<String>),
+    
     //Names
     VarName(Box<String>),
     VarRef(Box<String>),
-
+    ///Struct, key
+    StructRef(Box<String>, Box<String>),
+    
     //Syntax
     Semicolon,
     Colon,
@@ -58,7 +62,7 @@ pub enum Token {
     LBrack,
     RBrack,
 }
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeTok {
     Int,
     Bool,
@@ -71,7 +75,44 @@ pub enum TypeTok {
     BoolArr(u64),
     StrArr(u64),
     AnyArr(u64),
-    FloatArr(u64)
+    FloatArr(u64),
+
+    Struct(HashMap<String, Box<TypeTok>>),
+    StructArr(HashMap<String, Box<TypeTok>>, u64),
+    
+}
+
+impl Hash for TypeTok {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            TypeTok::Int => 1.hash(state),
+            TypeTok::Bool => 2.hash(state),
+            TypeTok::Void => 3.hash(state),
+            TypeTok::Str => 4.hash(state),
+            TypeTok::Any => 5.hash(state),
+            TypeTok::Float => 6.hash(state),
+            TypeTok::IntArr(n) => {7.hash(state); n.hash(state)},
+            TypeTok::BoolArr(n) => {8.hash(state); n.hash(state)},
+            TypeTok::StrArr(n) => {9.hash(state); n.hash(state)},
+            TypeTok::AnyArr(n) => {10.hash(state); n.hash(state)},
+            TypeTok::FloatArr(n) => {11.hash(state); n.hash(state)},
+            TypeTok::Struct(kv) => {
+                12.hash(state); 
+                let mut x: Vec<(&String, &Box<TypeTok>)> = kv.iter().collect();
+                x.sort_by(|a, b| a.0.cmp(b.0)); // sort by key
+                
+                x.hash(state);
+            },
+            TypeTok::StructArr(kv, n) => {
+                13.hash(state);
+                let mut x: Vec<(&String, &Box<TypeTok>)> = kv.iter().collect();
+                x.sort_by(|a, b| a.0.cmp(b.0)); // sort by key
+                
+                x.hash(state);
+                n.hash(state);
+            },
+        }
+    }
 }
 impl TypeTok {
     pub fn type_str(&self) -> String {
@@ -87,6 +128,8 @@ impl TypeTok {
             Self::StrArr(_) => "StrArr".to_string(),
             Self::FloatArr(_) => "FloatArr".to_string(),
             Self::AnyArr(_) => "AnyArr".to_string(),
+            Self::Struct(_) =>"Struct".to_string(),
+            Self::StructArr(_, _) => "StructArr".to_string(),
         };
     }
 }
@@ -136,7 +179,9 @@ impl Token {
             Self::MinusMinus => "MinusMinus".to_string(),
             Self::FloatLit(_) => "FloatLit".to_string(),
             Self::LBrack => "LBrack".to_string(),
-            Self::RBrack => "RBrack".to_string()
+            Self::RBrack => "RBrack".to_string(),
+            Self::Struct(_) => "Struct".to_string(),
+            Self::StructRef(_, _) => "StructRef".to_string()
         };
     }
     ///Is used to get value out of an int literal
@@ -149,8 +194,15 @@ impl Token {
     pub fn get_var_name(&self) -> Option<Box<String>> {
         return match self {
             Self::VarName(name) => Some(name.clone()),
+            Self::VarRef(name) => Some(name.clone()),
             __ => None,
         };
+    }
+    pub fn is_struct_ref(&self) -> bool {
+        return match self {
+            Self::StructRef(_, _) => true,
+            _ => false
+        }
     }
 }
 impl fmt::Display for Token {
@@ -202,7 +254,9 @@ impl fmt::Display for Token {
                 Token::MinusMinus => String::from("MINUS_MINUS"),
                 Token::FloatLit(f) => format!("Float({})", *f),
                 Token::LBrack => String::from("LBRACK"),
-                Token::RBrack => String::from("RBRACK")
+                Token::RBrack => String::from("RBRACK"),
+                Token::Struct(n) => format!("STRUCT({})", *n),
+                Token::StructRef(s, k) => format!("STRUCT_REF STRUCT({}), KEY({})", *s, *k)
             }
         )
     }

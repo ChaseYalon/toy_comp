@@ -129,59 +129,6 @@ impl Compiler {
         path: Option<&str>,
     ) -> Option<fn() -> i64> {
         if !should_jit {
-            /*
-            let exe_val = format!("program{}", FILE_EXTENSION_EXE);
-            let o_path = path.unwrap_or(&exe_val);
-
-            let base_name = Path::new(o_path)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("program");
-            let obj_temp = format!("{}.{}", base_name, FILE_EXTENSION_O);
-            let stub_temp = format!("{}_stub.c", base_name);
-            let builtin_temp = format!("{}_builtins.c", base_name);
-            let obj_path = Path::new(&obj_temp);
-            let stub_path = Path::new(&stub_temp);
-            let builtin_path = Path::new(&builtin_temp);
-            let builtin_h_p = Path::new("builtins.h");
-
-            let mut obj_file = File::create(obj_path).unwrap();
-            obj_file
-                .write_all(&self.compile_to_object(ast.clone()))
-                .unwrap();
-
-            let mut stub_file = File::create(&stub_path).unwrap();
-            stub_file.write_all(STUB_C.as_bytes()).unwrap();
-
-            let mut builtin_file = File::create(builtin_path).unwrap();
-            builtin_file.write_all(BUILTIN_C.as_bytes()).unwrap();
-            let mut builtin_h = File::create(builtin_h_p).unwrap();
-            builtin_h.write_all(BUILTIN_H.as_bytes()).unwrap();
-            
-            let status = Command::new("gcc")
-                .args(&[
-                    obj_path.to_str().unwrap(),
-                    stub_path.to_str().unwrap(),
-                    builtin_path.to_str().unwrap(),
-                    "-o",
-                    o_path,
-                    "-lm"
-                ])
-                .status()
-                .expect("failed to execute gcc");
-
-            if !status.success() {
-                panic!("GCC failed with exit code {:?}", status.code());
-            }
-            //remove c objs
-            let _ = std::fs::remove_file(stub_path);
-            let _ = std::fs::remove_file(builtin_path);
-            let _ = std::fs::remove_file(builtin_h_p);
-            let args: Vec<String> = env::args().collect();
-            if !args.contains(&"--save-temp".to_string()) {
-                let _ = std::fs::remove_file(obj_path);
-            }
-            */
             let exe_val = format!("program{}", FILE_EXTENSION_EXE);
             let output_path = path.unwrap_or(&exe_val);
             let base_name = Path::new(output_path)

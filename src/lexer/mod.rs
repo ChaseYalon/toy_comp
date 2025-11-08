@@ -168,13 +168,34 @@ impl Lexer {
             if self.lex_keyword("any", Token::Type(TypeTok::Any)) {
                 continue;
             }
+            if self.lex_keyword("struct", Token::Struct(Box::new("".to_string()))) {
+                continue;
+            }
 
-            if c.is_ascii_digit() || c == '.' {
+            if c.is_ascii_digit() || (c == '.' && self.num_buf.len() > 0) {
                 debug!(targets: ["lexer_verbose"], "In ascii print");
                 self.num_buf.push(c);
                 self.eat();
                 continue;
             }
+            if c == '.' {
+                self.flush(); 
+                if let Some(Token::VarName(name)) | Some(Token::VarRef(name)) = self.toks.pop() {
+                    let mut field_name = String::new();
+
+                    self.cp += 1;
+                    while self.cp < self.chars.len() && (self.chars[self.cp].is_alphanumeric() || self.chars[self.cp] == '_') {
+                        field_name.push(self.chars[self.cp]);
+                        self.cp += 1;
+                    }
+
+                    self.toks.push(Token::StructRef(name, Box::new(field_name)));
+                    continue;
+                } else {
+                    panic!("Unexpected token before '.'");
+                }
+            }
+
             if c == '+' {
                 if self.peek(1) == '=' {
                     self.flush();
@@ -407,8 +428,28 @@ impl Lexer {
             self.str_buf = Vec::new();
             return;
         }
-
+        
         if self.str_buf.len() == 0 {
+            return;
+        }
+        
+        if !(self.toks.len() == 0) && self.toks.last().unwrap() == &Token::Struct(Box::new("".to_string())) {
+            let proto_output: String = self.str_buf.clone().into_iter().collect();
+            let len = self.toks.clone().len();
+            self.toks[len - 1] = Token::Struct(Box::new(proto_output));
+            self.str_buf = Vec::new();
+            return;
+        }
+        if !(self.toks.len() == 0) && self.toks.last().unwrap().is_struct_ref() {
+            let proto_output: String = self.str_buf.clone().into_iter().collect();
+            let len = self.toks.clone().len();
+            let last = self.toks.last().unwrap();
+            let (name, _) = match last {
+                Token::StructRef(n, k) => (*n.clone(), *k.clone()),
+                _ => unreachable!()
+            };
+            self.toks[len - 1] = Token::StructRef(Box::new(name), Box::new(proto_output));
+            self.str_buf = Vec::new();
             return;
         }
 

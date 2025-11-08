@@ -779,9 +779,9 @@ fn test_lexer_n_dimensional_arrays() {
 #[test]
 fn test_lexer_n_dimensional_arr_reassign() {
     let mut l = Lexer::new();
-    l.lex(r#"let arr: str[][] = [["hello"], ["world"]]; arr[0][0] = "hi";"#.to_string());
+    let toks = l.lex(r#"let arr: str[][] = [["hello"], ["world"]]; arr[0][0] = "hi";"#.to_string());
     assert_eq!(
-        l.lex(r#"let arr: str[][] = [["hello"], ["world"]]; arr[0][0] = "hi";"#.to_string()),
+        toks,
         vec![
             Token::Let,
             Token::VarName(Box::new("arr".to_string())),
@@ -807,6 +807,34 @@ fn test_lexer_n_dimensional_arr_reassign() {
             Token::RBrack,
             Token::Assign,
             Token::StringLit(Box::new("hi".to_string())),
+            Token::Semicolon,
+        ]
+    )
+}
+
+#[test]
+fn test_lexer_struct_literal_and_ref() {
+    let mut l = Lexer::new();
+    let toks = l.lex("struct a = {o: 1, t: 2}; println(a.x);".to_string());
+    assert_eq!(
+        toks,
+        vec![
+            Token::Struct(Box::new("a".to_string())),
+            Token::Assign,
+            Token::LBrace,
+            Token::VarRef(Box::new("o".to_string())),
+            Token::Colon,
+            Token::IntLit(1),
+            Token::Comma,
+            Token::VarRef(Box::new("t".to_string())),
+            Token::Colon,
+            Token::IntLit(2),
+            Token::RBrace,
+            Token::Semicolon,
+            Token::VarRef(Box::new("println".to_string())),
+            Token::LParen,
+            Token::StructRef(Box::new("a".to_string()), Box::new("x".to_string())),
+            Token::RParen,
             Token::Semicolon,
         ]
     )

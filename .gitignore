@@ -4,5 +4,7 @@
 *.obj
 *.exe
 
+#blacklist libruntime
+lib/**/libruntime.a
 #whitelist everything in lib
 !lib/**
