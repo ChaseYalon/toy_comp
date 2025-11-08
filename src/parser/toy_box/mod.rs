@@ -1,4 +1,5 @@
 use std::fmt;
+use std::collections::HashMap;
 
 use crate::token::{Token, TypeTok};
 
@@ -23,7 +24,9 @@ pub enum TBox {
     Break,
     Continue,
     ///Array, idx's, new val
-    ArrReassign(Token, Vec<Vec<Token>>, Vec<Token>)
+    ArrReassign(Token, Vec<Vec<Token>>, Vec<Token>),
+    //Name, values
+    //StructDec(Box<String>, Box<HashMap<String, (TBox, Option<TypeTok>)>>)
 }
 
 impl fmt::Display for TBox {

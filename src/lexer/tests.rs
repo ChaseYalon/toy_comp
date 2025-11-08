@@ -815,27 +815,40 @@ fn test_lexer_n_dimensional_arr_reassign() {
 #[test]
 fn test_lexer_struct_literal_and_ref() {
     let mut l = Lexer::new();
-    let toks = l.lex("struct a = {o: 1, t: 2}; println(a.x);".to_string());
+    let toks = l.lex("struct MyStruct{o: int, t: float}; let a = MyStruct{a: 1, b: 2.0}; println(a.b);".to_string());
     assert_eq!(
         toks,
         vec![
-            Token::Struct(Box::new("a".to_string())),
-            Token::Assign,
+            Token::Struct(Box::new("MyStruct".to_string())),
             Token::LBrace,
             Token::VarRef(Box::new("o".to_string())),
             Token::Colon,
-            Token::IntLit(1),
+            Token::Type(TypeTok::Int),
             Token::Comma,
             Token::VarRef(Box::new("t".to_string())),
             Token::Colon,
-            Token::IntLit(2),
+            Token::Type(TypeTok::Float),
+            Token::RBrace,
+            Token::Semicolon,
+            Token::Let,
+            Token::VarName(Box::new("a".to_string())),
+            Token::Assign,
+            Token::VarRef(Box::new("MyStruct".to_string())),
+            Token::LBrace,
+            Token::VarRef(Box::new("a".to_string())),
+            Token::Colon,
+            Token::IntLit(1),
+            Token::Comma,
+            Token::VarRef(Box::new("b".to_string())),
+            Token::Colon,
+            Token::FloatLit(OrderedFloat(2.0)),
             Token::RBrace,
             Token::Semicolon,
             Token::VarRef(Box::new("println".to_string())),
             Token::LParen,
-            Token::StructRef(Box::new("a".to_string()), Box::new("x".to_string())),
+            Token::StructRef(Box::new("a".to_string()), Box::new("b".to_string())),
             Token::RParen,
-            Token::Semicolon,
+            Token::Semicolon
         ]
     )
 }
