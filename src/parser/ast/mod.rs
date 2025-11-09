@@ -2,7 +2,7 @@ use std::fmt::{self};
 
 use crate::token::TypeTok;
 use ordered_float::OrderedFloat;
-
+use std::collections::HashMap;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Ast {
     IntLit(i64),
@@ -46,7 +46,16 @@ pub enum Ast {
     ///Arr, idx
     ArrRef(Box<String>, Vec<Ast>),
     ///Arr, idx, val
-    ArrReassign(Box<String>, Vec<Ast>, Box<Ast>)
+    ArrReassign(Box<String>, Vec<Ast>, Box<Ast>),
+
+    ///Name, types
+    StructInterface(Box<String>, Box<HashMap<String, TypeTok>>),
+
+    ///Interface name, key, value (types MUST match)
+    StructLit(Box<String>, Box<HashMap<String, (Ast, TypeTok)>>),
+
+    ///Struct name (the variable the struct is assigned to NOT the interface), key (key validity and type is checked)
+    StructRef(Box<String>, Box<String>),
 }
 impl Ast {
     pub fn node_type(&self) -> String {
@@ -70,7 +79,10 @@ impl Ast {
             Ast::FloatLit(_) => "FloatLit".to_string(),
             Ast::ArrLit(_, _) => "ArrLit".to_string(),
             Ast::ArrRef(_, _) => "ArrRef".to_string(),
-            Ast::ArrReassign(_, _, _) => "ArrReassign".to_string()
+            Ast::ArrReassign(_, _, _) => "ArrReassign".to_string(),
+            Ast::StructInterface(_, _) => "StructInterface".to_string(),
+            Ast::StructLit(_, _) => "StructLit".to_string(),
+            Ast::StructRef(_, _) => "StructRef".to_string(),
         };
     }
 }
@@ -124,7 +136,12 @@ impl fmt::Display for Ast {
                 Ast::FloatLit(f) => format!("FloatLit({})", *f),
                 Ast::ArrLit(t, v) => format!("ArrLit Type({:?}), Val({:?})", t, v),
                 Ast::ArrRef(a, i) => format!("ArrRef Arr({:?}), Index({:?})", a, i),
-                Ast::ArrReassign(a, i, v) => format!("ArrReassign Arr({}), Index({:?}), Value({})", *a, i, *v)
+                Ast::ArrReassign(a, i, v) =>
+                    format!("ArrReassign Arr({}), Index({:?}), Value({})", *a, i, *v),
+                Ast::StructInterface(n, kv) =>
+                    format!("StructInterface Name({}), Types({:?})", *n, *kv),
+                Ast::StructLit(n, kv) => format!("StructLit Name({}), Types({:?})", *n, *kv),
+                Ast::StructRef(n, k) => format!("StructRef Name({}), Key({})", n, k),
             }
         )
     }

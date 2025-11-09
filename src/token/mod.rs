@@ -1,6 +1,6 @@
 use ordered_float::OrderedFloat;
-use std::fmt;
 use std::collections::HashMap;
+use std::fmt;
 use std::hash::{Hash, Hasher};
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Token {
@@ -43,13 +43,13 @@ pub enum Token {
     Continue,
     While,
     Struct(Box<String>),
-    
+
     //Names
     VarName(Box<String>),
     VarRef(Box<String>),
     ///Struct, key
     StructRef(Box<String>, Box<String>),
-    
+
     //Syntax
     Semicolon,
     Colon,
@@ -61,6 +61,7 @@ pub enum Token {
     Comma,
     LBrack,
     RBrack,
+    Dot,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeTok {
@@ -79,7 +80,6 @@ pub enum TypeTok {
 
     Struct(HashMap<String, Box<TypeTok>>),
     StructArr(HashMap<String, Box<TypeTok>>, u64),
-    
 }
 
 impl Hash for TypeTok {
@@ -91,26 +91,41 @@ impl Hash for TypeTok {
             TypeTok::Str => 4.hash(state),
             TypeTok::Any => 5.hash(state),
             TypeTok::Float => 6.hash(state),
-            TypeTok::IntArr(n) => {7.hash(state); n.hash(state)},
-            TypeTok::BoolArr(n) => {8.hash(state); n.hash(state)},
-            TypeTok::StrArr(n) => {9.hash(state); n.hash(state)},
-            TypeTok::AnyArr(n) => {10.hash(state); n.hash(state)},
-            TypeTok::FloatArr(n) => {11.hash(state); n.hash(state)},
+            TypeTok::IntArr(n) => {
+                7.hash(state);
+                n.hash(state)
+            }
+            TypeTok::BoolArr(n) => {
+                8.hash(state);
+                n.hash(state)
+            }
+            TypeTok::StrArr(n) => {
+                9.hash(state);
+                n.hash(state)
+            }
+            TypeTok::AnyArr(n) => {
+                10.hash(state);
+                n.hash(state)
+            }
+            TypeTok::FloatArr(n) => {
+                11.hash(state);
+                n.hash(state)
+            }
             TypeTok::Struct(kv) => {
-                12.hash(state); 
+                12.hash(state);
                 let mut x: Vec<(&String, &Box<TypeTok>)> = kv.iter().collect();
                 x.sort_by(|a, b| a.0.cmp(b.0)); // sort by key
-                
+
                 x.hash(state);
-            },
+            }
             TypeTok::StructArr(kv, n) => {
                 13.hash(state);
                 let mut x: Vec<(&String, &Box<TypeTok>)> = kv.iter().collect();
                 x.sort_by(|a, b| a.0.cmp(b.0)); // sort by key
-                
+
                 x.hash(state);
                 n.hash(state);
-            },
+            }
         }
     }
 }
@@ -128,7 +143,7 @@ impl TypeTok {
             Self::StrArr(_) => "StrArr".to_string(),
             Self::FloatArr(_) => "FloatArr".to_string(),
             Self::AnyArr(_) => "AnyArr".to_string(),
-            Self::Struct(_) =>"Struct".to_string(),
+            Self::Struct(_) => "Struct".to_string(),
             Self::StructArr(_, _) => "StructArr".to_string(),
         };
     }
@@ -181,7 +196,8 @@ impl Token {
             Self::LBrack => "LBrack".to_string(),
             Self::RBrack => "RBrack".to_string(),
             Self::Struct(_) => "Struct".to_string(),
-            Self::StructRef(_, _) => "StructRef".to_string()
+            Self::StructRef(_, _) => "StructRef".to_string(),
+            Self::Dot => "Dot".to_string(),
         };
     }
     ///Is used to get value out of an int literal
@@ -201,8 +217,8 @@ impl Token {
     pub fn is_struct_ref(&self) -> bool {
         return match self {
             Self::StructRef(_, _) => true,
-            _ => false
-        }
+            _ => false,
+        };
     }
 }
 impl fmt::Display for Token {
@@ -256,7 +272,8 @@ impl fmt::Display for Token {
                 Token::LBrack => String::from("LBRACK"),
                 Token::RBrack => String::from("RBRACK"),
                 Token::Struct(n) => format!("STRUCT({})", *n),
-                Token::StructRef(s, k) => format!("STRUCT_REF STRUCT({}), KEY({})", *s, *k)
+                Token::StructRef(s, k) => format!("STRUCT_REF STRUCT({}), KEY({})", *s, *k),
+                Token::Dot => String::from("DOT"),
             }
         )
     }

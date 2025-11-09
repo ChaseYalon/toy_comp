@@ -27,6 +27,8 @@ impl AstGenerator {
         map.insert(Token::RParen.tok_type(), 10000);
         map.insert(Token::LBrack.tok_type(), 10000); //should absolutely never be bound to
         map.insert(Token::RBrack.tok_type(), 10000);
+
+        map.insert(Token::StringLit(Box::new("".to_string())).tok_type(), 100);
         map.insert(Token::VarRef(Box::new("".to_string())).tok_type(), 100);
         map.insert(Token::IntLit(0).tok_type(), 100);
         map.insert(Token::BoolLit(true).tok_type(), 100);
@@ -393,8 +395,8 @@ impl AstGenerator {
             TBox::Break => Ast::Break,
             TBox::ArrReassign(a, i, v) => {
                 let arr_name = match a {
-                    Token::VarRef(a) => *a, 
-                    _=> unreachable!()
+                    Token::VarRef(a) => *a,
+                    _ => unreachable!(),
                 };
                 let mut idx: Vec<Ast> = Vec::new();
                 for item in i {
@@ -405,12 +407,27 @@ impl AstGenerator {
 
                 let arr_type = self.lookup_var_type(&arr_name).unwrap();
                 //should not just be one but cannot figure out how to do it
-                if !arr_type.type_str().contains(&v_type.type_str()) && arr_type != TypeTok::AnyArr(1) {
-                    panic!("[ERROR] Element of type {:?} cannot be inserted into array of type {:?}", arr_type, arr_name);
+                if !arr_type.type_str().contains(&v_type.type_str())
+                    && arr_type != TypeTok::AnyArr(1)
+                {
+                    panic!(
+                        "[ERROR] Element of type {:?} cannot be inserted into array of type {:?}",
+                        arr_type, arr_name
+                    );
                 }
                 Ast::ArrReassign(Box::new(arr_name), idx, Box::new(value))
-            }
-            _ => todo!("Unimplemented statement"),
+            },
+            TBox::StructInterface(name, types) => {
+                    let boxed: HashMap<String, Box<TypeTok>> = (*types).clone()
+                        .into_iter()
+                        .map(|(k, v)| (k, Box::new(v)))
+                        .collect();
+                self.insert_var_type((*name).clone(), TypeTok::Struct(boxed));
+
+                Ast::StructInterface(name, types)
+            },
+
+            _ => todo!("Unimplemented statement {}", val),
         };
 
         if should_eat {

@@ -1,7 +1,7 @@
 use crate::debug;
 use crate::parser::toy_box::TBox;
-use crate::token::Token;
-
+use crate::token::{Token, TypeTok};
+use std::collections::HashMap;
 pub struct Boxer {
     toks: Vec<Token>,
     tp: usize, // token pointer
@@ -348,7 +348,42 @@ impl Boxer {
         };
         return TBox::FuncDec(func_name, boxed_params, return_type, body_boxes);
     }
+    fn box_struct_interface_dec(&mut self, toks: &Vec<Token>) -> TBox {
+        if toks[0].tok_type() != "Struct" {
+            panic!("[ERROR] Expected struct, got {}", toks[0]);
+        }
+        let name = match toks[0].clone() {
+            Token::Struct(n) => *n,
+            _ => unreachable!(),
+        };
+        if toks[1].tok_type() != "LBrace" {
+            panic!("[ERROR] Expected \"{{\", got {}", toks[1]);
+        }
+        let item_groups: Vec<&[Token]> = toks[2..toks.len() - 1]
+            .split(|item| item == &Token::Comma)
+            .collect();
+        let mut params: HashMap<String, TypeTok> = HashMap::new();
 
+        for group in item_groups {
+            if group[1] != Token::Colon {
+                panic!(
+                    "[ERROR] Names and types must be separated by colon, got {}",
+                    group[1]
+                );
+            }
+            let key: String = match group[0].clone() {
+                Token::VarRef(v) => *v,
+                _ => unreachable!(),
+            };
+            let value: TypeTok = match group[2].clone() {
+                Token::Type(t) => t,
+                _ => panic!("[ERROR] Expected Type, got {}", group[2].clone()),
+            };
+            params.insert(key, value);
+        }
+
+        return TBox::StructInterface(Box::new(name), Box::new(params));
+    }
     fn box_statement(&mut self, toks: Vec<Token>) -> TBox {
         if toks.is_empty() {
             panic!("[ERROR] Empty statement encountered");
@@ -359,7 +394,9 @@ impl Boxer {
         if first == "Let" {
             return self.box_var_dec(&toks);
         }
-
+        if first == "Struct" {
+            return self.box_struct_interface_dec(&toks);
+        }
         if first == "If" {
             let (stmt, _) = self.box_if_standalone(&toks);
             return stmt;
@@ -378,7 +415,7 @@ impl Boxer {
         }
         if toks.len() > 2 && toks[0].tok_type() == "VarRef" && toks[1].tok_type() == "LBrack" {
             let mut idx_groups: Vec<Vec<Token>> = Vec::new();
-            let mut i = 2; 
+            let mut i = 2;
             let len = toks.len();
 
             while i < len {
@@ -394,13 +431,13 @@ impl Boxer {
                 }
 
                 idx_groups.push(idx_toks);
-                i += 1; 
+                i += 1;
 
                 if i < len && toks[i].tok_type() == "LBrack" {
-                    i += 1; 
+                    i += 1;
                     continue;
                 } else {
-                    break; 
+                    break;
                 }
             }
 

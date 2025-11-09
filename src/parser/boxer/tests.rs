@@ -1,6 +1,7 @@
 use super::{Boxer, TBox, Token};
 use crate::{lexer::Lexer, token::TypeTok};
 use ordered_float::OrderedFloat;
+use std::collections::HashMap;
 #[test]
 fn test_boxer_int_literal() {
     let input = String::from("4");
@@ -499,19 +500,17 @@ fn test_boxer_arr_lit() {
     let boxes = b.box_toks(toks);
     assert_eq!(
         boxes,
-        vec![
-            TBox::VarDec(
-                Token::VarName(Box::new("arr".to_string())), 
-                Some(TypeTok::StrArr(1)), 
-                vec![
-                    Token::LBrack,
-                    Token::StringLit(Box::new("foo".to_string())),
-                    Token::Comma,
-                    Token::StringLit(Box::new("bar".to_string())),
-                    Token::RBrack
-                ]
-            )
-        ]
+        vec![TBox::VarDec(
+            Token::VarName(Box::new("arr".to_string())),
+            Some(TypeTok::StrArr(1)),
+            vec![
+                Token::LBrack,
+                Token::StringLit(Box::new("foo".to_string())),
+                Token::Comma,
+                Token::StringLit(Box::new("bar".to_string())),
+                Token::RBrack
+            ]
+        )]
     )
 }
 
@@ -546,46 +545,132 @@ fn test_boxer_arr_item_reassign() {
     )
 }
 #[test]
-fn test_n_dimensional_arr_reassign() {
+fn test_boxer_n_dimensional_arr_reassign() {
     let mut l = Lexer::new();
     let mut b = Boxer::new();
-    let toks = l.lex("let arr = [[true, true, false], [false, false, true]]; arr[0][1] = false;".to_string());
+    let toks = l.lex(
+        "let arr = [[true, true, false], [false, false, true]]; arr[0][1] = false;".to_string(),
+    );
     let boxes = b.box_toks(toks);
 
     assert_eq!(
         boxes,
         vec![
             TBox::VarDec(
-            Token::VarName(Box::new("arr".to_string())),
-            None,
-            vec![
-                Token::LBrack,
-                Token::LBrack,
-                Token::BoolLit(true),
-                Token::Comma,
-                Token::BoolLit(true), 
-                Token::Comma,
-                Token::BoolLit(false),
-                Token::RBrack,
-                Token::Comma,
-                Token::LBrack,
-                Token::BoolLit(false),
-                Token::Comma,
-                Token::BoolLit(false),
-                Token::Comma,
-                Token::BoolLit(true),
-                Token::RBrack,
-                Token::RBrack
-            ]
+                Token::VarName(Box::new("arr".to_string())),
+                None,
+                vec![
+                    Token::LBrack,
+                    Token::LBrack,
+                    Token::BoolLit(true),
+                    Token::Comma,
+                    Token::BoolLit(true),
+                    Token::Comma,
+                    Token::BoolLit(false),
+                    Token::RBrack,
+                    Token::Comma,
+                    Token::LBrack,
+                    Token::BoolLit(false),
+                    Token::Comma,
+                    Token::BoolLit(false),
+                    Token::Comma,
+                    Token::BoolLit(true),
+                    Token::RBrack,
+                    Token::RBrack
+                ]
             ),
             TBox::ArrReassign(
-            Token::VarRef(Box::new("arr".to_string())),
-            vec![
-                vec![Token::IntLit(0)],
-                vec![Token::IntLit(1)]
-            ],
-            vec![Token::BoolLit(false)]
+                Token::VarRef(Box::new("arr".to_string())),
+                vec![vec![Token::IntLit(0)], vec![Token::IntLit(1)]],
+                vec![Token::BoolLit(false)]
             )
+        ]
+    )
+}
+
+#[test]
+fn test_boxer_struct_lit_and_ref() {
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let toks = l.lex(
+        "struct Point {x: float, y: float}; let a = Point{x: 0.0, y: 0.0}; println(a.x);"
+            .to_string(),
+    );
+    let boxes = b.box_toks(toks);
+    assert_eq!(
+        boxes,
+        vec![
+            TBox::StructInterface(
+                Box::new("Point".to_string()),
+                Box::new(HashMap::from([
+                    ("x".to_string(), TypeTok::Float),
+                    ("y".to_string(), TypeTok::Float),
+                ]))
+            ),
+            TBox::VarDec(
+                Token::VarName(Box::new("a".to_string())),
+                None,
+                vec![
+                    Token::VarRef(Box::new("Point".to_string())),
+                    Token::LBrace,
+                    Token::VarRef(Box::new("x".to_string())),
+                    Token::Colon,
+                    Token::FloatLit(OrderedFloat(0.0)),
+                    Token::Comma,
+                    Token::VarRef(Box::new("y".to_string())),
+                    Token::Colon,
+                    Token::FloatLit(OrderedFloat(0.0)),
+                    Token::RBrace,
+                ]
+            ),
+            TBox::Expr(vec![
+                Token::VarRef(Box::new("println".to_string())),
+                Token::LParen,
+                Token::StructRef(Box::new("a".to_string()), Box::new("x".to_string())),
+                Token::RParen
+            ])
+        ]
+    )
+}
+
+#[test]
+fn test_boxer_struct_problematic() {
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let toks = l.lex(r#"struct Name{first: str, last: str}; let me = Name{first: "Chase", last: "Yalon"}; println(me.first);"#.to_string());
+    let boxes = b.box_toks(toks);
+    assert_eq!(
+        boxes,
+        vec![
+            TBox::StructInterface(
+                Box::new("Name".to_string()),
+                Box::new(HashMap::from([
+                    ("first".to_string(), TypeTok::Str),
+                    ("last".to_string(), TypeTok::Str),
+                ]))
+            ),
+            TBox::VarDec(
+                Token::VarName(Box::new("me".to_string())),
+                None,
+                vec![
+                    Token::VarRef(Box::new("Name".to_string())),
+                    Token::LBrace,
+                    Token::VarRef(Box::new("first".to_string())),
+                    Token::Colon,
+                    Token::StringLit(Box::new("Chase".to_string())),
+                    Token::Comma,
+                    Token::VarRef(Box::new("last".to_string())),
+                    Token::Colon,
+                    Token::StringLit(Box::new("Yalon".to_string())),
+                    Token::RBrace,
+                ]
+            ),
+            TBox::Expr(vec![
+                Token::VarRef(Box::new("println".to_string())),
+                Token::LParen,
+                Token::StructRef(Box::new("me".to_string()), Box::new("first".to_string())),
+                Token::RParen
+            ])
         ]
     )
 }

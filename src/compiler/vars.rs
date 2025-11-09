@@ -2,7 +2,6 @@ use super::Compiler;
 use crate::debug;
 use crate::parser::ast::Ast;
 use crate::token::TypeTok;
-
 use cranelift::prelude::*;
 use cranelift_module::Module;
 #[allow(unused_imports)] //Used for debugging
@@ -63,6 +62,9 @@ impl Compiler {
                 panic!("[ERROR] Expected variable declarations, got {}", var_dec);
             }
         }
+        if t_o.type_str() == "Struct" {
+            self.current_struct_name = Some(name.clone());
+        }
         let (val, _) = self.compile_expr(&val, _module, builder, scope);
         let var = Variable::new(self.var_count);
         debug!(targets: ["compiler_verbose"], format!("Value: {:?}", val.type_id()));
@@ -77,6 +79,9 @@ impl Compiler {
 pub struct Scope {
     pub vars: HashMap<String, (Variable, TypeTok)>,
     pub parent: Option<Rc<RefCell<Scope>>>,
+    pub interfaces: HashMap<String, HashMap<String, TypeTok>>,
+    ///the value is a pointer to a ToyHashMap, string is the interface name
+    pub structs: HashMap<String, (String, Value)>,
 }
 
 impl Scope {
@@ -84,6 +89,8 @@ impl Scope {
         Rc::new(RefCell::new(Scope {
             vars: HashMap::new(),
             parent: Some(parent.clone()),
+            interfaces: HashMap::new(),
+            structs: HashMap::new()
         }))
     }
 
@@ -99,5 +106,29 @@ impl Scope {
             panic!("[ERROR] Variable \"{}\" is undefined", name);
         }
         return self.parent.as_ref().unwrap().borrow().get(name);
+    }
+    pub fn set_interface(&mut self, name: String, val: HashMap<String, TypeTok>){
+        self.interfaces.insert(name, val);
+    }
+    pub fn get_interface(&self, name: String) -> HashMap<String, TypeTok> {
+        if self.interfaces.contains_key(&name) {
+            return self.interfaces.get(&name).unwrap().clone();
+        }
+        if self.parent.is_none() {
+            panic!("[ERROR] Interface \"{}\" does not exist", name);
+        }
+        return self.parent.as_ref().unwrap().borrow().get_interface(name);
+    }
+    pub fn set_struct(&mut self, name: String, val: String, ptr: Value) {
+        self.structs.insert(name, (val, ptr));
+    }
+    pub fn get_struct(&self, name: String) -> (String, Value) {
+        if self.structs.contains_key(&name) {
+            return self.structs.get(&name).unwrap().clone();
+        }
+        if self.parent.is_none() {
+            panic!("[ERROR] Struct \"{}\" does not exist", name);
+        }
+        return self.parent.as_ref().unwrap().borrow().get_struct(name);
     }
 }

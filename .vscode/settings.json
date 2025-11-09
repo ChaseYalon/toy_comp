@@ -54,6 +54,7 @@
         "sdiv",
         "srem",
         "strequal",
-        "uextend"
+        "uextend",
+        "Yalon"
     ]
 }

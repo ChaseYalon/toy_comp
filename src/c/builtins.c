@@ -5,8 +5,9 @@
 #include <string.h>
 #include <errno.h>
 #include <math.h>
-#include "builtins.h"
 #include <inttypes.h>
+
+#include "builtins.h"
 
 //datatype is 0 for string, 1 for bool, 2 for int, 3 for float, 4 for str[], 5 for bool[], 6 for int[], 7 for float[]
 //if datatype is 0 (input is string) then nput is a pointer

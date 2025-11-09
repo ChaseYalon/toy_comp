@@ -8,7 +8,6 @@ use cranelift_module::{Linkage, Module};
 use std::cell::RefCell;
 use std::env;
 use std::rc::Rc;
-
 impl Compiler {
     fn compile_if_stmt<M: Module>(
         &mut self,
@@ -245,7 +244,14 @@ impl Compiler {
         self.loop_cond_block = prev_cond;
         self.loop_merge_block = prev_merge;
     }
-
+    fn compile_struct_interface<M: Module>(&mut self, node: Ast, _module: &mut M, _builder: &mut FunctionBuilder<'_>, scope: &Rc<RefCell<Scope>>) -> Option<(Value, TypeTok)> {
+        let (name, kv) = match node.clone() {
+            Ast::StructInterface(n, kv) => (*n, *(kv).clone()),
+            _ => unreachable!()
+        };
+        scope.borrow_mut().set_interface(name, kv.clone());
+        return None;
+    }
     pub fn compile_stmt<M: Module>(
         &mut self,
         node: Ast,
@@ -282,6 +288,8 @@ impl Compiler {
             || node.node_type() == "FloatLit"
             || node.node_type() == "ArrLit"
             || node.node_type() == "ArrRef"
+            || node.node_type() == "StructLit"
+            || node.node_type() == "StructRef"
         {
             last_val = Some(self.compile_expr(&node, _module, func_builder, scope));
         }
@@ -305,9 +313,9 @@ impl Compiler {
             self.compile_func_dec(node.clone(), _module, &child_scope);
         }
         if node.node_type() == "ArrReassign" {
-            let (a, i, v) = match &node{
-                Ast::ArrReassign(aa,ii, vv ) => (*aa.clone(), ii.clone(), *vv.clone()),
-                _ => unreachable!()
+            let (a, i, v) = match &node {
+                Ast::ArrReassign(aa, ii, vv) => (*aa.clone(), ii.clone(), *vv.clone()),
+                _ => unreachable!(),
             };
             let (_, arr_write_global) = self.funcs.get("toy_write_to_arr").unwrap();
             let arr_write = _module.declare_func_in_func(*arr_write_global, &mut func_builder.func);
@@ -318,7 +326,6 @@ impl Compiler {
             let mut params = [arr, val, idx].to_vec();
             self.inject_type_param(&t, false, _module, func_builder, &mut params);
             func_builder.ins().call(arr_write, params.as_slice());
-
         }
 
         if node.clone().node_type() == "EmptyExpr" {
@@ -341,7 +348,9 @@ impl Compiler {
         if node.node_type() == "WhileStmt" {
             self.compile_while_stmt(&node, _module, func_builder, scope);
         }
-
+        if node.node_type() == "StructInterface" {
+            self.compile_struct_interface(node, _module, func_builder, scope);
+        }
         last_val
     }
 }

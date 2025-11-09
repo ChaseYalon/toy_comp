@@ -5,6 +5,7 @@ use crate::{
     token::TypeTok,
 };
 use ordered_float::OrderedFloat;
+use std::collections::HashMap;
 macro_rules! setup_ast {
     ($i: expr, $ast: ident) => {
         let input = $i.to_string();
@@ -601,31 +602,26 @@ fn test_ast_gen_arr_lit() {
     setup_ast!("let arr: int[] = [1, 2 - 1, int(3.0)];", ast);
 
     assert_eq!(
-        ast, 
-        vec![
-
-            Ast::VarDec(
-                Box::new("arr".to_string()), 
-                TypeTok::IntArr(1), 
-                Box::new(
-                    Ast::ArrLit(
-                        TypeTok::IntArr(1), 
-                        vec![
-                            Ast::IntLit(1),
-                            Ast::InfixExpr(
-                                Box::new(Ast::IntLit(2)), 
-                                Box::new(Ast::IntLit(1)), 
-                                InfixOp::Minus
-                            ),
-                            Ast::FuncCall(
-                                Box::new("int".to_string()), 
-                                vec![Ast::FloatLit(OrderedFloat(3.0))]
-                            )
-                        ]
+        ast,
+        vec![Ast::VarDec(
+            Box::new("arr".to_string()),
+            TypeTok::IntArr(1),
+            Box::new(Ast::ArrLit(
+                TypeTok::IntArr(1),
+                vec![
+                    Ast::IntLit(1),
+                    Ast::InfixExpr(
+                        Box::new(Ast::IntLit(2)),
+                        Box::new(Ast::IntLit(1)),
+                        InfixOp::Minus
+                    ),
+                    Ast::FuncCall(
+                        Box::new("int".to_string()),
+                        vec![Ast::FloatLit(OrderedFloat(3.0))]
                     )
-                )
-            )
-        ]
+                ]
+            ))
+        )]
     )
 }
 
@@ -636,26 +632,16 @@ fn test_ast_gen_arr_reassign() {
         ast,
         vec![
             Ast::VarDec(
-                Box::new("ao".to_string()), 
-                TypeTok::BoolArr(1), 
-                Box::new(
-                    Ast::ArrLit(
-                        TypeTok::BoolArr(1), 
-                        vec![
-                            Ast::BoolLit(true),
-                            Ast::BoolLit(false)
-                        ]
-                    )
-                )
+                Box::new("ao".to_string()),
+                TypeTok::BoolArr(1),
+                Box::new(Ast::ArrLit(
+                    TypeTok::BoolArr(1),
+                    vec![Ast::BoolLit(true), Ast::BoolLit(false)]
+                ))
             ),
             Ast::VarReassign(
-                Box::new("ao".to_string()), 
-                Box::new(
-                    Ast::ArrLit(
-                        TypeTok::BoolArr(1), 
-                        vec![Ast::BoolLit(false)]
-                    )
-                )
+                Box::new("ao".to_string()),
+                Box::new(Ast::ArrLit(TypeTok::BoolArr(1), vec![Ast::BoolLit(false)]))
             )
         ]
     )
@@ -669,29 +655,22 @@ fn test_ast_gen_arr_idx_ref() {
         ast,
         vec![
             Ast::VarDec(
-                Box::new("a".to_string()), 
-                TypeTok::IntArr(1), 
-                Box::new(
-                    Ast::ArrLit(
-                        TypeTok::IntArr(1), 
-                        vec![
-                            Ast::IntLit(1),
-                            Ast::IntLit(2),
-                            Ast::IntLit(3),
-                            Ast::IntLit(4)
-                        ]
-                    )
-                )
+                Box::new("a".to_string()),
+                TypeTok::IntArr(1),
+                Box::new(Ast::ArrLit(
+                    TypeTok::IntArr(1),
+                    vec![
+                        Ast::IntLit(1),
+                        Ast::IntLit(2),
+                        Ast::IntLit(3),
+                        Ast::IntLit(4)
+                    ]
+                ))
             ),
             Ast::VarDec(
-                Box::new("b".to_string()), 
-                TypeTok::Int, 
-                Box::new(
-                    Ast::ArrRef(
-                        Box::new("a".to_string()), 
-                        vec![Ast::IntLit(0)]
-                    )
-                )
+                Box::new("b".to_string()),
+                TypeTok::Int,
+                Box::new(Ast::ArrRef(Box::new("a".to_string()), vec![Ast::IntLit(0)]))
             )
         ]
     )
@@ -723,20 +702,21 @@ fn test_ast_gen_arr_idx_reassign() {
             )
         ]
     )
-
 }
-
 
 #[test]
 fn test_ast_gen_n_dimensional_arr_dec_and_reassign() {
-    setup_ast!(r#"let arr: str[][] = [["hi", "bye"], ["goodbye"]]; arr[0][1] = "bye bye"; "#, ast);
+    setup_ast!(
+        r#"let arr: str[][] = [["hi", "bye"], ["goodbye"]]; arr[0][1] = "bye bye"; "#,
+        ast
+    );
 
     assert_eq!(
         ast,
         vec![
             Ast::VarDec(
                 Box::new("arr".to_string()),
-                TypeTok::StrArr(2), 
+                TypeTok::StrArr(2),
                 Box::new(Ast::ArrLit(
                     TypeTok::StrArr(2),
                     vec![
@@ -765,7 +745,10 @@ fn test_ast_gen_n_dimensional_arr_dec_and_reassign() {
 
 #[test]
 fn test_ast_gen_nd_arr_ref() {
-    setup_ast!("let arr = [[2.3, 4.3], [0.2, 9.5]]; let x = arr[1][0];", ast);
+    setup_ast!(
+        "let arr = [[2.3, 4.3], [0.2, 9.5]]; let x = arr[1][0];",
+        ast
+    );
     assert_eq!(
         ast,
         vec![
@@ -799,6 +782,88 @@ fn test_ast_gen_nd_arr_ref() {
                     Box::new("arr".to_string()),
                     vec![Ast::IntLit(1), Ast::IntLit(0)]
                 ))
+            )
+        ]
+    )
+}
+
+#[test]
+fn test_ast_gen_struct_def_and_ref() {
+    setup_ast!(
+        r#"struct Name{first: str, last: str}; let me = Name{first: "Chase", last: "Yalon"}; println(me.first);"#,
+        ast
+    );
+    assert_eq!(
+        ast,
+        vec![
+            Ast::StructInterface(
+                Box::new("Name".to_string()),
+                Box::new(HashMap::from([
+                    ("first".to_string(), TypeTok::Str),
+                    ("last".to_string(), TypeTok::Str)
+                ]))
+            ),
+            Ast::VarDec(
+                Box::new("me".to_string()),
+                TypeTok::Struct(HashMap::from([
+                    ("first".to_string(), Box::new(TypeTok::Str)),
+                    ("last".to_string(), Box::new(TypeTok::Str)),
+                ])),
+                Box::new(Ast::StructLit(
+                    Box::new("Name".to_string()),
+                    Box::new(HashMap::from([
+                        (
+                            "first".to_string(),
+                            (Ast::StringLit(Box::new("Chase".to_string())), TypeTok::Str)
+                        ),
+                        (
+                            "last".to_string(),
+                            (Ast::StringLit(Box::new("Yalon".to_string())), TypeTok::Str)
+                        )
+                    ]))
+                ))
+            ),
+            Ast::FuncCall(
+                Box::new("println".to_string()),
+                vec![Ast::StructRef(
+                    Box::new("me".to_string()),
+                    Box::new("first".to_string())
+                )]
+            )
+        ]
+    )
+}
+
+#[test]
+fn test_ast_gen_struct_buggy (){
+    setup_ast!(r#"struct Foo{fee: int, baz: bool}; let x = Foo{fee: 2, baz: false}; println(x.fee);"#, ast);
+    assert_eq!(
+        ast,
+        vec![
+            Ast::StructInterface(
+                Box::new("Foo".to_string()),
+                Box::new(HashMap::from([
+                    ("fee".to_string(), TypeTok::Int),
+                    ("baz".to_string(), TypeTok::Bool)
+                ]))
+            ),
+            Ast::VarDec(
+                Box::new("x".to_string()),
+                TypeTok::Struct(HashMap::from([
+                    ("fee".to_string(), Box::new(TypeTok::Int)),
+                    ("baz".to_string(), Box::new(TypeTok::Bool)),
+                ])),
+                Box::new(Ast::StructLit(
+                    Box::new("Foo".to_string()),
+                    Box::new(HashMap::from([
+                        ("fee".to_string(), (Ast::IntLit(2), TypeTok::Int)),
+                        ("baz".to_string(), (Ast::BoolLit(false), TypeTok::Bool))
+                    ]))
+                ))
+            ),
+            Ast::FuncCall(
+                Box::new("println".to_string()),
+                vec![Ast::StructRef(Box::new("x".to_string()), Box::new("fee".to_string()))]
             )
         ]
     )

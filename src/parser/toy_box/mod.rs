@@ -1,5 +1,5 @@
-use std::fmt;
 use std::collections::HashMap;
+use std::fmt;
 
 use crate::token::{Token, TypeTok};
 
@@ -25,8 +25,8 @@ pub enum TBox {
     Continue,
     ///Array, idx's, new val
     ArrReassign(Token, Vec<Vec<Token>>, Vec<Token>),
-    //Name, values
-    //StructDec(Box<String>, Box<HashMap<String, (TBox, Option<TypeTok>)>>)
+    ///Name, types
+    StructInterface(Box<String>, Box<HashMap<String, TypeTok>>),
 }
 
 impl fmt::Display for TBox {
@@ -57,7 +57,12 @@ impl fmt::Display for TBox {
                 TBox::While(cond, body) => format!("TBox_While Cond({:?}), Body({:?})", cond, body),
                 TBox::Break => "TBox_break".to_string(),
                 TBox::Continue => "TBox_continue".to_string(),
-                TBox::ArrReassign(a, i, n) => format!("TBox_Arr_Reassign Arr({:?}), Index({:?}), NewVal({:?})", a, i, n)
+                TBox::ArrReassign(a, i, n) => format!(
+                    "TBox_Arr_Reassign Arr({:?}), Index({:?}), NewVal({:?})",
+                    a, i, n
+                ),
+                TBox::StructInterface(n, kv) =>
+                    format!("TBox_Struct_Interface Name({}), KV({:?})", *n, *kv),
             }
         )
     }

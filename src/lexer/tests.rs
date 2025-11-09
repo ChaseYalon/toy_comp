@@ -715,7 +715,7 @@ fn test_lexer_static_arr_types() {
             Token::VarName(Box::new("arrA".to_string())),
             Token::Colon,
             Token::Type(TypeTok::AnyArr(1)),
-            Token::Assign, 
+            Token::Assign,
             Token::LBrack,
             Token::IntLit(1),
             Token::Comma,
@@ -739,7 +739,6 @@ fn test_lexer_static_arr_types() {
             Token::Semicolon,
         ]
     )
-
 }
 
 #[test]
@@ -759,14 +758,14 @@ fn test_lexer_n_dimensional_arrays() {
             Token::IntLit(1),
             Token::Comma,
             Token::IntLit(2),
-            Token::Comma, 
+            Token::Comma,
             Token::IntLit(3),
             Token::RBrack,
             Token::Comma,
             Token::LBrack,
             Token::IntLit(4),
             Token::Comma,
-            Token::IntLit(5), 
+            Token::IntLit(5),
             Token::Comma,
             Token::IntLit(6),
             Token::RBrack,
@@ -815,7 +814,10 @@ fn test_lexer_n_dimensional_arr_reassign() {
 #[test]
 fn test_lexer_struct_literal_and_ref() {
     let mut l = Lexer::new();
-    let toks = l.lex("struct MyStruct{o: int, t: float}; let a = MyStruct{a: 1, b: 2.0}; println(a.b);".to_string());
+    let toks = l.lex(
+        "struct MyStruct{o: int, t: float}; let a = MyStruct{a: 1, b: 2.0}; println(a.b);"
+            .to_string(),
+    );
     assert_eq!(
         toks,
         vec![
@@ -847,6 +849,50 @@ fn test_lexer_struct_literal_and_ref() {
             Token::VarRef(Box::new("println".to_string())),
             Token::LParen,
             Token::StructRef(Box::new("a".to_string()), Box::new("b".to_string())),
+            Token::RParen,
+            Token::Semicolon
+        ]
+    )
+}
+
+#[test]
+fn test_lexer_problematic_struct_dec() {
+    let mut l = Lexer::new();
+    let toks = l.lex(
+        "struct Point {x: float, y: float}; let a = Point{x: 0.0, y: 0.0}; println(a.x);"
+            .to_string(),
+    );
+    assert_eq!(
+        toks,
+        vec![
+            Token::Struct(Box::new("Point".to_string())),
+            Token::LBrace,
+            Token::VarRef(Box::new("x".to_string())),
+            Token::Colon,
+            Token::Type(TypeTok::Float),
+            Token::Comma,
+            Token::VarRef(Box::new("y".to_string())),
+            Token::Colon,
+            Token::Type(TypeTok::Float),
+            Token::RBrace,
+            Token::Semicolon,
+            Token::Let,
+            Token::VarName(Box::new("a".to_string())),
+            Token::Assign,
+            Token::VarRef(Box::new("Point".to_string())),
+            Token::LBrace,
+            Token::VarRef(Box::new("x".to_string())),
+            Token::Colon,
+            Token::FloatLit(OrderedFloat(0.0)),
+            Token::Comma,
+            Token::VarRef(Box::new("y".to_string())),
+            Token::Colon,
+            Token::FloatLit(OrderedFloat(0.0)),
+            Token::RBrace,
+            Token::Semicolon,
+            Token::VarRef(Box::new("println".to_string())),
+            Token::LParen,
+            Token::StructRef(Box::new("a".to_string()), Box::new("x".to_string())),
             Token::RParen,
             Token::Semicolon
         ]

@@ -42,7 +42,17 @@ impl Lexer {
         }
         //next char must flush buffer
         let next_char = self.peek(word.len());
-        //lparen is not alphanumeric but otherwise int will match print()
+        // don't match keywords that are part of longer identifiers
+        // previous char must not be alphanumeric or '_'
+        let prev_char = if self.cp == 0 {
+            '\0'
+        } else {
+            self.chars[self.cp - 1]
+        };
+        if prev_char.is_alphanumeric() || prev_char == '_' {
+            return false;
+        }
+        // lparen is not alphanumeric but otherwise int will match print()
         if (next_char.is_alphanumeric() || next_char == '_') || next_char == '(' {
             return false;
         }
@@ -179,12 +189,14 @@ impl Lexer {
                 continue;
             }
             if c == '.' {
-                self.flush(); 
+                self.flush();
                 if let Some(Token::VarName(name)) | Some(Token::VarRef(name)) = self.toks.pop() {
                     let mut field_name = String::new();
 
                     self.cp += 1;
-                    while self.cp < self.chars.len() && (self.chars[self.cp].is_alphanumeric() || self.chars[self.cp] == '_') {
+                    while self.cp < self.chars.len()
+                        && (self.chars[self.cp].is_alphanumeric() || self.chars[self.cp] == '_')
+                    {
                         field_name.push(self.chars[self.cp]);
                         self.cp += 1;
                     }
@@ -428,12 +440,14 @@ impl Lexer {
             self.str_buf = Vec::new();
             return;
         }
-        
+
         if self.str_buf.len() == 0 {
             return;
         }
-        
-        if !(self.toks.len() == 0) && self.toks.last().unwrap() == &Token::Struct(Box::new("".to_string())) {
+
+        if !(self.toks.len() == 0)
+            && self.toks.last().unwrap() == &Token::Struct(Box::new("".to_string()))
+        {
             let proto_output: String = self.str_buf.clone().into_iter().collect();
             let len = self.toks.clone().len();
             self.toks[len - 1] = Token::Struct(Box::new(proto_output));
@@ -446,7 +460,7 @@ impl Lexer {
             let last = self.toks.last().unwrap();
             let (name, _) = match last {
                 Token::StructRef(n, k) => (*n.clone(), *k.clone()),
-                _ => unreachable!()
+                _ => unreachable!(),
             };
             self.toks[len - 1] = Token::StructRef(Box::new(name), Box::new(proto_output));
             self.str_buf = Vec::new();

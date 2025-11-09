@@ -52,6 +52,7 @@ pub struct Compiler {
     func_ir: Vec<String>,
     loop_cond_block: Option<Block>,
     loop_merge_block: Option<Block>,
+    current_struct_name: Option<String> //this code is awful
 }
 
 impl Compiler {
@@ -62,11 +63,14 @@ impl Compiler {
             main_scope: Rc::new(RefCell::new(Scope {
                 vars: HashMap::new(),
                 parent: None,
+                interfaces: HashMap::new(),
+                structs: HashMap::new()
             })),
             funcs: HashMap::new(),
             func_ir: Vec::new(),
             loop_cond_block: None,
             loop_merge_block: None,
+            current_struct_name: None
         }
     }
 
@@ -147,7 +151,7 @@ impl Compiler {
             //fuck the borrow checker
             let crt2_path = lib_path.join("crt2.o");
             let crtbegin_path = lib_path.join("crtbegin.o");
-            let crt1_path =  lib_path.join("crt1.o");
+            let crt1_path = lib_path.join("crt1.o");
             let crti_path = lib_path.join("crti.o");
             let lbruntime_path = lib_path.join("libruntime.a");
             let crtn_path = lib_path.join("crtn.o");
@@ -155,12 +159,13 @@ impl Compiler {
             let libm_path = lib_path.join("libm.so.6");
             let args: Vec<&str> = if env::consts::OS == "windows" {
                 vec![
-                    "-m", 
+                    "-m",
                     "i386pep",
                     crt2_path.to_str().unwrap(),
                     crtbegin_path.to_str().unwrap(),
                     obj_path.to_str().unwrap(),
-                    "-L", lib_path.to_str().unwrap(),
+                    "-L",
+                    lib_path.to_str().unwrap(),
                     "-lruntime",
                     "-lmingw32",
                     "-lmingwex",
@@ -170,7 +175,7 @@ impl Compiler {
                     "-lshell32",
                     "-lgcc",
                     "-o",
-                    path.unwrap()
+                    path.unwrap(),
                 ]
             } else {
                 vec![
@@ -186,17 +191,21 @@ impl Compiler {
                     libc_path.to_str().unwrap(),
                     libm_path.to_str().unwrap(),
                     "-dynamic-linker",
-                    "/lib64/ld-linux-x86-64.so.2"
+                    "/lib64/ld-linux-x86-64.so.2",
                 ]
             };
 
             let status = Command::new(lib_path.join("ld.lld"))
-            .args(args)
-            .status()
-            .expect("Failed to link");
-            
+                .args(args)
+                .status()
+                .expect("Failed to link");
+
             if !status.success() {
-                panic!("[ERROR] ld failed with exit code {:?}, Error: {:?}", status.code(), status);
+                panic!(
+                    "[ERROR] ld failed with exit code {:?}, Error: {:?}",
+                    status.code(),
+                    status
+                );
             }
             return None;
         }

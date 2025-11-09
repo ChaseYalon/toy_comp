@@ -5,6 +5,7 @@ use crate::parser::ast::{Ast, InfixOp};
 use crate::token::TypeTok;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::collections::HashMap;
 
 use cranelift::prelude::*;
 use cranelift_module::DataDescription;
@@ -19,8 +20,7 @@ impl Compiler {
         builder: &mut FunctionBuilder<'_>,
         param_values: &mut Vec<Value>,
     ) {
-      
-        let (n, degree ) = match t {
+        let (n, degree) = match t {
             &TypeTok::Str => (0, 0),
             &TypeTok::Bool => (1, 0),
             &TypeTok::Int => (2, 0),
@@ -29,12 +29,11 @@ impl Compiler {
             &TypeTok::BoolArr(n) => (5, n),
             &TypeTok::IntArr(n) => (6, n),
             &TypeTok::FloatArr(n) => (7, n),
-            _ => panic!("[ERROR] Cannot parse type {:?}", t)
+            _ => panic!("[ERROR] Cannot parse type {:?}", t),
         };
         let v = builder.ins().iconst(types::I64, n);
         param_values.push(v);
         if inject_dimension {
-
             let d = builder.ins().iconst(types::I64, degree as i64);
             param_values.push(d);
         }
@@ -44,8 +43,8 @@ impl Compiler {
         arr: &Vec<Ast>,
         module: &mut M,
         builder: &mut FunctionBuilder<'_>,
-        scope: &Rc<RefCell<Scope>>
-    )-> Value{
+        scope: &Rc<RefCell<Scope>>,
+    ) -> Value {
         let mut arr_items: Vec<Value> = Vec::new();
         let mut arr_types: Vec<TypeTok> = Vec::new();
         for expr in arr {
@@ -57,7 +56,7 @@ impl Compiler {
         let (_, arr_write_global) = self.funcs.get("toy_write_to_arr").unwrap();
         let arr_malloc = module.declare_func_in_func(*arr_malloc_global, &mut builder.func);
         let arr_write = module.declare_func_in_func(*arr_write_global, &mut builder.func);
-        
+
         //Calls toy malloc with the correct params
         let len = builder.ins().iconst(types::I64, arr_items.len() as i64);
         let mut params = [len].to_vec();
@@ -65,7 +64,7 @@ impl Compiler {
         let call_res = builder.ins().call(arr_malloc, params.as_slice());
         let arr_ptr = builder.inst_results(call_res)[0];
 
-        for (i, item) in arr_items.iter().enumerate(){
+        for (i, item) in arr_items.iter().enumerate() {
             let mut params = [arr_ptr, item.clone()].to_vec();
             let idx = builder.ins().iconst(types::I64, i as i64);
             params.push(idx);
@@ -93,6 +92,8 @@ impl Compiler {
             && expr.node_type() != "FloatLit"
             && expr.node_type() != "ArrLit"
             && expr.node_type() != "ArrRef"
+            && expr.node_type() != "StructLit"
+            && expr.node_type() != "StructRef"
         {
             panic!("[ERROR] Unknown AST node type: {}", expr.node_type());
         }
@@ -170,7 +171,8 @@ impl Compiler {
                         TypeTok::AnyArr(1) => TypeTok::Any,
                         _ => panic!(
                             "[ERROR] Type mismatch while indexing array {:?} at dimension {}",
-                            arr_type, dim + 1
+                            arr_type,
+                            dim + 1
                         ),
                     };
                 }
@@ -178,7 +180,10 @@ impl Compiler {
                 (current_ptr, arr_type)
             }
 
-            Ast::ArrLit(t, val) => (self.compile_arr_lit(val, _module, builder, scope),t.clone()),
+            Ast::ArrLit(t, val) => (
+                self.compile_arr_lit(val, _module, builder, scope),
+                t.clone(),
+            ),
             Ast::IntLit(n) => (builder.ins().iconst(types::I64, *n), TypeTok::Int),
             Ast::FloatLit(f) => {
                 let float = *f;
@@ -187,6 +192,45 @@ impl Compiler {
                     builder.ins().iconst(types::I64, float.to_bits() as i64),
                     TypeTok::Float,
                 )
+            }
+            Ast::StructLit(n, bkv) => {
+                let (_, global_hashmap_put) = self.funcs.get("toy_put").unwrap();
+                let (_, global_create_map) = self.funcs.get("toy_create_map").unwrap();
+                let toy_put = _module.declare_func_in_func(global_hashmap_put.clone(), &mut builder.func);
+                let toy_create_map = _module.declare_func_in_func(global_create_map.clone(), builder.func);
+                let interface_name = *(n).clone();
+                let kv = *(bkv).clone();
+
+                let interface_types = scope.borrow_mut().get_interface(interface_name.clone());
+                let create_res = builder.ins().call(toy_create_map, &[]);
+                let map_ptr = builder.inst_results(create_res)[0];
+                for (key, (value, _)) in kv.iter() {
+                    let (k, _) = self.compile_expr(&Ast::StringLit(Box::new(key.clone())), _module, builder, scope);
+                    let (v, _) = self.compile_expr(value, _module, builder, scope);
+                    let _ = builder.ins().call(toy_put, &[map_ptr, k, v]);
+                }
+                let boxed: HashMap<String, Box<TypeTok>> = interface_types.clone()
+                    .into_iter()
+                    .map(|(k, v)| (k, Box::new(v)))
+                    .collect();
+                scope.borrow_mut().set_struct(self.current_struct_name.clone().unwrap(), interface_name, map_ptr);
+                //scope.borrow_mut().set_struct(name, val, ptr);
+                (map_ptr, TypeTok::Struct(boxed))
+            }
+            Ast::StructRef(s_name, key) => {
+                let (_, global_hashmap_get) = self.funcs.get("toy_get").unwrap();
+                let toy_get = _module.declare_func_in_func(global_hashmap_get.clone(), &mut builder.func);
+                let name = *(s_name).clone();
+                let (value_key, _) = self.compile_expr(&Ast::StringLit(Box::new(*(key).clone())), _module, builder, scope);
+                let (_, ptr) = scope.borrow().get_struct(name.clone());
+                let call_res = builder.ins().call(toy_get, &[ptr, value_key]);
+                let value = builder.inst_results(call_res)[0];
+                let (_, pty) = scope.borrow().get(name.clone());
+                let kv = match pty {
+                    TypeTok::Struct(kv) => kv,
+                    _ => panic!("[ERROR] Variable {} is not a struct", name)
+                };
+                return (value, *(kv.get(&*(key).clone()).unwrap()).clone());
             }
             Ast::BoolLit(b) => {
                 let is_true: i64 = if *b { 1 } else { 0 };

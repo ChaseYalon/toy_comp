@@ -2,6 +2,7 @@ use super::Compiler;
 use crate::parser::ast::Ast;
 use crate::token::TypeTok;
 
+use crate::ffi::*;
 use cranelift::prelude::*;
 use cranelift_codegen::isa;
 use cranelift_codegen::settings::{self, Configurable};
@@ -9,7 +10,6 @@ use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{Linkage, Module, default_libcall_names};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use target_lexicon::Triple;
-use crate::ffi::*;
 
 impl Compiler {
     pub fn make_jit(&self) -> JITModule {
@@ -24,13 +24,22 @@ impl Compiler {
         jit_builder.symbol("toy_type_to_bool", toy_type_to_bool as *const u8);
         jit_builder.symbol("toy_type_to_int", toy_type_to_int as *const u8);
         jit_builder.symbol("toy_int_to_float", toy_int_to_float as *const u8);
-        jit_builder.symbol("toy_float_bits_to_double", toy_float_bits_to_double as *const u8);
-        jit_builder.symbol("toy_double_to_float_bits", toy_double_to_float_bits as *const u8);
+        jit_builder.symbol(
+            "toy_float_bits_to_double",
+            toy_float_bits_to_double as *const u8,
+        );
+        jit_builder.symbol(
+            "toy_double_to_float_bits",
+            toy_double_to_float_bits as *const u8,
+        );
         jit_builder.symbol("toy_type_to_float", toy_type_to_float as *const u8);
         jit_builder.symbol("toy_write_to_arr", toy_write_to_arr as *const u8);
         jit_builder.symbol("toy_read_from_arr", toy_read_from_arr as *const u8);
         jit_builder.symbol("toy_malloc_arr", toy_malloc_arr as *const u8);
         jit_builder.symbol("toy_arrlen", toy_arrlen as *const u8);
+        jit_builder.symbol("toy_put", toy_put as *const u8);
+        jit_builder.symbol("toy_get", toy_get as *const u8);
+        jit_builder.symbol("toy_create_map", toy_create_map as *const u8);
         JITModule::new(jit_builder)
     }
 
@@ -105,7 +114,8 @@ impl Compiler {
         let func = module
             .declare_function("toy_strlen", Linkage::Import, &sig)
             .unwrap();
-        self.funcs.insert("strlen".to_string(), (TypeTok::Int, func));
+        self.funcs
+            .insert("strlen".to_string(), (TypeTok::Int, func));
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
@@ -137,56 +147,100 @@ impl Compiler {
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
         sig.returns.push(AbiParam::new(types::F64));
-        let func = module.declare_function("toy_int_to_float", Linkage::Import, &sig).unwrap();
-        self.funcs.insert("toy_int_to_float".to_string(), (TypeTok::Float, func));
+        let func = module
+            .declare_function("toy_int_to_float", Linkage::Import, &sig)
+            .unwrap();
+        self.funcs
+            .insert("toy_int_to_float".to_string(), (TypeTok::Float, func));
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
         sig.returns.push(AbiParam::new(types::F64));
-        let func = module.declare_function("toy_float_bits_to_double", Linkage::Import, &sig).unwrap();
-        self.funcs.insert("toy_float_bits_to_double".to_string(), (TypeTok::Float, func));
+        let func = module
+            .declare_function("toy_float_bits_to_double", Linkage::Import, &sig)
+            .unwrap();
+        self.funcs.insert(
+            "toy_float_bits_to_double".to_string(),
+            (TypeTok::Float, func),
+        );
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::F64));
         sig.returns.push(AbiParam::new(types::I64));
-        let func = module.declare_function("toy_double_to_float_bits", Linkage::Import, &sig).unwrap();
-        self.funcs.insert("toy_double_to_float_bits".to_string(), (TypeTok::Int, func));
+        let func = module
+            .declare_function("toy_double_to_float_bits", Linkage::Import, &sig)
+            .unwrap();
+        self.funcs
+            .insert("toy_double_to_float_bits".to_string(), (TypeTok::Int, func));
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
         sig.params.push(AbiParam::new(types::I64));
         sig.returns.push(AbiParam::new(types::I64));
-        let func = module.declare_function("toy_type_to_float", Linkage::Import, &sig).unwrap();
-        self.funcs.insert("float".to_string(), (TypeTok::Float, func));
+        let func = module
+            .declare_function("toy_type_to_float", Linkage::Import, &sig)
+            .unwrap();
+        self.funcs
+            .insert("float".to_string(), (TypeTok::Float, func));
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
         sig.params.push(AbiParam::new(types::I64));
         sig.params.push(AbiParam::new(types::I64));
         sig.params.push(AbiParam::new(types::I64));
-        let func = module.declare_function("toy_write_to_arr", Linkage::Import, &sig).unwrap();
-        self.funcs.insert("toy_write_to_arr".to_string(), (TypeTok::Void, func));
+        let func = module
+            .declare_function("toy_write_to_arr", Linkage::Import, &sig)
+            .unwrap();
+        self.funcs
+            .insert("toy_write_to_arr".to_string(), (TypeTok::Void, func));
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
         sig.params.push(AbiParam::new(types::I64));
         sig.returns.push(AbiParam::new(types::I64));
-        let func = module.declare_function("toy_read_from_arr", Linkage::Import, &sig).unwrap();
-        self.funcs.insert("toy_read_from_arr".to_string(), (TypeTok::Any, func));
+        let func = module
+            .declare_function("toy_read_from_arr", Linkage::Import, &sig)
+            .unwrap();
+        self.funcs
+            .insert("toy_read_from_arr".to_string(), (TypeTok::Any, func));
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
         sig.params.push(AbiParam::new(types::I64));
         sig.returns.push(AbiParam::new(types::I64));
-        let func = module.declare_function("toy_malloc_arr", Linkage::Import, &sig).unwrap();
-        self.funcs.insert("toy_malloc_arr".to_string(), (TypeTok::Any, func));
+        let func = module
+            .declare_function("toy_malloc_arr", Linkage::Import, &sig)
+            .unwrap();
+        self.funcs
+            .insert("toy_malloc_arr".to_string(), (TypeTok::Any, func));
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
         sig.returns.push(AbiParam::new(types::I64));
-        let func = module.declare_function("toy_arrlen", Linkage::Import, &sig).unwrap();
-        self.funcs.insert("arrlen".to_string(), (TypeTok::Int, func));
+        let func = module
+            .declare_function("toy_arrlen", Linkage::Import, &sig)
+            .unwrap();
+        self.funcs
+            .insert("arrlen".to_string(), (TypeTok::Int, func));
 
+        let mut sig = module.make_signature();
+        sig.params.push(AbiParam::new(types::I64));
+        sig.params.push(AbiParam::new(types::I64));
+        sig.params.push(AbiParam::new(types::I64));
+        let func = module.declare_function("toy_put", Linkage::Import, &sig).unwrap();
+        self.funcs.insert("toy_put".to_string(), (TypeTok::Void, func));
+
+        let mut sig = module.make_signature();
+        sig.params.push(AbiParam::new(types::I64));
+        sig.params.push(AbiParam::new(types::I64));
+        sig.returns.push(AbiParam::new(types::I64));
+        let func = module.declare_function("toy_get", Linkage::Import, &sig).unwrap();
+        self.funcs.insert("toy_get".to_string(), (TypeTok::Int, func));
+
+        let mut sig = module.make_signature();
+        sig.returns.push(AbiParam::new(types::I64));
+        let func = module.declare_function("toy_create_map", Linkage::Import, &sig).unwrap();
+        self.funcs.insert("toy_create_map".to_string(), (TypeTok::Void, func));
     }
 
     pub fn compile_to_object(&mut self, ast: Vec<Ast>) -> Vec<u8> {

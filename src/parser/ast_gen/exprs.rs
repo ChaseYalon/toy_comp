@@ -2,7 +2,7 @@ use super::AstGenerator;
 use crate::debug;
 use crate::parser::ast::{Ast, InfixOp};
 use crate::token::{Token, TypeTok};
-
+use std::collections::HashMap;
 impl AstGenerator {
     pub fn parse_num_expr(&self, toks: &Vec<Token>) -> Ast {
         if toks.len() == 1 {
@@ -208,6 +208,20 @@ impl AstGenerator {
     pub fn parse_expr(&self, toks: &Vec<Token>) -> (Ast, TypeTok) {
         //guard clause for single tokens
         if toks.len() == 1 {
+                    //struct ref (a.x)
+            if toks[0].tok_type() == "StructRef"{
+                let (s_name, key) = match toks[0].clone() {
+                    Token::StructRef(sn, k) => (*sn, *k),
+                    _ => unreachable!()
+                };
+                let s = self.lookup_var_type(&s_name).unwrap();
+                let skv = match s {
+                    TypeTok::Struct(m) => m,
+                    _ => panic!("[ERROR] {} is not struct", s_name)
+                };
+                let v_type = *(skv.get(&key).unwrap()).clone();
+                return (Ast::StructRef(Box::new(s_name), Box::new(key)), v_type)
+            }
             if toks[0].tok_type() == "IntLit" {
                 return (Ast::IntLit(toks[0].get_val().unwrap()), TypeTok::Int);
             }
@@ -274,7 +288,9 @@ impl AstGenerator {
             }
         }
         //guard calls for empty expressions
-        if toks.first().unwrap().tok_type() == "LParen" && toks.last().unwrap().tok_type() == "RParen" {
+        if toks.first().unwrap().tok_type() == "LParen"
+            && toks.last().unwrap().tok_type() == "RParen"
+        {
             let mut depth = 0;
             let mut first_paren_closes_at = None;
 
@@ -354,7 +370,10 @@ impl AstGenerator {
                     TypeTok::BoolArr(n) => TypeTok::BoolArr(n - 1),
                     TypeTok::FloatArr(n) => TypeTok::FloatArr(n - 1),
                     TypeTok::AnyArr(n) => TypeTok::AnyArr(n - 1),
-                    _ => panic!("[ERROR] {:?} is not an array type or dimension mismatch", item_type),
+                    _ => panic!(
+                        "[ERROR] {:?} is not an array type or dimension mismatch",
+                        item_type
+                    ),
                 };
             }
 
@@ -365,7 +384,39 @@ impl AstGenerator {
         if toks.first().unwrap().tok_type() == "LBrack" {
             return self.parse_arr_lit(toks);
         }
-        
+        //Struct literal
+        if toks.first().unwrap().tok_type() == "VarRef" && toks[1].tok_type() == "LBrace" {
+            let name = match toks[0].clone() {
+                Token::VarRef(n) => *n,
+                _ => unreachable!()
+            };
+            let unprocessed_kv: Vec<&[Token]> = toks[2..toks.len() - 1].split(
+                |item| item == &Token::Comma
+            ).collect();
+            let mut processed_kv: HashMap<String, (Ast, TypeTok)> = HashMap::new();
+            for kv in unprocessed_kv {
+                if kv[1].tok_type() != "Colon" {
+                    panic!("[ERROR] Expected Colon between name and value, got {}", kv[1].clone());
+                }
+                let key = match kv[0].clone() {
+                    Token::VarRef(v) => *v,
+                    _ => panic!("[ERROR] Expected name, got {}", kv[0])
+                };
+                let (value, value_type) = self.parse_expr(&kv[2..kv.len()].to_vec());
+                let correct_type = match self.lookup_var_type(&name).unwrap().clone() {
+                    TypeTok::Struct(f) => *(f.get(&key).unwrap()).clone(),
+                    _ => panic!("[ERROR] Variable {} is not a struct, it is a {:?}", name, self.lookup_var_type(&name).unwrap())
+                };
+                if value_type != correct_type {
+                    panic!("[ERROR] Expected {:?}, got {:?}", correct_type, value_type);
+                }
+                processed_kv.insert(key, (value, value_type));
+                
+            }
+            return (Ast::StructLit(Box::new(name.clone()), Box::new(processed_kv)), self.lookup_var_type(&name).unwrap())
+        }
+
+
         let (best_idx, _, best_val) = self.find_top_val(toks);
         debug!(targets: ["parser", "parser_verbose"], best_val.clone());
         debug!(targets: ["parser", "parser_verbose"], toks.clone());

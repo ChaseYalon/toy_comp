@@ -1,10 +1,10 @@
+use super::FILE_EXTENSION_EXE;
 use crate::{Compiler, Lexer, Parser};
 use std::env;
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
-use super::FILE_EXTENSION_EXE;
-use std::path::PathBuf;
 
 fn capture_program_output(program: String) -> String {
     thread::sleep(Duration::from_millis(100));
@@ -36,18 +36,17 @@ macro_rules! compile_code_aot {
         let output_path = project_root.join("temp").join(&output_name);
 
         let _ = std::fs::remove_file(&output_path);
-        thread::sleep(Duration::from_millis(100)); 
-
+        thread::sleep(Duration::from_millis(100));
         let mut l = Lexer::new();
         let mut p = Parser::new();
         let mut c = Compiler::new();
         c.compile(
             p.parse(l.lex($i.to_string())),
             false,
-            Some(&format!("temp/{}", output_name)), 
+            Some(&format!("temp/{}", output_name)),
         );
 
-        thread::sleep(Duration::from_millis(200)); 
+        thread::sleep(Duration::from_millis(200));
 
         let output_str = output_path.to_string_lossy().to_string();
         let $o = capture_program_output(output_str);
@@ -217,24 +216,50 @@ fn test_compiler_arr_lits() {
 
 #[test]
 fn test_compiler_arr_ref() {
-    compile_code_aot!(output, r#"let x: str[] = ["hi", "bye", "hello", "goodbye"]; let b= x[2]; println(b)"#, "arr_ref");
+    compile_code_aot!(
+        output,
+        r#"let x: str[] = ["hi", "bye", "hello", "goodbye"]; let b= x[2]; println(b)"#,
+        "arr_ref"
+    );
     assert!(output.contains("hello"));
 }
 
 #[test]
 fn test_compiler_arr_idx_reassign() {
-    compile_code_aot!(output, "let x = [1, 2, 3, 4, 5]; x[2] = 7; println(x);", "arr_idx_reassign");
+    compile_code_aot!(
+        output,
+        "let x = [1, 2, 3, 4, 5]; x[2] = 7; println(x);",
+        "arr_idx_reassign"
+    );
     assert!(output.contains("[1, 2, 7, 4, 5]"))
 }
 
 #[test]
 fn test_compiler_arr_len() {
-    compile_code_aot!(output, "let arr = [true, false, false, true]; println(len(arr));", "arr_len");
+    compile_code_aot!(
+        output,
+        "let arr = [true, false, false, true]; println(len(arr));",
+        "arr_len"
+    );
     assert!(output.contains("4"));
 }
 
 #[test]
 fn test_compiler_n_dimensional_arrays() {
-    compile_code_aot!(output, "let arr: int[][] = [[1, 2], [3, 4]]; let x = arr[1][0]; println(x);", "nd_arr");
+    compile_code_aot!(
+        output,
+        "let arr: int[][] = [[1, 2], [3, 4]]; let x = arr[1][0]; println(x);",
+        "nd_arr"
+    );
     assert!(output.contains("3"));
+}
+
+#[test]
+fn test_compiler_structs() {
+    compile_code_aot!(
+        output,
+        "struct Foo{fee: int, baz: bool}; let x = Foo{fee: 2, baz: false}; println(x.fee);",
+        "structs"
+    );
+    assert!(output.contains("2"));
 }
