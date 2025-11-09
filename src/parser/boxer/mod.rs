@@ -5,6 +5,7 @@ use std::collections::HashMap;
 pub struct Boxer {
     toks: Vec<Token>,
     tp: usize, // token pointer
+    interfaces: HashMap<String, HashMap<String, TypeTok>>,
 }
 
 impl Boxer {
@@ -12,6 +13,7 @@ impl Boxer {
         Boxer {
             toks: Vec::new(),
             tp: 0,
+            interfaces: HashMap::new(),
         }
     }
     fn pre_process(&self, input: &Vec<Token>) -> Vec<Token> {
@@ -81,6 +83,15 @@ impl Boxer {
         if input[2].tok_type() == "Colon" {
             let ty = match input[3].clone() {
                 Token::Type(t) => t,
+                Token::VarRef(v) => {
+                    let temp = self.interfaces.get(&*v).unwrap().clone();
+                    let boxed: HashMap<String, Box<TypeTok>> = temp
+                        .clone()
+                        .into_iter()
+                        .map(|(k, v)| (k, Box::new(v)))
+                        .collect();
+                    TypeTok::Struct(boxed)
+                } //assume it is a nested struct
                 _ => panic!("[ERROR] Expected type, found {}", input[3]),
             };
             return TBox::VarDec(input[1].clone(), Some(ty), input[5..].to_vec());
@@ -377,10 +388,20 @@ impl Boxer {
             };
             let value: TypeTok = match group[2].clone() {
                 Token::Type(t) => t,
+                Token::VarRef(v) => {
+                    let temp = self.interfaces.get(&*v).unwrap().clone();
+                    let boxed: HashMap<String, Box<TypeTok>> = temp
+                        .clone()
+                        .into_iter()
+                        .map(|(k, v)| (k, Box::new(v)))
+                        .collect();
+                    TypeTok::Struct(boxed)
+                } //assume it is a nested struct
                 _ => panic!("[ERROR] Expected Type, got {}", group[2].clone()),
             };
             params.insert(key, value);
         }
+        self.interfaces.insert(name.clone(), params.clone());
 
         return TBox::StructInterface(Box::new(name), Box::new(params));
     }

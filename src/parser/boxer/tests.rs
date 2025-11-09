@@ -674,3 +674,61 @@ fn test_boxer_struct_problematic() {
         ]
     )
 }
+
+#[test]
+fn test_boxer_nested_structs() {
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let toks = l.lex(r#"struct Name{first: str, last: str}; struct Person{name: Name, age: int}; let me = Person{name: Name{first: "Chase", last: "Yalon"}, age: 15};"#.to_string());
+    let boxes = b.box_toks(toks);
+    assert_eq!(
+        boxes,
+        vec![
+            TBox::StructInterface(
+                Box::new("Name".to_string()),
+                Box::new(HashMap::from([
+                    ("first".to_string(), TypeTok::Str),
+                    ("last".to_string(), TypeTok::Str),
+                ]))
+            ),
+            TBox::StructInterface(
+                Box::new("Person".to_string()),
+                Box::new(HashMap::from([
+                    (
+                        "name".to_string(),
+                        TypeTok::Struct(HashMap::from([
+                            ("first".to_string(), Box::new(TypeTok::Str)),
+                            ("last".to_string(), Box::new(TypeTok::Str)),
+                        ]))
+                    ),
+                    ("age".to_string(), TypeTok::Int),
+                ]))
+            ),
+            TBox::VarDec(
+                Token::VarName(Box::new("me".to_string())),
+                None,
+                vec![
+                    Token::VarRef(Box::new("Person".to_string())),
+                    Token::LBrace,
+                    Token::VarRef(Box::new("name".to_string())),
+                    Token::Colon,
+                    Token::VarRef(Box::new("Name".to_string())),
+                    Token::LBrace,
+                    Token::VarRef(Box::new("first".to_string())),
+                    Token::Colon,
+                    Token::StringLit(Box::new("Chase".to_string())),
+                    Token::Comma,
+                    Token::VarRef(Box::new("last".to_string())),
+                    Token::Colon,
+                    Token::StringLit(Box::new("Yalon".to_string())),
+                    Token::RBrace,
+                    Token::Comma,
+                    Token::VarRef(Box::new("age".to_string())),
+                    Token::Colon,
+                    Token::IntLit(15),
+                    Token::RBrace,
+                ]
+            )
+        ]
+    )
+}

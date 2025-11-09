@@ -874,3 +874,80 @@ fn test_ast_gen_struct_buggy() {
         ]
     )
 }
+
+#[test]
+fn test_ast_gen_nested_struct() {
+    setup_ast!(r#"struct Name{first: str, last: str}; struct Person{name: Name, age: int}; let me = Person{name: Name{first: "Chase", last: "Yalon"}, age: 15};"#.to_string(), ast);
+    assert_eq!(
+        ast,
+        vec![
+            Ast::StructInterface(
+                Box::new("Name".to_string()),
+                Box::new(HashMap::from([
+                    ("first".to_string(), TypeTok::Str),
+                    ("last".to_string(), TypeTok::Str)
+                ]))
+            ),
+            Ast::StructInterface(
+                Box::new("Person".to_string()),
+                Box::new(HashMap::from([
+                    (
+                        "name".to_string(),
+                        TypeTok::Struct(HashMap::from([
+                            ("first".to_string(), Box::new(TypeTok::Str)),
+                            ("last".to_string(), Box::new(TypeTok::Str))
+                        ]))
+                    ),
+                    ("age".to_string(), TypeTok::Int)
+                ]))
+            ),
+            Ast::VarDec(
+                Box::new("me".to_string()),
+                TypeTok::Struct(HashMap::from([
+                    (
+                        "name".to_string(),
+                        Box::new(TypeTok::Struct(HashMap::from([
+                            ("first".to_string(), Box::new(TypeTok::Str)),
+                            ("last".to_string(), Box::new(TypeTok::Str))
+                        ])))
+                    ),
+                    ("age".to_string(), Box::new(TypeTok::Int))
+                ]),),
+                Box::new(Ast::StructLit(
+                    Box::new("Person".to_string()),
+                    Box::new(HashMap::from([
+                        (
+                            "name".to_string(),
+                            (
+                                Ast::StructLit(
+                                    Box::new("Name".to_string()),
+                                    Box::new(HashMap::from([
+                                        (
+                                            "first".to_string(),
+                                            (
+                                                Ast::StringLit(Box::new("Chase".to_string())),
+                                                TypeTok::Str
+                                            )
+                                        ),
+                                        (
+                                            "last".to_string(),
+                                            (
+                                                Ast::StringLit(Box::new("Yalon".to_string())),
+                                                TypeTok::Str
+                                            )
+                                        )
+                                    ]))
+                                ),
+                                TypeTok::Struct(HashMap::from([
+                                    ("first".to_string(), Box::new(TypeTok::Str)),
+                                    ("last".to_string(), Box::new(TypeTok::Str))
+                                ]))
+                            )
+                        ),
+                        ("age".to_string(), (Ast::IntLit(15), TypeTok::Int))
+                    ]))
+                ))
+            )
+        ]
+    )
+}
