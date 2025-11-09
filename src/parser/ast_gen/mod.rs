@@ -416,16 +416,17 @@ impl AstGenerator {
                     );
                 }
                 Ast::ArrReassign(Box::new(arr_name), idx, Box::new(value))
-            },
+            }
             TBox::StructInterface(name, types) => {
-                    let boxed: HashMap<String, Box<TypeTok>> = (*types).clone()
-                        .into_iter()
-                        .map(|(k, v)| (k, Box::new(v)))
-                        .collect();
+                let boxed: HashMap<String, Box<TypeTok>> = (*types)
+                    .clone()
+                    .into_iter()
+                    .map(|(k, v)| (k, Box::new(v)))
+                    .collect();
                 self.insert_var_type((*name).clone(), TypeTok::Struct(boxed));
 
                 Ast::StructInterface(name, types)
-            },
+            }
 
             _ => todo!("Unimplemented statement {}", val),
         };

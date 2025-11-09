@@ -898,3 +898,46 @@ fn test_lexer_problematic_struct_dec() {
         ]
     )
 }
+
+#[test]
+fn test_lexer_nested_struct() {
+    let mut l = Lexer::new();
+    let toks = l.lex(
+        "struct Foo {bar: bool}; struct Fee{fii: Foo}; let a = Fee{fii: Foo{bar: true}};"
+            .to_string(),
+    );
+    assert_eq!(
+        toks,
+        vec![
+            Token::Struct(Box::new("Foo".to_string())),
+            Token::LBrace,
+            Token::VarRef(Box::new("bar".to_string())),
+            Token::Colon,
+            Token::Type(TypeTok::Bool),
+            Token::RBrace,
+            Token::Semicolon,
+            Token::Struct(Box::new("Fee".to_string())),
+            Token::LBrace,
+            Token::VarRef(Box::new("fii".to_string())),
+            Token::Colon,
+            Token::VarRef(Box::new("Foo".to_string())),
+            Token::RBrace,
+            Token::Semicolon,
+            Token::Let,
+            Token::VarName(Box::new("a".to_string())),
+            Token::Assign,
+            Token::VarRef(Box::new("Fee".to_string())),
+            Token::LBrace,
+            Token::VarRef(Box::new("fii".to_string())),
+            Token::Colon,
+            Token::VarRef(Box::new("Foo".to_string())),
+            Token::LBrace,
+            Token::VarRef(Box::new("bar".to_string())),
+            Token::Colon,
+            Token::BoolLit(true),
+            Token::RBrace,
+            Token::RBrace,
+            Token::Semicolon
+        ]
+    )
+}

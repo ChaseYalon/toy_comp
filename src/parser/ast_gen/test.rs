@@ -835,8 +835,11 @@ fn test_ast_gen_struct_def_and_ref() {
 }
 
 #[test]
-fn test_ast_gen_struct_buggy (){
-    setup_ast!(r#"struct Foo{fee: int, baz: bool}; let x = Foo{fee: 2, baz: false}; println(x.fee);"#, ast);
+fn test_ast_gen_struct_buggy() {
+    setup_ast!(
+        r#"struct Foo{fee: int, baz: bool}; let x = Foo{fee: 2, baz: false}; println(x.fee);"#,
+        ast
+    );
     assert_eq!(
         ast,
         vec![
@@ -863,7 +866,10 @@ fn test_ast_gen_struct_buggy (){
             ),
             Ast::FuncCall(
                 Box::new("println".to_string()),
-                vec![Ast::StructRef(Box::new("x".to_string()), Box::new("fee".to_string()))]
+                vec![Ast::StructRef(
+                    Box::new("x".to_string()),
+                    Box::new("fee".to_string())
+                )]
             )
         ]
     )

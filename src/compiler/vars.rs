@@ -90,7 +90,7 @@ impl Scope {
             vars: HashMap::new(),
             parent: Some(parent.clone()),
             interfaces: HashMap::new(),
-            structs: HashMap::new()
+            structs: HashMap::new(),
         }))
     }
 
@@ -107,7 +107,7 @@ impl Scope {
         }
         return self.parent.as_ref().unwrap().borrow().get(name);
     }
-    pub fn set_interface(&mut self, name: String, val: HashMap<String, TypeTok>){
+    pub fn set_interface(&mut self, name: String, val: HashMap<String, TypeTok>) {
         self.interfaces.insert(name, val);
     }
     pub fn get_interface(&self, name: String) -> HashMap<String, TypeTok> {

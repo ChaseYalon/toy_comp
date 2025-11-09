@@ -208,19 +208,19 @@ impl AstGenerator {
     pub fn parse_expr(&self, toks: &Vec<Token>) -> (Ast, TypeTok) {
         //guard clause for single tokens
         if toks.len() == 1 {
-                    //struct ref (a.x)
-            if toks[0].tok_type() == "StructRef"{
+            //struct ref (a.x)
+            if toks[0].tok_type() == "StructRef" {
                 let (s_name, key) = match toks[0].clone() {
                     Token::StructRef(sn, k) => (*sn, *k),
-                    _ => unreachable!()
+                    _ => unreachable!(),
                 };
                 let s = self.lookup_var_type(&s_name).unwrap();
                 let skv = match s {
                     TypeTok::Struct(m) => m,
-                    _ => panic!("[ERROR] {} is not struct", s_name)
+                    _ => panic!("[ERROR] {} is not struct", s_name),
                 };
                 let v_type = *(skv.get(&key).unwrap()).clone();
-                return (Ast::StructRef(Box::new(s_name), Box::new(key)), v_type)
+                return (Ast::StructRef(Box::new(s_name), Box::new(key)), v_type);
             }
             if toks[0].tok_type() == "IntLit" {
                 return (Ast::IntLit(toks[0].get_val().unwrap()), TypeTok::Int);
@@ -388,34 +388,42 @@ impl AstGenerator {
         if toks.first().unwrap().tok_type() == "VarRef" && toks[1].tok_type() == "LBrace" {
             let name = match toks[0].clone() {
                 Token::VarRef(n) => *n,
-                _ => unreachable!()
+                _ => unreachable!(),
             };
-            let unprocessed_kv: Vec<&[Token]> = toks[2..toks.len() - 1].split(
-                |item| item == &Token::Comma
-            ).collect();
+            let unprocessed_kv: Vec<&[Token]> = toks[2..toks.len() - 1]
+                .split(|item| item == &Token::Comma)
+                .collect();
             let mut processed_kv: HashMap<String, (Ast, TypeTok)> = HashMap::new();
             for kv in unprocessed_kv {
                 if kv[1].tok_type() != "Colon" {
-                    panic!("[ERROR] Expected Colon between name and value, got {}", kv[1].clone());
+                    panic!(
+                        "[ERROR] Expected Colon between name and value, got {}",
+                        kv[1].clone()
+                    );
                 }
                 let key = match kv[0].clone() {
                     Token::VarRef(v) => *v,
-                    _ => panic!("[ERROR] Expected name, got {}", kv[0])
+                    _ => panic!("[ERROR] Expected name, got {}", kv[0]),
                 };
                 let (value, value_type) = self.parse_expr(&kv[2..kv.len()].to_vec());
                 let correct_type = match self.lookup_var_type(&name).unwrap().clone() {
                     TypeTok::Struct(f) => *(f.get(&key).unwrap()).clone(),
-                    _ => panic!("[ERROR] Variable {} is not a struct, it is a {:?}", name, self.lookup_var_type(&name).unwrap())
+                    _ => panic!(
+                        "[ERROR] Variable {} is not a struct, it is a {:?}",
+                        name,
+                        self.lookup_var_type(&name).unwrap()
+                    ),
                 };
                 if value_type != correct_type {
                     panic!("[ERROR] Expected {:?}, got {:?}", correct_type, value_type);
                 }
                 processed_kv.insert(key, (value, value_type));
-                
             }
-            return (Ast::StructLit(Box::new(name.clone()), Box::new(processed_kv)), self.lookup_var_type(&name).unwrap())
+            return (
+                Ast::StructLit(Box::new(name.clone()), Box::new(processed_kv)),
+                self.lookup_var_type(&name).unwrap(),
+            );
         }
-
 
         let (best_idx, _, best_val) = self.find_top_val(toks);
         debug!(targets: ["parser", "parser_verbose"], best_val.clone());

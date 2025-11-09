@@ -4,8 +4,8 @@ use crate::debug;
 use crate::parser::ast::{Ast, InfixOp};
 use crate::token::TypeTok;
 use std::cell::RefCell;
-use std::rc::Rc;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use cranelift::prelude::*;
 use cranelift_module::DataDescription;
@@ -196,8 +196,10 @@ impl Compiler {
             Ast::StructLit(n, bkv) => {
                 let (_, global_hashmap_put) = self.funcs.get("toy_put").unwrap();
                 let (_, global_create_map) = self.funcs.get("toy_create_map").unwrap();
-                let toy_put = _module.declare_func_in_func(global_hashmap_put.clone(), &mut builder.func);
-                let toy_create_map = _module.declare_func_in_func(global_create_map.clone(), builder.func);
+                let toy_put =
+                    _module.declare_func_in_func(global_hashmap_put.clone(), &mut builder.func);
+                let toy_create_map =
+                    _module.declare_func_in_func(global_create_map.clone(), builder.func);
                 let interface_name = *(n).clone();
                 let kv = *(bkv).clone();
 
@@ -205,30 +207,46 @@ impl Compiler {
                 let create_res = builder.ins().call(toy_create_map, &[]);
                 let map_ptr = builder.inst_results(create_res)[0];
                 for (key, (value, _)) in kv.iter() {
-                    let (k, _) = self.compile_expr(&Ast::StringLit(Box::new(key.clone())), _module, builder, scope);
+                    let (k, _) = self.compile_expr(
+                        &Ast::StringLit(Box::new(key.clone())),
+                        _module,
+                        builder,
+                        scope,
+                    );
                     let (v, _) = self.compile_expr(value, _module, builder, scope);
                     let _ = builder.ins().call(toy_put, &[map_ptr, k, v]);
                 }
-                let boxed: HashMap<String, Box<TypeTok>> = interface_types.clone()
+                let boxed: HashMap<String, Box<TypeTok>> = interface_types
+                    .clone()
                     .into_iter()
                     .map(|(k, v)| (k, Box::new(v)))
                     .collect();
-                scope.borrow_mut().set_struct(self.current_struct_name.clone().unwrap(), interface_name, map_ptr);
+                scope.borrow_mut().set_struct(
+                    self.current_struct_name.clone().unwrap(),
+                    interface_name,
+                    map_ptr,
+                );
                 //scope.borrow_mut().set_struct(name, val, ptr);
                 (map_ptr, TypeTok::Struct(boxed))
             }
             Ast::StructRef(s_name, key) => {
                 let (_, global_hashmap_get) = self.funcs.get("toy_get").unwrap();
-                let toy_get = _module.declare_func_in_func(global_hashmap_get.clone(), &mut builder.func);
+                let toy_get =
+                    _module.declare_func_in_func(global_hashmap_get.clone(), &mut builder.func);
                 let name = *(s_name).clone();
-                let (value_key, _) = self.compile_expr(&Ast::StringLit(Box::new(*(key).clone())), _module, builder, scope);
+                let (value_key, _) = self.compile_expr(
+                    &Ast::StringLit(Box::new(*(key).clone())),
+                    _module,
+                    builder,
+                    scope,
+                );
                 let (_, ptr) = scope.borrow().get_struct(name.clone());
                 let call_res = builder.ins().call(toy_get, &[ptr, value_key]);
                 let value = builder.inst_results(call_res)[0];
                 let (_, pty) = scope.borrow().get(name.clone());
                 let kv = match pty {
                     TypeTok::Struct(kv) => kv,
-                    _ => panic!("[ERROR] Variable {} is not a struct", name)
+                    _ => panic!("[ERROR] Variable {} is not a struct", name),
                 };
                 return (value, *(kv.get(&*(key).clone()).unwrap()).clone());
             }

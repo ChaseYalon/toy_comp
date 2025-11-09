@@ -227,20 +227,29 @@ impl Compiler {
         sig.params.push(AbiParam::new(types::I64));
         sig.params.push(AbiParam::new(types::I64));
         sig.params.push(AbiParam::new(types::I64));
-        let func = module.declare_function("toy_put", Linkage::Import, &sig).unwrap();
-        self.funcs.insert("toy_put".to_string(), (TypeTok::Void, func));
+        let func = module
+            .declare_function("toy_put", Linkage::Import, &sig)
+            .unwrap();
+        self.funcs
+            .insert("toy_put".to_string(), (TypeTok::Void, func));
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
         sig.params.push(AbiParam::new(types::I64));
         sig.returns.push(AbiParam::new(types::I64));
-        let func = module.declare_function("toy_get", Linkage::Import, &sig).unwrap();
-        self.funcs.insert("toy_get".to_string(), (TypeTok::Int, func));
+        let func = module
+            .declare_function("toy_get", Linkage::Import, &sig)
+            .unwrap();
+        self.funcs
+            .insert("toy_get".to_string(), (TypeTok::Int, func));
 
         let mut sig = module.make_signature();
         sig.returns.push(AbiParam::new(types::I64));
-        let func = module.declare_function("toy_create_map", Linkage::Import, &sig).unwrap();
-        self.funcs.insert("toy_create_map".to_string(), (TypeTok::Void, func));
+        let func = module
+            .declare_function("toy_create_map", Linkage::Import, &sig)
+            .unwrap();
+        self.funcs
+            .insert("toy_create_map".to_string(), (TypeTok::Void, func));
     }
 
     pub fn compile_to_object(&mut self, ast: Vec<Ast>) -> Vec<u8> {

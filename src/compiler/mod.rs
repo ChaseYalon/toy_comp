@@ -52,7 +52,7 @@ pub struct Compiler {
     func_ir: Vec<String>,
     loop_cond_block: Option<Block>,
     loop_merge_block: Option<Block>,
-    current_struct_name: Option<String> //this code is awful
+    current_struct_name: Option<String>, //this code is awful
 }
 
 impl Compiler {
@@ -64,13 +64,13 @@ impl Compiler {
                 vars: HashMap::new(),
                 parent: None,
                 interfaces: HashMap::new(),
-                structs: HashMap::new()
+                structs: HashMap::new(),
             })),
             funcs: HashMap::new(),
             func_ir: Vec::new(),
             loop_cond_block: None,
             loop_merge_block: None,
-            current_struct_name: None
+            current_struct_name: None,
         }
     }
 

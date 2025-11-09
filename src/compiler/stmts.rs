@@ -244,10 +244,16 @@ impl Compiler {
         self.loop_cond_block = prev_cond;
         self.loop_merge_block = prev_merge;
     }
-    fn compile_struct_interface<M: Module>(&mut self, node: Ast, _module: &mut M, _builder: &mut FunctionBuilder<'_>, scope: &Rc<RefCell<Scope>>) -> Option<(Value, TypeTok)> {
+    fn compile_struct_interface<M: Module>(
+        &mut self,
+        node: Ast,
+        _module: &mut M,
+        _builder: &mut FunctionBuilder<'_>,
+        scope: &Rc<RefCell<Scope>>,
+    ) -> Option<(Value, TypeTok)> {
         let (name, kv) = match node.clone() {
             Ast::StructInterface(n, kv) => (*n, *(kv).clone()),
-            _ => unreachable!()
+            _ => unreachable!(),
         };
         scope.borrow_mut().set_interface(name, kv.clone());
         return None;
