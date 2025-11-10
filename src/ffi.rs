@@ -72,26 +72,26 @@ unsafe extern "C" {
 pub struct _Entry {
     pub key: i64,
     pub value: i64,
-    pub next: *mut _Entry,
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
-    ["Size of _Entry"][::std::mem::size_of::<_Entry>() - 24usize];
+    ["Size of _Entry"][::std::mem::size_of::<_Entry>() - 16usize];
     ["Alignment of _Entry"][::std::mem::align_of::<_Entry>() - 8usize];
     ["Offset of field: _Entry::key"][::std::mem::offset_of!(_Entry, key) - 0usize];
     ["Offset of field: _Entry::value"][::std::mem::offset_of!(_Entry, value) - 8usize];
-    ["Offset of field: _Entry::next"][::std::mem::offset_of!(_Entry, next) - 16usize];
 };
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct ToyHashMap {
-    pub buckets: [*mut _Entry; 10usize],
+    pub entries: [*mut _Entry; 300usize],
+    pub count: ::std::os::raw::c_int,
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
-    ["Size of ToyHashMap"][::std::mem::size_of::<ToyHashMap>() - 80usize];
+    ["Size of ToyHashMap"][::std::mem::size_of::<ToyHashMap>() - 2408usize];
     ["Alignment of ToyHashMap"][::std::mem::align_of::<ToyHashMap>() - 8usize];
-    ["Offset of field: ToyHashMap::buckets"][::std::mem::offset_of!(ToyHashMap, buckets) - 0usize];
+    ["Offset of field: ToyHashMap::entries"][::std::mem::offset_of!(ToyHashMap, entries) - 0usize];
+    ["Offset of field: ToyHashMap::count"][::std::mem::offset_of!(ToyHashMap, count) - 2400usize];
 };
 unsafe extern "C" {
     pub fn toy_put(i_map: i64, key: i64, value: i64);

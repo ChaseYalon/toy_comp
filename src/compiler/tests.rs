@@ -263,3 +263,13 @@ fn test_compiler_structs() {
     );
     assert!(output.contains("2"));
 }
+
+#[test]
+fn test_compiler_nested_structs() {
+    compile_code_aot!(
+        output,
+        r#"struct Name{first: str, last: str}; struct Person{name: Name, age: int}; let me = Person{name: Name{first: "Chase", last: "Yalon"}, age: 15}; println(me.name.last);"#.to_string(),
+        "nested_structs"
+    );
+    assert!(output.contains("Yalon"));
+}

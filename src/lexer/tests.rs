@@ -848,7 +848,7 @@ fn test_lexer_struct_literal_and_ref() {
             Token::Semicolon,
             Token::VarRef(Box::new("println".to_string())),
             Token::LParen,
-            Token::StructRef(Box::new("a".to_string()), Box::new("b".to_string())),
+            Token::StructRef(Box::new("a".to_string()), vec!["b".to_string()]),
             Token::RParen,
             Token::Semicolon
         ]
@@ -892,7 +892,7 @@ fn test_lexer_problematic_struct_dec() {
             Token::Semicolon,
             Token::VarRef(Box::new("println".to_string())),
             Token::LParen,
-            Token::StructRef(Box::new("a".to_string()), Box::new("x".to_string())),
+            Token::StructRef(Box::new("a".to_string()), vec!["x".to_string()]),
             Token::RParen,
             Token::Semicolon
         ]
@@ -937,6 +937,57 @@ fn test_lexer_nested_struct() {
             Token::BoolLit(true),
             Token::RBrace,
             Token::RBrace,
+            Token::Semicolon
+        ]
+    )
+}
+
+#[test]
+fn test_lexer_nested_struct_ref() {
+    let mut l = Lexer::new();
+    let toks = l.lex(
+        "struct Foo {bar: bool}; struct Fee{fii: Foo}; let a = Fee{fii: Foo{bar: true}}; println(a.fii.bar);"
+            .to_string(),
+    );
+    assert_eq!(
+        toks,
+        vec![
+            Token::Struct(Box::new("Foo".to_string())),
+            Token::LBrace,
+            Token::VarRef(Box::new("bar".to_string())),
+            Token::Colon,
+            Token::Type(TypeTok::Bool),
+            Token::RBrace,
+            Token::Semicolon,
+            Token::Struct(Box::new("Fee".to_string())),
+            Token::LBrace,
+            Token::VarRef(Box::new("fii".to_string())),
+            Token::Colon,
+            Token::VarRef(Box::new("Foo".to_string())),
+            Token::RBrace,
+            Token::Semicolon,
+            Token::Let,
+            Token::VarName(Box::new("a".to_string())),
+            Token::Assign,
+            Token::VarRef(Box::new("Fee".to_string())),
+            Token::LBrace,
+            Token::VarRef(Box::new("fii".to_string())),
+            Token::Colon,
+            Token::VarRef(Box::new("Foo".to_string())),
+            Token::LBrace,
+            Token::VarRef(Box::new("bar".to_string())),
+            Token::Colon,
+            Token::BoolLit(true),
+            Token::RBrace,
+            Token::RBrace,
+            Token::Semicolon,
+            Token::VarRef(Box::new("println".to_string())),
+            Token::LParen,
+            Token::StructRef(
+                Box::new("a".to_string()),
+                vec!["fii".to_string(), "bar".to_string()]
+            ),
+            Token::RParen,
             Token::Semicolon
         ]
     )

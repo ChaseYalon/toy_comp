@@ -827,7 +827,7 @@ fn test_ast_gen_struct_def_and_ref() {
                 Box::new("println".to_string()),
                 vec![Ast::StructRef(
                     Box::new("me".to_string()),
-                    Box::new("first".to_string())
+                    vec!["first".to_string()]
                 )]
             )
         ]
@@ -868,7 +868,7 @@ fn test_ast_gen_struct_buggy() {
                 Box::new("println".to_string()),
                 vec![Ast::StructRef(
                     Box::new("x".to_string()),
-                    Box::new("fee".to_string())
+                    vec!["fee".to_string()]
                 )]
             )
         ]
@@ -877,7 +877,7 @@ fn test_ast_gen_struct_buggy() {
 
 #[test]
 fn test_ast_gen_nested_struct() {
-    setup_ast!(r#"struct Name{first: str, last: str}; struct Person{name: Name, age: int}; let me = Person{name: Name{first: "Chase", last: "Yalon"}, age: 15};"#.to_string(), ast);
+    setup_ast!(r#"struct Name{first: str, last: str}; struct Person{name: Name, age: int}; let me = Person{name: Name{first: "Chase", last: "Yalon"}, age: 15}; println(me.name.last);"#.to_string(), ast);
     assert_eq!(
         ast,
         vec![
@@ -947,6 +947,13 @@ fn test_ast_gen_nested_struct() {
                         ("age".to_string(), (Ast::IntLit(15), TypeTok::Int))
                     ]))
                 ))
+            ),
+            Ast::FuncCall(
+                Box::new("println".to_string()),
+                vec![Ast::StructRef(
+                    Box::new("me".to_string()),
+                    vec!["name".to_string(), "last".to_string()]
+                )]
             )
         ]
     )

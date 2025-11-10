@@ -54,8 +54,8 @@ pub enum Ast {
     ///Interface name, key, value (types MUST match)
     StructLit(Box<String>, Box<HashMap<String, (Ast, TypeTok)>>),
 
-    ///Struct name (the variable the struct is assigned to NOT the interface), key (key validity and type is checked)
-    StructRef(Box<String>, Box<String>),
+    ///Struct name (the variable the struct is assigned to NOT the interface), key (key validity and type is checked) key list so me.foo.bar is Box::new("me"), vec!["foo, "bar"]
+    StructRef(Box<String>, Vec<String>),
 }
 impl Ast {
     pub fn node_type(&self) -> String {
@@ -141,7 +141,7 @@ impl fmt::Display for Ast {
                 Ast::StructInterface(n, kv) =>
                     format!("StructInterface Name({}), Types({:?})", *n, *kv),
                 Ast::StructLit(n, kv) => format!("StructLit Name({}), Types({:?})", *n, *kv),
-                Ast::StructRef(n, k) => format!("StructRef Name({}), Key({})", n, k),
+                Ast::StructRef(n, k) => format!("StructRef Name({}), Key({:?})", n, k),
             }
         )
     }

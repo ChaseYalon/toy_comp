@@ -626,7 +626,7 @@ fn test_boxer_struct_lit_and_ref() {
             TBox::Expr(vec![
                 Token::VarRef(Box::new("println".to_string())),
                 Token::LParen,
-                Token::StructRef(Box::new("a".to_string()), Box::new("x".to_string())),
+                Token::StructRef(Box::new("a".to_string()), vec!["x".to_string()]),
                 Token::RParen
             ])
         ]
@@ -668,7 +668,7 @@ fn test_boxer_struct_problematic() {
             TBox::Expr(vec![
                 Token::VarRef(Box::new("println".to_string())),
                 Token::LParen,
-                Token::StructRef(Box::new("me".to_string()), Box::new("first".to_string())),
+                Token::StructRef(Box::new("me".to_string()), vec!["first".to_string()]),
                 Token::RParen
             ])
         ]

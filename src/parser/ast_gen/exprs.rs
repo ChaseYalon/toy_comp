@@ -267,19 +267,30 @@ impl AstGenerator {
     pub fn parse_expr(&self, toks: &Vec<Token>) -> (Ast, TypeTok) {
         //guard clause for single tokens
         if toks.len() == 1 {
-            //struct ref (a.x)
+            //struct ref (a.x or a.x.y)
             if toks[0].tok_type() == "StructRef" {
-                let (s_name, key) = match toks[0].clone() {
-                    Token::StructRef(sn, k) => (*sn, *k),
+                let (s_name, keys) = match toks[0].clone() {
+                    Token::StructRef(sn, k) => (*sn, k.clone()),
                     _ => unreachable!(),
                 };
-                let s = self.lookup_var_type(&s_name).unwrap();
-                let skv = match s {
-                    TypeTok::Struct(m) => m,
-                    _ => panic!("[ERROR] {} is not struct", s_name),
-                };
-                let v_type = *(skv.get(&key).unwrap()).clone();
-                return (Ast::StructRef(Box::new(s_name), Box::new(key)), v_type);
+                
+                let mut current_type = self.lookup_var_type(&s_name).unwrap();
+                
+                for key in &keys {
+                    match current_type {
+                        TypeTok::Struct(m) => {
+                            current_type = *m.get(key)
+                                .unwrap_or_else(|| panic!("[ERROR] Field '{}' not found in struct", key))
+                                .clone();
+                        }
+                        _ => panic!("[ERROR] Cannot access field '{}' on non-struct type {:?}", key, current_type),
+                    }
+                }
+                
+                return (
+                    Ast::StructRef(Box::new(s_name), keys),
+                    current_type
+                );
             }
             if toks[0].tok_type() == "IntLit" {
                 return (Ast::IntLit(toks[0].get_val().unwrap()), TypeTok::Int);

@@ -1,16 +1,16 @@
 #pragma once
 #include <stdint.h>
 
-#define TABLE_SIZE 10
+#define MAX_ENTRIES 300 //if you have more then 300 keys in a struct, you have fucked something up
 
 typedef struct _Entry {
     int64_t key;
     int64_t value;
-    struct _Entry *next;
 } _Entry;
 
 typedef struct {
-    _Entry *buckets[TABLE_SIZE];
+    _Entry *entries[MAX_ENTRIES];
+    int count;
 } ToyHashMap;
 
 void toy_put(int64_t i_map, int64_t key, int64_t value);

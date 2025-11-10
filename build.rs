@@ -8,12 +8,19 @@ fn main() {
         .join(&target);
     std::fs::create_dir_all(&out_dir).unwrap();
     let c_out_dir = out_dir.join("temp");
+    println!("cargo:rerun-if-changed=src/c/builtins.c");
+    println!("cargo:rerun-if-changed=src/c/hashmap.c");
+    println!("cargo:rerun-if-changed=src/c/hashmap.h");
+    println!("cargo:rerun-if-changed=src/c/builtins.h");
+    println!("cargo:rerun-if-changed=src/c/stub.c");
+    println!("cargo:rerun-if-changed=src/c/stub.h");
 
     cc::Build::new()
         .file("src/c/builtins.c")
         .file("src/c/stub.c")
         .file("src/c/hashmap.c")
         .out_dir(&c_out_dir)
+        .flag("-g")
         .compile("runtime");
 
     //Remove build artifacts

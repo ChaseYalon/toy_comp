@@ -229,26 +229,36 @@ impl Compiler {
                 //scope.borrow_mut().set_struct(name, val, ptr);
                 (map_ptr, TypeTok::Struct(boxed))
             }
-            Ast::StructRef(s_name, key) => {
+            Ast::StructRef(s_name, keys) => {
                 let (_, global_hashmap_get) = self.funcs.get("toy_get").unwrap();
                 let toy_get =
                     _module.declare_func_in_func(global_hashmap_get.clone(), &mut builder.func);
                 let name = *(s_name).clone();
-                let (value_key, _) = self.compile_expr(
-                    &Ast::StringLit(Box::new(*(key).clone())),
-                    _module,
-                    builder,
-                    scope,
-                );
-                let (_, ptr) = scope.borrow().get_struct(name.clone());
-                let call_res = builder.ins().call(toy_get, &[ptr, value_key]);
-                let value = builder.inst_results(call_res)[0];
-                let (_, pty) = scope.borrow().get(name.clone());
-                let kv = match pty {
-                    TypeTok::Struct(kv) => kv,
-                    _ => panic!("[ERROR] Variable {} is not a struct", name),
-                };
-                return (value, *(kv.get(&*(key).clone()).unwrap()).clone());
+                
+                let (_, mut current_ptr) = scope.borrow().get_struct(name.clone());
+                let (_, mut current_type) = scope.borrow().get(name.clone());
+                
+                for key in keys.iter() {
+                    let (value_key, _) = self.compile_expr(
+                        &Ast::StringLit(Box::new(key.clone())),
+                        _module,
+                        builder,
+                        scope,
+                    );
+                    
+                    let call_res = builder.ins().call(toy_get, &[current_ptr, value_key]);
+                    let value = builder.inst_results(call_res)[0];
+                    
+                    let kv = match &current_type {
+                        TypeTok::Struct(kv) => kv,
+                        _ => panic!("[ERROR] Cannot access field '{}' on non-struct type", key),
+                    };
+                    
+                    current_type = *(kv.get(key).unwrap()).clone();
+                    current_ptr = value;
+                }
+                
+                (current_ptr, current_type)
             }
             Ast::BoolLit(b) => {
                 let is_true: i64 = if *b { 1 } else { 0 };

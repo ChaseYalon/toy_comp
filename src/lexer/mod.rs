@@ -191,17 +191,34 @@ impl Lexer {
             if c == '.' {
                 self.flush();
                 if let Some(Token::VarName(name)) | Some(Token::VarRef(name)) = self.toks.pop() {
-                    let mut field_name = String::new();
+                    let mut field_names = Vec::new();
 
-                    self.cp += 1;
-                    while self.cp < self.chars.len()
-                        && (self.chars[self.cp].is_alphanumeric() || self.chars[self.cp] == '_')
-                    {
-                        field_name.push(self.chars[self.cp]);
+                    //keep consuming as long as we can so foo.fee.bar works
+                    loop {
                         self.cp += 1;
+                        let mut field_name = String::new();
+
+                        while self.cp < self.chars.len()
+                            && (self.chars[self.cp].is_alphanumeric() || self.chars[self.cp] == '_')
+                        {
+                            field_name.push(self.chars[self.cp]);
+                            self.cp += 1;
+                        }
+
+                        if field_name.is_empty() {
+                            panic!("Expected field name after '.'");
+                        }
+
+                        field_names.push(field_name);
+
+                        if self.cp < self.chars.len() && self.chars[self.cp] == '.' {
+                            continue;
+                        } else {
+                            break;
+                        }
                     }
 
-                    self.toks.push(Token::StructRef(name, Box::new(field_name)));
+                    self.toks.push(Token::StructRef(name, field_names));
                     continue;
                 } else {
                     panic!("Unexpected token before '.'");
@@ -459,10 +476,10 @@ impl Lexer {
             let len = self.toks.clone().len();
             let last = self.toks.last().unwrap();
             let (name, _) = match last {
-                Token::StructRef(n, k) => (*n.clone(), *k.clone()),
+                Token::StructRef(n, k) => (*n.clone(), k[0].clone()),
                 _ => unreachable!(),
             };
-            self.toks[len - 1] = Token::StructRef(Box::new(name), Box::new(proto_output));
+            self.toks[len - 1] = Token::StructRef(Box::new(name), vec![proto_output]);
             self.str_buf = Vec::new();
             return;
         }

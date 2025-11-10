@@ -1,66 +1,57 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include "hashmap.h"
 
-//random hash function from the internet
-unsigned int _hash(int64_t i_key) {
-    const unsigned char* key = (const unsigned char*) i_key; 
-    unsigned long hash = 5381;
-    int c;
 
-    while ((c = *key++))
-        hash = ((hash << 5) + hash) + c;  // hash * 33 + c
-
-    return (unsigned int)(hash % TABLE_SIZE);
-}
-
-_Entry *create_Entry(int64_t i_key, int64_t value) {
-    _Entry *_Entry = malloc(sizeof(*_Entry));
-    _Entry->key = i_key;
-    _Entry->value = value;
-    _Entry->next = NULL;
-    return _Entry;
+int64_t toy_create_map() {
+    ToyHashMap *m = malloc(sizeof(ToyHashMap));
+    m->count = 0;
+    for (int i = 0; i < MAX_ENTRIES; i++)
+        m->entries[i] = NULL;
+    return (int64_t)m;
 }
 
 void toy_put(int64_t i_map, int64_t key, int64_t value) {
-    ToyHashMap* map = (ToyHashMap*) i_map;
-    unsigned int index = _hash(key);
-    _Entry *current = map->buckets[index];
+    ToyHashMap *map = (ToyHashMap*) i_map;
 
-    while (current != NULL) {
-        if (current->key == key) {
-            current->value = value; // Update existing
+    // Update if key exists
+    for (int i = 0; i < map->count; i++) {
+        if (map->entries[i]->key == key) {
+            map->entries[i]->value = value;
             return;
         }
-        current = current->next;
     }
 
-    // Insert new _Entry at head of list
-    _Entry *new_Entry = create_Entry(key, value);
-    new_Entry->next = map->buckets[index];
-    map->buckets[index] = new_Entry;
+    // Add new entry
+    if (map->count >= MAX_ENTRIES) {
+        fprintf(stderr, "ERROR: exceeded max entries\n");
+        abort();
+    }
+
+    _Entry *e = malloc(sizeof(_Entry));
+    e->key = key;
+    e->value = value;
+    map->entries[map->count++] = e;
+}
+
+void print_map(ToyHashMap* m) {
+    for (int i = 0; i < MAX_ENTRIES; i++) {
+        printf("{KEY: %s, ", (char*) m->entries[i]->key);
+        printf("VALUE: %lld}\n", m->entries[i]->value);
+    }
 }
 
 int64_t toy_get(int64_t i_map, int64_t key) {
-    ToyHashMap* map = (ToyHashMap*) i_map;
-    unsigned int index = _hash(key);
-    _Entry *current = map->buckets[index];
+    ToyHashMap *map = (ToyHashMap*) i_map;
 
-    while (current != NULL) {
-        printf("DEBUG: hash(%lld) = %u\n", key, _hash(key));
-        if (current->key == key)
-            return current->value;
-        current = current->next;
+    for (int i = 0; i < map->count; i++) {
+        if (strcmp((char*) map->entries[i]->key, (char*)key) == 0)
+            return map->entries[i]->value;
     }
-    fprintf(stderr, "[ERROR] Item not found in ToyHashMap, if you are seeing this, something has gone very wrong in the compiler, this error should be impossible");
+    print_map(map);
+    fprintf(stderr, "[ERROR] key not found in ToyHashMap\n");
     abort();
-    return -1; // Not found
-}
-int64_t toy_create_map() {
-    ToyHashMap *m = malloc(sizeof(ToyHashMap));
-    for (int i = 0; i < TABLE_SIZE; i++) {
-        m->buckets[i] = NULL;
-    }
-    return (int64_t)m;
+    return -1;
 }

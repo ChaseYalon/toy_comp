@@ -48,7 +48,7 @@ pub enum Token {
     VarName(Box<String>),
     VarRef(Box<String>),
     ///Struct, key
-    StructRef(Box<String>, Box<String>),
+    StructRef(Box<String>, Vec<String>),
 
     //Syntax
     Semicolon,
@@ -272,7 +272,7 @@ impl fmt::Display for Token {
                 Token::LBrack => String::from("LBRACK"),
                 Token::RBrack => String::from("RBRACK"),
                 Token::Struct(n) => format!("STRUCT({})", *n),
-                Token::StructRef(s, k) => format!("STRUCT_REF STRUCT({}), KEY({})", *s, *k),
+                Token::StructRef(s, k) => format!("STRUCT_REF STRUCT({}), KEY({:?})", *s, k),
                 Token::Dot => String::from("DOT"),
             }
         )
