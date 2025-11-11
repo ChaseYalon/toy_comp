@@ -3,6 +3,7 @@
 *.o
 *.obj
 *.exe
+.replit
 
 #blacklist libruntime
 lib/**/libruntime.a
