@@ -275,11 +275,21 @@ fn test_compiler_nested_structs() {
 }
 
 #[test]
-fn compile_code_struct_reassign() {
+fn test_compiler_struct_reassign() {
     compile_code_aot!(
         output,
         "struct Point{x: int, y: int}; let origin = Point{x: 0, y: 0}; origin.x = 8; println(origin.x);",
         "struct_reassign"
     );
     assert!(output.contains("8"));
+}
+
+#[test]
+fn test_compiler_struct_func_param() {
+    compile_code_aot!(
+        output,
+        "struct Foo{a: int}; fn bar(f: Foo): int{return f.a;} println(bar(Foo{a: 1}));",
+        "struct_func_param"
+    );
+    assert!(output.contains("1"))
 }

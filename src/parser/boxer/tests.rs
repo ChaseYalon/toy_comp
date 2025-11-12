@@ -783,3 +783,42 @@ fn test_boxer_struct_reassign() {
         ]
     )
 }
+
+#[test]
+fn test_boxer_struct_func_param() {
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let toks =
+        l.lex("struct Foo{a: int}; fn bar(f: Foo): int{return f.a;} bar(Foo{1});".to_string());
+    let boxes = b.box_toks(toks);
+    assert_eq!(
+        boxes,
+        vec![
+            TBox::StructInterface(
+                Box::new("Foo".to_string()),
+                Box::new(HashMap::from([("a".to_string(), TypeTok::Int)]))
+            ),
+            TBox::FuncDec(
+                Token::VarName(Box::new("bar".to_string())),
+                vec![TBox::FuncParam(
+                    Token::VarRef(Box::new("f".to_string())),
+                    TypeTok::Struct(HashMap::from([("a".to_string(), Box::new(TypeTok::Int))]))
+                )],
+                TypeTok::Int,
+                vec![TBox::Return(Box::new(TBox::Expr(vec![Token::StructRef(
+                    Box::new("f".to_string()),
+                    vec!["a".to_string()]
+                )])))]
+            ),
+            TBox::Expr(vec![
+                Token::VarRef(Box::new("bar".to_string())),
+                Token::LParen,
+                Token::VarRef(Box::new("Foo".to_string())),
+                Token::LBrace,
+                Token::IntLit(1),
+                Token::RBrace,
+                Token::RParen
+            ])
+        ]
+    )
+}

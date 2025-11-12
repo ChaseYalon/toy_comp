@@ -1060,3 +1060,43 @@ fn test_ast_gen_struct_reassign() {
         ]
     )
 }
+
+#[test]
+fn test_ast_gen_struct_func_param() {
+    setup_ast!(
+        "struct Foo{a: int}; fn bar(f: Foo): int{return f.a;} bar(Foo{a: 1});",
+        ast
+    );
+
+    assert_eq!(
+        ast,
+        vec![
+            Ast::StructInterface(
+                Box::new("Foo".to_string()),
+                Box::new(HashMap::from([("a".to_string(), TypeTok::Int)]))
+            ),
+            Ast::FuncDec(
+                Box::new("bar".to_string()),
+                vec![Ast::FuncParam(
+                    Box::new("f".to_string()),
+                    TypeTok::Struct(HashMap::from([("a".to_string(), Box::new(TypeTok::Int))]))
+                )],
+                TypeTok::Int,
+                vec![Ast::Return(Box::new(Ast::StructRef(
+                    Box::new("f".to_string()),
+                    vec!["a".to_string()]
+                )))]
+            ),
+            Ast::FuncCall(
+                Box::new("bar".to_string()),
+                vec![Ast::StructLit(
+                    Box::new("Foo".to_string()),
+                    Box::new(HashMap::from([(
+                        "a".to_string(),
+                        (Ast::IntLit(1), TypeTok::Int)
+                    )]))
+                )]
+            )
+        ]
+    )
+}

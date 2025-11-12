@@ -288,13 +288,23 @@ impl Boxer {
             if triple[1].tok_type() != "Colon" {
                 panic!("[ERROR] Expected Colon, got {}", triple[1]);
             }
-            if triple[2].tok_type() != "Type" {
+
+            if triple[2].tok_type() != "Type" && triple[2].tok_type() != "VarRef" {
                 panic!("[ERROR] Expected a type, got {}", triple[2]);
             }
             let param = TBox::FuncParam(
                 triple[0].clone(),
                 match triple[2].clone() {
                     Token::Type(tok) => tok,
+                    Token::VarRef(v) => {
+                        let unboxed = self.interfaces.get(&*v).unwrap().clone();
+                        let boxed: HashMap<String, Box<TypeTok>> = unboxed
+                            .clone()
+                            .into_iter()
+                            .map(|(k, v)| (k, Box::new(v)))
+                            .collect();
+                        TypeTok::Struct(boxed)
+                    }
                     _ => unreachable!(),
                 },
             );
