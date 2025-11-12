@@ -6,9 +6,71 @@ use cranelift::prelude::*;
 use cranelift_module::{Linkage, Module};
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::env;
 use std::rc::Rc;
 impl Compiler {
+    fn compile_struct_reassign<M: Module>(
+        &mut self,
+        node: &Ast,
+        module: &mut M,
+        func_builder: &mut FunctionBuilder<'_>,
+        scope: &Rc<RefCell<Scope>>,
+    ) {
+        let (name, fields, value) = match node.clone() {
+            Ast::StructReassign(n, f, v) => (*n, f, *v),
+            _ => unreachable!(),
+        };
+
+        let (parent_struct_interface_name, parent_struct_ptr) =
+            scope.borrow().get_struct(name.clone());
+        let parent_struct = scope.borrow().get_interface(parent_struct_interface_name);
+
+        let mut final_type: TypeTok = TypeTok::Any; // default, placeholder
+        let mut current_struct: HashMap<String, Box<TypeTok>> = parent_struct
+            .iter()
+            .map(|(k, v)| (k.clone(), Box::new(v.clone())))
+            .collect();
+
+        for (i, field) in fields.iter().enumerate() {
+            let boxed_field = current_struct.get(field).expect(&format!(
+                "[ERROR] Field {} does not exist in struct {}",
+                field, name
+            ));
+
+            if i == fields.len() - 1 {
+                final_type = (**boxed_field).clone();
+            } else {
+                current_struct = match &**boxed_field {
+                    TypeTok::Struct(m) => m
+                        .iter()
+                        .map(|(k, v)| (k.clone(), Box::new(*(v.clone()))))
+                        .collect(),
+                    _ => panic!("[ERROR] Variable {} is not a struct", field),
+                };
+            }
+        }
+
+        let (new_val, new_val_type) = self.compile_expr(&value, module, func_builder, scope);
+        if new_val_type != final_type {
+            panic!(
+                "[ERROR] Expected value of type {:?}, got value of type {:?}",
+                final_type, new_val_type
+            );
+        }
+
+        let (first_field, _) = self.compile_expr(
+            &Ast::StringLit(Box::new(fields[0].clone())),
+            module,
+            func_builder,
+            scope,
+        );
+        let (_, toy_put_global) = self.funcs.get("toy_put").unwrap();
+        let toy_put = module.declare_func_in_func(*toy_put_global, &mut func_builder.func);
+        func_builder
+            .ins()
+            .call(toy_put, &[parent_struct_ptr, first_field, new_val]);
+    }
     fn compile_if_stmt<M: Module>(
         &mut self,
         node: &Ast,
@@ -355,7 +417,10 @@ impl Compiler {
             self.compile_while_stmt(&node, _module, func_builder, scope);
         }
         if node.node_type() == "StructInterface" {
-            self.compile_struct_interface(node, _module, func_builder, scope);
+            self.compile_struct_interface(node.clone(), _module, func_builder, scope);
+        }
+        if node.node_type() == "StructReassign" {
+            self.compile_struct_reassign(&node, _module, func_builder, scope);
         }
         last_val
     }

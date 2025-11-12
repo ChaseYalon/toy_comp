@@ -469,6 +469,15 @@ impl Boxer {
 
             return TBox::ArrReassign(toks[0].clone(), idx_groups, val_toks);
         }
+        if toks.len() > 1 && first == "StructRef" && toks[1].tok_type() == "Assign" {
+            //struct reassign like a.x = 0;
+            let (struct_name, field_names) = match toks[0].clone() {
+                Token::StructRef(sn, fen) => (*sn, fen),
+                _ => unreachable!(),
+            };
+            let to_reassign_toks = toks[2..toks.len()].to_vec();
+            return TBox::StructReassign(Box::new(struct_name), field_names, to_reassign_toks);
+        }
 
         TBox::Expr(toks)
     }

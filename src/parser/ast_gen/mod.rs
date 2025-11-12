@@ -417,6 +417,12 @@ impl AstGenerator {
                 }
                 Ast::ArrReassign(Box::new(arr_name), idx, Box::new(value))
             }
+            TBox::StructReassign(n, fields, value_toks) => {
+                let name = *n;
+                let (value, _) = self.parse_expr(&value_toks);
+                //static type checking is done at codegen/compile time so type unsafety is fine here, will not compile unsafe code
+                Ast::StructReassign(Box::new(name), fields, Box::new(value))
+            }
             TBox::StructInterface(name, types) => {
                 let boxed: HashMap<String, Box<TypeTok>> = (*types)
                     .clone()

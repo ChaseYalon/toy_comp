@@ -992,3 +992,134 @@ fn test_lexer_nested_struct_ref() {
         ]
     )
 }
+
+#[test]
+fn test_lexer_struct_reassign() {
+    let mut l = Lexer::new();
+    let toks = l.lex("struct Foo{a: int}; let b = Foo{a: 9}; b.a = 4;".to_string());
+    assert_eq!(
+        toks,
+        vec![
+            Token::Struct(Box::new("Foo".to_string())),
+            Token::LBrace,
+            Token::VarRef(Box::new("a".to_string())),
+            Token::Colon,
+            Token::Type(TypeTok::Int),
+            Token::RBrace,
+            Token::Semicolon,
+            Token::Let,
+            Token::VarName(Box::new("b".to_string())),
+            Token::Assign,
+            Token::VarRef(Box::new("Foo".to_string())),
+            Token::LBrace,
+            Token::VarRef(Box::new("a".to_string())),
+            Token::Colon,
+            Token::IntLit(9),
+            Token::RBrace,
+            Token::Semicolon,
+            Token::StructRef(Box::new("b".to_string()), vec!["a".to_string()]),
+            Token::Assign,
+            Token::IntLit(4),
+            Token::Semicolon
+        ]
+    )
+}
+#[test]
+fn test_lexer_nd_struct_reassign_variable() {
+    let mut l = Lexer::new();
+    let toks = l.lex(
+        "struct Fee{b: int}; struct Foo{bar: Fee}; let a = Foo{bar: Fee{b: 1}}; let fee = Fee{b: 2}; a.bar = fee;"
+            .to_string(),
+    );
+    assert_eq!(
+        toks,
+        vec![
+            Token::Struct(Box::new("Fee".to_string())),
+            Token::LBrace,
+            Token::VarRef(Box::new("b".to_string())),
+            Token::Colon,
+            Token::Type(TypeTok::Int),
+            Token::RBrace,
+            Token::Semicolon,
+            Token::Struct(Box::new("Foo".to_string())),
+            Token::LBrace,
+            Token::VarRef(Box::new("bar".to_string())),
+            Token::Colon,
+            Token::VarRef(Box::new("Fee".to_string())),
+            Token::RBrace,
+            Token::Semicolon,
+            Token::Let,
+            Token::VarName(Box::new("a".to_string())),
+            Token::Assign,
+            Token::VarRef(Box::new("Foo".to_string())),
+            Token::LBrace,
+            Token::VarRef(Box::new("bar".to_string())),
+            Token::Colon,
+            Token::VarRef(Box::new("Fee".to_string())),
+            Token::LBrace,
+            Token::VarRef(Box::new("b".to_string())),
+            Token::Colon,
+            Token::IntLit(1),
+            Token::RBrace,
+            Token::RBrace,
+            Token::Semicolon,
+            Token::Let,
+            Token::VarName(Box::new("fee".to_string())),
+            Token::Assign,
+            Token::VarRef(Box::new("Fee".to_string())),
+            Token::LBrace,
+            Token::VarRef(Box::new("b".to_string())),
+            Token::Colon,
+            Token::IntLit(2),
+            Token::RBrace,
+            Token::Semicolon,
+            Token::StructRef(Box::new("a".to_string()), vec!["bar".to_string()]),
+            Token::Assign,
+            Token::VarRef(Box::new("fee".to_string())),
+            Token::Semicolon,
+        ]
+    )
+}
+
+#[test]
+fn test_lexer_nd_struct_reassign() {
+    let mut l = Lexer::new();
+    let toks =
+        l.lex("struct Fee{b: int}; let a = Fee{b: 1}; let fee = Fee{b: 2}; a = fee;".to_string());
+    assert_eq!(
+        toks,
+        vec![
+            Token::Struct(Box::new("Fee".to_string())),
+            Token::LBrace,
+            Token::VarRef(Box::new("b".to_string())),
+            Token::Colon,
+            Token::Type(TypeTok::Int),
+            Token::RBrace,
+            Token::Semicolon,
+            Token::Let,
+            Token::VarName(Box::new("a".to_string())),
+            Token::Assign,
+            Token::VarRef(Box::new("Fee".to_string())),
+            Token::LBrace,
+            Token::VarRef(Box::new("b".to_string())),
+            Token::Colon,
+            Token::IntLit(1),
+            Token::RBrace,
+            Token::Semicolon,
+            Token::Let,
+            Token::VarName(Box::new("fee".to_string())),
+            Token::Assign,
+            Token::VarRef(Box::new("Fee".to_string())),
+            Token::LBrace,
+            Token::VarRef(Box::new("b".to_string())),
+            Token::Colon,
+            Token::IntLit(2),
+            Token::RBrace,
+            Token::Semicolon,
+            Token::VarRef(Box::new("a".to_string())),
+            Token::Assign,
+            Token::VarRef(Box::new("fee".to_string())),
+            Token::Semicolon,
+        ]
+    )
+}

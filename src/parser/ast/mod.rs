@@ -56,6 +56,8 @@ pub enum Ast {
 
     ///Struct name (the variable the struct is assigned to NOT the interface), key (key validity and type is checked) key list so me.foo.bar is Box::new("me"), vec!["foo, "bar"]
     StructRef(Box<String>, Vec<String>),
+    ///struct name, parameters, value
+    StructReassign(Box<String>, Vec<String>, Box<Ast>),
 }
 impl Ast {
     pub fn node_type(&self) -> String {
@@ -83,6 +85,7 @@ impl Ast {
             Ast::StructInterface(_, _) => "StructInterface".to_string(),
             Ast::StructLit(_, _) => "StructLit".to_string(),
             Ast::StructRef(_, _) => "StructRef".to_string(),
+            Ast::StructReassign(_, _, _) => "StructReassign".to_string(),
         };
     }
 }
@@ -142,6 +145,10 @@ impl fmt::Display for Ast {
                     format!("StructInterface Name({}), Types({:?})", *n, *kv),
                 Ast::StructLit(n, kv) => format!("StructLit Name({}), Types({:?})", *n, *kv),
                 Ast::StructRef(n, k) => format!("StructRef Name({}), Key({:?})", n, k),
+                Ast::StructReassign(s, f, v) => format!(
+                    "StructReassign Name({}), fields({:?}), Value({})",
+                    *s, f, *v
+                ),
             }
         )
     }

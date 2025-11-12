@@ -732,3 +732,54 @@ fn test_boxer_nested_structs() {
         ]
     )
 }
+
+#[test]
+fn test_boxer_struct_reassign() {
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let toks = l.lex(
+        "struct Fee{a: int}; struct Foo{a: Fee}; let b = Foo{a: Fee{3}}; b.a = Fee{9};".to_string(),
+    );
+    let boxes = b.box_toks(toks);
+    assert_eq!(
+        boxes,
+        vec![
+            TBox::StructInterface(
+                Box::new("Fee".to_string()),
+                Box::new(HashMap::from([("a".to_string(), TypeTok::Int)]))
+            ),
+            TBox::StructInterface(
+                Box::new("Foo".to_string()),
+                Box::new(HashMap::from([(
+                    "a".to_string(),
+                    TypeTok::Struct(HashMap::from([("a".to_string(), Box::new(TypeTok::Int))]))
+                )]))
+            ),
+            TBox::VarDec(
+                Token::VarName(Box::new("b".to_string())),
+                None,
+                vec![
+                    Token::VarRef(Box::new("Foo".to_string())),
+                    Token::LBrace,
+                    Token::VarRef(Box::new("a".to_string())),
+                    Token::Colon,
+                    Token::VarRef(Box::new("Fee".to_string())),
+                    Token::LBrace,
+                    Token::IntLit(3),
+                    Token::RBrace,
+                    Token::RBrace,
+                ]
+            ),
+            TBox::StructReassign(
+                Box::new("b".to_string()),
+                vec!["a".to_string()],
+                vec![
+                    Token::VarRef(Box::new("Fee".to_string())),
+                    Token::LBrace,
+                    Token::IntLit(9),
+                    Token::RBrace,
+                ]
+            )
+        ]
+    )
+}

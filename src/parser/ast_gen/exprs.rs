@@ -273,24 +273,27 @@ impl AstGenerator {
                     Token::StructRef(sn, k) => (*sn, k.clone()),
                     _ => unreachable!(),
                 };
-                
+
                 let mut current_type = self.lookup_var_type(&s_name).unwrap();
-                
+
                 for key in &keys {
                     match current_type {
                         TypeTok::Struct(m) => {
-                            current_type = *m.get(key)
-                                .unwrap_or_else(|| panic!("[ERROR] Field '{}' not found in struct", key))
+                            current_type = *m
+                                .get(key)
+                                .unwrap_or_else(|| {
+                                    panic!("[ERROR] Field '{}' not found in struct", key)
+                                })
                                 .clone();
                         }
-                        _ => panic!("[ERROR] Cannot access field '{}' on non-struct type {:?}", key, current_type),
+                        _ => panic!(
+                            "[ERROR] Cannot access field '{}' on non-struct type {:?}",
+                            key, current_type
+                        ),
                     }
                 }
-                
-                return (
-                    Ast::StructRef(Box::new(s_name), keys),
-                    current_type
-                );
+
+                return (Ast::StructRef(Box::new(s_name), keys), current_type);
             }
             if toks[0].tok_type() == "IntLit" {
                 return (Ast::IntLit(toks[0].get_val().unwrap()), TypeTok::Int);

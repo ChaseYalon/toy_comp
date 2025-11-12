@@ -273,3 +273,13 @@ fn test_compiler_nested_structs() {
     );
     assert!(output.contains("Yalon"));
 }
+
+#[test]
+fn compile_code_struct_reassign() {
+    compile_code_aot!(
+        output,
+        "struct Point{x: int, y: int}; let origin = Point{x: 0, y: 0}; origin.x = 8; println(origin.x);",
+        "struct_reassign"
+    );
+    assert!(output.contains("8"));
+}

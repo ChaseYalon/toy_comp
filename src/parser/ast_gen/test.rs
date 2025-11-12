@@ -958,3 +958,105 @@ fn test_ast_gen_nested_struct() {
         ]
     )
 }
+
+#[test]
+fn test_ast_gen_struct_reassign() {
+    setup_ast!(
+        r#"
+        struct Foo{bar: int};
+        struct Baz{foo: Foo};
+        struct Qux{baz: Baz};
+        let a = Qux{baz: Baz{foo: Foo{bar: 1}}};
+        a.baz.foo = Foo{bar: 2};
+        "#,
+        ast
+    );
+
+    assert_eq!(
+        ast,
+        vec![
+            Ast::StructInterface(
+                Box::new("Foo".to_string()),
+                Box::new(HashMap::from([("bar".to_string(), TypeTok::Int)]))
+            ),
+            Ast::StructInterface(
+                Box::new("Baz".to_string()),
+                Box::new(HashMap::from([(
+                    "foo".to_string(),
+                    TypeTok::Struct(HashMap::from([("bar".to_string(), Box::new(TypeTok::Int))]))
+                )]))
+            ),
+            Ast::StructInterface(
+                Box::new("Qux".to_string()),
+                Box::new(HashMap::from([(
+                    "baz".to_string(),
+                    TypeTok::Struct(HashMap::from([(
+                        "foo".to_string(),
+                        Box::new(TypeTok::Struct(HashMap::from([(
+                            "bar".to_string(),
+                            Box::new(TypeTok::Int)
+                        )])))
+                    )]))
+                )]))
+            ),
+            Ast::VarDec(
+                Box::new("a".to_string()),
+                TypeTok::Struct(HashMap::from([(
+                    "baz".to_string(),
+                    Box::new(TypeTok::Struct(HashMap::from([(
+                        "foo".to_string(),
+                        Box::new(TypeTok::Struct(HashMap::from([(
+                            "bar".to_string(),
+                            Box::new(TypeTok::Int)
+                        )])))
+                    )])))
+                )])),
+                Box::new(Ast::StructLit(
+                    Box::new("Qux".to_string()),
+                    Box::new(HashMap::from([(
+                        "baz".to_string(),
+                        (
+                            Ast::StructLit(
+                                Box::new("Baz".to_string()),
+                                Box::new(HashMap::from([(
+                                    "foo".to_string(),
+                                    (
+                                        Ast::StructLit(
+                                            Box::new("Foo".to_string()),
+                                            Box::new(HashMap::from([(
+                                                "bar".to_string(),
+                                                (Ast::IntLit(1), TypeTok::Int)
+                                            )]))
+                                        ),
+                                        TypeTok::Struct(HashMap::from([(
+                                            "bar".to_string(),
+                                            Box::new(TypeTok::Int)
+                                        )]))
+                                    )
+                                )]))
+                            ),
+                            TypeTok::Struct(HashMap::from([(
+                                "foo".to_string(),
+                                Box::new(TypeTok::Struct(HashMap::from([(
+                                    "bar".to_string(),
+                                    Box::new(TypeTok::Int)
+                                )])))
+                            )]))
+                        )
+                    )]))
+                ))
+            ),
+            Ast::StructReassign(
+                Box::new("a".to_string()),
+                vec!["baz".to_string(), "foo".to_string()],
+                Box::new(Ast::StructLit(
+                    Box::new("Foo".to_string()),
+                    Box::new(HashMap::from([(
+                        "bar".to_string(),
+                        (Ast::IntLit(2), TypeTok::Int)
+                    )]))
+                ))
+            )
+        ]
+    )
+}

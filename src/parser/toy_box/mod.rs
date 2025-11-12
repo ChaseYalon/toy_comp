@@ -27,6 +27,8 @@ pub enum TBox {
     ArrReassign(Token, Vec<Vec<Token>>, Vec<Token>),
     ///Name, types
     StructInterface(Box<String>, Box<HashMap<String, TypeTok>>),
+    ///First token is struct name, then values, then the new value
+    StructReassign(Box<String>, Vec<String>, Vec<Token>),
 }
 
 impl fmt::Display for TBox {
@@ -63,6 +65,10 @@ impl fmt::Display for TBox {
                 ),
                 TBox::StructInterface(n, kv) =>
                     format!("TBox_Struct_Interface Name({}), KV({:?})", *n, *kv),
+                TBox::StructReassign(n, f, v) => format!(
+                    "TBox_Struct_Reassign  Name({}), Fields({:?}), Value({:?})",
+                    *n, f, v
+                ),
             }
         )
     }

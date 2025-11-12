@@ -18,7 +18,7 @@ void toy_put(int64_t i_map, int64_t key, int64_t value) {
 
     // Update if key exists
     for (int i = 0; i < map->count; i++) {
-        if (map->entries[i]->key == key) {
+        if (strcmp((char*)map->entries[i]->key, (char*) key) == 0) {
             map->entries[i]->value = value;
             return;
         }
