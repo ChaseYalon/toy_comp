@@ -26,7 +26,7 @@ fn main() {
     //Remove build artifacts
     let _ = fs::rename(c_out_dir.join("libruntime.a"), out_dir.join("libruntime.a")).unwrap();
     let _ = fs::remove_dir_all(c_out_dir);
-
+    /*
     let bindings = bindgen::Builder::default()
         .header("src/c/builtins.h")
         .header("src/c/hashmap.h")
@@ -42,7 +42,7 @@ fn main() {
             .to_string()
             .replace(r#"extern "C""#, r#"unsafe extern "C""#);
     std::fs::write("src/ffi.rs", bindings_string).unwrap();
-
+    */
     println!("cargo:rustc-link-search=native={}", out_dir.display());
     println!("cargo:rustc-link-lib=static=runtime");
     //inject environment variables
