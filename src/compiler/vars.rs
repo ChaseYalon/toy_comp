@@ -81,7 +81,7 @@ pub struct Scope {
     pub parent: Option<Rc<RefCell<Scope>>>,
     pub interfaces: HashMap<String, HashMap<String, TypeTok>>,
     ///the value is a pointer to a ToyHashMap, string is the interface name
-    pub structs: HashMap<String, (String, Value)>,
+    pub structs: HashMap<String, (String, Variable)>,
 }
 
 impl Scope {
@@ -119,10 +119,10 @@ impl Scope {
         }
         return self.parent.as_ref().unwrap().borrow().get_interface(name);
     }
-    pub fn set_struct(&mut self, name: String, val: String, ptr: Value) {
+    pub fn set_struct(&mut self, name: String, val: String, ptr: Variable) {
         self.structs.insert(name, (val, ptr));
     }
-    pub fn get_struct(&self, name: String) -> (String, Value) {
+    pub fn get_struct(&self, name: String) -> (String, Variable) {
         if self.structs.contains_key(&name) {
             return self.structs.get(&name).unwrap().clone();
         }

@@ -39,7 +39,7 @@ impl Compiler {
         }
     }
     pub fn compile_arr_lit<M: Module>(
-        &self,
+        &mut self,
         arr: &Vec<Ast>,
         module: &mut M,
         builder: &mut FunctionBuilder<'_>,
@@ -75,7 +75,7 @@ impl Compiler {
         return arr_ptr;
     }
     pub fn compile_expr<M: Module>(
-        &self,
+        &mut self,
         expr: &Ast,
         _module: &mut M,
         builder: &mut FunctionBuilder<'_>,
@@ -205,7 +205,10 @@ impl Compiler {
 
                 let interface_types = scope.borrow_mut().get_interface(interface_name.clone());
                 let create_res = builder.ins().call(toy_create_map, &[]);
-                let map_ptr = builder.inst_results(create_res)[0];
+                let map_ptr_val = builder.inst_results(create_res)[0];
+                let map_ptr_idx = self.var_count;
+                self.var_count += 1;
+                builder.def_var(Variable::new(self.var_count), map_ptr_val);
                 for (key, (value, _)) in kv.iter() {
                     let (k, _) = self.compile_expr(
                         &Ast::StringLit(Box::new(key.clone())),
@@ -214,7 +217,7 @@ impl Compiler {
                         scope,
                     );
                     let (v, _) = self.compile_expr(value, _module, builder, scope);
-                    let _ = builder.ins().call(toy_put, &[map_ptr, k, v]);
+                    let _ = builder.ins().call(toy_put, &[map_ptr_val, k, v]);
                 }
                 let boxed: HashMap<String, Box<TypeTok>> = interface_types
                     .clone()
@@ -224,10 +227,10 @@ impl Compiler {
                 scope.borrow_mut().set_struct(
                     self.current_struct_name.clone().unwrap(),
                     interface_name,
-                    map_ptr,
+                    Variable::new(self.var_count),
                 );
                 //scope.borrow_mut().set_struct(name, val, ptr);
-                (map_ptr, TypeTok::Struct(boxed))
+                (map_ptr_val, TypeTok::Struct(boxed))
             }
             Ast::StructRef(s_name, keys) => {
                 let (_, global_hashmap_get) = self.funcs.get("toy_get").unwrap();
@@ -235,9 +238,9 @@ impl Compiler {
                     _module.declare_func_in_func(global_hashmap_get.clone(), &mut builder.func);
                 let name = *(s_name).clone();
 
-                let (_, mut current_ptr) = scope.borrow().get_struct(name.clone());
+                let (_, current_ptr_var) = scope.borrow().get_struct(name.clone());
                 let (_, mut current_type) = scope.borrow().get(name.clone());
-
+                let mut current_pointer_val = builder.use_var(current_ptr_var);
                 for key in keys.iter() {
                     let (value_key, _) = self.compile_expr(
                         &Ast::StringLit(Box::new(key.clone())),
@@ -246,7 +249,7 @@ impl Compiler {
                         scope,
                     );
 
-                    let call_res = builder.ins().call(toy_get, &[current_ptr, value_key]);
+                    let call_res = builder.ins().call(toy_get, &[current_pointer_val, value_key]);
                     let value = builder.inst_results(call_res)[0];
 
                     let kv = match &current_type {
@@ -255,10 +258,10 @@ impl Compiler {
                     };
 
                     current_type = *(kv.get(key).unwrap()).clone();
-                    current_ptr = value;
+                    current_pointer_val = value;
                 }
 
-                (current_ptr, current_type)
+                (current_pointer_val, current_type)
             }
             Ast::BoolLit(b) => {
                 let is_true: i64 = if *b { 1 } else { 0 };

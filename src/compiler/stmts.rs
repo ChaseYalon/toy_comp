@@ -204,22 +204,34 @@ impl Compiler {
 
         let block_params: Vec<Value> = func_builder.block_params(entry_block).to_vec();
         for (i, param) in params.iter().enumerate() {
-            match param {
-                Ast::FuncParam(param_name, param_type) => {
-                    let var = Variable::new(self.var_count);
-                    self.var_count += 1;
+            if let Ast::FuncParam(param_name, param_type) = param {
+                let var = Variable::new(self.var_count);
+                self.var_count += 1;
 
-                    func_builder.declare_var(var, types::I64);
+                func_builder.declare_var(var, types::I64);
+                func_builder.def_var(var, block_params[i]);
+                func_scope
+                    .borrow_mut()
+                    .set(*param_name.clone(), var, param_type.clone());
 
-                    func_builder.def_var(var, block_params[i]);
-
-                    func_scope
-                        .borrow_mut()
-                        .set((**param_name).clone(), var, param_type.clone());
+                if let TypeTok::Struct(map) = param_type {
+                    let unboxed: HashMap<String, TypeTok> = map
+                        .clone()
+                        .iter()
+                        .map(|(k, v)| (k.clone(), *v.clone()))
+                        .collect();
+                    /*
+                        Some notes on where I lef off
+                            get_struct has been modified to return a Variable instead of a value
+                            this means that toy_malloc can be passed a variable
+                            Down here you have to set f to a "dummy value"
+                            then you have to modify the func_call to when it receives a value of struct type allocate it and reassign the variable
+                     */
+                    func_scope.borrow_mut().set_struct()
                 }
-                _ => panic!("[ERROR] Expected FuncParam, got {}", param),
             }
         }
+
 
         for stmt in body {
             let _ = self.compile_stmt(stmt, _module, &mut func_builder, &func_scope);
