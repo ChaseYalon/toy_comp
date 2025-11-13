@@ -15,7 +15,7 @@ ordered-float = "5.1.0"
 
 [build-dependencies]
 cc = "1.2.41"
-#bindgen = "0.70"
+bindgen = "0.70"
 
 
 [features]
