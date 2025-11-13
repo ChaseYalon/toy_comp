@@ -22,10 +22,10 @@ impl Compiler {
             _ => unreachable!(),
         };
 
-        let (parent_struct_interface_name, parent_struct_ptr) =
+        let (parent_struct_interface_name, parent_struct_ptr_var) =
             scope.borrow().get_struct(name.clone());
         let parent_struct = scope.borrow().get_interface(parent_struct_interface_name);
-
+        let parent_struct_ptr = func_builder.use_var(parent_struct_ptr_var);
         let mut final_type: TypeTok = TypeTok::Any; // default, placeholder
         let mut current_struct: HashMap<String, Box<TypeTok>> = parent_struct
             .iter()
@@ -65,7 +65,7 @@ impl Compiler {
             func_builder,
             scope,
         );
-        let (_, toy_put_global) = self.funcs.get("toy_put").unwrap();
+        let (_, toy_put_global, _) = self.funcs.get("toy_put").unwrap();
         let toy_put = module.declare_func_in_func(*toy_put_global, &mut func_builder.func);
         func_builder
             .ins()
@@ -160,6 +160,7 @@ impl Compiler {
         _module: &mut M,
         scope: &Rc<RefCell<Scope>>,
     ) {
+        self.is_in_func = true;
         let mut sig = _module.make_signature();
         let (name, params, return_type, body) = match node {
             Ast::FuncDec(n, p, c, b) => (*n, p, c, b),
@@ -176,7 +177,16 @@ impl Compiler {
                 }
             })
             .collect();
-
+        let names: Vec<String> = params
+            .clone()
+            .iter()
+            .filter_map(|ast| {
+                if let Ast::FuncParam(t, _) = ast {
+                    Some(*t.clone())
+                } else {
+                    None
+                }
+            });
         for _t in types {
             //Right now everything is an int (either bool or int, but both represented as int)
             sig.params.push(AbiParam::new(types::I64));
@@ -190,7 +200,7 @@ impl Compiler {
         let func_id = _module
             .declare_function(&name, Linkage::Local, &sig)
             .unwrap();
-        self.funcs.insert(name.clone(), (return_type, func_id));
+        self.funcs.insert(name.clone(), (return_type, func_id, names));
         let mut ctx = _module.make_context();
         ctx.func.signature = sig;
         let mut builder_ctx = FunctionBuilderContext::new();
@@ -227,7 +237,15 @@ impl Compiler {
                             Down here you have to set f to a "dummy value"
                             then you have to modify the func_call to when it receives a value of struct type allocate it and reassign the variable
                      */
-                    func_scope.borrow_mut().set_struct()
+                    let (n , _) = self.compile_expr(&Ast::IntLit(-1), _module, &mut func_builder, &func_scope);
+                    func_builder.declare_var(Variable::new(self.var_count), types::I64);
+                    func_builder.def_var(Variable::new(self.var_count), n);
+                    scope.borrow_mut().set_unresolved_struct(
+                        *param_name.clone(),
+                        unboxed,
+                        Variable::new(self.var_count),
+                    );
+                    self.var_count += 1;
                 }
             }
         }
@@ -244,6 +262,7 @@ impl Compiler {
             self.func_ir.push(format!("{}", str));
         }
         _module.clear_context(&mut ctx);
+        self.is_in_func = false;
     }
     fn compile_while_stmt<M: Module>(
         &mut self,
@@ -397,7 +416,7 @@ impl Compiler {
                 Ast::ArrReassign(aa, ii, vv) => (*aa.clone(), ii.clone(), *vv.clone()),
                 _ => unreachable!(),
             };
-            let (_, arr_write_global) = self.funcs.get("toy_write_to_arr").unwrap();
+            let (_, arr_write_global, _) = self.funcs.get("toy_write_to_arr").unwrap();
             let arr_write = _module.declare_func_in_func(*arr_write_global, &mut func_builder.func);
             let (idx, _) = self.compile_expr(&i[0], _module, func_builder, scope);
             let (val, t) = self.compile_expr(&v, _module, func_builder, scope);

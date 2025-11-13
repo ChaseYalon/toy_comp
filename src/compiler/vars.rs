@@ -82,6 +82,7 @@ pub struct Scope {
     pub interfaces: HashMap<String, HashMap<String, TypeTok>>,
     ///the value is a pointer to a ToyHashMap, string is the interface name
     pub structs: HashMap<String, (String, Variable)>,
+    pub unresolved_structs: HashMap<String, (HashMap<String, TypeTok>, Variable)>
 }
 
 impl Scope {
@@ -91,6 +92,7 @@ impl Scope {
             parent: Some(parent.clone()),
             interfaces: HashMap::new(),
             structs: HashMap::new(),
+            unresolved_structs: HashMap::new()
         }))
     }
 
@@ -130,5 +132,27 @@ impl Scope {
             panic!("[ERROR] Struct \"{}\" does not exist", name);
         }
         return self.parent.as_ref().unwrap().borrow().get_struct(name);
+    }
+    pub fn set_unresolved_struct(&mut self, name: String, val: HashMap<String, TypeTok>, ptr: Variable) {
+        self.unresolved_structs.insert(name, (val, ptr));
+    }
+    pub fn get_unresolved_struct(&self, name: String) -> (HashMap<String, TypeTok>, Variable){
+        if self.unresolved_structs.contains_key(&name) {
+            return self.unresolved_structs.get(&name).unwrap().clone();
+        }
+        if self.parent.is_none() {
+            panic!("[ERROR] Struct \"{}\" does not exist", name);
+        }
+        return self.parent.as_ref().unwrap().borrow().get_unresolved_struct(name);
+    }
+    pub fn find_interface_name_with_kv(&self, value: &HashMap<String, TypeTok>) -> Option<String> {
+        if let Some((key, _)) = self.interfaces.iter().find(|(_, v)| v == &value) {
+            return Some(key.clone());
+        }
+
+        if let Some(parent) = &self.parent {
+            return parent.borrow().find_interface_name_with_kv(value);
+        }
+        None
     }
 }

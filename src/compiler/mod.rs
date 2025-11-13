@@ -48,11 +48,12 @@ pub struct Compiler {
     ast: Vec<Ast>,
     var_count: usize,
     main_scope: Rc<RefCell<Scope>>,
-    funcs: HashMap<String, (TypeTok, FuncId)>,
+    funcs: HashMap<String, (TypeTok, FuncId, Vec<String>)>,
     func_ir: Vec<String>,
     loop_cond_block: Option<Block>,
     loop_merge_block: Option<Block>,
     current_struct_name: Option<String>, //this code is awful
+    is_in_func: bool, //I hate this but it is easier then refactoring to use Result<T, E>
 }
 
 impl Compiler {
@@ -65,12 +66,14 @@ impl Compiler {
                 parent: None,
                 interfaces: HashMap::new(),
                 structs: HashMap::new(),
+                unresolved_structs: HashMap::new()
             })),
             funcs: HashMap::new(),
             func_ir: Vec::new(),
             loop_cond_block: None,
             loop_merge_block: None,
             current_struct_name: None,
+            is_in_func: false,
         }
     }
 

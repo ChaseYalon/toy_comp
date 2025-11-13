@@ -288,7 +288,7 @@ fn test_compiler_struct_reassign() {
 fn test_compiler_struct_func_param() {
     compile_code_aot!(
         output,
-        "struct Foo{a: int}; fn bar(f: Foo): int{return f.a;} println(bar(Foo{a: 1}));",
+        "struct Foo{a: int}; fn bar(f: Foo): int{return f.a;} let b: int = bar(Foo{a: 1}); println(b);",
         "struct_func_param"
     );
     assert!(output.contains("1"))

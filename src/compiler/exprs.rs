@@ -52,8 +52,8 @@ impl Compiler {
             arr_items.push(val);
             arr_types.push(t);
         }
-        let (_, arr_malloc_global) = self.funcs.get("toy_malloc_arr").unwrap();
-        let (_, arr_write_global) = self.funcs.get("toy_write_to_arr").unwrap();
+        let (_, arr_malloc_global, _) = self.funcs.get("toy_malloc_arr").unwrap();
+        let (_, arr_write_global, _) = self.funcs.get("toy_write_to_arr").unwrap();
         let arr_malloc = module.declare_func_in_func(*arr_malloc_global, &mut builder.func);
         let arr_write = module.declare_func_in_func(*arr_write_global, &mut builder.func);
 
@@ -101,11 +101,33 @@ impl Compiler {
         match expr {
             Ast::FuncCall(b_name, params) => {
                 let mut name = *b_name.clone();
+                let o_func = self.funcs.get(&name);
+                if o_func.is_none() {
+                    panic!("[ERROR] Function {} is undefined", name);
+                }
                 let mut param_values: Vec<Value> = Vec::new();
                 let mut last_type: TypeTok = TypeTok::Str;
                 for p in params {
-                    let (v, t) = self.compile_expr(p, _module, builder, scope);
-                    last_type = t;
+                    println!("Params type: {:?}", p.node_type());
+                    if let Ast::FuncParam(param_name_b, _) = p {
+                        let param_name = *param_name_b.clone();
+                        println!("Setting current struct name to {}", param_name);
+                        self.current_struct_name = Some(param_name.clone());
+                    }
+                    let (v, t) = self.compile_expr(&p.clone(), _module, builder, scope);
+                    last_type = t.clone();
+                    if t.type_str() == "Struct" {
+                        let (kv, var) = scope.borrow().get_unresolved_struct(name.clone());
+                        let interface_name =
+                            scope.borrow().find_interface_name_with_kv(&kv).unwrap();
+                        if let Ast::FuncParam(param_name_b, _) = p {
+                            let param_name = *param_name_b.clone();
+                            scope
+                                .borrow_mut()
+                                .set_struct(param_name, interface_name, var);
+                        }
+                        builder.def_var(var, v);
+                    }
                     param_values.push(v);
                 }
                 if name == "len".to_string() {
@@ -115,11 +137,7 @@ impl Compiler {
                         name = "arrlen".to_string();
                     }
                 }
-                let o_func = self.funcs.get(&name);
-                if o_func.is_none() {
-                    panic!("[ERROR] Function {} is undefined", name);
-                }
-                let (ret_type, id) = o_func.unwrap();
+                let (ret_type, id, param_names) = o_func.unwrap();
                 if name == "str".to_string()
                     || name == "bool".to_string()
                     || name == "int".to_string()
@@ -139,14 +157,14 @@ impl Compiler {
 
                     return (ret_val, ret_type.clone());
                 } else {
-                    //This is a dummy, should not be sued
+                    //This is a dummy, should not be used
                     return (builder.ins().iconst(types::I64, 0), TypeTok::Void);
                 }
             }
             Ast::ArrRef(a, indices) => {
                 let name = *a.clone();
                 let (arr_var, mut arr_type) = scope.as_ref().borrow().get(name);
-                let (_, arr_read_global) = self.funcs.get("toy_read_from_arr").unwrap();
+                let (_, arr_read_global, _) = self.funcs.get("toy_read_from_arr").unwrap();
                 let arr_read = _module.declare_func_in_func(*arr_read_global, &mut builder.func);
 
                 let mut current_ptr = builder.use_var(arr_var);
@@ -194,8 +212,8 @@ impl Compiler {
                 )
             }
             Ast::StructLit(n, bkv) => {
-                let (_, global_hashmap_put) = self.funcs.get("toy_put").unwrap();
-                let (_, global_create_map) = self.funcs.get("toy_create_map").unwrap();
+                let (_, global_hashmap_put, _) = self.funcs.get("toy_put").unwrap();
+                let (_, global_create_map, _) = self.funcs.get("toy_create_map").unwrap();
                 let toy_put =
                     _module.declare_func_in_func(global_hashmap_put.clone(), &mut builder.func);
                 let toy_create_map =
@@ -208,7 +226,8 @@ impl Compiler {
                 let map_ptr_val = builder.inst_results(create_res)[0];
                 let map_ptr_idx = self.var_count;
                 self.var_count += 1;
-                builder.def_var(Variable::new(self.var_count), map_ptr_val);
+                builder.declare_var(Variable::new(map_ptr_idx), types::I64);
+                builder.def_var(Variable::new(map_ptr_idx), map_ptr_val);
                 for (key, (value, _)) in kv.iter() {
                     let (k, _) = self.compile_expr(
                         &Ast::StringLit(Box::new(key.clone())),
@@ -233,12 +252,18 @@ impl Compiler {
                 (map_ptr_val, TypeTok::Struct(boxed))
             }
             Ast::StructRef(s_name, keys) => {
-                let (_, global_hashmap_get) = self.funcs.get("toy_get").unwrap();
+                let (_, global_hashmap_get, _) = self.funcs.get("toy_get").unwrap();
                 let toy_get =
                     _module.declare_func_in_func(global_hashmap_get.clone(), &mut builder.func);
                 let name = *(s_name).clone();
-
-                let (_, current_ptr_var) = scope.borrow().get_struct(name.clone());
+                let mut current_ptr_var = Variable::new(0); //temp
+                if self.is_in_func {
+                    let (_, var) = scope.borrow().get_unresolved_struct(name.clone());
+                    current_ptr_var = var;
+                } else {
+                    let (_, var) = scope.borrow().get_struct(name.clone());
+                    current_ptr_var = var;
+                }
                 let (_, mut current_type) = scope.borrow().get(name.clone());
                 let mut current_pointer_val = builder.use_var(current_ptr_var);
                 for key in keys.iter() {
@@ -249,7 +274,9 @@ impl Compiler {
                         scope,
                     );
 
-                    let call_res = builder.ins().call(toy_get, &[current_pointer_val, value_key]);
+                    let call_res = builder
+                        .ins()
+                        .call(toy_get, &[current_pointer_val, value_key]);
                     let value = builder.inst_results(call_res)[0];
 
                     let kv = match &current_type {

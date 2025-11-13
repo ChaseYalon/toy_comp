@@ -66,7 +66,7 @@ impl Compiler {
             .declare_function("toy_malloc", Linkage::Import, &sig)
             .unwrap();
         self.funcs
-            .insert("malloc".to_string(), (TypeTok::Int, func));
+            .insert("malloc".to_string(), (TypeTok::Int, func, vec!["size".to_string()]));
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
@@ -76,7 +76,7 @@ impl Compiler {
             .declare_function("toy_print", Linkage::Import, &sig)
             .unwrap();
         self.funcs
-            .insert("print".to_string(), (TypeTok::Void, func));
+            .insert("print".to_string(), (TypeTok::Void, func, vec!["value".to_string(), "type".to_string(), "dimension".to_string]));
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
@@ -86,7 +86,7 @@ impl Compiler {
             .declare_function("toy_println", Linkage::Import, &sig)
             .unwrap();
         self.funcs
-            .insert("println".to_string(), (TypeTok::Void, func));
+            .insert("println".to_string(), (TypeTok::Void, func, vec!["value".to_string(), "type".to_string(), "dimension".to_string()]));
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64)); //str a
@@ -96,7 +96,7 @@ impl Compiler {
             .declare_function("toy_concat", Linkage::Import, &sig)
             .unwrap();
         self.funcs
-            .insert("concat".to_string(), (TypeTok::Int, func)); //Returns a pointer to the new string
+            .insert("concat".to_string(), (TypeTok::Int, func, vec!["str1".to_string(), "str2".to_string()])); //Returns a pointer to the new string
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
@@ -106,7 +106,7 @@ impl Compiler {
             .declare_function("toy_strequal", Linkage::Import, &sig)
             .unwrap();
         self.funcs
-            .insert("strequal".to_string(), (TypeTok::Bool, func));
+            .insert("strequal".to_string(), (TypeTok::Bool, func, vec!["str1".to_string(), "str2".to_string()]));
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
