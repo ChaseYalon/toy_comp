@@ -213,7 +213,6 @@ impl Compiler {
         func_builder.switch_to_block(entry_block);
         func_builder.seal_block(entry_block);
 
-
         let block_params: Vec<Value> = func_builder.block_params(entry_block).to_vec();
         for (i, param) in params.iter().enumerate() {
             if let Ast::FuncParam(param_name, param_type) = param {
@@ -232,9 +231,11 @@ impl Compiler {
                         .iter()
                         .map(|(k, v)| (k.clone(), *v.clone()))
                         .collect();
-                    parent_scope
-                        .borrow_mut()
-                        .set_unresolved_struct(*param_name.clone(), unboxed, var);
+                    parent_scope.borrow_mut().set_unresolved_struct(
+                        *param_name.clone(),
+                        unboxed,
+                        var,
+                    );
                 }
             }
         }
