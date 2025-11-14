@@ -109,6 +109,7 @@ impl Compiler {
 
             if let Some(current_block) = builder.current_block() {
                 if let Some(last_inst) = builder.func.layout.last_inst(current_block) {
+                    //it works, dont ask questions
                     if builder.func.dfg.insts[last_inst].opcode().is_terminator() {
                         then_has_terminator = true;
                         break;
@@ -231,27 +232,9 @@ impl Compiler {
                         .iter()
                         .map(|(k, v)| (k.clone(), *v.clone()))
                         .collect();
-                    /*
-                       Some notes on where I lef off
-                           get_struct has been modified to return a Variable instead of a value
-                           this means that toy_malloc can be passed a variable
-                           Down here you have to set f to a "dummy value"
-                           then you have to modify the func_call to when it receives a value of struct type allocate it and reassign the variable
-                    */
-                    let (n, _) = self.compile_expr(
-                        &Ast::IntLit(-1),
-                        _module,
-                        &mut func_builder,
-                        &parent_scope,
-                    );
-                    func_builder.declare_var(Variable::new(self.var_count), types::I64);
-                    func_builder.def_var(Variable::new(self.var_count), n);
-                    parent_scope.borrow_mut().set_unresolved_struct(
-                        *param_name.clone(),
-                        unboxed,
-                        Variable::new(self.var_count),
-                    );
-                    self.var_count += 1;
+                    parent_scope
+                        .borrow_mut()
+                        .set_unresolved_struct(*param_name.clone(), unboxed, var);
                 }
             }
         }

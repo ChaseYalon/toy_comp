@@ -139,17 +139,22 @@ impl Compiler {
                     last_type = t.clone();
                     println!("T: {:?} of Type {}, Scope {:?}", t, t.type_str(), scope.borrow());
                     if t.type_str() == "Struct" {
-                        let (kv, var) = scope.borrow().get_unresolved_struct(param_names[i].clone());
+                        let (kv, _old_var) = scope
+                            .borrow()
+                            .get_unresolved_struct(param_names[i].clone());
                         let interface_name =
                             scope.borrow().find_interface_name_with_kv(&kv).unwrap();
                         if let Ast::FuncParam(param_name_b, _) = p {
                             let param_name = *param_name_b.clone();
+                            let new_var = Variable::new(self.var_count);
+                            self.var_count += 1;
+                            builder.declare_var(new_var, types::I64);
                             scope
                                 .borrow_mut()
-                                .set_struct(param_name, interface_name, var);
+                                .set_struct(param_name, interface_name, new_var);
+                            println!("Making variable type: {:?}", v.type_id());
+                            builder.def_var(new_var, v);
                         }
-                        println!("Making variable type: {:?}", v.type_id());
-                        builder.def_var(var, v);
                     }
                     param_values.push(v);
                 }
@@ -282,7 +287,7 @@ impl Compiler {
                     current_ptr_var = var;
                 }
                 let (_, mut current_type) = scope.borrow().get(name.clone());
-                
+
                 let mut current_pointer_val = builder.use_var(current_ptr_var);
                 for key in keys.iter() {
                     let (value_key, _) = self.compile_expr(

@@ -28,6 +28,7 @@
         "iadd",
         "iconst",
         "imul",
+        "insts",
         "isub",
         "LBRACK",
         "lbruntime",
