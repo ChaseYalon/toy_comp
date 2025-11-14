@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 impl Compiler {
+    
     pub fn compile_var_reassign<M: Module>(
         &mut self,
         var_res: &Ast,

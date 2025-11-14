@@ -62,10 +62,41 @@ impl Boxer {
         return toks;
     }
     fn box_var_dec(&self, input: &Vec<Token>) -> TBox {
-        /*
-
-        */
-        return TBox::Expr(input.clone());
+        if input[0].tok_type() != "Let" {
+            panic!(
+                "[ERROR] Variable declaration must start with let, got {}",
+                input[0]
+            );
+        }
+        if input[1].tok_type() != "VarName" {
+            panic!(
+                "[ERROR] Let must be followed by variable name, got {}",
+                input[1]
+            );
+        }
+        if input[2].tok_type() != "Assign" && input[2].tok_type() != "Colon" {
+            panic!(
+                "[ERROR] Variable declaration must have '=' or ':' after name, got {}",
+                input[2]
+            );
+        }
+        if input[2].tok_type() == "Colon" {
+            let ty = match input[3].clone() {
+                Token::Type(t) => t,
+                Token::VarRef(v) => {
+                    let temp = self.interfaces.get(&*v).unwrap().clone();
+                    let boxed: HashMap<String, Box<TypeTok>> = temp
+                        .clone()
+                        .into_iter()
+                        .map(|(k, v)| (k, Box::new(v)))
+                        .collect();
+                    TypeTok::Struct(boxed)
+                } //assume it is a nested struct
+                _ => panic!("[ERROR] Expected type, found {}", input[3]),
+            };
+            return TBox::VarDec(input[1].clone(), Some(ty), input[5..].to_vec());
+        }
+        TBox::VarDec(input[1].clone(), None, input[3..].to_vec())
     }
 
     fn box_var_ref(&self, input: &Vec<Token>) -> TBox {
@@ -411,7 +442,7 @@ impl Boxer {
             return TBox::Continue;
         }
         if toks.len() > 2 && toks[0].tok_type() == "VarRef" && toks[1].tok_type() == "Assign" {
-            return TBox::Expr(toks);
+            return self.box_var_ref(&toks);
         }
         if toks.len() > 2 && toks[0].tok_type() == "VarRef" && toks[1].tok_type() == "LBrack" {
             let mut idx_groups: Vec<Vec<Token>> = Vec::new();
@@ -548,3 +579,6 @@ impl Boxer {
         self.box_group(self.toks.clone())
     }
 }
+
+#[cfg(test)]
+mod tests;

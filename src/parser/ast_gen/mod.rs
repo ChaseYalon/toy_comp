@@ -7,7 +7,6 @@ use crate::token::Token;
 use crate::token::TypeTok;
 use std::collections::HashMap;
 mod exprs;
-mod stmts;
 pub struct AstGenerator {
     boxes: Vec<TBox>,
     nodes: Vec<Ast>,
@@ -216,7 +215,26 @@ impl AstGenerator {
         self.bp += 1;
     }
 
-
+    fn parse_var_dec(&mut self, name: &Token, val: &Vec<Token>, var_type: Option<TypeTok>) -> Ast {
+        if name.tok_type() != "VarName" {
+            panic!("[ERROR] Expected variable name, got {}", name);
+        }
+        let name_str = *name.get_var_name().unwrap();
+        let (val_ast, val_type) = self.parse_expr(val);
+        let ret_var_type: TypeTok;
+        if var_type.is_some() {
+            ret_var_type = var_type.unwrap();
+        } else {
+            ret_var_type = val_type;
+        }
+        let node = Ast::VarDec(
+            Box::new(name_str.clone()),
+            ret_var_type.clone(),
+            Box::new(val_ast),
+        );
+        self.insert_var_type(name_str.clone(), ret_var_type.clone());
+        return node;
+    }
 
     fn parse_var_ref(&self, name: &Token) -> Ast {
         let name_s: String;
@@ -327,18 +345,26 @@ impl AstGenerator {
 
         let node = match val {
             TBox::Expr(i) => {
-                //TBox::Expr is generic now, so it just means anything TBox doesnt like as I fade it out
-                if i[0].tok_type() == "Let" {
-                    self.parse_var_dec(&i)
-                } else if i.len() > 2 && i[0].tok_type() == "VarRef" && i[1].tok_type() == "Assign" {
-                    self.parse_var_reassign(i[0].clone(), i[2..].to_vec())
-                }else{
-                    let (node, _) = self.parse_expr(&i);
-                    node
-                }
+                let (node, _) = self.parse_expr(&i);
+                node
+            }
+            TBox::VarDec(name, var_type, v_val) => {
+                self.parse_var_dec(&name, &v_val, var_type.clone())
+            }
+            TBox::VarRef(name) => {
+                debug!(targets: ["parser_verbose"], name);
+                self.parse_var_ref(&name)
             }
             TBox::VarReassign(var, val) => {
-                self.parse_var_reassign(var, val)
+                let var_node = self.parse_var_ref(&var);
+                let (val_node, _) = self.parse_expr(&val);
+                Ast::VarReassign(
+                    Box::new(match var_node {
+                        Ast::VarRef(i) => i.to_string(),
+                        _ => "".to_string(),
+                    }),
+                    Box::new(val_node),
+                )
             }
             TBox::IfStmt(_, _, _) => {
                 return self.parse_if_stmt(val, should_eat);
