@@ -76,32 +76,7 @@ impl Compiler {
             is_in_func: false,
         }
     }
-    pub fn inject_type_param<M: Module>(
-        &self,
-        t: &TypeTok,
-        inject_dimension: bool,
-        _module: &M,
-        builder: &mut FunctionBuilder<'_>,
-        param_values: &mut Vec<Value>,
-    ) {
-        let (n, degree) = match t {
-            &TypeTok::Str => (0, 0),
-            &TypeTok::Bool => (1, 0),
-            &TypeTok::Int => (2, 0),
-            &TypeTok::Float => (3, 0),
-            &TypeTok::StrArr(n) => (4, n),
-            &TypeTok::BoolArr(n) => (5, n),
-            &TypeTok::IntArr(n) => (6, n),
-            &TypeTok::FloatArr(n) => (7, n),
-            _ => panic!("[ERROR] Cannot parse type {:?}", t),
-        };
-        let v = builder.ins().iconst(types::I64, n);
-        param_values.push(v);
-        if inject_dimension {
-            let d = builder.ins().iconst(types::I64, degree as i64);
-            param_values.push(d);
-        }
-    }
+
     fn compile_internal<M: Module>(&mut self, module: &mut M, ast: Vec<Ast>) -> (FuncId, Context) {
         let mut ctx: Context = module.make_context();
 
