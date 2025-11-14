@@ -71,7 +71,6 @@ impl Compiler {
         builder.declare_var(var, types::I64);
         debug!(targets: ["compiler_verbose"], format!("Value: {:?}", val.type_id()));
         debug!(targets: ["compiler_verbose"], format!("Value {:?}", var.type_id()));
-        println!("Variable type: {:?}", var.type_id());
         builder.def_var(var, val);
         scope.borrow_mut().set(name, var, t_o.clone());
     }

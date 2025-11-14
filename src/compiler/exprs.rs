@@ -3,7 +3,6 @@ use super::Scope;
 use crate::debug;
 use crate::parser::ast::{Ast, InfixOp};
 use crate::token::TypeTok;
-use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -120,12 +119,10 @@ impl Compiler {
                 let mut last_type: TypeTok = TypeTok::Str;
                 let (ret_type, id, param_names) = o_func.unwrap();
                 for (i, p) in params.iter().enumerate() {
-                    println!("Params type: {:?}", p.node_type());
                     let mut g_param_name: String = "".to_string();
                     if let Ast::FuncParam(param_name_b, _) = p {
                         let param_name = *param_name_b.clone();
                         g_param_name = param_name.clone();
-                        println!("Setting current struct name to {}", param_name);
                         self.current_struct_name = Some(param_name.clone());
                     }
                     if p.node_type() == "StructLit" {
@@ -137,11 +134,15 @@ impl Compiler {
                     }
                     let (v, t) = self.compile_expr(&p.clone(), _module, builder, scope);
                     last_type = t.clone();
-                    println!("T: {:?} of Type {}, Scope {:?}", t, t.type_str(), scope.borrow());
+                    println!(
+                        "T: {:?} of Type {}, Scope {:?}",
+                        t,
+                        t.type_str(),
+                        scope.borrow()
+                    );
                     if t.type_str() == "Struct" {
-                        let (kv, _old_var) = scope
-                            .borrow()
-                            .get_unresolved_struct(param_names[i].clone());
+                        let (kv, _old_var) =
+                            scope.borrow().get_unresolved_struct(param_names[i].clone());
                         let interface_name =
                             scope.borrow().find_interface_name_with_kv(&kv).unwrap();
                         if let Ast::FuncParam(param_name_b, _) = p {
@@ -152,14 +153,12 @@ impl Compiler {
                             scope
                                 .borrow_mut()
                                 .set_struct(param_name, interface_name, new_var);
-                            println!("Making variable type: {:?}", v.type_id());
                             builder.def_var(new_var, v);
                         }
                     }
                     param_values.push(v);
                 }
 
-                println!("Param names: {:?}", param_names);
                 if name == "str".to_string()
                     || name == "bool".to_string()
                     || name == "int".to_string()
