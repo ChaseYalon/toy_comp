@@ -65,8 +65,10 @@ impl Compiler {
         let func = module
             .declare_function("toy_malloc", Linkage::Import, &sig)
             .unwrap();
-        self.funcs
-            .insert("malloc".to_string(), (TypeTok::Int, func, vec!["size".to_string()]));
+        self.funcs.insert(
+            "malloc".to_string(),
+            (TypeTok::Int, func, vec!["size".to_string()]),
+        );
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
@@ -75,8 +77,18 @@ impl Compiler {
         let func = module
             .declare_function("toy_print", Linkage::Import, &sig)
             .unwrap();
-        self.funcs
-            .insert("print".to_string(), (TypeTok::Void, func, vec!["value".to_string(), "type".to_string(), "dimension".to_string]));
+        self.funcs.insert(
+            "print".to_string(),
+            (
+                TypeTok::Void,
+                func,
+                vec![
+                    "value".to_string(),
+                    "type".to_string(),
+                    "dimension".to_string(),
+                ],
+            ),
+        );
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
@@ -85,8 +97,18 @@ impl Compiler {
         let func = module
             .declare_function("toy_println", Linkage::Import, &sig)
             .unwrap();
-        self.funcs
-            .insert("println".to_string(), (TypeTok::Void, func, vec!["value".to_string(), "type".to_string(), "dimension".to_string()]));
+        self.funcs.insert(
+            "println".to_string(),
+            (
+                TypeTok::Void,
+                func,
+                vec![
+                    "value".to_string(),
+                    "type".to_string(),
+                    "dimension".to_string(),
+                ],
+            ),
+        );
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64)); //str a
@@ -95,8 +117,14 @@ impl Compiler {
         let func = module
             .declare_function("toy_concat", Linkage::Import, &sig)
             .unwrap();
-        self.funcs
-            .insert("concat".to_string(), (TypeTok::Int, func, vec!["str1".to_string(), "str2".to_string()])); //Returns a pointer to the new string
+        self.funcs.insert(
+            "concat".to_string(),
+            (
+                TypeTok::Int,
+                func,
+                vec!["str1".to_string(), "str2".to_string()],
+            ),
+        ); //Returns a pointer to the new string
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
@@ -105,8 +133,14 @@ impl Compiler {
         let func = module
             .declare_function("toy_strequal", Linkage::Import, &sig)
             .unwrap();
-        self.funcs
-            .insert("strequal".to_string(), (TypeTok::Bool, func, vec!["str1".to_string(), "str2".to_string()]));
+        self.funcs.insert(
+            "strequal".to_string(),
+            (
+                TypeTok::Bool,
+                func,
+                vec!["str1".to_string(), "str2".to_string()],
+            ),
+        );
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
@@ -114,8 +148,10 @@ impl Compiler {
         let func = module
             .declare_function("toy_strlen", Linkage::Import, &sig)
             .unwrap();
-        self.funcs
-            .insert("strlen".to_string(), (TypeTok::Int, func));
+        self.funcs.insert(
+            "strlen".to_string(),
+            (TypeTok::Int, func, vec!["str".to_string()]),
+        );
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
@@ -124,7 +160,14 @@ impl Compiler {
         let func = module
             .declare_function("toy_type_to_str", Linkage::Import, &sig)
             .unwrap();
-        self.funcs.insert("str".to_string(), (TypeTok::Str, func));
+        self.funcs.insert(
+            "str".to_string(),
+            (
+                TypeTok::Str,
+                func,
+                vec!["convertible_to_string".to_string()],
+            ),
+        );
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
@@ -133,7 +176,10 @@ impl Compiler {
         let func = module
             .declare_function("toy_type_to_bool", Linkage::Import, &sig)
             .unwrap();
-        self.funcs.insert("bool".to_string(), (TypeTok::Bool, func));
+        self.funcs.insert(
+            "bool".to_string(),
+            (TypeTok::Bool, func, vec!["convertible_to_bool".to_string()]),
+        );
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
@@ -142,7 +188,10 @@ impl Compiler {
         let func = module
             .declare_function("toy_type_to_int", Linkage::Import, &sig)
             .unwrap();
-        self.funcs.insert("int".to_string(), (TypeTok::Int, func));
+        self.funcs.insert(
+            "int".to_string(),
+            (TypeTok::Int, func, vec!["convertible_to_int".to_string()]),
+        );
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
@@ -150,8 +199,14 @@ impl Compiler {
         let func = module
             .declare_function("toy_int_to_float", Linkage::Import, &sig)
             .unwrap();
-        self.funcs
-            .insert("toy_int_to_float".to_string(), (TypeTok::Float, func));
+        self.funcs.insert(
+            "toy_int_to_float".to_string(),
+            (
+                TypeTok::Float,
+                func,
+                vec!["convertible_to_float".to_string()],
+            ),
+        );
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
@@ -161,7 +216,7 @@ impl Compiler {
             .unwrap();
         self.funcs.insert(
             "toy_float_bits_to_double".to_string(),
-            (TypeTok::Float, func),
+            (TypeTok::Float, func, vec!["float_literal_bits".to_string()]),
         );
 
         let mut sig = module.make_signature();
@@ -170,8 +225,10 @@ impl Compiler {
         let func = module
             .declare_function("toy_double_to_float_bits", Linkage::Import, &sig)
             .unwrap();
-        self.funcs
-            .insert("toy_double_to_float_bits".to_string(), (TypeTok::Int, func));
+        self.funcs.insert(
+            "toy_double_to_float_bits".to_string(),
+            (TypeTok::Int, func, vec!["float_literal".to_string()]),
+        );
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
@@ -180,8 +237,14 @@ impl Compiler {
         let func = module
             .declare_function("toy_type_to_float", Linkage::Import, &sig)
             .unwrap();
-        self.funcs
-            .insert("float".to_string(), (TypeTok::Float, func));
+        self.funcs.insert(
+            "float".to_string(),
+            (
+                TypeTok::Float,
+                func,
+                vec!["convertible_to_float".to_string()],
+            ),
+        );
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
@@ -191,8 +254,19 @@ impl Compiler {
         let func = module
             .declare_function("toy_write_to_arr", Linkage::Import, &sig)
             .unwrap();
-        self.funcs
-            .insert("toy_write_to_arr".to_string(), (TypeTok::Void, func));
+        self.funcs.insert(
+            "toy_write_to_arr".to_string(),
+            (
+                TypeTok::Void,
+                func,
+                vec![
+                    "arr_ptr".to_string(),
+                    "value".to_string(),
+                    "idx".to_string(),
+                    "type".to_string(),
+                ],
+            ),
+        );
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
@@ -201,8 +275,14 @@ impl Compiler {
         let func = module
             .declare_function("toy_read_from_arr", Linkage::Import, &sig)
             .unwrap();
-        self.funcs
-            .insert("toy_read_from_arr".to_string(), (TypeTok::Any, func));
+        self.funcs.insert(
+            "toy_read_from_arr".to_string(),
+            (
+                TypeTok::Any,
+                func,
+                vec!["arr_ptr".to_string(), "idx".to_string()],
+            ),
+        );
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
@@ -211,8 +291,14 @@ impl Compiler {
         let func = module
             .declare_function("toy_malloc_arr", Linkage::Import, &sig)
             .unwrap();
-        self.funcs
-            .insert("toy_malloc_arr".to_string(), (TypeTok::Any, func));
+        self.funcs.insert(
+            "toy_malloc_arr".to_string(),
+            (
+                TypeTok::Any,
+                func,
+                vec!["len".to_string(), "type".to_string()],
+            ),
+        );
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
@@ -220,8 +306,10 @@ impl Compiler {
         let func = module
             .declare_function("toy_arrlen", Linkage::Import, &sig)
             .unwrap();
-        self.funcs
-            .insert("arrlen".to_string(), (TypeTok::Int, func));
+        self.funcs.insert(
+            "arrlen".to_string(),
+            (TypeTok::Int, func, vec!["arr_ptr".to_string()]),
+        );
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
@@ -230,8 +318,18 @@ impl Compiler {
         let func = module
             .declare_function("toy_put", Linkage::Import, &sig)
             .unwrap();
-        self.funcs
-            .insert("toy_put".to_string(), (TypeTok::Void, func));
+        self.funcs.insert(
+            "toy_put".to_string(),
+            (
+                TypeTok::Void,
+                func,
+                vec![
+                    "hashmap_pointer".to_string(),
+                    "key".to_string(),
+                    "value".to_string(),
+                ],
+            ),
+        );
 
         let mut sig = module.make_signature();
         sig.params.push(AbiParam::new(types::I64));
@@ -240,8 +338,14 @@ impl Compiler {
         let func = module
             .declare_function("toy_get", Linkage::Import, &sig)
             .unwrap();
-        self.funcs
-            .insert("toy_get".to_string(), (TypeTok::Int, func));
+        self.funcs.insert(
+            "toy_get".to_string(),
+            (
+                TypeTok::Int,
+                func,
+                vec!["hashmap_pointer".to_string(), "key".to_string()],
+            ),
+        );
 
         let mut sig = module.make_signature();
         sig.returns.push(AbiParam::new(types::I64));
@@ -249,7 +353,7 @@ impl Compiler {
             .declare_function("toy_create_map", Linkage::Import, &sig)
             .unwrap();
         self.funcs
-            .insert("toy_create_map".to_string(), (TypeTok::Void, func));
+            .insert("toy_create_map".to_string(), (TypeTok::Void, func, vec![]));
     }
 
     pub fn compile_to_object(&mut self, ast: Vec<Ast>) -> Vec<u8> {

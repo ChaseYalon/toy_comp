@@ -4,7 +4,7 @@
 *.obj
 *.exe
 .replit
-
+*/.ccls-cache
 #blacklist libruntime
 lib/**/libruntime.a
 #whitelist everything in lib

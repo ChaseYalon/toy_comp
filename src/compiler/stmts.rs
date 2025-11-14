@@ -158,7 +158,7 @@ impl Compiler {
         &mut self,
         node: Ast,
         _module: &mut M,
-        scope: &Rc<RefCell<Scope>>,
+        parent_scope: &Rc<RefCell<Scope>>,
     ) {
         self.is_in_func = true;
         let mut sig = _module.make_signature();
@@ -186,7 +186,8 @@ impl Compiler {
                 } else {
                     None
                 }
-            });
+            })
+            .collect();
         for _t in types {
             //Right now everything is an int (either bool or int, but both represented as int)
             sig.params.push(AbiParam::new(types::I64));
@@ -200,7 +201,8 @@ impl Compiler {
         let func_id = _module
             .declare_function(&name, Linkage::Local, &sig)
             .unwrap();
-        self.funcs.insert(name.clone(), (return_type, func_id, names));
+        self.funcs
+            .insert(name.clone(), (return_type, func_id, names));
         let mut ctx = _module.make_context();
         ctx.func.signature = sig;
         let mut builder_ctx = FunctionBuilderContext::new();
@@ -210,7 +212,6 @@ impl Compiler {
         func_builder.switch_to_block(entry_block);
         func_builder.seal_block(entry_block);
 
-        let func_scope = Scope::new_child(scope);
 
         let block_params: Vec<Value> = func_builder.block_params(entry_block).to_vec();
         for (i, param) in params.iter().enumerate() {
@@ -220,7 +221,7 @@ impl Compiler {
 
                 func_builder.declare_var(var, types::I64);
                 func_builder.def_var(var, block_params[i]);
-                func_scope
+                parent_scope
                     .borrow_mut()
                     .set(*param_name.clone(), var, param_type.clone());
 
@@ -231,16 +232,21 @@ impl Compiler {
                         .map(|(k, v)| (k.clone(), *v.clone()))
                         .collect();
                     /*
-                        Some notes on where I lef off
-                            get_struct has been modified to return a Variable instead of a value
-                            this means that toy_malloc can be passed a variable
-                            Down here you have to set f to a "dummy value"
-                            then you have to modify the func_call to when it receives a value of struct type allocate it and reassign the variable
-                     */
-                    let (n , _) = self.compile_expr(&Ast::IntLit(-1), _module, &mut func_builder, &func_scope);
+                       Some notes on where I lef off
+                           get_struct has been modified to return a Variable instead of a value
+                           this means that toy_malloc can be passed a variable
+                           Down here you have to set f to a "dummy value"
+                           then you have to modify the func_call to when it receives a value of struct type allocate it and reassign the variable
+                    */
+                    let (n, _) = self.compile_expr(
+                        &Ast::IntLit(-1),
+                        _module,
+                        &mut func_builder,
+                        &parent_scope,
+                    );
                     func_builder.declare_var(Variable::new(self.var_count), types::I64);
                     func_builder.def_var(Variable::new(self.var_count), n);
-                    scope.borrow_mut().set_unresolved_struct(
+                    parent_scope.borrow_mut().set_unresolved_struct(
                         *param_name.clone(),
                         unboxed,
                         Variable::new(self.var_count),
@@ -249,10 +255,10 @@ impl Compiler {
                 }
             }
         }
-
+        let child_scope = Scope::new_child(parent_scope);
 
         for stmt in body {
-            let _ = self.compile_stmt(stmt, _module, &mut func_builder, &func_scope);
+            let _ = self.compile_stmt(stmt, _module, &mut func_builder, &child_scope);
         }
 
         _module.define_function(func_id, &mut ctx).unwrap();
@@ -408,8 +414,7 @@ impl Compiler {
         }
 
         if node.node_type() == "FuncDec" {
-            let child_scope = Scope::new_child(scope);
-            self.compile_func_dec(node.clone(), _module, &child_scope);
+            self.compile_func_dec(node.clone(), _module, scope);
         }
         if node.node_type() == "ArrReassign" {
             let (a, i, v) = match &node {

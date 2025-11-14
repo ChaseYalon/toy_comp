@@ -66,7 +66,7 @@ impl Compiler {
                 parent: None,
                 interfaces: HashMap::new(),
                 structs: HashMap::new(),
-                unresolved_structs: HashMap::new()
+                unresolved_structs: HashMap::new(),
             })),
             funcs: HashMap::new(),
             func_ir: Vec::new(),

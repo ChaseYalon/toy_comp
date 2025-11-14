@@ -67,11 +67,12 @@ impl Compiler {
         }
         let (val, _) = self.compile_expr(&val, _module, builder, scope);
         let var = Variable::new(self.var_count);
+        self.var_count += 1;
+        builder.declare_var(var, types::I64);
         debug!(targets: ["compiler_verbose"], format!("Value: {:?}", val.type_id()));
         debug!(targets: ["compiler_verbose"], format!("Value {:?}", var.type_id()));
-        builder.declare_var(var, types::I64);
+        println!("Variable type: {:?}", var.type_id());
         builder.def_var(var, val);
-        self.var_count += 1;
         scope.borrow_mut().set(name, var, t_o.clone());
     }
 }
@@ -82,7 +83,7 @@ pub struct Scope {
     pub interfaces: HashMap<String, HashMap<String, TypeTok>>,
     ///the value is a pointer to a ToyHashMap, string is the interface name
     pub structs: HashMap<String, (String, Variable)>,
-    pub unresolved_structs: HashMap<String, (HashMap<String, TypeTok>, Variable)>
+    pub unresolved_structs: HashMap<String, (HashMap<String, TypeTok>, Variable)>,
 }
 
 impl Scope {
@@ -92,7 +93,7 @@ impl Scope {
             parent: Some(parent.clone()),
             interfaces: HashMap::new(),
             structs: HashMap::new(),
-            unresolved_structs: HashMap::new()
+            unresolved_structs: HashMap::new(),
         }))
     }
 
@@ -133,17 +134,27 @@ impl Scope {
         }
         return self.parent.as_ref().unwrap().borrow().get_struct(name);
     }
-    pub fn set_unresolved_struct(&mut self, name: String, val: HashMap<String, TypeTok>, ptr: Variable) {
+    pub fn set_unresolved_struct(
+        &mut self,
+        name: String,
+        val: HashMap<String, TypeTok>,
+        ptr: Variable,
+    ) {
         self.unresolved_structs.insert(name, (val, ptr));
     }
-    pub fn get_unresolved_struct(&self, name: String) -> (HashMap<String, TypeTok>, Variable){
+    pub fn get_unresolved_struct(&self, name: String) -> (HashMap<String, TypeTok>, Variable) {
         if self.unresolved_structs.contains_key(&name) {
             return self.unresolved_structs.get(&name).unwrap().clone();
         }
         if self.parent.is_none() {
-            panic!("[ERROR] Struct \"{}\" does not exist", name);
+            panic!("[ERROR] Unresolved struct \"{}\" does not exist", name);
         }
-        return self.parent.as_ref().unwrap().borrow().get_unresolved_struct(name);
+        return self
+            .parent
+            .as_ref()
+            .unwrap()
+            .borrow()
+            .get_unresolved_struct(name);
     }
     pub fn find_interface_name_with_kv(&self, value: &HashMap<String, TypeTok>) -> Option<String> {
         if let Some((key, _)) = self.interfaces.iter().find(|(_, v)| v == &value) {

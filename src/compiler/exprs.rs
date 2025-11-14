@@ -3,6 +3,7 @@ use super::Scope;
 use crate::debug;
 use crate::parser::ast::{Ast, InfixOp};
 use crate::token::TypeTok;
+use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -101,23 +102,44 @@ impl Compiler {
         match expr {
             Ast::FuncCall(b_name, params) => {
                 let mut name = *b_name.clone();
-                let o_func = self.funcs.get(&name);
+                let temp = self.funcs.clone();
+                if name == "len".to_string() {
+                    let (_, t) = self.compile_expr(&params[0].clone(), _module, builder, scope); //this is so wasteful
+                    let f_param_type = t.clone();
+                    if f_param_type == TypeTok::Str {
+                        name = "strlen".to_string();
+                    } else {
+                        name = "arrlen".to_string();
+                    }
+                }
+                let o_func = temp.get(&name);
                 if o_func.is_none() {
                     panic!("[ERROR] Function {} is undefined", name);
                 }
                 let mut param_values: Vec<Value> = Vec::new();
                 let mut last_type: TypeTok = TypeTok::Str;
-                for p in params {
+                let (ret_type, id, param_names) = o_func.unwrap();
+                for (i, p) in params.iter().enumerate() {
                     println!("Params type: {:?}", p.node_type());
+                    let mut g_param_name: String = "".to_string();
                     if let Ast::FuncParam(param_name_b, _) = p {
                         let param_name = *param_name_b.clone();
+                        g_param_name = param_name.clone();
                         println!("Setting current struct name to {}", param_name);
                         self.current_struct_name = Some(param_name.clone());
                     }
+                    if p.node_type() == "StructLit" {
+                        let s_name = match p.clone() {
+                            Ast::StructLit(n, _) => *n,
+                            _ => unreachable!(),
+                        };
+                        self.current_struct_name = Some(s_name);
+                    }
                     let (v, t) = self.compile_expr(&p.clone(), _module, builder, scope);
                     last_type = t.clone();
+                    println!("T: {:?} of Type {}, Scope {:?}", t, t.type_str(), scope.borrow());
                     if t.type_str() == "Struct" {
-                        let (kv, var) = scope.borrow().get_unresolved_struct(name.clone());
+                        let (kv, var) = scope.borrow().get_unresolved_struct(param_names[i].clone());
                         let interface_name =
                             scope.borrow().find_interface_name_with_kv(&kv).unwrap();
                         if let Ast::FuncParam(param_name_b, _) = p {
@@ -126,18 +148,13 @@ impl Compiler {
                                 .borrow_mut()
                                 .set_struct(param_name, interface_name, var);
                         }
+                        println!("Making variable type: {:?}", v.type_id());
                         builder.def_var(var, v);
                     }
                     param_values.push(v);
                 }
-                if name == "len".to_string() {
-                    if last_type == TypeTok::Str {
-                        name = "strlen".to_string();
-                    } else {
-                        name = "arrlen".to_string();
-                    }
-                }
-                let (ret_type, id, param_names) = o_func.unwrap();
+
+                println!("Param names: {:?}", param_names);
                 if name == "str".to_string()
                     || name == "bool".to_string()
                     || name == "int".to_string()
@@ -256,7 +273,7 @@ impl Compiler {
                 let toy_get =
                     _module.declare_func_in_func(global_hashmap_get.clone(), &mut builder.func);
                 let name = *(s_name).clone();
-                let mut current_ptr_var = Variable::new(0); //temp
+                let current_ptr_var; //temp
                 if self.is_in_func {
                     let (_, var) = scope.borrow().get_unresolved_struct(name.clone());
                     current_ptr_var = var;
@@ -265,6 +282,7 @@ impl Compiler {
                     current_ptr_var = var;
                 }
                 let (_, mut current_type) = scope.borrow().get(name.clone());
+                
                 let mut current_pointer_val = builder.use_var(current_ptr_var);
                 for key in keys.iter() {
                     let (value_key, _) = self.compile_expr(
