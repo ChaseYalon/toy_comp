@@ -10,6 +10,7 @@ mod token;
 #[macro_use]
 mod macros;
 mod ffi;
+mod errors;
 use crate::{lexer::Lexer, parser::Parser};
 
 fn main() {

@@ -48,7 +48,7 @@ impl AstGenerator {
             if toks[0].tok_type() == "BoolLit" {
                 return Ast::BoolLit(match toks[0] {
                     Token::BoolLit(b) => b,
-                    _ => panic!("this is impossible"),
+                    _ => unreachable!(),
                 });
             }
             if toks[0].tok_type() == "VarRef" {
@@ -323,7 +323,7 @@ impl AstGenerator {
                 debug!(targets: ["parser_verbose"], "in var ref");
                 let s = match toks[0].clone() {
                     Token::VarRef(name) => *name,
-                    _ => panic!("[ERROR] Expected variable name, got {}", toks[0]),
+                    _ => unreachable!(),
                 };
                 let var_ref_type = self.lookup_var_type(&s);
                 if var_ref_type.is_none() {

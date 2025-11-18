@@ -19,9 +19,6 @@ impl Compiler {
         builder: &mut FunctionBuilder<'_>,
         scope: &Rc<RefCell<Scope>>,
     ) {
-        if var_res.node_type() != "VarReassign" {
-            panic!("[ERROR] Expecting VarReassign, got {}", var_res);
-        }
         let var_name: String;
         let new_val: Ast;
         match var_res {
@@ -29,7 +26,7 @@ impl Compiler {
                 var_name = *name.clone();
                 new_val = *new_val_b.clone()
             }
-            _ => panic!("[ERROR] Expecting VarReassign, got {}", var_res),
+            _ => unreachable!(),
         }
         let (var, _old_type) = scope.as_ref().borrow().get(var_name);
         let (val, _) = self.compile_expr(&new_val, _module, builder, scope);
@@ -43,13 +40,6 @@ impl Compiler {
         builder: &mut FunctionBuilder<'_>,
         scope: &Rc<RefCell<Scope>>,
     ) {
-        if var_dec.node_type() != "VarDec" {
-            panic!(
-                "[ERROR] Expected variable declarations, got {}, of type {}",
-                var_dec,
-                var_dec.node_type()
-            );
-        }
         let name: String;
         let val: Ast;
         let t_o: &TypeTok;
@@ -59,9 +49,7 @@ impl Compiler {
                 val = *v.clone();
                 t_o = t;
             }
-            _ => {
-                panic!("[ERROR] Expected variable declarations, got {}", var_dec);
-            }
+            _ => unreachable!()
         }
         if t_o.type_str() == "Struct" {
             self.current_struct_name = Some(name.clone());

@@ -69,12 +69,10 @@ impl Compiler {
         let mut last_type: TypeTok = TypeTok::Str;
         let (ret_type, id, param_names) = o_func.unwrap();
         for (i, p) in params.iter().enumerate() {
-            println!("Params type: {:?}", p.node_type());
             let mut g_param_name: String = "".to_string();
             if let Ast::FuncParam(param_name_b, _) = p {
                 let param_name = *param_name_b.clone();
                 g_param_name = param_name.clone();
-                println!("Setting current struct name to {}", param_name);
                 self.current_struct_name = Some(param_name.clone());
             }
             if p.node_type() == "StructLit" {
@@ -86,12 +84,7 @@ impl Compiler {
             }
             let (v, t) = self.compile_expr(&p.clone(), module, builder, scope);
             last_type = t.clone();
-            println!(
-                "T: {:?} of Type {}, Scope {:?}",
-                t,
-                t.type_str(),
-                scope.borrow()
-            );
+
             if t.type_str() == "Struct" {
                 let (kv, _old_var) = scope.borrow().get_unresolved_struct(param_names[i].clone());
                 let interface_name = scope.borrow().find_interface_name_with_kv(&kv).unwrap();
@@ -110,7 +103,6 @@ impl Compiler {
             param_values.push(v);
         }
 
-        println!("Param names: {:?}", param_names);
         if name == "str".to_string()
             || name == "bool".to_string()
             || name == "int".to_string()

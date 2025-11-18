@@ -80,7 +80,7 @@ impl Compiler {
     ) {
         let (cond_ast, body_asts, alt_op) = match node {
             Ast::IfStmt(cond, body, alt) => (cond, body, alt),
-            _ => panic!("[ERROR] Expected IfStmt node, got {:?}", node),
+            _ => unreachable!(),
         };
 
         let (cond_val, _cond_type) = self.compile_expr(&cond_ast, _module, builder, scope);
@@ -418,7 +418,7 @@ impl Compiler {
         if node.clone().node_type() == "EmptyExpr" {
             let child = match node.clone() {
                 Ast::EmptyExpr(chi) => *chi,
-                _ => panic!("[ERROR] Expected EmptyExpr, got {}", node),
+                _ => unreachable!(),
             };
             self.compile_expr(&child, _module, func_builder, scope);
         }

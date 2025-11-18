@@ -1,4 +1,3 @@
-use crate::debug;
 use crate::parser::toy_box::TBox;
 use crate::token::{Token, TypeTok};
 use std::collections::HashMap;
@@ -370,9 +369,6 @@ impl Boxer {
         return TBox::FuncDec(func_name, boxed_params, return_type, body_boxes);
     }
     fn box_struct_interface_dec(&mut self, toks: &Vec<Token>) -> TBox {
-        if toks[0].tok_type() != "Struct" {
-            panic!("[ERROR] Expected struct, got {}", toks[0]);
-        }
         let name = match toks[0].clone() {
             Token::Struct(n) => *n,
             _ => unreachable!(),
@@ -416,9 +412,6 @@ impl Boxer {
         return TBox::StructInterface(Box::new(name), Box::new(params));
     }
     fn box_statement(&mut self, toks: Vec<Token>) -> TBox {
-        if toks.is_empty() {
-            panic!("[ERROR] Empty statement encountered");
-        }
 
         let first = toks[0].tok_type();
 
@@ -494,11 +487,6 @@ impl Boxer {
 
     /// Parse an if statement from a token slice, returning the TBox and number of tokens consumed
     fn box_if_standalone(&mut self, input: &Vec<Token>) -> (TBox, usize) {
-        debug!(targets: ["parser"], input);
-
-        if input.is_empty() || input[0].tok_type() != "If" {
-            panic!("[ERROR] Expected 'if' statement");
-        }
 
         let mut i = 1;
 

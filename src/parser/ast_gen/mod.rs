@@ -216,9 +216,6 @@ impl AstGenerator {
     }
 
     fn parse_var_dec(&mut self, name: &Token, val: &Vec<Token>, var_type: Option<TypeTok>) -> Ast {
-        if name.tok_type() != "VarName" {
-            panic!("[ERROR] Expected variable name, got {}", name);
-        }
         let name_str = *name.get_var_name().unwrap();
         let (val_ast, val_type) = self.parse_expr(val);
         let ret_var_type: TypeTok;
@@ -240,7 +237,7 @@ impl AstGenerator {
         let name_s: String;
         match name {
             Token::VarRef(box_str) => name_s = *box_str.clone(),
-            _ => panic!("[ERROR] Expected var_ref, got {}", name),
+            _ => unreachable!()
         }
         return Ast::VarRef(Box::new(name_s));
     }
@@ -248,7 +245,7 @@ impl AstGenerator {
     fn parse_if_stmt(&mut self, stmt: TBox, should_eat: bool) -> Ast {
         let (cond, body, alt) = match stmt {
             TBox::IfStmt(c, b, a) => (c, b, a),
-            _ => panic!("[ERROR] Expected IfStmt, got {}", stmt),
+            _ => unreachable!(),
         };
 
         let b_cond = self.parse_bool_expr(&cond);
@@ -283,14 +280,11 @@ impl AstGenerator {
     fn parse_func_dec(&mut self, stmt: TBox, should_eat: bool) -> Ast {
         let (name_tok, params, return_type, box_boxy) = match stmt {
             TBox::FuncDec(n, p, r, b) => (n, p, r, b),
-            _ => panic!("[ERROR] Expected FuncDec, got {}", stmt),
+            _ => unreachable!(),
         };
         let name = match name_tok {
             Token::VarName(n) => *n,
-            _ => panic!(
-                "[ERROR] Expected function (variable) name, got {}",
-                name_tok
-            ),
+            _ => unreachable!(),
         };
 
         let mut ast_params: Vec<Ast> = Vec::new();
@@ -301,11 +295,11 @@ impl AstGenerator {
                 TBox::FuncParam(name, type_tok) => {
                     let n = match name {
                         Token::VarRef(var) => *var,
-                        _ => panic!("[ERROR] Expected variable reference, got {}", name),
+                        _ => unreachable!(),
                     };
                     (n, type_tok)
                 }
-                _ => panic!("[ERROR] Expected function parameter, got {}", param),
+                _ => unreachable!(),
             };
 
             ast_params.push(Ast::FuncParam(
