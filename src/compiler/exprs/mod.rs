@@ -9,6 +9,7 @@ use std::rc::Rc;
 use cranelift::prelude::*;
 use cranelift_module::DataDescription;
 use cranelift_module::Module;
+use crate::errors::ToyError;
 
 mod arrs;
 mod infix;
@@ -21,7 +22,7 @@ impl Compiler {
         _module: &M,
         builder: &mut FunctionBuilder<'_>,
         param_values: &mut Vec<Value>,
-    ) {
+    )-> Result<(), ToyError> {
         let (n, degree) = match t {
             &TypeTok::Str => (0, 0),
             &TypeTok::Bool => (1, 0),
@@ -31,7 +32,7 @@ impl Compiler {
             &TypeTok::BoolArr(n) => (5, n),
             &TypeTok::IntArr(n) => (6, n),
             &TypeTok::FloatArr(n) => (7, n),
-            _ => panic!("[ERROR] Cannot parse type {:?}", t),
+            _ => return Err(ToyError::TypeIdNotAssigned),
         };
         let v = builder.ins().iconst(types::I64, n);
         param_values.push(v);
@@ -39,6 +40,7 @@ impl Compiler {
             let d = builder.ins().iconst(types::I64, degree as i64);
             param_values.push(d);
         }
+        return Ok(())
     }
     fn compile_func_call<M: Module>(
         &mut self,
@@ -47,11 +49,11 @@ impl Compiler {
         module: &mut M,
         builder: &mut FunctionBuilder<'_>,
         scope: &Rc<RefCell<Scope>>,
-    ) -> (Value, TypeTok) {
+    ) -> Result<(Value, TypeTok), ToyError> {
         let temp = self.funcs.clone();
         let name: String;
         if func_name == "len".to_string() {
-            let (_, t) = self.compile_expr(&params[0].clone(), module, builder, scope); //this is so wasteful
+            let (_, t) = self.compile_expr(&params[0].clone(), module, builder, scope)?; //this is so wasteful
             let f_param_type = t.clone();
             if f_param_type == TypeTok::Str {
                 name = "strlen".to_string();
@@ -63,7 +65,7 @@ impl Compiler {
         }
         let o_func = temp.get(&name);
         if o_func.is_none() {
-            panic!("[ERROR] Function {} is undefined", name);
+            return Err(ToyError::UndefinedFunction);
         }
         let mut param_values: Vec<Value> = Vec::new();
         let mut last_type: TypeTok = TypeTok::Str;
@@ -82,7 +84,7 @@ impl Compiler {
                 };
                 self.current_struct_name = Some(s_name);
             }
-            let (v, t) = self.compile_expr(&p.clone(), module, builder, scope);
+            let (v, t) = self.compile_expr(&p.clone(), module, builder, scope)?;
             last_type = t.clone();
 
             if t.type_str() == "Struct" {
@@ -108,10 +110,10 @@ impl Compiler {
             || name == "int".to_string()
             || name == "float".to_string()
         {
-            self.inject_type_param(&last_type, false, module, builder, &mut param_values);
+            self.inject_type_param(&last_type, false, module, builder, &mut param_values)?;
         }
         if name == "print".to_string() || name == "println".to_string() {
-            self.inject_type_param(&last_type, true, module, builder, &mut param_values);
+            self.inject_type_param(&last_type, true, module, builder, &mut param_values)?;
         }
         let func_ref = module.declare_func_in_func(id.clone(), builder.func);
 
@@ -120,10 +122,10 @@ impl Compiler {
         if results.len() > 0 {
             let ret_val = results[0];
 
-            return (ret_val, ret_type.clone());
+            return Ok((ret_val, ret_type.clone()));
         } else {
             //This is a dummy, should not be used
-            return (builder.ins().iconst(types::I64, 0), TypeTok::Void);
+            return Ok((builder.ins().iconst(types::I64, 0), TypeTok::Void));
         }
     }
     fn compile_string_lit<M: Module>(
@@ -131,10 +133,9 @@ impl Compiler {
         string_value: String,
         module: &mut M,
         builder: &mut FunctionBuilder<'_>,
-    ) -> (Value, TypeTok) {
+    ) -> Result<(Value, TypeTok), ToyError> {
         let data_id = module
-            .declare_anonymous_data(false, false)
-            .expect("Failed to declare data");
+            .declare_anonymous_data(false, false)?;
 
         //Create null terminated string in mem
         let mut data_desc = DataDescription::new();
@@ -142,21 +143,23 @@ impl Compiler {
         string_bytes.push(0); // null terminator
         data_desc.define(string_bytes.into_boxed_slice());
         module
-            .define_data(data_id, &data_desc)
-            .expect("Failed to define data");
+            .define_data(data_id, &data_desc)?;
 
         // Get a global value reference to the data
         let data_gv = module.declare_data_in_func(data_id, builder.func);
         let string_ptr = builder.ins().global_value(types::I64, data_gv);
 
         // Call toy_malloc with the string pointer
-        let malloc_func = self.funcs.get("malloc").expect("malloc not found");
+        let malloc_func = match self.funcs.get("malloc") {
+            Some(malloc_func) => malloc_func,
+            None => return Err(ToyError::InternalFunctionUndefined)
+        };
         let func_ref = module.declare_func_in_func(malloc_func.1, builder.func);
         let call_inst = builder.ins().call(func_ref, &[string_ptr]);
         let results = builder.inst_results(call_inst);
         let heap_ptr = results[0];
 
-        (heap_ptr, TypeTok::Str)
+        Ok((heap_ptr, TypeTok::Str))
     }
     pub fn compile_expr<M: Module>(
         &mut self,
@@ -164,17 +167,17 @@ impl Compiler {
         _module: &mut M,
         builder: &mut FunctionBuilder<'_>,
         scope: &Rc<RefCell<Scope>>,
-    ) -> (Value, TypeTok) {
-        match expr {
+    ) -> Result<(Value, TypeTok), ToyError> {
+        let to_ret:(Value, TypeTok) = match expr {
             Ast::FuncCall(b_name, params) => {
-                self.compile_func_call(*b_name.clone(), &params, _module, builder, scope)
+                self.compile_func_call(*b_name.clone(), &params, _module, builder, scope)?
             }
             Ast::ArrRef(a, indices) => {
-                self.compile_arr_ref(*a.clone(), indices, _module, builder, scope)
+                self.compile_arr_ref(*a.clone(), indices, _module, builder, scope)?
             }
 
             Ast::ArrLit(t, val) => (
-                self.compile_arr_lit(val, _module, builder, scope),
+                self.compile_arr_lit(val, _module, builder, scope)?,
                 t.clone(),
             ),
             Ast::IntLit(n) => (builder.ins().iconst(types::I64, *n), TypeTok::Int),
@@ -186,26 +189,27 @@ impl Compiler {
                 )
             }
             Ast::StructLit(n, bkv) => {
-                self.compile_struct_lit(*n.clone(), &*bkv, _module, builder, scope)
+                self.compile_struct_lit(*n.clone(), &*bkv, _module, builder, scope)?
             }
             Ast::StructRef(s_name, keys) => {
-                self.compile_struct_ref(*s_name.clone(), keys, _module, builder, scope)
+                self.compile_struct_ref(*s_name.clone(), keys, _module, builder, scope)?
             }
             Ast::BoolLit(b) => {
                 let is_true: i64 = if *b { 1 } else { 0 };
                 (builder.ins().iconst(types::I64, is_true), TypeTok::Bool)
             }
-            Ast::StringLit(s) => self.compile_string_lit(*s.clone(), _module, builder),
-            Ast::EmptyExpr(child) => self.compile_expr(child, _module, builder, scope),
+            Ast::StringLit(s) => self.compile_string_lit(*s.clone(), _module, builder)?,
+            Ast::EmptyExpr(child) => self.compile_expr(child, _module, builder, scope)?,
             Ast::InfixExpr(left, right, op) => {
-                self.compile_infix_expression(&(*left), &(*right), op, _module, builder, scope)
+                self.compile_infix_expression(&(*left), &(*right), op, _module, builder, scope)?
             }
             Ast::VarRef(v) => {
-                let (var, var_type) = scope.as_ref().borrow().get(*(v).clone());
+                let (var, var_type) = scope.as_ref().borrow().get(*(v).clone())?;
                 (builder.use_var(var), var_type.clone())
             }
 
             _ => todo!("Unknown expression type"),
-        }
+        };
+        return Ok(to_ret)
     }
 }

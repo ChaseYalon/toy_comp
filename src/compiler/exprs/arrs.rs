@@ -8,6 +8,7 @@ use std::rc::Rc;
 
 use cranelift::prelude::*;
 use cranelift_module::Module;
+use crate::errors::ToyError;
 
 impl Compiler {
     pub fn compile_arr_lit<M: Module>(
@@ -16,11 +17,11 @@ impl Compiler {
         module: &mut M,
         builder: &mut FunctionBuilder<'_>,
         scope: &Rc<RefCell<Scope>>,
-    ) -> Value {
+    ) -> Result<Value, ToyError> {
         let mut arr_items: Vec<Value> = Vec::new();
         let mut arr_types: Vec<TypeTok> = Vec::new();
         for expr in arr {
-            let (val, t) = self.compile_expr(expr, module, builder, scope);
+            let (val, t) = self.compile_expr(expr, module, builder, scope)?;
             arr_items.push(val);
             arr_types.push(t);
         }
@@ -32,7 +33,7 @@ impl Compiler {
         //Calls toy malloc with the correct params
         let len = builder.ins().iconst(types::I64, arr_items.len() as i64);
         let mut params = [len].to_vec();
-        self.inject_type_param(&arr_types[0], false, module, builder, &mut params);
+        self.inject_type_param(&arr_types[0], false, module, builder, &mut params)?;
         let call_res = builder.ins().call(arr_malloc, params.as_slice());
         let arr_ptr = builder.inst_results(call_res)[0];
 
@@ -40,11 +41,11 @@ impl Compiler {
             let mut params = [arr_ptr, item.clone()].to_vec();
             let idx = builder.ins().iconst(types::I64, i as i64);
             params.push(idx);
-            self.inject_type_param(&arr_types[i], false, module, builder, &mut params);
+            self.inject_type_param(&arr_types[i], false, module, builder, &mut params)?;
             builder.ins().call(arr_write, params.as_slice());
         }
 
-        return arr_ptr;
+        return Ok(arr_ptr);
     }
     pub fn compile_arr_ref<M: Module>(
         &mut self,
@@ -53,15 +54,15 @@ impl Compiler {
         module: &mut M,
         builder: &mut FunctionBuilder<'_>,
         scope: &Rc<RefCell<Scope>>,
-    ) -> (Value, TypeTok) {
-        let (arr_var, mut arr_type) = scope.as_ref().borrow().get(array_name);
+    ) -> Result<(Value, TypeTok), ToyError> {
+        let (arr_var, mut arr_type) = scope.as_ref().borrow().get(array_name)?;
         let (_, arr_read_global, _) = self.funcs.get("toy_read_from_arr").unwrap();
         let arr_read = module.declare_func_in_func(*arr_read_global, &mut builder.func);
 
         let mut current_ptr = builder.use_var(arr_var);
 
-        for (dim, idx_expr) in indices.iter().enumerate() {
-            let (idx_val, _) = self.compile_expr(idx_expr, module, builder, scope);
+        for (_, idx_expr) in indices.iter().enumerate() {
+            let (idx_val, _) = self.compile_expr(idx_expr, module, builder, scope)?;
 
             let call_params = [current_ptr, idx_val].to_vec();
             let call_inst = builder.ins().call(arr_read, call_params.as_slice());
@@ -78,14 +79,11 @@ impl Compiler {
                 TypeTok::StrArr(1) => TypeTok::Str,
                 TypeTok::FloatArr(1) => TypeTok::Float,
                 TypeTok::AnyArr(1) => TypeTok::Any,
-                _ => panic!(
-                    "[ERROR] Type mismatch while indexing array {:?} at dimension {}",
-                    arr_type,
-                    dim + 1
-                ),
+
+                _ => return Err(ToyError::ArrayTypeInvalid)
             };
         }
 
-        (current_ptr, arr_type)
+        Ok((current_ptr, arr_type))
     }
 }

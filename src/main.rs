@@ -13,7 +13,8 @@ mod ffi;
 mod errors;
 use crate::{lexer::Lexer, parser::Parser};
 
-fn main() {
+fn main() -> color_eyre::Result<()>{
+    color_eyre::install()?;
     let args: Vec<String> = env::args().collect();
     if args.contains(&"--repl".to_string()) {
         loop {
@@ -38,7 +39,7 @@ fn main() {
                 p.parse(l.lex(String::from(input))),
                 !should_jit,
                 Some("output.exe"),
-            );
+            ).map_err(color_eyre::Report::from)?;
             if user_fn.is_some() {
                 println!(">>{}", user_fn.unwrap()());
             } else {
@@ -68,8 +69,9 @@ fn main() {
     } else {
         None
     };
-    let res = c.compile(p.parse(l.lex(contents)), should_jit, path);
+    let res = c.compile(p.parse(l.lex(contents)), should_jit, path)?;
     if res.is_some() {
         println!("User fn: {}", res.unwrap()());
     }
+    return Ok(())
 }

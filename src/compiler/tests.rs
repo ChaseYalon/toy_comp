@@ -26,7 +26,7 @@ macro_rules! compile_code {
         let mut c = Compiler::new();
         let $o = c
             .compile(p.parse(l.lex($i.to_string())), true, None)
-            .unwrap();
+            .unwrap().unwrap();
     };
 }
 macro_rules! compile_code_aot {
@@ -44,7 +44,7 @@ macro_rules! compile_code_aot {
             p.parse(l.lex($i.to_string())),
             false,
             Some(&format!("temp/{}", output_name)),
-        );
+        ).unwrap();
 
         thread::sleep(Duration::from_millis(200));
 

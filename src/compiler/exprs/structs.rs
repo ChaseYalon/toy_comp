@@ -8,6 +8,7 @@ use std::rc::Rc;
 
 use cranelift::prelude::*;
 use cranelift_module::Module;
+use crate::errors::ToyError;
 
 impl Compiler {
     pub fn compile_struct_lit<M: Module>(
@@ -17,14 +18,14 @@ impl Compiler {
         module: &mut M,
         builder: &mut FunctionBuilder<'_>,
         scope: &Rc<RefCell<Scope>>,
-    ) -> (Value, TypeTok) {
+    ) -> Result<(Value, TypeTok), ToyError> {
         let (_, global_hashmap_put, _) = self.funcs.get("toy_put").unwrap();
         let (_, global_create_map, _) = self.funcs.get("toy_create_map").unwrap();
         let toy_put = module.declare_func_in_func(global_hashmap_put.clone(), &mut builder.func);
         let toy_create_map = module.declare_func_in_func(global_create_map.clone(), builder.func);
         let interface_name = struct_name.clone();
 
-        let interface_types = scope.borrow_mut().get_interface(interface_name.clone());
+        let interface_types = scope.borrow_mut().get_interface(interface_name.clone())?;
         let create_res = builder.ins().call(toy_create_map, &[]);
         let map_ptr_val = builder.inst_results(create_res)[0];
         let map_ptr_idx = self.var_count;
@@ -37,8 +38,8 @@ impl Compiler {
                 module,
                 builder,
                 scope,
-            );
-            let (v, _) = self.compile_expr(value, module, builder, scope);
+            )?;
+            let (v, _) = self.compile_expr(value, module, builder, scope)?;
             let _ = builder.ins().call(toy_put, &[map_ptr_val, k, v]);
         }
         let boxed: HashMap<String, Box<TypeTok>> = interface_types
@@ -52,7 +53,7 @@ impl Compiler {
             Variable::new(self.var_count),
         );
         //scope.borrow_mut().set_struct(name, val, ptr);
-        (map_ptr_val, TypeTok::Struct(boxed))
+        Ok((map_ptr_val, TypeTok::Struct(boxed)))
     }
     pub fn compile_struct_ref<M: Module>(
         &mut self,
@@ -61,7 +62,7 @@ impl Compiler {
         module: &mut M,
         builder: &mut FunctionBuilder<'_>,
         scope: &Rc<RefCell<Scope>>,
-    ) -> (Value, TypeTok) {
+    ) -> Result<(Value, TypeTok), ToyError> {
         let (_, global_hashmap_get, _) = self.funcs.get("toy_get").unwrap();
         let toy_get = module.declare_func_in_func(global_hashmap_get.clone(), &mut builder.func);
         let name = struct_name.clone();
@@ -70,10 +71,10 @@ impl Compiler {
             let (_, var) = scope.borrow().get_unresolved_struct(name.clone());
             current_ptr_var = var;
         } else {
-            let (_, var) = scope.borrow().get_struct(name.clone());
+            let (_, var) = scope.borrow().get_struct(name.clone())?;
             current_ptr_var = var;
         }
-        let (_, mut current_type) = scope.borrow().get(name.clone());
+        let (_, mut current_type) = scope.borrow().get(name.clone())?;
 
         let mut current_pointer_val = builder.use_var(current_ptr_var);
         for key in keys.iter() {
@@ -82,7 +83,7 @@ impl Compiler {
                 module,
                 builder,
                 scope,
-            );
+            )?;
 
             let call_res = builder
                 .ins()
@@ -91,13 +92,13 @@ impl Compiler {
 
             let kv = match &current_type {
                 TypeTok::Struct(kv) => kv,
-                _ => panic!("[ERROR] Cannot access field '{}' on non-struct type", key),
+                _ => return Err(ToyError::VariableNotAStruct),
             };
 
             current_type = *(kv.get(key).unwrap()).clone();
             current_pointer_val = value;
         }
 
-        (current_pointer_val, current_type)
+        Ok((current_pointer_val, current_type))
     }
 }

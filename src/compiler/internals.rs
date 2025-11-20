@@ -10,6 +10,7 @@ use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{Linkage, Module, default_libcall_names};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use target_lexicon::Triple;
+use crate::errors::ToyError;
 
 impl Compiler {
     pub fn make_jit(&self) -> JITModule {
@@ -356,13 +357,13 @@ impl Compiler {
             .insert("toy_create_map".to_string(), (TypeTok::Void, func, vec![]));
     }
 
-    pub fn compile_to_object(&mut self, ast: Vec<Ast>) -> Vec<u8> {
+    pub fn compile_to_object(&mut self, ast: Vec<Ast>) -> Result<Vec<u8>, ToyError> {
         self.ast = ast.clone();
         let mut module = self.make_object();
 
-        let (_func_id, _ctx) = self.compile_internal(&mut module, ast);
+        let (_func_id, _ctx) = self.compile_internal(&mut module, ast)?;
 
         let object_product = module.finish();
-        object_product.emit().unwrap()
+        Ok(object_product.emit().unwrap())
     }
 }

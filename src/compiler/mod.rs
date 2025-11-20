@@ -15,6 +15,7 @@ use std::io::Write;
 use std::path::Path;
 use std::process::Command;
 use std::rc::Rc;
+use crate::errors::ToyError;
 
 mod exprs;
 mod internals;
@@ -30,7 +31,7 @@ pub static FILE_EXTENSION_O: &str = if cfg!(target_os = "windows") {
 } else if cfg!(target_os = "linux") {
     "o"
 } else {
-    panic!("[ERROR] Only supported OS's are windows and linux")
+    panic!("[ERROR] Only supported OS's are windows and linux") //normally panic is not ok however this is no function to bubble error up to, so compile time error is good
 };
 
 pub static FILE_EXTENSION_EXE: &str = if cfg!(target_os = "windows") {
@@ -38,7 +39,7 @@ pub static FILE_EXTENSION_EXE: &str = if cfg!(target_os = "windows") {
 } else if cfg!(target_os = "linux") {
     ""
 } else {
-    panic!("[ERROR] Only supported OS's are windows and linux")
+    panic!("[ERROR] Only supported OS's are windows and linux") // look up
 };
 
 pub static STUB_C: &str = include_str!("../c/stub.c");
@@ -77,7 +78,7 @@ impl Compiler {
         }
     }
 
-    fn compile_internal<M: Module>(&mut self, module: &mut M, ast: Vec<Ast>) -> (FuncId, Context) {
+    fn compile_internal<M: Module>(&mut self, module: &mut M, ast: Vec<Ast>) -> Result<(FuncId, Context), ToyError> {
         let mut ctx: Context = module.make_context();
 
         let mut sig = module.make_signature();
@@ -97,7 +98,7 @@ impl Compiler {
 
         let sudo_main_scope = self.main_scope.clone();
         for node in ast {
-            last_val = self.compile_stmt(node, module, &mut func_builder, &sudo_main_scope);
+            last_val = self.compile_stmt(node, module, &mut func_builder, &sudo_main_scope)?; //this is suspect, should error be passed up the call chain
         }
 
         debug!(targets: ["compiler_verbose"], format!("Last val: {:?}", last_val));
@@ -126,7 +127,7 @@ impl Compiler {
         }
         module.clear_context(&mut ctx);
 
-        (func_id, ctx)
+        Ok((func_id, ctx))
     }
 
     pub fn compile(
@@ -134,7 +135,7 @@ impl Compiler {
         ast: Vec<Ast>,
         should_jit: bool,
         path: Option<&str>,
-    ) -> Option<fn() -> i64> {
+    ) -> Result<Option<fn() -> i64>, ToyError> {
         if !should_jit {
             let exe_val = format!("program{}", FILE_EXTENSION_EXE);
             let output_path = path.unwrap_or(&exe_val);
@@ -149,7 +150,7 @@ impl Compiler {
             let lib_str = format!("lib/{}/", target);
             let lib_path = Path::new(&lib_str);
             obj_file
-                .write_all(&self.compile_to_object(ast.clone()))
+                .write_all(&self.compile_to_object(ast.clone())?)
                 .unwrap();
             //fuck the borrow checker
             let crt2_path = lib_path.join("crt2.o");
@@ -198,29 +199,27 @@ impl Compiler {
                 ]
             };
 
-            let status = Command::new(lib_path.join("ld.lld"))
+            let rstatus = Command::new(lib_path.join("ld.lld"))
                 .args(args)
-                .status()
-                .expect("Failed to link");
-
+                .status();
+            let status = match rstatus {
+                Ok(f) => f,
+                Err(_) => return Err(ToyError::InternalLinkerFailure)
+            };
             if !status.success() {
-                panic!(
-                    "[ERROR] ld failed with exit code {:?}, Error: {:?}",
-                    status.code(),
-                    status
-                );
+                return Err(ToyError::InternalLinkerFailure);
             }
-            return None;
+            return Ok(None);
         }
         self.ast = ast.clone();
         let mut module = self.make_jit();
 
-        let (func_id, _ctx) = self.compile_internal(&mut module, ast);
+        let (func_id, _ctx) = self.compile_internal(&mut module, ast)?;
 
         module.finalize_definitions().unwrap();
 
         let code_ptr = module.get_finalized_function(func_id);
-        Some(unsafe { std::mem::transmute::<_, fn() -> i64>(code_ptr) })
+        Ok(Some(unsafe { std::mem::transmute::<_, fn() -> i64>(code_ptr) }))
     }
 }
 

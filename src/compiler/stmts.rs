@@ -9,6 +9,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::env;
 use std::rc::Rc;
+use crate::errors::ToyError;
+
 impl Compiler {
     fn compile_struct_reassign<M: Module>(
         &mut self,
@@ -16,15 +18,15 @@ impl Compiler {
         module: &mut M,
         func_builder: &mut FunctionBuilder<'_>,
         scope: &Rc<RefCell<Scope>>,
-    ) {
+    )->Result<(), ToyError>{
         let (name, fields, value) = match node.clone() {
             Ast::StructReassign(n, f, v) => (*n, f, *v),
             _ => unreachable!(),
         };
 
         let (parent_struct_interface_name, parent_struct_ptr_var) =
-            scope.borrow().get_struct(name.clone());
-        let parent_struct = scope.borrow().get_interface(parent_struct_interface_name);
+            scope.borrow().get_struct(name.clone())?;
+        let parent_struct = scope.borrow().get_interface(parent_struct_interface_name)?;
         let parent_struct_ptr = func_builder.use_var(parent_struct_ptr_var);
         let mut final_type: TypeTok = TypeTok::Any; // default, placeholder
         let mut current_struct: HashMap<String, Box<TypeTok>> = parent_struct
@@ -33,30 +35,27 @@ impl Compiler {
             .collect();
 
         for (i, field) in fields.iter().enumerate() {
-            let boxed_field = current_struct.get(field).expect(&format!(
-                "[ERROR] Field {} does not exist in struct {}",
-                field, name
-            ));
+            let boxed_field = match current_struct.get(field){
+                Some(boxed_field) => boxed_field.clone(),
+                None => return Err(ToyError::KeyNotOnStruct)
+            };
 
             if i == fields.len() - 1 {
-                final_type = (**boxed_field).clone();
+                final_type = (*boxed_field).clone();
             } else {
-                current_struct = match &**boxed_field {
+                current_struct = match &*boxed_field {
                     TypeTok::Struct(m) => m
                         .iter()
                         .map(|(k, v)| (k.clone(), Box::new(*(v.clone()))))
                         .collect(),
-                    _ => panic!("[ERROR] Variable {} is not a struct", field),
+                    _ => return Err(ToyError::VariableNotAStruct),
                 };
             }
         }
 
-        let (new_val, new_val_type) = self.compile_expr(&value, module, func_builder, scope);
+        let (new_val, new_val_type) = self.compile_expr(&value, module, func_builder, scope)?;
         if new_val_type != final_type {
-            panic!(
-                "[ERROR] Expected value of type {:?}, got value of type {:?}",
-                final_type, new_val_type
-            );
+            return Err(ToyError::TypeMismatch);
         }
 
         let (first_field, _) = self.compile_expr(
@@ -64,12 +63,13 @@ impl Compiler {
             module,
             func_builder,
             scope,
-        );
+        )?;
         let (_, toy_put_global, _) = self.funcs.get("toy_put").unwrap();
         let toy_put = module.declare_func_in_func(*toy_put_global, &mut func_builder.func);
         func_builder
             .ins()
             .call(toy_put, &[parent_struct_ptr, first_field, new_val]);
+        return Ok(());
     }
     fn compile_if_stmt<M: Module>(
         &mut self,
@@ -77,13 +77,13 @@ impl Compiler {
         _module: &mut M,
         builder: &mut FunctionBuilder<'_>,
         scope: &Rc<RefCell<Scope>>,
-    ) {
+    ) -> Result<(), ToyError> {
         let (cond_ast, body_asts, alt_op) = match node {
             Ast::IfStmt(cond, body, alt) => (cond, body, alt),
             _ => unreachable!(),
         };
 
-        let (cond_val, _cond_type) = self.compile_expr(&cond_ast, _module, builder, scope);
+        let (cond_val, _cond_type) = self.compile_expr(&cond_ast, _module, builder, scope)?;
 
         let then_block = builder.create_block();
         let else_block = builder.create_block();
@@ -100,12 +100,12 @@ impl Compiler {
         let mut then_has_terminator = false;
         for stmt in body_asts {
             if matches!(stmt, Ast::Break | Ast::Continue) {
-                self.compile_stmt(stmt.clone(), _module, builder, &then_scope);
+                self.compile_stmt(stmt.clone(), _module, builder, &then_scope)?;
                 then_has_terminator = true;
                 break;
             }
 
-            self.compile_stmt(stmt.clone(), _module, builder, &then_scope);
+            self.compile_stmt(stmt.clone(), _module, builder, &then_scope)?;
 
             if let Some(current_block) = builder.current_block() {
                 if let Some(last_inst) = builder.func.layout.last_inst(current_block) {
@@ -130,12 +130,12 @@ impl Compiler {
             let else_scope = Scope::new_child(scope);
             for stmt in alt_stmts {
                 if matches!(stmt, Ast::Break | Ast::Continue) {
-                    self.compile_stmt(stmt.clone(), _module, builder, &else_scope);
+                    self.compile_stmt(stmt.clone(), _module, builder, &else_scope)?;
                     else_has_terminator = true;
                     break;
                 }
 
-                self.compile_stmt(stmt.clone(), _module, builder, &else_scope);
+                self.compile_stmt(stmt.clone(), _module, builder, &else_scope)?;
 
                 if let Some(current_block) = builder.current_block() {
                     if let Some(last_inst) = builder.func.layout.last_inst(current_block) {
@@ -154,6 +154,7 @@ impl Compiler {
 
         builder.switch_to_block(merge_block);
         builder.seal_block(merge_block);
+        return Ok(())
     }
     fn compile_func_dec<M: Module>(
         &mut self,
@@ -259,7 +260,7 @@ impl Compiler {
         _module: &mut M,
         func_builder: &mut FunctionBuilder<'_>,
         scope: &Rc<RefCell<Scope>>,
-    ) {
+    ) -> Result<(), ToyError>{
         let (cond, body) = match node.clone() {
             Ast::WhileStmt(c, b) => (*c, b),
             _ => unreachable!(),
@@ -278,9 +279,9 @@ impl Compiler {
         func_builder.ins().jump(cond_block, &[]);
 
         func_builder.switch_to_block(cond_block);
-        let (v, t) = self.compile_expr(&cond, _module, func_builder, scope);
+        let (v, t) = self.compile_expr(&cond, _module, func_builder, scope)?;
         if t != TypeTok::Bool {
-            panic!("[ERROR] While statement must have boolean expression");
+            return Err(ToyError::ExpressionNotBoolean)
         }
         func_builder
             .ins()
@@ -302,7 +303,7 @@ impl Compiler {
             }
 
             debug!(targets: ["compiler", "compiler_verbose"], format!("Current stmt {}", stmt));
-            self.compile_stmt(stmt, _module, func_builder, &child_scope);
+            self.compile_stmt(stmt, _module, func_builder, &child_scope)?;
         }
 
         if let Some(current_block) = func_builder.current_block() {
@@ -325,6 +326,7 @@ impl Compiler {
 
         self.loop_cond_block = prev_cond;
         self.loop_merge_block = prev_merge;
+        return Ok(());
     }
     fn compile_struct_interface<M: Module>(
         &mut self,
@@ -346,26 +348,27 @@ impl Compiler {
         _module: &mut M,
         func_builder: &mut FunctionBuilder<'_>,
         scope: &Rc<RefCell<Scope>>,
-    ) -> Option<(Value, TypeTok)> {
+    ) -> Result<Option<(Value, TypeTok)>, ToyError> {
         debug!(targets: ["compiler_verbose"], "in compile stmt");
-        let mut last_val = None;
+        let mut last_val: Option<(Value, TypeTok)> = None;
 
         if node.node_type() == "Break" {
             if let Some(merge_block) = self.loop_merge_block {
                 func_builder.ins().jump(merge_block, &[]);
             } else {
-                panic!("[ERROR] Break statement outside of loop");
+                //this should be impossible no?
+                return Err(ToyError::InvalidLocationForBreakStatement);
             }
-            return None;
+            return Ok(None);
         }
 
         if node.node_type() == "Continue" {
             if let Some(cond_block) = self.loop_cond_block {
                 func_builder.ins().jump(cond_block, &[]);
             } else {
-                panic!("[ERROR] Continue statement outside of loop");
+                return Err(ToyError::InvalidLocationForContinueStatement)
             }
-            return None;
+            return Ok(None);
         }
         if node.node_type() == "IntLit"
             || node.node_type() == "InfixExpr"
@@ -379,21 +382,22 @@ impl Compiler {
             || node.node_type() == "StructLit"
             || node.node_type() == "StructRef"
         {
-            last_val = Some(self.compile_expr(&node, _module, func_builder, scope));
+            let temp = self.compile_expr(&node, _module, func_builder, scope)?;
+            last_val = Some(temp)
         }
 
         if node.node_type() == "VarDec" {
             debug!(targets: ["compiler_verbose"], format!("Node: {}", node));
-            self.compile_var_dec(&node, _module, func_builder, scope);
+            self.compile_var_dec(&node, _module, func_builder, scope)?;
         }
 
         if node.node_type() == "VarReassign" {
-            self.compile_var_reassign(&node, _module, func_builder, scope);
+            self.compile_var_reassign(&node, _module, func_builder, scope)?;
         }
 
         if node.node_type() == "IfStmt" {
             let child_scope = Scope::new_child(scope);
-            self.compile_if_stmt(&node, _module, func_builder, &child_scope);
+            self.compile_if_stmt(&node, _module, func_builder, &child_scope)?;
         }
 
         if node.node_type() == "FuncDec" {
@@ -406,12 +410,12 @@ impl Compiler {
             };
             let (_, arr_write_global, _) = self.funcs.get("toy_write_to_arr").unwrap();
             let arr_write = _module.declare_func_in_func(*arr_write_global, &mut func_builder.func);
-            let (idx, _) = self.compile_expr(&i[0], _module, func_builder, scope);
-            let (val, t) = self.compile_expr(&v, _module, func_builder, scope);
-            let (arr_v, _) = scope.as_ref().borrow().get(a);
+            let (idx, _) = self.compile_expr(&i[0], _module, func_builder, scope)?;
+            let (val, t) = self.compile_expr(&v, _module, func_builder, scope)?;
+            let (arr_v, _) = scope.as_ref().borrow().get(a)?;
             let arr = func_builder.use_var(arr_v);
             let mut params = [arr, val, idx].to_vec();
-            self.inject_type_param(&t, false, _module, func_builder, &mut params);
+            self.inject_type_param(&t, false, _module, func_builder, &mut params)?;
             func_builder.ins().call(arr_write, params.as_slice());
         }
 
@@ -420,7 +424,7 @@ impl Compiler {
                 Ast::EmptyExpr(chi) => *chi,
                 _ => unreachable!(),
             };
-            self.compile_expr(&child, _module, func_builder, scope);
+            self.compile_expr(&child, _module, func_builder, scope)?;
         }
 
         if node.node_type() == "Return" {
@@ -428,19 +432,19 @@ impl Compiler {
                 Ast::Return(v) => *v,
                 _ => unreachable!(),
             };
-            let (val, _) = self.compile_expr(&expr, _module, func_builder, scope);
+            let (val, _) = self.compile_expr(&expr, _module, func_builder, scope)?;
             func_builder.ins().return_(&[val]);
         }
 
         if node.node_type() == "WhileStmt" {
-            self.compile_while_stmt(&node, _module, func_builder, scope);
+            self.compile_while_stmt(&node, _module, func_builder, scope)?;
         }
         if node.node_type() == "StructInterface" {
             self.compile_struct_interface(node.clone(), _module, func_builder, scope);
         }
         if node.node_type() == "StructReassign" {
-            self.compile_struct_reassign(&node, _module, func_builder, scope);
+            self.compile_struct_reassign(&node, _module, func_builder, scope)?;
         }
-        last_val
+        Ok(last_val)
     }
 }

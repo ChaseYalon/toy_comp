@@ -9,6 +9,7 @@ use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use crate::errors::ToyError;
 
 impl Compiler {
     
@@ -18,7 +19,7 @@ impl Compiler {
         _module: &mut M,
         builder: &mut FunctionBuilder<'_>,
         scope: &Rc<RefCell<Scope>>,
-    ) {
+    )->Result<(), ToyError> {
         let var_name: String;
         let new_val: Ast;
         match var_res {
@@ -28,9 +29,10 @@ impl Compiler {
             }
             _ => unreachable!(),
         }
-        let (var, _old_type) = scope.as_ref().borrow().get(var_name);
-        let (val, _) = self.compile_expr(&new_val, _module, builder, scope);
+        let (var, _old_type) = scope.as_ref().borrow().get(var_name)?;
+        let (val, _) = self.compile_expr(&new_val, _module, builder, scope)?;
         builder.def_var(var, val);
+        return Ok(());
     }
 
     pub fn compile_var_dec<M: Module>(
@@ -39,7 +41,7 @@ impl Compiler {
         _module: &mut M,
         builder: &mut FunctionBuilder<'_>,
         scope: &Rc<RefCell<Scope>>,
-    ) {
+    ) -> Result<(), ToyError> {
         let name: String;
         let val: Ast;
         let t_o: &TypeTok;
@@ -54,15 +56,15 @@ impl Compiler {
         if t_o.type_str() == "Struct" {
             self.current_struct_name = Some(name.clone());
         }
-        let (val, _) = self.compile_expr(&val, _module, builder, scope);
+        let (val, _) = self.compile_expr(&val, _module, builder, scope)?;
         let var = Variable::new(self.var_count);
         self.var_count += 1;
         builder.declare_var(var, types::I64);
         debug!(targets: ["compiler_verbose"], format!("Value: {:?}", val.type_id()));
         debug!(targets: ["compiler_verbose"], format!("Value {:?}", var.type_id()));
-        println!("Variable type: {:?}", var.type_id());
         builder.def_var(var, val);
         scope.borrow_mut().set(name, var, t_o.clone());
+        return Ok(());
     }
 }
 #[derive(Debug, Clone, Default)]
@@ -90,36 +92,36 @@ impl Scope {
         self.vars.insert(name, (val, ty));
     }
 
-    pub fn get(&self, name: String) -> (Variable, TypeTok) {
+    pub fn get(&self, name: String) -> Result<(Variable, TypeTok), ToyError> {
         if self.vars.contains_key(&name) {
-            return self.vars.get(&name).unwrap().clone();
+            return Ok(self.vars.get(&name).unwrap().clone());
         }
         if self.parent.is_none() {
-            panic!("[ERROR] Variable \"{}\" is undefined", name);
+            return Err(ToyError::UndefinedVariable);
         }
         return self.parent.as_ref().unwrap().borrow().get(name);
     }
     pub fn set_interface(&mut self, name: String, val: HashMap<String, TypeTok>) {
         self.interfaces.insert(name, val);
     }
-    pub fn get_interface(&self, name: String) -> HashMap<String, TypeTok> {
+    pub fn get_interface(&self, name: String) -> Result<HashMap<String, TypeTok>, ToyError> {
         if self.interfaces.contains_key(&name) {
-            return self.interfaces.get(&name).unwrap().clone();
+            return Ok(self.interfaces.get(&name).unwrap().clone());
         }
         if self.parent.is_none() {
-            panic!("[ERROR] Interface \"{}\" does not exist", name);
+            return Err(ToyError::UndefinedInterface)
         }
         return self.parent.as_ref().unwrap().borrow().get_interface(name);
     }
     pub fn set_struct(&mut self, name: String, val: String, ptr: Variable) {
         self.structs.insert(name, (val, ptr));
     }
-    pub fn get_struct(&self, name: String) -> (String, Variable) {
+    pub fn get_struct(&self, name: String) -> Result<(String, Variable), ToyError> {
         if self.structs.contains_key(&name) {
-            return self.structs.get(&name).unwrap().clone();
+            return Ok(self.structs.get(&name).unwrap().clone());
         }
         if self.parent.is_none() {
-            panic!("[ERROR] Struct \"{}\" does not exist", name);
+            return Err(ToyError::UndefinedStruct)
         }
         return self.parent.as_ref().unwrap().borrow().get_struct(name);
     }
