@@ -7,8 +7,7 @@ use std::rc::Rc;
 
 use cranelift::prelude::*;
 use cranelift_module::Module;
-use crate::errors::ToyError;
-
+use crate::errors::{ToyError, ToyErrorType};
 impl Compiler {
     fn compile_string_infix<M: Module>(
         &mut self,
@@ -20,7 +19,7 @@ impl Compiler {
     ) -> Result<(Value, TypeTok), ToyError> {
         return match op {
             InfixOp::Plus => {
-                let toy_concat = self.funcs.get("concat").ok_or_else(||{return ToyError::InternalFunctionUndefined})?;
+                let toy_concat = self.funcs.get("concat").ok_or_else(||{return ToyError::new(ToyErrorType::InternalFunctionUndefined)})?;
 
                 let func_ref = module.declare_func_in_func(toy_concat.1, builder.func);
                 let call_inst = builder.ins().call(func_ref, &[left.clone(), right.clone()]);
@@ -29,7 +28,7 @@ impl Compiler {
                 Ok((heap_ptr, TypeTok::Str))
             }
             InfixOp::Equals => {
-                let toy_strequal = self.funcs.get("strequal").ok_or_else(||return ToyError::InternalFunctionUndefined)?;
+                let toy_strequal = self.funcs.get("strequal").ok_or_else(||return ToyError::new(ToyErrorType::InternalFunctionUndefined))?;
                 let func_ref = module.declare_func_in_func(toy_strequal.1, builder.func);
                 let call_inst = builder.ins().call(func_ref, &[left.clone(), right.clone()]);
                 let results = builder.inst_results(call_inst);
@@ -37,7 +36,7 @@ impl Compiler {
                 Ok((heap_ptr, TypeTok::Bool))
             }
             InfixOp::NotEquals => {
-                let toy_strequal = self.funcs.get("strequal").ok_or_else(||return ToyError::InternalFunctionUndefined)?;
+                let toy_strequal = self.funcs.get("strequal").ok_or_else(||return ToyError::new(ToyErrorType::InternalFunctionUndefined))?;
                 let func_ref = module.declare_func_in_func(toy_strequal.1, builder.func);
                 let call_inst = builder.ins().call(func_ref, &[left.clone(), right.clone()]);
                 let results = builder.inst_results(call_inst);
@@ -49,7 +48,7 @@ impl Compiler {
 
                 Ok((flipped, TypeTok::Bool))
             }
-            _ => Err(ToyError::InvalidOperationOnGivenType)
+            _ => Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType))
         };
     }
     fn compile_int_expression<M: Module>(
@@ -90,7 +89,7 @@ impl Compiler {
                 let cmp = builder.ins().icmp(IntCC::NotEqual, l, r);
                 (builder.ins().uextend(types::I64, cmp), TypeTok::Bool)
             }
-            _ => return Err(ToyError::InvalidOperationOnGivenType),
+            _ => return Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType)),
         };
         return Ok(to_ret)
     }
@@ -108,7 +107,7 @@ impl Compiler {
             let int_to_float = self
                 .funcs
                 .get("toy_int_to_float")
-                .ok_or_else(||return ToyError::InternalFunctionUndefined)?;
+                .ok_or_else(||return ToyError::new(ToyErrorType::InternalFunctionUndefined))?;
             let func_ref = module.declare_func_in_func(int_to_float.1, builder.func);
             let call_inst = builder.ins().call(func_ref, &[left]);
             builder.inst_results(call_inst)[0]
@@ -116,7 +115,7 @@ impl Compiler {
             let float_bits_to_double = self
                 .funcs
                 .get("toy_float_bits_to_double")
-                .ok_or_else(||return ToyError::InternalFunctionUndefined)?;
+                .ok_or_else(||return ToyError::new(ToyErrorType::InternalFunctionUndefined))?;
             let func_ref = module.declare_func_in_func(float_bits_to_double.1, builder.func);
             let call_inst = builder.ins().call(func_ref, &[left]);
             builder.inst_results(call_inst)[0]
@@ -126,7 +125,7 @@ impl Compiler {
             let int_to_float = self
                 .funcs
                 .get("toy_int_to_float")
-                .ok_or_else(||return ToyError::InternalFunctionUndefined)?;
+                .ok_or_else(||return ToyError::new(ToyErrorType::InternalFunctionUndefined))?;
             let func_ref = module.declare_func_in_func(int_to_float.1, builder.func);
             let call_inst = builder.ins().call(func_ref, &[right]);
             builder.inst_results(call_inst)[0]
@@ -134,7 +133,7 @@ impl Compiler {
             let float_bits_to_double = self
                 .funcs
                 .get("toy_float_bits_to_double")
-                .ok_or_else(||return ToyError::InternalFunctionUndefined)?;
+                .ok_or_else(||return ToyError::new(ToyErrorType::InternalFunctionUndefined))?;
             let func_ref = module.declare_func_in_func(float_bits_to_double.1, builder.func);
             let call_inst = builder.ins().call(func_ref, &[right]);
             builder.inst_results(call_inst)[0]
@@ -175,14 +174,14 @@ impl Compiler {
                 let cmp = builder.ins().fcmp(FloatCC::NotEqual, lf, rf);
                 return Ok((builder.ins().uextend(types::I64, cmp), TypeTok::Bool));
             }
-            _ => return Err(ToyError::InvalidOperationOnGivenType),
+            _ => return Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType)),
         };
 
         // Convert result back to I64 bit representation
         let double_to_bits = self
             .funcs
             .get("toy_double_to_float_bits")
-            .ok_or_else(||return ToyError::InternalFunctionUndefined)?;
+            .ok_or_else(||return ToyError::new(ToyErrorType::InternalFunctionUndefined))?;
         let func_ref = module.declare_func_in_func(double_to_bits.1, builder.func);
         let call_inst = builder.ins().call(func_ref, &[result_f64]);
         let result_bits = builder.inst_results(call_inst)[0];
@@ -218,7 +217,7 @@ impl Compiler {
                 }
                 InfixOp::And => Ok((builder.ins().band(l, r), TypeTok::Bool)),
                 InfixOp::Or => Ok((builder.ins().bor(l, r), TypeTok::Bool)),
-                _ => Err(ToyError::InvalidOperationOnGivenType),
+                _ => Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType)),
             };
         }
         if l_type_str == "Str" && r_type_str == "Str" {
@@ -232,6 +231,6 @@ impl Compiler {
                 l, r, l_type_str, r_type_str, op, module, builder,
             );
         }
-        return Err(ToyError::InvalidOperationOnGivenType)
+        return Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType))
     }
 }

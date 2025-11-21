@@ -9,7 +9,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::env;
 use std::rc::Rc;
-use crate::errors::ToyError;
+use crate::errors::{ToyError, ToyErrorType};
 
 impl Compiler {
     fn compile_struct_reassign<M: Module>(
@@ -37,7 +37,7 @@ impl Compiler {
         for (i, field) in fields.iter().enumerate() {
             let boxed_field = match current_struct.get(field){
                 Some(boxed_field) => boxed_field.clone(),
-                None => return Err(ToyError::KeyNotOnStruct)
+                None => return Err(ToyError::new(ToyErrorType::KeyNotOnStruct))
             };
 
             if i == fields.len() - 1 {
@@ -48,14 +48,14 @@ impl Compiler {
                         .iter()
                         .map(|(k, v)| (k.clone(), Box::new(*(v.clone()))))
                         .collect(),
-                    _ => return Err(ToyError::VariableNotAStruct),
+                    _ => return Err(ToyError::new(ToyErrorType::VariableNotAStruct)),
                 };
             }
         }
 
         let (new_val, new_val_type) = self.compile_expr(&value, module, func_builder, scope)?;
         if new_val_type != final_type {
-            return Err(ToyError::TypeMismatch);
+            return Err(ToyError::new(ToyErrorType::TypeMismatch));
         }
 
         let (first_field, _) = self.compile_expr(
@@ -281,7 +281,7 @@ impl Compiler {
         func_builder.switch_to_block(cond_block);
         let (v, t) = self.compile_expr(&cond, _module, func_builder, scope)?;
         if t != TypeTok::Bool {
-            return Err(ToyError::ExpressionNotBoolean)
+            return Err(ToyError::new(ToyErrorType::ExpressionNotBoolean))
         }
         func_builder
             .ins()
@@ -357,7 +357,7 @@ impl Compiler {
                 func_builder.ins().jump(merge_block, &[]);
             } else {
                 //this should be impossible no?
-                return Err(ToyError::InvalidLocationForBreakStatement);
+                return Err(ToyError::new(ToyErrorType::InvalidLocationForBreakStatement));
             }
             return Ok(None);
         }
@@ -366,7 +366,7 @@ impl Compiler {
             if let Some(cond_block) = self.loop_cond_block {
                 func_builder.ins().jump(cond_block, &[]);
             } else {
-                return Err(ToyError::InvalidLocationForContinueStatement)
+                return Err(ToyError::new(ToyErrorType::InvalidLocationForContinueStatement))
             }
             return Ok(None);
         }

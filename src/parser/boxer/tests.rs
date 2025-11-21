@@ -7,10 +7,10 @@ fn test_boxer_int_literal() {
     let input = String::from("4");
     let mut l = Lexer::new();
     let mut b = Boxer::new();
-    let toks = l.lex(input);
+    let toks = l.lex(input).unwrap();
     let boxes = b.box_toks(toks);
 
-    assert_eq!(boxes, vec![TBox::Expr(vec![Token::IntLit(4)]),])
+    assert_eq!(boxes.unwrap(), vec![TBox::Expr(vec![Token::IntLit(4)]),])
 }
 
 #[test]
@@ -18,11 +18,11 @@ fn test_boxer_infix_expression() {
     let input = String::from("8 - 3 * 5");
     let mut l = Lexer::new();
     let mut b = Boxer::new();
-    let toks = l.lex(input);
+    let toks = l.lex(input).unwrap();
     let boxes = b.box_toks(toks);
 
     assert_eq!(
-        boxes,
+        boxes.unwrap(),
         vec![TBox::Expr(vec![
             Token::IntLit(8),
             Token::Minus,
@@ -38,10 +38,10 @@ fn test_boxer_var_dec() {
     let input = String::from("let x = 9;");
     let mut l = Lexer::new();
     let mut b = Boxer::new();
-    let toks = l.lex(input);
+    let toks = l.lex(input).unwrap();
     let boxes = b.box_toks(toks);
     assert_eq!(
-        boxes,
+        boxes.unwrap(),
         vec![TBox::VarDec(
             Token::VarName(Box::new(String::from("x"))),
             None,
@@ -55,10 +55,10 @@ fn test_boxer_var_ref() {
     let input = "let x = 7; x = 8;".to_string();
     let mut l = Lexer::new();
     let mut b = Boxer::new();
-    let toks = l.lex(input);
+    let toks = l.lex(input).unwrap();
     let boxes = b.box_toks(toks);
     assert_eq!(
-        boxes,
+        boxes.unwrap(),
         vec![
             TBox::VarDec(
                 Token::VarName(Box::new("x".to_string())),
@@ -78,10 +78,10 @@ fn test_boxer_static_type() {
     let input = "let foo: int = 9;".to_string();
     let mut l = Lexer::new();
     let mut b = Boxer::new();
-    let toks = l.lex(input);
+    let toks = l.lex(input).unwrap();
     let boxes = b.box_toks(toks);
     assert_eq!(
-        boxes,
+        boxes.unwrap(),
         vec![TBox::VarDec(
             Token::VarName(Box::new("foo".to_string())),
             Some(TypeTok::Int),
@@ -95,11 +95,11 @@ fn test_boxer_bool_infix() {
     let input = "let x = 9 <= 4 || false;".to_string();
     let mut l = Lexer::new();
     let mut b = Boxer::new();
-    let toks = l.lex(input);
+    let toks = l.lex(input).unwrap();
     let boxes = b.box_toks(toks);
 
     assert_eq!(
-        boxes,
+        boxes.unwrap(),
         vec![TBox::VarDec(
             Token::VarName(Box::new("x".to_string())),
             None,
@@ -119,10 +119,10 @@ fn test_boxer_return_bool() {
     let input = "true || false;".to_string();
     let mut l = Lexer::new();
     let mut b = Boxer::new();
-    let toks = l.lex(input);
+    let toks = l.lex(input).unwrap();
     let boxes = b.box_toks(toks);
     assert_eq!(
-        boxes,
+        boxes.unwrap(),
         vec![TBox::Expr(vec![
             Token::BoolLit(true),
             Token::Or,
@@ -136,11 +136,11 @@ fn test_boxer_if_stmt() {
     let input = "let x: int = 5; if x < 9 {x = 6;}".to_string();
     let mut l = Lexer::new();
     let mut b = Boxer::new();
-    let toks = l.lex(input);
+    let toks = l.lex(input).unwrap();
     let boxes = b.box_toks(toks);
 
     assert_eq!(
-        boxes,
+        boxes.unwrap(),
         vec![
             TBox::VarDec(
                 Token::VarName(Box::new("x".to_string())),
@@ -168,11 +168,11 @@ fn test_boxer_nested_if() {
     let input = "if true{let x = 9; if x > 10 {x = 8;}}".to_string();
     let mut l = Lexer::new();
     let mut b = Boxer::new();
-    let toks = l.lex(input);
+    let toks = l.lex(input).unwrap();
     let boxes = b.box_toks(toks);
 
     assert_eq!(
-        boxes,
+        boxes.unwrap(),
         vec![TBox::IfStmt(
             vec![Token::BoolLit(true)],
             vec![
@@ -204,11 +204,11 @@ fn test_boxer_if_else() {
     let input = "if true && false{let x = 5;} else {let x: int = 6;}".to_string();
     let mut l = Lexer::new();
     let mut b = Boxer::new();
-    let toks = l.lex(input);
+    let toks = l.lex(input).unwrap();
     let boxes = b.box_toks(toks);
 
     assert_eq!(
-        boxes,
+        boxes.unwrap(),
         vec![TBox::IfStmt(
             vec![Token::BoolLit(true), Token::And, Token::BoolLit(false),],
             vec![TBox::VarDec(
@@ -230,11 +230,11 @@ fn test_boxer_parens() {
     let input = "let x: int = (14 - 3 * (6/2));".to_string();
     let mut l = Lexer::new();
     let mut b = Boxer::new();
-    let toks = l.lex(input);
+    let toks = l.lex(input).unwrap();
     let boxes = b.box_toks(toks);
 
     assert_eq!(
-        boxes,
+        boxes.unwrap(),
         vec![TBox::VarDec(
             Token::VarName(Box::new("x".to_string())),
             Some(TypeTok::Int),
@@ -260,11 +260,11 @@ fn test_boxer_func_dec_and_call() {
     let input = "fn add(a: int, b: int): int {return a + b;} let x = add(2, 3);".to_string();
     let mut l = Lexer::new();
     let mut b = Boxer::new();
-    let toks = l.lex(input);
+    let toks = l.lex(input).unwrap();
     let boxes = b.box_toks(toks);
 
     assert_eq!(
-        boxes,
+        boxes.unwrap(),
         vec![
             TBox::FuncDec(
                 Token::VarName(Box::new("add".to_string())),
@@ -300,11 +300,11 @@ fn test_boxer_string_lit() {
     let input = r#"let x: str = "hello world""#.to_string();
     let mut l = Lexer::new();
     let mut b = Boxer::new();
-    let toks = l.lex(input);
+    let toks = l.lex(input).unwrap();
     let boxes = b.box_toks(toks);
 
     assert_eq!(
-        boxes,
+        boxes.unwrap(),
         vec![TBox::VarDec(
             Token::VarName(Box::new("x".to_string())),
             Some(TypeTok::Str),
@@ -317,10 +317,10 @@ fn test_boxer_while_loops() {
     let mut l = Lexer::new();
     let mut b = Boxer::new();
     let toks =
-        l.lex("let x = 0; while x < 10{if x == 0{continue;} if x == 7{break;} x++;}x;".to_string());
+        l.lex("let x = 0; while x < 10{if x == 0{continue;} if x == 7{break;} x++;}x;".to_string()).unwrap();
     let boxes = b.box_toks(toks);
     assert_eq!(
-        boxes,
+        boxes.unwrap(),
         vec![
             TBox::VarDec(
                 Token::VarName(Box::new("x".to_string())),
@@ -372,9 +372,9 @@ fn test_boxer_fn_loop() {
     let mut l = Lexer::new();
     let mut b = Boxer::new();
     let toks = l.lex("fn loop(): int{let x = 0; while x<10{if x == 1{x++; continue;} if x == 7{break} x++;} return x;} loop();".to_string());
-    let boxes = b.box_toks(toks);
+    let boxes = b.box_toks(toks.unwrap());
     assert_eq!(
-        boxes,
+        boxes.unwrap(),
         vec![
             TBox::FuncDec(
                 Token::VarName(Box::new("loop".to_string())),
@@ -450,9 +450,9 @@ fn test_boxer_fn_no_params() {
     let mut l = Lexer::new();
     let mut b = Boxer::new();
     let toks = l.lex("fn foo(): int{ return 1;} foo();".to_string());
-    let boxes = b.box_toks(toks);
+    let boxes = b.box_toks(toks.unwrap());
     assert_eq!(
-        boxes,
+        boxes.unwrap(),
         vec![
             TBox::FuncDec(
                 Token::VarName(Box::new("foo".to_string())),
@@ -474,9 +474,9 @@ fn test_boxer_float() {
     let mut l = Lexer::new();
     let mut b = Boxer::new();
     let toks = l.lex("let x = 3.14159; let y: float = 9.3;".to_string());
-    let boxes = b.box_toks(toks);
+    let boxes = b.box_toks(toks.unwrap());
     assert_eq!(
-        boxes,
+        boxes.unwrap(),
         vec![
             TBox::VarDec(
                 Token::VarName(Box::new("x".to_string())),
@@ -497,9 +497,9 @@ fn test_boxer_arr_lit() {
     let mut l = Lexer::new();
     let mut b = Boxer::new();
     let toks = l.lex(r#"let arr: str[] = ["foo", "bar"];"#.to_string());
-    let boxes = b.box_toks(toks);
+    let boxes = b.box_toks(toks.unwrap());
     assert_eq!(
-        boxes,
+        boxes.unwrap(),
         vec![TBox::VarDec(
             Token::VarName(Box::new("arr".to_string())),
             Some(TypeTok::StrArr(1)),
@@ -519,9 +519,9 @@ fn test_boxer_arr_item_reassign() {
     let mut l = Lexer::new();
     let mut b = Boxer::new();
     let toks = l.lex("let arr = [1, 2, 3]; arr[1] = 4;".to_string());
-    let boxes = b.box_toks(toks);
+    let boxes = b.box_toks(toks.unwrap());
     assert_eq!(
-        boxes,
+        boxes.unwrap(),
         vec![
             TBox::VarDec(
                 Token::VarName(Box::new("arr".to_string())),
@@ -551,10 +551,10 @@ fn test_boxer_n_dimensional_arr_reassign() {
     let toks = l.lex(
         "let arr = [[true, true, false], [false, false, true]]; arr[0][1] = false;".to_string(),
     );
-    let boxes = b.box_toks(toks);
+    let boxes = b.box_toks(toks.unwrap());
 
     assert_eq!(
-        boxes,
+        boxes.unwrap(),
         vec![
             TBox::VarDec(
                 Token::VarName(Box::new("arr".to_string())),
@@ -596,9 +596,9 @@ fn test_boxer_struct_lit_and_ref() {
         "struct Point {x: float, y: float}; let a = Point{x: 0.0, y: 0.0}; println(a.x);"
             .to_string(),
     );
-    let boxes = b.box_toks(toks);
+    let boxes = b.box_toks(toks.unwrap());
     assert_eq!(
-        boxes,
+        boxes.unwrap(),
         vec![
             TBox::StructInterface(
                 Box::new("Point".to_string()),
@@ -638,9 +638,9 @@ fn test_boxer_struct_problematic() {
     let mut l = Lexer::new();
     let mut b = Boxer::new();
     let toks = l.lex(r#"struct Name{first: str, last: str}; let me = Name{first: "Chase", last: "Yalon"}; println(me.first);"#.to_string());
-    let boxes = b.box_toks(toks);
+    let boxes = b.box_toks(toks.unwrap());
     assert_eq!(
-        boxes,
+        boxes.unwrap(),
         vec![
             TBox::StructInterface(
                 Box::new("Name".to_string()),
@@ -680,9 +680,9 @@ fn test_boxer_nested_structs() {
     let mut l = Lexer::new();
     let mut b = Boxer::new();
     let toks = l.lex(r#"struct Name{first: str, last: str}; struct Person{name: Name, age: int}; let me = Person{name: Name{first: "Chase", last: "Yalon"}, age: 15};"#.to_string());
-    let boxes = b.box_toks(toks);
+    let boxes = b.box_toks(toks.unwrap());
     assert_eq!(
-        boxes,
+        boxes.unwrap(),
         vec![
             TBox::StructInterface(
                 Box::new("Name".to_string()),
@@ -740,9 +740,9 @@ fn test_boxer_struct_reassign() {
     let toks = l.lex(
         "struct Fee{a: int}; struct Foo{a: Fee}; let b = Foo{a: Fee{3}}; b.a = Fee{9};".to_string(),
     );
-    let boxes = b.box_toks(toks);
+    let boxes = b.box_toks(toks.unwrap());
     assert_eq!(
-        boxes,
+        boxes.unwrap(),
         vec![
             TBox::StructInterface(
                 Box::new("Fee".to_string()),
@@ -790,9 +790,9 @@ fn test_boxer_struct_func_param() {
     let mut b = Boxer::new();
     let toks =
         l.lex("struct Foo{a: int}; fn bar(f: Foo): int{return f.a;} bar(Foo{1});".to_string());
-    let boxes = b.box_toks(toks);
+    let boxes = b.box_toks(toks.unwrap());
     assert_eq!(
-        boxes,
+        boxes.unwrap(),
         vec![
             TBox::StructInterface(
                 Box::new("Foo".to_string()),

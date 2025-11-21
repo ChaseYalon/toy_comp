@@ -9,7 +9,7 @@ use std::rc::Rc;
 use cranelift::prelude::*;
 use cranelift_module::DataDescription;
 use cranelift_module::Module;
-use crate::errors::ToyError;
+use crate::errors::{ToyError, ToyErrorType};
 
 mod arrs;
 mod infix;
@@ -32,7 +32,7 @@ impl Compiler {
             &TypeTok::BoolArr(n) => (5, n),
             &TypeTok::IntArr(n) => (6, n),
             &TypeTok::FloatArr(n) => (7, n),
-            _ => return Err(ToyError::TypeIdNotAssigned),
+            _ => return Err(ToyError::new(ToyErrorType::TypeIdNotAssigned)),
         };
         let v = builder.ins().iconst(types::I64, n);
         param_values.push(v);
@@ -65,7 +65,7 @@ impl Compiler {
         }
         let o_func = temp.get(&name);
         if o_func.is_none() {
-            return Err(ToyError::UndefinedFunction);
+            return Err(ToyError::new(ToyErrorType::UndefinedFunction));
         }
         let mut param_values: Vec<Value> = Vec::new();
         let mut last_type: TypeTok = TypeTok::Str;
@@ -152,7 +152,7 @@ impl Compiler {
         // Call toy_malloc with the string pointer
         let malloc_func = match self.funcs.get("malloc") {
             Some(malloc_func) => malloc_func,
-            None => return Err(ToyError::InternalFunctionUndefined)
+            None => return Err(ToyError::new(ToyErrorType::InternalFunctionUndefined)),
         };
         let func_ref = module.declare_func_in_func(malloc_func.1, builder.func);
         let call_inst = builder.ins().call(func_ref, &[string_ptr]);

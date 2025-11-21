@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 use cranelift::prelude::*;
 use cranelift_module::Module;
-use crate::errors::ToyError;
+use crate::errors::{ToyError, ToyErrorType};
 
 impl Compiler {
     pub fn compile_struct_lit<M: Module>(
@@ -92,7 +92,7 @@ impl Compiler {
 
             let kv = match &current_type {
                 TypeTok::Struct(kv) => kv,
-                _ => return Err(ToyError::VariableNotAStruct),
+                _ => return Err(ToyError::new(ToyErrorType::VariableNotAStruct)),
             };
 
             current_type = *(kv.get(key).unwrap()).clone();

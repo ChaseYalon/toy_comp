@@ -25,7 +25,7 @@ macro_rules! compile_code {
         let mut p = Parser::new();
         let mut c = Compiler::new();
         let $o = c
-            .compile(p.parse(l.lex($i.to_string())), true, None)
+            .compile(p.parse(l.lex($i.to_string()).unwrap()).unwrap(), true, None)
             .unwrap().unwrap();
     };
 }
@@ -41,7 +41,7 @@ macro_rules! compile_code_aot {
         let mut p = Parser::new();
         let mut c = Compiler::new();
         c.compile(
-            p.parse(l.lex($i.to_string())),
+            p.parse(l.lex($i.to_string()).unwrap()).unwrap(),
             false,
             Some(&format!("temp/{}", output_name)),
         ).unwrap();

@@ -6,6 +6,8 @@ use crate::parser::toy_box::TBox;
 use crate::token::Token;
 use crate::token::TypeTok;
 use std::collections::HashMap;
+use crate::errors::{ToyError, ToyErrorType};
+
 mod exprs;
 pub struct AstGenerator {
     boxes: Vec<TBox>,
@@ -88,12 +90,13 @@ impl AstGenerator {
         self.var_type_scopes.push(HashMap::new());
     }
 
-    fn pop_scope(&mut self) {
+    fn pop_scope(&mut self) -> Result<(), ToyError> {
         if self.var_type_scopes.len() > 1 {
             self.var_type_scopes.pop();
         } else {
-            panic!("[ERROR] Cannot pop global scope");
+            return Err(ToyError::new(ToyErrorType::InternalParserFailure));
         }
+        return Ok(());
     }
 
     fn lookup_var_type(&self, name: &str) -> Option<TypeTok> {
@@ -112,7 +115,7 @@ impl AstGenerator {
         }
     }
 
-    fn find_top_val(&self, toks: &Vec<Token>) -> (usize, u32, Token) {
+    fn find_top_val(&self, toks: &Vec<Token>) -> Result<(usize, u32, Token), ToyError> {
         let mut best_idx = 0_usize;
         let mut best_val: u32 = 100_000_000;
         let mut best_tok: Token = Token::IntLit(0);
@@ -127,7 +130,7 @@ impl AstGenerator {
                 }
                 "RParen" => {
                     if depth == 0 {
-                        panic!("[ERROR] Unmatched RParen at index {}, toks: {:?}", i, toks);
+                        return Err(ToyError::new(ToyErrorType::UnclosedDelimiter))
                     }
                     depth -= 1;
                     continue;
@@ -141,7 +144,7 @@ impl AstGenerator {
 
             let maybe_val = self.p_table.get(&t.tok_type());
             if maybe_val.is_none() {
-                panic!("[ERROR] Unknown symbol, got {}", t);
+                return Err(ToyError::new(ToyErrorType::UnknownSymbol(t.clone())));
             }
 
             let val = *maybe_val.unwrap();
@@ -153,21 +156,21 @@ impl AstGenerator {
         }
 
         if depth != 0 {
-            panic!("[ERROR] Unmatched LParen in expression");
+            return Err(ToyError::new(ToyErrorType::UnclosedDelimiter));
         }
 
-        (best_idx, best_val, best_tok)
+        return Ok((best_idx, best_val, best_tok));
     }
 
-    fn parse_func_call(&self, toks: &Vec<Token>) -> (Ast, TypeTok) {
+    fn parse_func_call(&self, toks: &Vec<Token>) -> Result<(Ast, TypeTok), ToyError> {
         if toks[0].tok_type() != "VarRef" {
-            panic!("[ERROR] Expected Var(Func) ref, got {}", toks[0]);
+            return Err(ToyError::new(ToyErrorType::MalformedFuncCall));
         }
         if toks[1].tok_type() != "LParen" {
-            panic!("[ERROR] Expected \"(\", got {}", toks[1]);
+            return Err(ToyError::new(ToyErrorType::MalformedFuncCall));
         }
         if toks.last().unwrap().tok_type() != "RParen" {
-            panic!("[ERROR] Expected \")\", got {}", toks.last().unwrap());
+            return Err(ToyError::new(ToyErrorType::MalformedFuncCall));
         }
         let name = match toks[0].clone() {
             Token::VarRef(n) => *n,
@@ -179,20 +182,17 @@ impl AstGenerator {
             .collect();
         let mut processed_params: Vec<(Ast, TypeTok)> = Vec::new();
         for p in unprocessed_params {
-            processed_params.push(self.parse_expr(&p.to_vec()));
+            processed_params.push(self.parse_expr(&p.to_vec())?);
         }
         let types = self.func_param_type_map.get(&name);
         if types.is_none() {
-            panic!("[ERROR] Function {} is undefined", name);
+            return Err(ToyError::new(ToyErrorType::UndefinedFunction));
         }
 
         let types = types.unwrap();
         for (i, (_, type_tok)) in processed_params.iter().enumerate() {
             if type_tok != &types[i] && types[i] != TypeTok::Any {
-                panic!(
-                    "[ERROR] Mismatched types at index {}, expected {:?}, got {:?}",
-                    i, types[i], type_tok
-                );
+                return Err(ToyError::new(ToyErrorType::TypeMismatch));
             }
         }
         let vals: Vec<Ast> = processed_params
@@ -202,22 +202,22 @@ impl AstGenerator {
                 Some(a.clone())
             })
             .collect();
-        return (
+        return Ok((
             Ast::FuncCall(Box::new(name.clone()), vals),
             self.func_return_type_map
                 .get(&name.clone())
                 .unwrap()
                 .clone(),
-        );
+        ));
     }
 
     pub fn eat(&mut self) {
         self.bp += 1;
     }
 
-    fn parse_var_dec(&mut self, name: &Token, val: &Vec<Token>, var_type: Option<TypeTok>) -> Ast {
+    fn parse_var_dec(&mut self, name: &Token, val: &Vec<Token>, var_type: Option<TypeTok>) -> Result<Ast, ToyError> {
         let name_str = *name.get_var_name().unwrap();
-        let (val_ast, val_type) = self.parse_expr(val);
+        let (val_ast, val_type) = self.parse_expr(val)?;
         let ret_var_type: TypeTok;
         if var_type.is_some() {
             ret_var_type = var_type.unwrap();
@@ -230,19 +230,19 @@ impl AstGenerator {
             Box::new(val_ast),
         );
         self.insert_var_type(name_str.clone(), ret_var_type.clone());
-        return node;
+        return Ok(node);
     }
 
-    fn parse_var_ref(&self, name: &Token) -> Ast {
+    fn parse_var_ref(&self, name: &Token) -> Result<Ast, ToyError> {
         let name_s: String;
         match name {
             Token::VarRef(box_str) => name_s = *box_str.clone(),
             _ => unreachable!()
         }
-        return Ast::VarRef(Box::new(name_s));
+        return Ok(Ast::VarRef(Box::new(name_s)));
     }
 
-    fn parse_if_stmt(&mut self, stmt: TBox, should_eat: bool) -> Ast {
+    fn parse_if_stmt(&mut self, stmt: TBox, should_eat: bool) -> Result<Ast, ToyError> {
         let (cond, body, alt) = match stmt {
             TBox::IfStmt(c, b, a) => (c, b, a),
             _ => unreachable!(),
@@ -254,7 +254,7 @@ impl AstGenerator {
         let mut stmt_vec: Vec<Ast> = Vec::new();
         for stmt in body {
             debug!(targets: ["parser_verbose"], stmt);
-            stmt_vec.push(self.parse_stmt(stmt, false));
+            stmt_vec.push(self.parse_stmt(stmt, false)?);
         }
         self.pop_scope();
 
@@ -263,21 +263,21 @@ impl AstGenerator {
             self.push_scope();
             let mut else_vec: Vec<Ast> = Vec::new();
             for stmt in alt.unwrap() {
-                else_vec.push(self.parse_stmt(stmt, false));
+                else_vec.push(self.parse_stmt(stmt, false)?);
             }
             self.pop_scope();
             else_val = Some(else_vec);
         }
-        let if_stmt = Ast::IfStmt(Box::new(b_cond), stmt_vec, else_val);
+        let if_stmt = Ast::IfStmt(Box::new(b_cond?), stmt_vec, else_val);
 
         if should_eat {
             self.eat();
         }
 
-        return if_stmt;
+        return Ok(if_stmt);
     }
 
-    fn parse_func_dec(&mut self, stmt: TBox, should_eat: bool) -> Ast {
+    fn parse_func_dec(&mut self, stmt: TBox, should_eat: bool) -> Result<Ast, ToyError> {
         let (name_tok, params, return_type, box_boxy) = match stmt {
             TBox::FuncDec(n, p, r, b) => (n, p, r, b),
             _ => unreachable!(),
@@ -322,7 +322,7 @@ impl AstGenerator {
 
         let mut body: Vec<Ast> = Vec::new();
         for stmt in box_boxy {
-            body.push(self.parse_stmt(stmt, false))
+            body.push(self.parse_stmt(stmt, false)?)
         }
 
         self.pop_scope();
@@ -331,27 +331,27 @@ impl AstGenerator {
             self.eat();
         }
 
-        return Ast::FuncDec(Box::new(name), ast_params, return_type, body);
+        return Ok(Ast::FuncDec(Box::new(name), ast_params, return_type, body));
     }
 
-    fn parse_stmt(&mut self, val: TBox, should_eat: bool) -> Ast {
+    fn parse_stmt(&mut self, val: TBox, should_eat: bool) -> Result<Ast, ToyError> {
         debug!(targets: ["parser_verbose"], val);
 
         let node = match val {
             TBox::Expr(i) => {
-                let (node, _) = self.parse_expr(&i);
+                let (node, _) = self.parse_expr(&i)?;
                 node
             }
             TBox::VarDec(name, var_type, v_val) => {
-                self.parse_var_dec(&name, &v_val, var_type.clone())
+                self.parse_var_dec(&name, &v_val, var_type.clone())?
             }
             TBox::VarRef(name) => {
                 debug!(targets: ["parser_verbose"], name);
-                self.parse_var_ref(&name)
+                self.parse_var_ref(&name)?
             }
             TBox::VarReassign(var, val) => {
-                let var_node = self.parse_var_ref(&var);
-                let (val_node, _) = self.parse_expr(&val);
+                let var_node = self.parse_var_ref(&var)?;
+                let (val_node, _) = self.parse_expr(&val)?;
                 Ast::VarReassign(
                     Box::new(match var_node {
                         Ast::VarRef(i) => i.to_string(),
@@ -367,23 +367,23 @@ impl AstGenerator {
             TBox::Return(val) => {
                 let expr = match *val {
                     TBox::Expr(ref v) => v,
-                    _ => panic!("[ERROR] Return must return an expression, got {}", val),
+                    _ => return Err(ToyError::new(ToyErrorType::ExpectedExpression)),
                 };
 
-                let (res, _) = self.parse_expr(expr);
-                return Ast::Return(Box::new(res));
+                let (res, _) = self.parse_expr(expr)?;
+                return Ok(Ast::Return(Box::new(res)));
             }
 
             TBox::While(expr, body) => {
                 let parsed_expr = self.parse_bool_expr(&expr);
                 let mut parsed_body: Vec<Ast> = Vec::new();
                 for stmt in body {
-                    parsed_body.push(self.parse_stmt(stmt, false))
+                    parsed_body.push(self.parse_stmt(stmt, false)?)
                 }
                 if should_eat {
                     self.eat();
                 }
-                return Ast::WhileStmt(Box::new(parsed_expr), parsed_body);
+                return Ok(Ast::WhileStmt(Box::new(parsed_expr?), parsed_body));
             }
             TBox::Continue => Ast::Continue,
             TBox::Break => Ast::Break,
@@ -394,26 +394,23 @@ impl AstGenerator {
                 };
                 let mut idx: Vec<Ast> = Vec::new();
                 for item in i {
-                    let l_idx = self.parse_num_expr(&item);
+                    let l_idx = self.parse_num_expr(&item)?;
                     idx.push(l_idx);
                 }
-                let (value, v_type) = self.parse_expr(&v);
+                let (value, v_type) = self.parse_expr(&v)?;
 
                 let arr_type = self.lookup_var_type(&arr_name).unwrap();
                 //should not just be one but cannot figure out how to do it
                 if !arr_type.type_str().contains(&v_type.type_str())
                     && arr_type != TypeTok::AnyArr(1)
                 {
-                    panic!(
-                        "[ERROR] Element of type {:?} cannot be inserted into array of type {:?}",
-                        arr_type, arr_name
-                    );
+                    return Err(ToyError::new(ToyErrorType::ArrayElementsMustMatchArrayType))
                 }
                 Ast::ArrReassign(Box::new(arr_name), idx, Box::new(value))
             }
             TBox::StructReassign(n, fields, value_toks) => {
                 let name = *n;
-                let (value, _) = self.parse_expr(&value_toks);
+                let (value, _) = self.parse_expr(&value_toks)?;
                 //static type checking is done at codegen/compile time so type unsafety is fine here, will not compile unsafe code
                 Ast::StructReassign(Box::new(name), fields, Box::new(value))
             }
@@ -435,20 +432,20 @@ impl AstGenerator {
             self.eat();
         }
 
-        node
+        return Ok(node)
     }
 
-    pub fn generate(&mut self, boxes: Vec<TBox>) -> Vec<Ast> {
+    pub fn generate(&mut self, boxes: Vec<TBox>) -> Result<Vec<Ast>, ToyError> {
         self.boxes = boxes.clone();
         self.bp = 0_usize;
         debug!(targets: ["parser_verbose"], boxes);
         while self.bp < self.boxes.len() {
             let val = self.boxes[self.bp].clone();
             debug!(targets: ["parser_verbose"], val);
-            let stmt = self.parse_stmt(val, true);
+            let stmt = self.parse_stmt(val, true)?;
             self.nodes.push(stmt)
         }
-        return self.nodes.clone();
+        return Ok(self.nodes.clone());
     }
 }
 #[cfg(test)]

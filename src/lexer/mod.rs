@@ -1,6 +1,7 @@
 use crate::debug;
 use crate::token::{Token, TypeTok};
 use ordered_float::OrderedFloat;
+use crate::errors::{ToyError, ToyErrorType};
 
 #[derive(Debug)]
 pub struct Lexer {
@@ -61,10 +62,10 @@ impl Lexer {
         self.toks.push(tok);
         return true;
     }
-    fn lex_arr_def(&mut self, word: &str, base_type: TypeTok) -> bool {
+    fn lex_arr_def(&mut self, word: &str, base_type: TypeTok) -> Result<bool, ToyError> {
         for (i, c) in word.char_indices() {
             if self.peek(i) != c {
-                return false;
+                return Ok(false);
             }
         }
 
@@ -78,7 +79,7 @@ impl Lexer {
         }
 
         if arr_count == 0 {
-            return false;
+            return Ok(false);
         }
 
         let arr_type = match base_type {
@@ -87,15 +88,15 @@ impl Lexer {
             TypeTok::Str => TypeTok::StrArr(arr_count),
             TypeTok::Float => TypeTok::FloatArr(arr_count),
             TypeTok::Any => TypeTok::AnyArr(arr_count),
-            _ => panic!("[ERROR] Unimplemented base type"),
+            _ => return Err(ToyError::new(ToyErrorType::ArrayTypeInvalid)),
         };
 
         self.toks.push(Token::Type(arr_type));
         self.cp = i;
-        true
+        return Ok(true)
     }
 
-    pub fn lex(&mut self, input: String) -> Vec<Token> {
+    pub fn lex(&mut self, input: String) -> Result<Vec<Token>, ToyError> {
         self.chars = input.chars().collect();
         self.cp = 0;
 
@@ -118,19 +119,19 @@ impl Lexer {
                 continue;
             }
             //lex arrs before regular type to avoid int[] becoming (int) empty array
-            if self.lex_arr_def("int", TypeTok::Int) {
+            if self.lex_arr_def("int", TypeTok::Int)? {
                 continue;
             }
-            if self.lex_arr_def("bool", TypeTok::Bool) {
+            if self.lex_arr_def("bool", TypeTok::Bool)? {
                 continue;
             }
-            if self.lex_arr_def("str", TypeTok::Str) {
+            if self.lex_arr_def("str", TypeTok::Str)? {
                 continue;
             }
-            if self.lex_arr_def("float", TypeTok::Float) {
+            if self.lex_arr_def("float", TypeTok::Float)? {
                 continue;
             }
-            if self.lex_arr_def("any", TypeTok::Any) {
+            if self.lex_arr_def("any", TypeTok::Any)? {
                 continue;
             }
             if self.lex_keyword("let", Token::Let) {
@@ -206,7 +207,7 @@ impl Lexer {
                         }
 
                         if field_name.is_empty() {
-                            panic!("Expected field name after '.'");
+                            return Err(ToyError::new(ToyErrorType::MalformedFieldName)); //is this a good error
                         }
 
                         field_names.push(field_name);
@@ -221,7 +222,7 @@ impl Lexer {
                     self.toks.push(Token::StructRef(name, field_names));
                     continue;
                 } else {
-                    panic!("Unexpected token before '.'");
+                    return Err(ToyError::new(ToyErrorType::MalformedFieldName)); // is this a good error
                 }
             }
 
@@ -417,7 +418,7 @@ impl Lexer {
                 continue;
             }
 
-            panic!("[ERROR] Unexpected token, got {}", c);
+            return Err(ToyError::new(ToyErrorType::UnknownCharacter(c)));
         }
         debug!(targets: ["lexer_verbose"], self.toks.clone());
 
@@ -425,7 +426,7 @@ impl Lexer {
         self.flush_num();
         let to_ret = self.toks.clone();
         self.clean_up();
-        return to_ret;
+        return Ok(to_ret);
     }
     fn eat(&mut self) {
         self.cp += 1;

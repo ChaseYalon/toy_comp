@@ -13,9 +13,9 @@ macro_rules! setup_ast {
         let mut b = Boxer::new();
         let mut a = AstGenerator::new();
 
-        let toks = l.lex(input);
-        let boxes = b.box_toks(toks);
-        let $ast = a.generate(boxes);
+        let toks = l.lex(input).unwrap();
+        let boxes = b.box_toks(toks).unwrap();
+        let $ast = a.generate(boxes).unwrap();
     };
 }
 

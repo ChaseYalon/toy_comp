@@ -15,7 +15,7 @@ use std::io::Write;
 use std::path::Path;
 use std::process::Command;
 use std::rc::Rc;
-use crate::errors::ToyError;
+use crate::errors::{ToyError, ToyErrorType};
 
 mod exprs;
 mod internals;
@@ -204,10 +204,10 @@ impl Compiler {
                 .status();
             let status = match rstatus {
                 Ok(f) => f,
-                Err(_) => return Err(ToyError::InternalLinkerFailure)
+                Err(_) => return Err(ToyError::new(ToyErrorType::InternalLinkerFailure))
             };
             if !status.success() {
-                return Err(ToyError::InternalLinkerFailure);
+                return Err(ToyError::new(ToyErrorType::InternalLinkerFailure));
             }
             return Ok(None);
         }

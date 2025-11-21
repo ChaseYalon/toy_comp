@@ -1,3 +1,6 @@
+#![feature(error_generic_member_access)]
+#![feature(backtrace_frames)]
+
 use crate::compiler::Compiler;
 use std::env;
 use std::fs;
@@ -13,8 +16,7 @@ mod ffi;
 mod errors;
 use crate::{lexer::Lexer, parser::Parser};
 
-fn main() -> color_eyre::Result<()>{
-    color_eyre::install()?;
+fn main(){
     let args: Vec<String> = env::args().collect();
     if args.contains(&"--repl".to_string()) {
         loop {
@@ -35,11 +37,21 @@ fn main() -> color_eyre::Result<()>{
             }
             let args: Vec<String> = env::args().collect();
             let should_jit = args.contains(&"--aot".to_string());
+
+            // Do this:
+            let result = match p.parse(l.lex(String::from(input)).unwrap()) {
+                Ok(ast) => ast,
+                Err(e) => {
+                    eprintln!("{}", e);  // This will use your Display implementation
+                    std::process::exit(1);
+                }
+            };
+
             let user_fn = c.compile(
-                p.parse(l.lex(String::from(input))),
+                result,
                 !should_jit,
                 Some("output.exe"),
-            ).map_err(color_eyre::Report::from)?;
+            ).unwrap();
             if user_fn.is_some() {
                 println!(">>{}", user_fn.unwrap()());
             } else {
@@ -69,9 +81,8 @@ fn main() -> color_eyre::Result<()>{
     } else {
         None
     };
-    let res = c.compile(p.parse(l.lex(contents)), should_jit, path)?;
+    let res = c.compile(p.parse(l.lex(contents).unwrap()).unwrap(), should_jit, path).unwrap();
     if res.is_some() {
         println!("User fn: {}", res.unwrap()());
     }
-    return Ok(())
 }

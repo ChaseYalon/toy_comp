@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 use cranelift::prelude::*;
 use cranelift_module::Module;
-use crate::errors::ToyError;
+use crate::errors::{ToyError, ToyErrorType};
 
 impl Compiler {
     pub fn compile_arr_lit<M: Module>(
@@ -80,7 +80,7 @@ impl Compiler {
                 TypeTok::FloatArr(1) => TypeTok::Float,
                 TypeTok::AnyArr(1) => TypeTok::Any,
 
-                _ => return Err(ToyError::ArrayTypeInvalid)
+                _ => return Err(ToyError::new(ToyErrorType::ArrayTypeInvalid))
             };
         }
 

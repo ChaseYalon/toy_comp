@@ -3,11 +3,13 @@ use crate::debug;
 use crate::parser::ast::{Ast, InfixOp};
 use crate::token::{Token, TypeTok};
 use std::collections::HashMap;
+use crate::errors::{ToyError, ToyErrorType};
+
 impl AstGenerator {
-    pub fn parse_num_expr(&self, toks: &Vec<Token>) -> Ast {
+    pub fn parse_num_expr(&self, toks: &Vec<Token>) -> Result<Ast, ToyError> {
         if toks.len() == 1 {
             if toks[0].tok_type() == "IntLit" {
-                return Ast::IntLit(toks[0].get_val().unwrap());
+                return Ok(Ast::IntLit(toks[0].get_val().unwrap()));
             }
             if toks[0].tok_type() == "VarRef" {
                 return self.parse_var_ref(&toks[0]);
@@ -17,19 +19,19 @@ impl AstGenerator {
                     Token::FloatLit(f) => f,
                     _ => unreachable!(),
                 };
-                return Ast::FloatLit(val);
+                return Ok(Ast::FloatLit(val));
             }
         }
         if toks.len() == 0 {
-            panic!("[ERROR] Empty Expression");
+            return Err(ToyError::new(ToyErrorType::ExpectedExpression));
         }
-        let (best_idx, _, best_tok) = self.find_top_val(toks);
+        let (best_idx, _, best_tok) = self.find_top_val(toks)?;
         let left = &toks[0..best_idx];
         let right = &toks[best_idx + 1..toks.len()];
 
-        let (l_node, _) = self.parse_expr(&left.to_vec());
-        let (r_node, _) = self.parse_expr(&right.to_vec());
-        return Ast::InfixExpr(
+        let (l_node, _) = self.parse_expr(&left.to_vec())?;
+        let (r_node, _) = self.parse_expr(&right.to_vec())?;
+        return Ok(Ast::InfixExpr(
             Box::new(l_node),
             Box::new(r_node),
             match best_tok {
@@ -38,30 +40,30 @@ impl AstGenerator {
                 Token::Multiply => InfixOp::Multiply,
                 Token::Divide => InfixOp::Divide,
                 Token::Modulo => InfixOp::Modulo,
-                _ => panic!("[ERROR] WTF happened here, got operator {}", best_tok),
+                _ => return Err(ToyError::new(ToyErrorType::InvalidInfixOperation)),
             },
-        );
+        ));
     }
 
-    pub fn parse_bool_expr(&self, toks: &Vec<Token>) -> Ast {
+    pub fn parse_bool_expr(&self, toks: &Vec<Token>) -> Result<Ast, ToyError> {
         if toks.len() == 1 {
             if toks[0].tok_type() == "BoolLit" {
-                return Ast::BoolLit(match toks[0] {
+                return Ok(Ast::BoolLit(match toks[0] {
                     Token::BoolLit(b) => b,
                     _ => unreachable!(),
-                });
+                }));
             }
             if toks[0].tok_type() == "VarRef" {
                 return self.parse_var_ref(&toks[0]);
             }
         }
-        let (best_idx, _, best_tok) = self.find_top_val(toks);
+        let (best_idx, _, best_tok) = self.find_top_val(toks)?;
         let left = &toks[0..best_idx];
         let right = &toks[best_idx + 1..toks.len()];
 
-        let (l_node, _) = self.parse_expr(&left.to_vec());
-        let (r_node, _) = self.parse_expr(&right.to_vec());
-        return Ast::InfixExpr(
+        let (l_node, _) = self.parse_expr(&left.to_vec())?;
+        let (r_node, _) = self.parse_expr(&right.to_vec())?;
+        return Ok(Ast::InfixExpr(
             Box::new(l_node),
             Box::new(r_node),
             match best_tok {
@@ -73,45 +75,45 @@ impl AstGenerator {
                 Token::Or => InfixOp::Or,
                 Token::Equals => InfixOp::Equals,
                 Token::NotEquals => InfixOp::NotEquals,
-                _ => panic!("[ERROR] Wtf happened here (bool)"),
-            },
+                _ => return Err(ToyError::new(ToyErrorType::InvalidInfixOperation)),
+            }),
         );
     }
-    pub fn parse_str_expr(&self, toks: &Vec<Token>) -> Ast {
+    pub fn parse_str_expr(&self, toks: &Vec<Token>) -> Result<Ast, ToyError> {
         if toks.len() == 1 {
             if toks[0].tok_type() == "StringLit" {
-                return Ast::StringLit(match toks[0].clone() {
+                return Ok(Ast::StringLit(match toks[0].clone() {
                     Token::StringLit(b) => b,
                     _ => unreachable!(),
-                });
+                }));
             }
             if toks[0].tok_type() == "VarRef" {
                 return self.parse_var_ref(&toks[0]);
             }
         }
         //Only supported infix expression for strings is +
-        let (best_idx, _, best_tok) = self.find_top_val(toks);
+        let (best_idx, _, best_tok) = self.find_top_val(toks)?;
         let left = &toks[0..best_idx];
         let right = &toks[best_idx + 1..toks.len()];
 
-        let (l_node, _) = self.parse_expr(&left.to_vec());
-        let (r_node, _) = self.parse_expr(&right.to_vec());
-        return Ast::InfixExpr(
+        let (l_node, _) = self.parse_expr(&left.to_vec())?;
+        let (r_node, _) = self.parse_expr(&right.to_vec())?;
+        return Ok(Ast::InfixExpr(
             Box::new(l_node),
             Box::new(r_node),
             match best_tok {
                 Token::Plus => InfixOp::Plus,
                 _ => unreachable!(),
-            },
+            }),
         );
     }
-    pub fn parse_empty_expr(&self, toks: &Vec<Token>) -> (Ast, TypeTok) {
+    pub fn parse_empty_expr(&self, toks: &Vec<Token>) -> Result<(Ast, TypeTok), ToyError> {
         if toks.is_empty() {
-            panic!("[ERROR] No tokens provided for empty expression");
+            return Err(ToyError::new(ToyErrorType::ExpectedExpression));
         }
 
         if toks[0].tok_type() != "LParen" {
-            panic!("[ERROR] Expecting LParen, got {}", toks[0].clone());
+            return Err(ToyError::new(ToyErrorType::UnclosedDelimiter))
         }
 
         let mut depth = 0;
@@ -131,14 +133,17 @@ impl AstGenerator {
             }
         }
 
-        let end_idx = end_idx.expect("[ERROR] No matching RParen found");
+        let end_idx = match end_idx.clone() {
+            Some(i) => i,
+            None => return Err(ToyError::new(ToyErrorType::UnclosedDelimiter)),
+        };
 
         let inner_toks = &toks[1..end_idx];
-        let (inner_node, tok) = self.parse_expr(&inner_toks.to_vec());
+        let (inner_node, tok) = self.parse_expr(&inner_toks.to_vec())?;
 
-        (Ast::EmptyExpr(Box::new(inner_node)), tok)
+        Ok((Ast::EmptyExpr(Box::new(inner_node)), tok))
     }
-    pub fn parse_arr_lit(&self, toks: &Vec<Token>) -> (Ast, TypeTok) {
+    pub fn parse_arr_lit(&self, toks: &Vec<Token>) -> Result<(Ast, TypeTok), ToyError> {
         let mut arr_toks: Vec<Token> = Vec::new();
         let mut depth = 0;
         for t in toks[1..].iter() {
@@ -179,7 +184,7 @@ impl AstGenerator {
         let mut arr_types: Vec<TypeTok> = Vec::new();
         let mut arr_vals: Vec<Ast> = Vec::new();
         for elem in arr_elems {
-            let (elem_ast, elem_type) = self.parse_expr(&elem);
+            let (elem_ast, elem_type) = self.parse_expr(&elem)?;
             arr_vals.push(elem_ast);
             arr_types.push(elem_type);
         }
@@ -202,9 +207,9 @@ impl AstGenerator {
             };
         }
 
-        (Ast::ArrLit(arr_type.clone(), arr_vals), arr_type)
+        Ok((Ast::ArrLit(arr_type.clone(), arr_vals), arr_type))
     }
-    pub fn parse_struct_def(&self, toks: &Vec<Token>, name: String) -> (Ast, TypeTok) {
+    pub fn parse_struct_def(&self, toks: &Vec<Token>, name: String) -> Result<(Ast, TypeTok), ToyError> {
         // Manually split the tokens between the braces at top-level commas,
         // so nested struct/array literals aren't split incorrectly.
         let inner = &toks[2..toks.len() - 1]; // tokens inside the `{ ... }`
@@ -231,40 +236,33 @@ impl AstGenerator {
         let mut processed_kv: HashMap<String, (Ast, TypeTok)> = HashMap::new();
         for kv in unprocessed_kv {
             if kv.len() < 3 {
-                panic!("[ERROR] Malformed struct kv: {:?}", kv);
+                return Err(ToyError::new(ToyErrorType::MalformedStructField));
             }
             if kv[1].tok_type() != "Colon" {
-                panic!(
-                    "[ERROR] Expected Colon between name and value, got {}",
-                    kv[1].clone()
-                );
+                return Err(ToyError::new(ToyErrorType::MalformedStructField));
             }
             let key = match kv[0].clone() {
                 Token::VarRef(v) => *v,
-                _ => panic!("[ERROR] Expected name, got {}", kv[0]),
+                _ => return Err(ToyError::new(ToyErrorType::MalformedStructField)),
             };
             // kv[2..] are the tokens for the value (may be nested)
-            let (value, value_type) = self.parse_expr(&kv[2..kv.len()].to_vec());
+            let (value, value_type) = self.parse_expr(&kv[2..kv.len()].to_vec())?;
             let correct_type = match self.lookup_var_type(&name).unwrap().clone() {
                 TypeTok::Struct(f) => *(f.get(&key).unwrap()).clone(),
-                _ => panic!(
-                    "[ERROR] Variable {} is not a struct, it is a {:?}",
-                    name,
-                    self.lookup_var_type(&name).unwrap()
-                ),
+                _ => return Err(ToyError::new(ToyErrorType::VariableNotAStruct))
             };
             if value_type != correct_type {
-                panic!("[ERROR] Expected {:?}, got {:?}", correct_type, value_type);
+                return Err(ToyError::new(ToyErrorType::TypeMismatch));
             }
             processed_kv.insert(key, (value, value_type));
         }
-        (
+        Ok((
             Ast::StructLit(Box::new(name.clone()), Box::new(processed_kv)),
             self.lookup_var_type(&name).unwrap(),
-        )
+        ))
     }
 
-    pub fn parse_expr(&self, toks: &Vec<Token>) -> (Ast, TypeTok) {
+    pub fn parse_expr(&self, toks: &Vec<Token>) -> Result<(Ast, TypeTok), ToyError> {
         //guard clause for single tokens
         if toks.len() == 1 {
             //struct ref (a.x or a.x.y)
@@ -274,50 +272,42 @@ impl AstGenerator {
                     _ => unreachable!(),
                 };
 
-                let mut current_type = self.lookup_var_type(&s_name).unwrap();
+                let mut current_type:TypeTok = self.lookup_var_type(&s_name).unwrap();
 
                 for key in &keys {
                     match current_type {
                         TypeTok::Struct(m) => {
-                            current_type = *m
-                                .get(key)
-                                .unwrap_or_else(|| {
-                                    panic!("[ERROR] Field '{}' not found in struct", key)
-                                })
-                                .clone();
+                            current_type = if m.get(key).is_some() {*m.get(key).unwrap().clone()} else {return Err(ToyError::new(ToyErrorType::KeyNotOnStruct))};
                         }
-                        _ => panic!(
-                            "[ERROR] Cannot access field '{}' on non-struct type {:?}",
-                            key, current_type
-                        ),
+                        _ => return Err(ToyError::new(ToyErrorType::VariableNotAStruct))
                     }
                 }
 
-                return (Ast::StructRef(Box::new(s_name), keys), current_type);
+                return Ok((Ast::StructRef(Box::new(s_name), keys), current_type));
             }
             if toks[0].tok_type() == "IntLit" {
-                return (Ast::IntLit(toks[0].get_val().unwrap()), TypeTok::Int);
+                return Ok((Ast::IntLit(toks[0].get_val().unwrap()), TypeTok::Int));
             }
             if toks[0].tok_type() == "FloatLit" {
                 let val = match toks[0] {
                     Token::FloatLit(f) => f,
                     _ => unreachable!(),
                 };
-                return (Ast::FloatLit(val), TypeTok::Float);
+                return Ok((Ast::FloatLit(val), TypeTok::Float));
             }
             if toks[0].tok_type() == "StrLit" {
                 let val = match toks[0].clone() {
                     Token::StringLit(s) => s,
                     _ => unreachable!(),
                 };
-                return (Ast::StringLit(val), TypeTok::Str);
+                return Ok((Ast::StringLit(val), TypeTok::Str));
             }
             if toks[0].tok_type() == "BoolLit" {
                 let val = match toks[0].clone() {
                     Token::BoolLit(b) => b,
                     _ => unreachable!(),
                 };
-                return (Ast::BoolLit(val), TypeTok::Bool);
+                return Ok((Ast::BoolLit(val), TypeTok::Bool));
             }
             if toks[0].tok_type() == "VarRef" {
                 debug!(targets: ["parser_verbose"], "in var ref");
@@ -327,12 +317,9 @@ impl AstGenerator {
                 };
                 let var_ref_type = self.lookup_var_type(&s);
                 if var_ref_type.is_none() {
-                    panic!(
-                        "[ERROR] Could not figure out type of variable, {}",
-                        &toks[0]
-                    );
+                    return Err(ToyError::new(ToyErrorType::TypeHintNeeded));
                 }
-                return (self.parse_var_ref(&toks[0]), var_ref_type.unwrap().clone());
+                return Ok((self.parse_var_ref(&toks[0])?, var_ref_type.unwrap().clone()));
             }
         }
         //guard clause for function calls
@@ -382,9 +369,9 @@ impl AstGenerator {
             }
 
             if first_paren_closes_at == Some(toks.len() - 1) {
-                let (inner, inner_type) = self.parse_expr(&toks[1..toks.len() - 1].to_vec());
+                let (inner, inner_type) = self.parse_expr(&toks[1..toks.len() - 1].to_vec())?;
                 let to_ret_ast = Ast::EmptyExpr(Box::new(inner));
-                return (to_ret_ast, inner_type);
+                return Ok((to_ret_ast, inner_type));
             }
         }
         //arr ref like arr[0]
@@ -411,11 +398,11 @@ impl AstGenerator {
                 }
 
                 if bracket_depth != 0 {
-                    panic!("[ERROR] Unclosed brackets in array access for '{}'", name);
+                    return Err(ToyError::new(ToyErrorType::UnclosedDelimiter))
                 }
 
                 let inner_toks = &toks[i..j - 1];
-                let idx_expr = self.parse_num_expr(&inner_toks.to_vec());
+                let idx_expr = self.parse_num_expr(&inner_toks.to_vec())?;
                 idx_exprs.push(idx_expr);
 
                 if j >= toks.len() || toks[j].tok_type() != "LBrack" {
@@ -427,7 +414,7 @@ impl AstGenerator {
 
             let arr_type = match self.lookup_var_type(&name) {
                 Some(t) => t,
-                None => panic!("[ERROR] Variable {} is undefined", name),
+                None => return Err(ToyError::new(ToyErrorType::UndefinedVariable))
             };
 
             let mut item_type = arr_type.clone();
@@ -443,14 +430,11 @@ impl AstGenerator {
                     TypeTok::BoolArr(n) => TypeTok::BoolArr(n - 1),
                     TypeTok::FloatArr(n) => TypeTok::FloatArr(n - 1),
                     TypeTok::AnyArr(n) => TypeTok::AnyArr(n - 1),
-                    _ => panic!(
-                        "[ERROR] {:?} is not an array type or dimension mismatch",
-                        item_type
-                    ),
+                    _ => return Err(ToyError::new(ToyErrorType::ArrayTypeInvalid)) //if this error is triggered, something has gone very wrong
                 };
             }
 
-            return (Ast::ArrRef(Box::new(name), idx_exprs), item_type);
+            return Ok((Ast::ArrRef(Box::new(name), idx_exprs), item_type));
         }
 
         //Arr literals
@@ -478,13 +462,10 @@ impl AstGenerator {
                     j += 1;
                 }
                 if bracket_depth != 0 {
-                    panic!(
-                        "[ERROR] Unclosed brace in struct literal dec, Got: {:?}",
-                        toks
-                    );
+                    return Err(ToyError::new(ToyErrorType::UnclosedDelimiter))
                 }
                 let inner_toks = &toks[i - 2..j];
-                let (inner_expr, t) = self.parse_struct_def(&inner_toks.to_vec(), name.clone());
+                let (inner_expr, t) = self.parse_struct_def(&inner_toks.to_vec(), name.clone())?;
                 struct_dec_types.push(t);
                 struct_dec_exprs.push(inner_expr);
                 if j >= toks.len() || toks[j].tok_type() == "LBrace" {
@@ -492,40 +473,38 @@ impl AstGenerator {
                 }
                 i = j + 1;
             }
-            return (struct_dec_exprs[0].clone(), struct_dec_types[0].clone());
+            return Ok((struct_dec_exprs[0].clone(), struct_dec_types[0].clone()));
         }
 
-        let (best_idx, _, best_val) = self.find_top_val(toks);
+        let (best_idx, _, best_val) = self.find_top_val(toks)?;
         debug!(targets: ["parser", "parser_verbose"], best_val.clone());
         debug!(targets: ["parser", "parser_verbose"], toks.clone());
         return match best_val {
             Token::IntLit(_) | Token::Plus | Token::FloatLit(_) => {
                 let left = &toks[0..best_idx];
-                let (_, left_type) = self.parse_expr(&left.to_vec());
+                let (_, left_type) = self.parse_expr(&left.to_vec())?;
 
                 // if either side has float, type promote
                 let has_float = toks.iter().any(|t| t.tok_type() == "FloatLit");
 
-                match left_type {
-                    TypeTok::Str => (self.parse_str_expr(toks), TypeTok::Str),
-                    TypeTok::Int if has_float => (self.parse_num_expr(toks), TypeTok::Float),
-                    TypeTok::Int => (self.parse_num_expr(toks), TypeTok::Int),
-                    TypeTok::Bool => (self.parse_bool_expr(toks), TypeTok::Bool),
-                    TypeTok::Float => (self.parse_num_expr(toks), TypeTok::Float),
-                    _ => panic!(
-                        "[ERROR] Unsupported type for Plus operation: {:?}",
-                        left_type
-                    ),
-                }
+                let res = match left_type {
+                    TypeTok::Str => (self.parse_str_expr(toks)?, TypeTok::Str),
+                    TypeTok::Int if has_float => (self.parse_num_expr(toks)?, TypeTok::Float),
+                    TypeTok::Int => (self.parse_num_expr(toks)?, TypeTok::Int),
+                    TypeTok::Bool => (self.parse_bool_expr(toks)?, TypeTok::Bool),
+                    TypeTok::Float => (self.parse_num_expr(toks)?, TypeTok::Float),
+                    _ => return Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType)) //like the second of three times I check this
+                };
+                return Ok(res);
             }
             Token::Minus | Token::Divide | Token::Multiply | Token::Modulo => {
                 // if there is any float should type promote to float
                 let has_float = toks.iter().any(|t| t.tok_type() == "FloatLit");
 
                 if has_float {
-                    (self.parse_num_expr(toks), TypeTok::Float)
+                    Ok((self.parse_num_expr(toks)?, TypeTok::Float))
                 } else {
-                    (self.parse_num_expr(toks), TypeTok::Int)
+                    Ok((self.parse_num_expr(toks)?, TypeTok::Int))
                 }
             }
             Token::BoolLit(_)
@@ -536,10 +515,12 @@ impl AstGenerator {
             | Token::Equals
             | Token::NotEquals
             | Token::And
-            | Token::Or => (self.parse_bool_expr(toks), TypeTok::Bool),
-            Token::StringLit(_) => (self.parse_str_expr(toks), TypeTok::Str),
+            | Token::Or => Ok((self.parse_bool_expr(toks)?, TypeTok::Bool)),
+            Token::StringLit(_) => Ok((self.parse_str_expr(toks)?, TypeTok::Str)),
             Token::LParen | Token::RBrace => self.parse_empty_expr(toks),
-            _ => panic!("[ERROR] Unsupported type for expression, got {}", best_val),
+            _ => {
+                return Err(ToyError::new(ToyErrorType::ExpectedExpression))
+            }
         };
     }
 }

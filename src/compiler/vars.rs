@@ -9,7 +9,7 @@ use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use crate::errors::ToyError;
+use crate::errors::{ToyError, ToyErrorType};
 
 impl Compiler {
     
@@ -97,7 +97,7 @@ impl Scope {
             return Ok(self.vars.get(&name).unwrap().clone());
         }
         if self.parent.is_none() {
-            return Err(ToyError::UndefinedVariable);
+            return Err(ToyError::new(ToyErrorType::UndefinedVariable));
         }
         return self.parent.as_ref().unwrap().borrow().get(name);
     }
@@ -109,7 +109,7 @@ impl Scope {
             return Ok(self.interfaces.get(&name).unwrap().clone());
         }
         if self.parent.is_none() {
-            return Err(ToyError::UndefinedInterface)
+            return Err(ToyError::new(ToyErrorType::UndefinedInterface))
         }
         return self.parent.as_ref().unwrap().borrow().get_interface(name);
     }
@@ -121,7 +121,7 @@ impl Scope {
             return Ok(self.structs.get(&name).unwrap().clone());
         }
         if self.parent.is_none() {
-            return Err(ToyError::UndefinedStruct)
+            return Err(ToyError::new(ToyErrorType::UndefinedStruct))
         }
         return self.parent.as_ref().unwrap().borrow().get_struct(name);
     }

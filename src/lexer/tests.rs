@@ -8,7 +8,7 @@ fn test_lexer_int_literals() {
 
     //"4"
     let out = l.lex(String::from("4"));
-    assert_eq!(out, vec![Token::IntLit(4)]);
+    assert_eq!(out.unwrap(), vec![Token::IntLit(4)]);
 }
 
 #[test]
@@ -18,7 +18,7 @@ fn test_lexer_infix_ops() {
     //"18 - 3 / 6"
     let out = l.lex(String::from("18 - 3 / 6"));
     assert_eq!(
-        out,
+        out.unwrap(),
         vec![
             Token::IntLit(18),
             Token::Minus,
@@ -34,7 +34,7 @@ fn test_lexer_var_dec() {
     let mut l = Lexer::new();
     let out = l.lex(String::from("let x = 9;"));
     assert_eq!(
-        out,
+        out.unwrap(),
         vec![
             Token::Let,
             Token::VarName(Box::new("x".to_string())),
@@ -50,7 +50,7 @@ fn test_lexer_multiple_var_decs() {
     let mut l = Lexer::new();
     let out = l.lex(String::from("let x = 15; let y = 8;"));
     assert_eq!(
-        out,
+        out.unwrap(),
         vec![
             Token::Let,
             Token::VarName(Box::new("x".to_string())),
@@ -71,7 +71,7 @@ fn test_lexer_var_ref() {
     let mut l = Lexer::new();
     let out = l.lex("let x = 9; x + 3;".to_string());
     assert_eq!(
-        out,
+        out.unwrap(),
         vec![
             Token::Let,
             Token::VarName(Box::new("x".to_string())),
@@ -91,7 +91,7 @@ fn test_lexer_static_type() {
     let mut l = Lexer::new();
     let out = l.lex("let a: int = 0;".to_string());
     assert_eq!(
-        out,
+        out.unwrap(),
         vec![
             Token::Let,
             Token::VarName(Box::new("a".to_string())),
@@ -109,7 +109,7 @@ fn test_lexer_bool_lit() {
     let mut l = Lexer::new();
     let out = l.lex("let b: bool = true;".to_string());
     assert_eq!(
-        out,
+        out.unwrap(),
         vec![
             Token::Let,
             Token::VarName(Box::new("b".to_string())),
@@ -127,7 +127,7 @@ fn test_lexer_bool_infix() {
     let mut l = Lexer::new();
     let out = l.lex("let b = true; let c = b || false;".to_string());
     assert_eq!(
-        out,
+        out.unwrap(),
         vec![
             Token::Let,
             Token::VarName(Box::new("b".to_string())),
@@ -150,7 +150,7 @@ fn test_lexer_misc_infix() {
     let mut l = Lexer::new();
     let out = l.lex("let b = true; let c = b && false; let d = 8; let e = x <= 9;".to_string());
     assert_eq!(
-        out,
+        out.unwrap(),
         vec![
             Token::Let,
             Token::VarName(Box::new("b".to_string())),
@@ -185,7 +185,7 @@ fn test_lexer_misc_infix_2() {
     let mut l = Lexer::new();
     let out = l.lex("let x = 6 >= 0; let b = x != true; let c = 7 == 5;".to_string());
     assert_eq!(
-        out,
+        out.unwrap(),
         vec![
             Token::Let,
             Token::VarName(Box::new("x".to_string())),
@@ -217,7 +217,7 @@ fn test_lexer_if_stmt() {
     let mut l = Lexer::new();
     let out = l.lex("if true{}".to_string());
     assert_eq!(
-        out,
+        out.unwrap(),
         vec![
             Token::If,
             Token::BoolLit(true),
@@ -233,7 +233,7 @@ fn test_lexer_nested_if_else() {
     let out = l.lex("let x = 4; if x < 10{if true{x = 5}} else {x = 5};".to_string());
 
     assert_eq!(
-        out,
+        out.unwrap(),
         vec![
             Token::Let,
             Token::VarName(Box::new("x".to_string())),
@@ -269,7 +269,7 @@ fn test_lexer_nested_parens() {
     let mut l = Lexer::new();
     let out = l.lex("let x = (5 * (3 + 4)) / 7;".to_string());
     assert_eq!(
-        out,
+        out.unwrap(),
         vec![
             Token::Let,
             Token::VarName(Box::new("x".to_string())),
@@ -296,7 +296,7 @@ fn test_lexer_func() {
         l.lex("fn add(a: int, b: int): int { return a + b; }; let x = add(2, 3);".to_string());
 
     assert_eq!(
-        out,
+        out.unwrap(),
         vec![
             Token::Func,
             Token::VarName(Box::new("add".to_string())),
@@ -338,7 +338,7 @@ fn test_lexer_string_lit() {
     let mut l = Lexer::new();
     let out = l.lex(r#"let x = "hello";"#.to_string());
     assert_eq!(
-        out,
+        out.unwrap(),
         vec![
             Token::Let,
             Token::VarName(Box::new("x".to_string())),
@@ -354,7 +354,7 @@ fn test_call_builtin() {
     let mut l = Lexer::new();
     let out = l.lex(r#"println("hello world");"#.to_string());
     assert_eq!(
-        out,
+        out.unwrap(),
         vec![
             Token::VarRef(Box::new("println".to_string())),
             Token::LParen,
@@ -369,7 +369,7 @@ fn test_lexer_str_concat() {
     let mut l = Lexer::new();
     let out = l.lex(r#"let x = "foo" + "bar""#.to_string());
     assert_eq!(
-        out,
+        out.unwrap(),
         vec![
             Token::Let,
             Token::VarName(Box::new("x".to_string())),
@@ -386,7 +386,7 @@ fn test_str_var_concat() {
     let mut l = Lexer::new();
     let out = l.lex(r#"let x = "foo"; let y = "bar"; let z = x + y;"#.to_string());
     assert_eq!(
-        out,
+        out.unwrap(),
         vec![
             Token::Let,
             Token::VarName(Box::new("x".to_string())),
@@ -413,7 +413,7 @@ fn test_lexer_print() {
     let mut l = Lexer::new();
     let out = l.lex("print(4);".to_string());
     assert_eq!(
-        out,
+        out.unwrap(),
         vec![
             Token::VarRef(Box::new("print".to_string())),
             Token::LParen,
@@ -443,7 +443,7 @@ fn test_lexer_fib() {
         .to_string(),
     );
     assert_eq!(
-        out,
+        out.unwrap(),
         vec![
             Token::Func,
             Token::VarName(Box::new("fib".to_string())),
@@ -505,7 +505,7 @@ fn test_lexer_compound_ops() {
     let mut l = Lexer::new();
     let out = l.lex("let x = 5; x += 2; x -= 1; x *= 3; x /= 2; x++; x--;".to_string());
     assert_eq!(
-        out,
+        out.unwrap(),
         vec![
             Token::Let,
             Token::VarName(Box::new("x".to_string())),
@@ -544,7 +544,7 @@ fn test_lexer_while_loop() {
     let out =
         l.lex("let x = 0; while x < 10 {if x == 0{continue;} if x == 7 {break;} x++;}".to_string());
     assert_eq!(
-        out,
+        out.unwrap(),
         vec![
             Token::Let,
             Token::VarName(Box::new("x".to_string())),
@@ -586,7 +586,7 @@ fn test_lexer_str_type_conv() {
     let out = l.lex(r#"let x = "1"; let y = str(x) + "11"; println(y); "#.to_string());
 
     assert_eq!(
-        out,
+        out.unwrap(),
         vec![
             Token::Let,
             Token::VarName(Box::new("x".to_string())),
@@ -617,7 +617,7 @@ fn test_lexer_empty_string() {
     let mut l = Lexer::new();
     let out = l.lex(r#"let x = "";"#.to_string());
     assert_eq!(
-        out,
+        out.unwrap(),
         vec![
             Token::Let,
             Token::VarName(Box::new("x".to_string())),
@@ -633,7 +633,7 @@ fn test_lexer_float() {
     let mut l = Lexer::new();
     let out = l.lex("let pi = 3.1415; let x = 5; let z: float = 3.242;".to_string());
     assert_eq!(
-        out,
+        out.unwrap(),
         vec![
             Token::Let,
             Token::VarName(Box::new("pi".to_string())),
@@ -661,7 +661,7 @@ fn test_lexer_zero_float() {
     let mut l = Lexer::new();
     let out = l.lex("let pi = 3 + 0.1415;".to_string());
     assert_eq!(
-        out,
+        out.unwrap(),
         vec![
             Token::Let,
             Token::VarName(Box::new("pi".to_string())),
@@ -679,7 +679,7 @@ fn test_lexer_arr_lit_and_index() {
     let mut l = Lexer::new();
     let out = l.lex("let arr = [1, 2, 3]; let t = arr[2];".to_string());
     assert_eq!(
-        out,
+        out.unwrap(),
         vec![
             Token::Let,
             Token::VarName(Box::new("arr".to_string())),
@@ -709,7 +709,7 @@ fn test_lexer_static_arr_types() {
     let mut l = Lexer::new();
     let out = l.lex("let arrA: any[] = [1, 2, true]; let arrI: int[] = [1, 2, 3];".to_string());
     assert_eq!(
-        out,
+        out.unwrap(),
         vec![
             Token::Let,
             Token::VarName(Box::new("arrA".to_string())),
@@ -746,7 +746,7 @@ fn test_lexer_n_dimensional_arrays() {
     let mut l = Lexer::new();
     let toks = l.lex("let x: int[][] = [[1, 2, 3], [4, 5, 6]];".to_string());
     assert_eq!(
-        toks,
+        toks.unwrap(),
         vec![
             Token::Let,
             Token::VarName(Box::new("x".to_string())),
@@ -780,7 +780,7 @@ fn test_lexer_n_dimensional_arr_reassign() {
     let mut l = Lexer::new();
     let toks = l.lex(r#"let arr: str[][] = [["hello"], ["world"]]; arr[0][0] = "hi";"#.to_string());
     assert_eq!(
-        toks,
+        toks.unwrap(),
         vec![
             Token::Let,
             Token::VarName(Box::new("arr".to_string())),
@@ -819,7 +819,7 @@ fn test_lexer_struct_literal_and_ref() {
             .to_string(),
     );
     assert_eq!(
-        toks,
+        toks.unwrap(),
         vec![
             Token::Struct(Box::new("MyStruct".to_string())),
             Token::LBrace,
@@ -863,7 +863,7 @@ fn test_lexer_problematic_struct_dec() {
             .to_string(),
     );
     assert_eq!(
-        toks,
+        toks.unwrap(),
         vec![
             Token::Struct(Box::new("Point".to_string())),
             Token::LBrace,
@@ -907,7 +907,7 @@ fn test_lexer_nested_struct() {
             .to_string(),
     );
     assert_eq!(
-        toks,
+        toks.unwrap(),
         vec![
             Token::Struct(Box::new("Foo".to_string())),
             Token::LBrace,
@@ -950,7 +950,7 @@ fn test_lexer_nested_struct_ref() {
             .to_string(),
     );
     assert_eq!(
-        toks,
+        toks.unwrap(),
         vec![
             Token::Struct(Box::new("Foo".to_string())),
             Token::LBrace,
@@ -998,7 +998,7 @@ fn test_lexer_struct_reassign() {
     let mut l = Lexer::new();
     let toks = l.lex("struct Foo{a: int}; let b = Foo{a: 9}; b.a = 4;".to_string());
     assert_eq!(
-        toks,
+        toks.unwrap(),
         vec![
             Token::Struct(Box::new("Foo".to_string())),
             Token::LBrace,
@@ -1032,7 +1032,7 @@ fn test_lexer_nd_struct_reassign_variable() {
             .to_string(),
     );
     assert_eq!(
-        toks,
+        toks.unwrap(),
         vec![
             Token::Struct(Box::new("Fee".to_string())),
             Token::LBrace,
@@ -1087,7 +1087,7 @@ fn test_lexer_nd_struct_reassign() {
     let toks =
         l.lex("struct Fee{b: int}; let a = Fee{b: 1}; let fee = Fee{b: 2}; a = fee;".to_string());
     assert_eq!(
-        toks,
+        toks.unwrap(),
         vec![
             Token::Struct(Box::new("Fee".to_string())),
             Token::LBrace,

@@ -2,6 +2,7 @@ use crate::{
     parser::{ast::Ast, ast_gen::AstGenerator, boxer::Boxer},
     token::Token,
 };
+use crate::errors::ToyError;
 
 pub mod ast;
 mod ast_gen;
@@ -21,7 +22,9 @@ impl Parser {
             ast_gen: AstGenerator::new(),
         };
     }
-    pub fn parse(&mut self, input: Vec<Token>) -> Vec<Ast> {
-        return self.ast_gen.generate(self.boxer.box_toks(input));
+    pub fn parse(&mut self, input: Vec<Token>) -> Result<Vec<Ast>, ToyError> {
+        let boxes = self.boxer.box_toks(input)?;
+        let ast = self.ast_gen.generate(boxes)?;
+        return Ok(ast);
     }
 }
