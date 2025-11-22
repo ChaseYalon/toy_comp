@@ -46,16 +46,19 @@
         "luser",
         "msys",
         "msystem",
+        "noconfirm",
         "objdumping",
         "opps",
         "peekable",
         "println",
         "RBRACK",
         "repr",
+        "rustup",
         "sdiv",
         "srem",
         "strequal",
         "uextend",
         "Yalon"
-    ]
+    ],
+    "python.REPL.enableREPLSmartSend": false
 }
