@@ -6,9 +6,9 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use crate::errors::{ToyError, ToyErrorType};
 use cranelift::prelude::*;
 use cranelift_module::Module;
-use crate::errors::{ToyError, ToyErrorType};
 
 impl Compiler {
     pub fn compile_struct_lit<M: Module>(

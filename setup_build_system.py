@@ -73,7 +73,7 @@ if os_name == "Windows":
 
             subprocess.run([rustup_exe, "target", "add", "x86_64-pc-windows-gnu", "--toolchain", "nightly"], check=True)
             subprocess.run(["Remove-Item", "rustup-init.exe"], check=True, shell=True)#remove the installer
-            subprocess.run("$env:PATH",  "=", "$env:USERPROFILE\.cargo\bin;", "+", "$env:PATH")
+            subprocess.run("$env:PATH",  "=", "$env:USERPROFILE\\.cargo\bin;", "+", "$env:PATH")
     if not detect_windows_clang():
         print("Installing Clang")
         subprocess.run("winget install LLVM.LLVM", shell=True, check=True)

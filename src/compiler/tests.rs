@@ -26,7 +26,8 @@ macro_rules! compile_code {
         let mut c = Compiler::new();
         let $o = c
             .compile(p.parse(l.lex($i.to_string()).unwrap()).unwrap(), true, None)
-            .unwrap().unwrap();
+            .unwrap()
+            .unwrap();
     };
 }
 macro_rules! compile_code_aot {
@@ -44,7 +45,8 @@ macro_rules! compile_code_aot {
             p.parse(l.lex($i.to_string()).unwrap()).unwrap(),
             false,
             Some(&format!("temp/{}", output_name)),
-        ).unwrap();
+        )
+        .unwrap();
 
         thread::sleep(Duration::from_millis(200));
 
@@ -292,4 +294,14 @@ fn test_compiler_struct_func_param() {
         "struct_func_param"
     );
     assert!(output.contains("1"))
+}
+
+#[test]
+fn test_compiler_not(){
+    compile_code_aot!(
+        output,
+        r#"let x = false || false; if !x{println("duh")} else {println("something has gone wrong")}"#,
+        "not"
+    );
+    assert!(output.contains("duh"));
 }

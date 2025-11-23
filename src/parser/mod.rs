@@ -1,3 +1,30 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:979815c743ab81e83a31c678fa0194b6e2264edfb07fd2d819d0517a701ad742
-size 947
+use crate::errors::ToyError;
+use crate::{
+    parser::{ast::Ast, ast_gen::AstGenerator, boxer::Boxer},
+    token::Token,
+};
+
+pub mod ast;
+mod ast_gen;
+mod boxer;
+mod toy_box;
+
+///Wrapper struct around boxer and generator sub modules
+pub struct Parser {
+    boxer: Boxer,
+    ast_gen: AstGenerator,
+}
+
+impl Parser {
+    pub fn new() -> Parser {
+        return Parser {
+            boxer: Boxer::new(),
+            ast_gen: AstGenerator::new(),
+        };
+    }
+    pub fn parse(&mut self, input: Vec<Token>) -> Result<Vec<Ast>, ToyError> {
+        let boxes = self.boxer.box_toks(input)?;
+        let ast = self.ast_gen.generate(boxes)?;
+        return Ok(ast);
+    }
+}

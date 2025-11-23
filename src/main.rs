@@ -12,11 +12,11 @@ pub mod parser;
 mod token;
 #[macro_use]
 mod macros;
-mod ffi;
 mod errors;
+mod ffi;
 use crate::{lexer::Lexer, parser::Parser};
 
-fn main(){
+fn main() {
     let args: Vec<String> = env::args().collect();
     if args.contains(&"--repl".to_string()) {
         loop {
@@ -42,16 +42,12 @@ fn main(){
             let result = match p.parse(l.lex(String::from(input)).unwrap()) {
                 Ok(ast) => ast,
                 Err(e) => {
-                    eprintln!("{}", e);  // This will use your Display implementation
+                    eprintln!("{}", e); // This will use your Display implementation
                     std::process::exit(1);
                 }
             };
 
-            let user_fn = c.compile(
-                result,
-                !should_jit,
-                Some("output.exe"),
-            ).unwrap();
+            let user_fn = c.compile(result, !should_jit, Some("output.exe")).unwrap();
             if user_fn.is_some() {
                 println!(">>{}", user_fn.unwrap()());
             } else {
@@ -81,7 +77,9 @@ fn main(){
     } else {
         None
     };
-    let res = c.compile(p.parse(l.lex(contents).unwrap()).unwrap(), should_jit, path).unwrap();
+    let res = c
+        .compile(p.parse(l.lex(contents).unwrap()).unwrap(), should_jit, path)
+        .unwrap();
     if res.is_some() {
         println!("User fn: {}", res.unwrap()());
     }

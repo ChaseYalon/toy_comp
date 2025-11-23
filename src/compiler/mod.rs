@@ -7,6 +7,7 @@ use cranelift_module::FuncId;
 use cranelift_module::{Linkage, Module};
 use cranelift_object::ObjectModule;
 
+use crate::errors::{ToyError, ToyErrorType};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::env;
@@ -15,7 +16,6 @@ use std::io::Write;
 use std::path::Path;
 use std::process::Command;
 use std::rc::Rc;
-use crate::errors::{ToyError, ToyErrorType};
 
 mod exprs;
 mod internals;
@@ -78,7 +78,11 @@ impl Compiler {
         }
     }
 
-    fn compile_internal<M: Module>(&mut self, module: &mut M, ast: Vec<Ast>) -> Result<(FuncId, Context), ToyError> {
+    fn compile_internal<M: Module>(
+        &mut self,
+        module: &mut M,
+        ast: Vec<Ast>,
+    ) -> Result<(FuncId, Context), ToyError> {
         let mut ctx: Context = module.make_context();
 
         let mut sig = module.make_signature();
@@ -199,12 +203,10 @@ impl Compiler {
                 ]
             };
 
-            let rstatus = Command::new(lib_path.join("ld.lld"))
-                .args(args)
-                .status();
+            let rstatus = Command::new(lib_path.join("ld.lld")).args(args).status();
             let status = match rstatus {
                 Ok(f) => f,
-                Err(_) => return Err(ToyError::new(ToyErrorType::InternalLinkerFailure))
+                Err(_) => return Err(ToyError::new(ToyErrorType::InternalLinkerFailure)),
             };
             if !status.success() {
                 return Err(ToyError::new(ToyErrorType::InternalLinkerFailure));
@@ -219,7 +221,9 @@ impl Compiler {
         module.finalize_definitions().unwrap();
 
         let code_ptr = module.get_finalized_function(func_id);
-        Ok(Some(unsafe { std::mem::transmute::<_, fn() -> i64>(code_ptr) }))
+        Ok(Some(unsafe {
+            std::mem::transmute::<_, fn() -> i64>(code_ptr)
+        }))
     }
 }
 

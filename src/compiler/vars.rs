@@ -1,5 +1,6 @@
 use super::Compiler;
 use crate::debug;
+use crate::errors::{ToyError, ToyErrorType};
 use crate::parser::ast::Ast;
 use crate::token::TypeTok;
 use cranelift::prelude::*;
@@ -9,17 +10,15 @@ use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use crate::errors::{ToyError, ToyErrorType};
 
 impl Compiler {
-    
     pub fn compile_var_reassign<M: Module>(
         &mut self,
         var_res: &Ast,
         _module: &mut M,
         builder: &mut FunctionBuilder<'_>,
         scope: &Rc<RefCell<Scope>>,
-    )->Result<(), ToyError> {
+    ) -> Result<(), ToyError> {
         let var_name: String;
         let new_val: Ast;
         match var_res {
@@ -51,7 +50,7 @@ impl Compiler {
                 val = *v.clone();
                 t_o = t;
             }
-            _ => unreachable!()
+            _ => unreachable!(),
         }
         if t_o.type_str() == "Struct" {
             self.current_struct_name = Some(name.clone());
@@ -109,7 +108,7 @@ impl Scope {
             return Ok(self.interfaces.get(&name).unwrap().clone());
         }
         if self.parent.is_none() {
-            return Err(ToyError::new(ToyErrorType::UndefinedInterface))
+            return Err(ToyError::new(ToyErrorType::UndefinedInterface));
         }
         return self.parent.as_ref().unwrap().borrow().get_interface(name);
     }
@@ -121,7 +120,7 @@ impl Scope {
             return Ok(self.structs.get(&name).unwrap().clone());
         }
         if self.parent.is_none() {
-            return Err(ToyError::new(ToyErrorType::UndefinedStruct))
+            return Err(ToyError::new(ToyErrorType::UndefinedStruct));
         }
         return self.parent.as_ref().unwrap().borrow().get_struct(name);
     }

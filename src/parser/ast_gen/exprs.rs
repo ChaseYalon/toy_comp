@@ -1,9 +1,9 @@
 use super::AstGenerator;
 use crate::debug;
+use crate::errors::{ToyError, ToyErrorType};
 use crate::parser::ast::{Ast, InfixOp};
 use crate::token::{Token, TypeTok};
 use std::collections::HashMap;
-use crate::errors::{ToyError, ToyErrorType};
 
 impl AstGenerator {
     pub fn parse_num_expr(&self, toks: &Vec<Token>) -> Result<Ast, ToyError> {
@@ -76,8 +76,8 @@ impl AstGenerator {
                 Token::Equals => InfixOp::Equals,
                 Token::NotEquals => InfixOp::NotEquals,
                 _ => return Err(ToyError::new(ToyErrorType::InvalidInfixOperation)),
-            }),
-        );
+            },
+        ));
     }
     pub fn parse_str_expr(&self, toks: &Vec<Token>) -> Result<Ast, ToyError> {
         if toks.len() == 1 {
@@ -104,8 +104,8 @@ impl AstGenerator {
             match best_tok {
                 Token::Plus => InfixOp::Plus,
                 _ => unreachable!(),
-            }),
-        );
+            },
+        ));
     }
     pub fn parse_empty_expr(&self, toks: &Vec<Token>) -> Result<(Ast, TypeTok), ToyError> {
         if toks.is_empty() {
@@ -113,7 +113,7 @@ impl AstGenerator {
         }
 
         if toks[0].tok_type() != "LParen" {
-            return Err(ToyError::new(ToyErrorType::UnclosedDelimiter))
+            return Err(ToyError::new(ToyErrorType::UnclosedDelimiter));
         }
 
         let mut depth = 0;
@@ -209,7 +209,11 @@ impl AstGenerator {
 
         Ok((Ast::ArrLit(arr_type.clone(), arr_vals), arr_type))
     }
-    pub fn parse_struct_def(&self, toks: &Vec<Token>, name: String) -> Result<(Ast, TypeTok), ToyError> {
+    pub fn parse_struct_def(
+        &self,
+        toks: &Vec<Token>,
+        name: String,
+    ) -> Result<(Ast, TypeTok), ToyError> {
         // Manually split the tokens between the braces at top-level commas,
         // so nested struct/array literals aren't split incorrectly.
         let inner = &toks[2..toks.len() - 1]; // tokens inside the `{ ... }`
@@ -249,7 +253,7 @@ impl AstGenerator {
             let (value, value_type) = self.parse_expr(&kv[2..kv.len()].to_vec())?;
             let correct_type = match self.lookup_var_type(&name).unwrap().clone() {
                 TypeTok::Struct(f) => *(f.get(&key).unwrap()).clone(),
-                _ => return Err(ToyError::new(ToyErrorType::VariableNotAStruct))
+                _ => return Err(ToyError::new(ToyErrorType::VariableNotAStruct)),
             };
             if value_type != correct_type {
                 return Err(ToyError::new(ToyErrorType::TypeMismatch));
@@ -263,6 +267,14 @@ impl AstGenerator {
     }
 
     pub fn parse_expr(&self, toks: &Vec<Token>) -> Result<(Ast, TypeTok), ToyError> {
+        //guard clause for not expressions - seems hacky but works
+        if toks[0].tok_type() == "Not" {
+            let (to_be_negated_val, to_be_negated_type) = self.parse_expr(&toks[1..toks.len()].to_vec())?;
+            if to_be_negated_type != TypeTok::Bool {
+                return Err(ToyError::new(ToyErrorType::ExpressionNotBoolean))
+            }
+            return Ok((Ast::Not(Box::new(to_be_negated_val)), TypeTok::Bool))
+        }
         //guard clause for single tokens
         if toks.len() == 1 {
             //struct ref (a.x or a.x.y)
@@ -272,14 +284,18 @@ impl AstGenerator {
                     _ => unreachable!(),
                 };
 
-                let mut current_type:TypeTok = self.lookup_var_type(&s_name).unwrap();
+                let mut current_type: TypeTok = self.lookup_var_type(&s_name).unwrap();
 
                 for key in &keys {
                     match current_type {
                         TypeTok::Struct(m) => {
-                            current_type = if m.get(key).is_some() {*m.get(key).unwrap().clone()} else {return Err(ToyError::new(ToyErrorType::KeyNotOnStruct))};
+                            current_type = if m.get(key).is_some() {
+                                *m.get(key).unwrap().clone()
+                            } else {
+                                return Err(ToyError::new(ToyErrorType::KeyNotOnStruct));
+                            };
                         }
-                        _ => return Err(ToyError::new(ToyErrorType::VariableNotAStruct))
+                        _ => return Err(ToyError::new(ToyErrorType::VariableNotAStruct)),
                     }
                 }
 
@@ -398,7 +414,7 @@ impl AstGenerator {
                 }
 
                 if bracket_depth != 0 {
-                    return Err(ToyError::new(ToyErrorType::UnclosedDelimiter))
+                    return Err(ToyError::new(ToyErrorType::UnclosedDelimiter));
                 }
 
                 let inner_toks = &toks[i..j - 1];
@@ -414,7 +430,7 @@ impl AstGenerator {
 
             let arr_type = match self.lookup_var_type(&name) {
                 Some(t) => t,
-                None => return Err(ToyError::new(ToyErrorType::UndefinedVariable))
+                None => return Err(ToyError::new(ToyErrorType::UndefinedVariable)),
             };
 
             let mut item_type = arr_type.clone();
@@ -430,7 +446,7 @@ impl AstGenerator {
                     TypeTok::BoolArr(n) => TypeTok::BoolArr(n - 1),
                     TypeTok::FloatArr(n) => TypeTok::FloatArr(n - 1),
                     TypeTok::AnyArr(n) => TypeTok::AnyArr(n - 1),
-                    _ => return Err(ToyError::new(ToyErrorType::ArrayTypeInvalid)) //if this error is triggered, something has gone very wrong
+                    _ => return Err(ToyError::new(ToyErrorType::ArrayTypeInvalid)), //if this error is triggered, something has gone very wrong
                 };
             }
 
@@ -462,7 +478,7 @@ impl AstGenerator {
                     j += 1;
                 }
                 if bracket_depth != 0 {
-                    return Err(ToyError::new(ToyErrorType::UnclosedDelimiter))
+                    return Err(ToyError::new(ToyErrorType::UnclosedDelimiter));
                 }
                 let inner_toks = &toks[i - 2..j];
                 let (inner_expr, t) = self.parse_struct_def(&inner_toks.to_vec(), name.clone())?;
@@ -493,7 +509,7 @@ impl AstGenerator {
                     TypeTok::Int => (self.parse_num_expr(toks)?, TypeTok::Int),
                     TypeTok::Bool => (self.parse_bool_expr(toks)?, TypeTok::Bool),
                     TypeTok::Float => (self.parse_num_expr(toks)?, TypeTok::Float),
-                    _ => return Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType)) //like the second of three times I check this
+                    _ => return Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType)), //like the second of three times I check this
                 };
                 return Ok(res);
             }
@@ -518,9 +534,7 @@ impl AstGenerator {
             | Token::Or => Ok((self.parse_bool_expr(toks)?, TypeTok::Bool)),
             Token::StringLit(_) => Ok((self.parse_str_expr(toks)?, TypeTok::Str)),
             Token::LParen | Token::RBrace => self.parse_empty_expr(toks),
-            _ => {
-                return Err(ToyError::new(ToyErrorType::ExpectedExpression))
-            }
+            _ => return Err(ToyError::new(ToyErrorType::ExpectedExpression)),
         };
     }
 }

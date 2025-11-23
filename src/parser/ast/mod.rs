@@ -58,6 +58,7 @@ pub enum Ast {
     StructRef(Box<String>, Vec<String>),
     ///struct name, parameters, value
     StructReassign(Box<String>, Vec<String>, Box<Ast>),
+    Not(Box<Ast>),
 }
 impl Ast {
     pub fn node_type(&self) -> String {
@@ -86,6 +87,7 @@ impl Ast {
             Ast::StructLit(_, _) => "StructLit".to_string(),
             Ast::StructRef(_, _) => "StructRef".to_string(),
             Ast::StructReassign(_, _, _) => "StructReassign".to_string(),
+            Ast::Not(_) => "Not".to_string(),
         };
     }
 }
@@ -149,6 +151,7 @@ impl fmt::Display for Ast {
                     "StructReassign Name({}), fields({:?}), Value({})",
                     *s, f, *v
                 ),
+                Ast::Not(n) => format!("Not({})", *n),
             }
         )
     }

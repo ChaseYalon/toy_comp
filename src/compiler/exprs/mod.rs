@@ -6,10 +6,10 @@ use std::any::Any;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use crate::errors::{ToyError, ToyErrorType};
 use cranelift::prelude::*;
 use cranelift_module::DataDescription;
 use cranelift_module::Module;
-use crate::errors::{ToyError, ToyErrorType};
 
 mod arrs;
 mod infix;
@@ -22,7 +22,7 @@ impl Compiler {
         _module: &M,
         builder: &mut FunctionBuilder<'_>,
         param_values: &mut Vec<Value>,
-    )-> Result<(), ToyError> {
+    ) -> Result<(), ToyError> {
         let (n, degree) = match t {
             &TypeTok::Str => (0, 0),
             &TypeTok::Bool => (1, 0),
@@ -40,7 +40,7 @@ impl Compiler {
             let d = builder.ins().iconst(types::I64, degree as i64);
             param_values.push(d);
         }
-        return Ok(())
+        return Ok(());
     }
     fn compile_func_call<M: Module>(
         &mut self,
@@ -134,16 +134,14 @@ impl Compiler {
         module: &mut M,
         builder: &mut FunctionBuilder<'_>,
     ) -> Result<(Value, TypeTok), ToyError> {
-        let data_id = module
-            .declare_anonymous_data(false, false)?;
+        let data_id = module.declare_anonymous_data(false, false)?;
 
         //Create null terminated string in mem
         let mut data_desc = DataDescription::new();
         let mut string_bytes = string_value.as_bytes().to_vec();
         string_bytes.push(0); // null terminator
         data_desc.define(string_bytes.into_boxed_slice());
-        module
-            .define_data(data_id, &data_desc)?;
+        module.define_data(data_id, &data_desc)?;
 
         // Get a global value reference to the data
         let data_gv = module.declare_data_in_func(data_id, builder.func);
@@ -168,7 +166,7 @@ impl Compiler {
         builder: &mut FunctionBuilder<'_>,
         scope: &Rc<RefCell<Scope>>,
     ) -> Result<(Value, TypeTok), ToyError> {
-        let to_ret:(Value, TypeTok) = match expr {
+        let to_ret: (Value, TypeTok) = match expr {
             Ast::FuncCall(b_name, params) => {
                 self.compile_func_call(*b_name.clone(), &params, _module, builder, scope)?
             }
@@ -207,9 +205,14 @@ impl Compiler {
                 let (var, var_type) = scope.as_ref().borrow().get(*(v).clone())?;
                 (builder.use_var(var), var_type.clone())
             }
+            Ast::Not(v) =>{
+                let (value, t) = self.compile_expr(&*v, _module, builder, scope)?;
+                let (one, _) = self.compile_expr(&Ast::IntLit(1), _module, builder, scope)?;
+                (builder.ins().bxor(value, one), t)
+            }
 
             _ => todo!("Unknown expression type"),
         };
-        return Ok(to_ret)
+        return Ok(to_ret);
     }
 }

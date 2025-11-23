@@ -31,6 +31,7 @@ pub enum Token {
     GreaterThanEqt,
     And,
     Or,
+    Not,
 
     //Keywords
     Let,
@@ -198,6 +199,7 @@ impl Token {
             Self::Struct(_) => "Struct".to_string(),
             Self::StructRef(_, _) => "StructRef".to_string(),
             Self::Dot => "Dot".to_string(),
+            Self::Not => "Not".to_string(),
         };
     }
     ///Is used to get value out of an int literal
@@ -274,6 +276,7 @@ impl fmt::Display for Token {
                 Token::Struct(n) => format!("STRUCT({})", *n),
                 Token::StructRef(s, k) => format!("STRUCT_REF STRUCT({}), KEY({:?})", *s, k),
                 Token::Dot => String::from("DOT"),
+                Token::Not => String::from("NOT"),
             }
         )
     }

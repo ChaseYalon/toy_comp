@@ -1,7 +1,7 @@
+use crate::errors::{ToyError, ToyErrorType};
 use crate::parser::toy_box::TBox;
 use crate::token::{Token, TypeTok};
 use std::collections::HashMap;
-use crate::errors::{ToyError, ToyErrorType};
 
 pub struct Boxer {
     toks: Vec<Token>,
@@ -86,17 +86,21 @@ impl Boxer {
                 } //assume it is a nested struct
                 _ => return Err(ToyError::new(ToyErrorType::VariableNotAStruct)), //is this the right bug
             };
-            return Ok(TBox::VarDec(input[1].clone(), Some(ty), input[5..].to_vec()));
+            return Ok(TBox::VarDec(
+                input[1].clone(),
+                Some(ty),
+                input[5..].to_vec(),
+            ));
         }
-        return Ok(TBox::VarDec(input[1].clone(), None, input[3..].to_vec()))
+        return Ok(TBox::VarDec(input[1].clone(), None, input[3..].to_vec()));
     }
 
     fn box_var_ref(&self, input: &Vec<Token>) -> Result<TBox, ToyError> {
         if input[0].tok_type() != "VarRef" {
-            return Err(ToyError::new(ToyErrorType::MalformedVariableReassign))
+            return Err(ToyError::new(ToyErrorType::MalformedVariableReassign));
         }
         if input[1].tok_type() != "Assign" {
-            return Err(ToyError::new(ToyErrorType::MalformedVariableReassign))
+            return Err(ToyError::new(ToyErrorType::MalformedVariableReassign));
         }
         Ok(TBox::VarReassign(input[0].clone(), input[2..].to_vec()))
     }
@@ -118,7 +122,7 @@ impl Boxer {
 
         let brace_start_idx = match brace_start_idx.clone() {
             Some(i) => i,
-            None => return Err(ToyError::new(ToyErrorType::UnclosedDelimiter))
+            None => return Err(ToyError::new(ToyErrorType::UnclosedDelimiter)),
         };
 
         if input.last().unwrap().tok_type() != "RBrace" {
@@ -231,7 +235,7 @@ impl Boxer {
                 }
 
                 if !found_body {
-                    return Err(ToyError::new(ToyErrorType::MalformedFunctionDeclaration))
+                    return Err(ToyError::new(ToyErrorType::MalformedFunctionDeclaration));
                 }
 
                 while func_end < input.len() && depth > 0 {
@@ -325,11 +329,9 @@ impl Boxer {
         }
         if input[return_type_begin + 2].tok_type() != "Type" {
             return Err(ToyError::new(ToyErrorType::MalformedFunctionDeclaration));
-
         }
         if input[return_type_begin + 3].tok_type() != "LBrace" {
             return Err(ToyError::new(ToyErrorType::MalformedFunctionDeclaration));
-
         }
         let body_toks = &input[return_type_begin + 4..input.len() - 1];
 
@@ -341,7 +343,12 @@ impl Boxer {
             Token::Type(t) => t,
             _ => return Err(ToyError::new(ToyErrorType::MalformedFunctionDeclaration)),
         };
-        return Ok(TBox::FuncDec(func_name, boxed_params, return_type, body_boxes));
+        return Ok(TBox::FuncDec(
+            func_name,
+            boxed_params,
+            return_type,
+            body_boxes,
+        ));
     }
     fn box_struct_interface_dec(&mut self, toks: &Vec<Token>) -> Result<TBox, ToyError> {
         let name = match toks[0].clone() {
@@ -349,7 +356,7 @@ impl Boxer {
             _ => unreachable!(),
         };
         if toks[1].tok_type() != "LBrace" {
-            return Err(ToyError::new(ToyErrorType::MalformedStructInterface))
+            return Err(ToyError::new(ToyErrorType::MalformedStructInterface));
         }
         let item_groups: Vec<&[Token]> = toks[2..toks.len() - 1]
             .split(|item| item == &Token::Comma)
@@ -358,7 +365,7 @@ impl Boxer {
 
         for group in item_groups {
             if group[1] != Token::Colon {
-                return Err(ToyError::new(ToyErrorType::MalformedStructInterface))
+                return Err(ToyError::new(ToyErrorType::MalformedStructInterface));
             }
             let key: String = match group[0].clone() {
                 Token::VarRef(v) => *v,
@@ -375,7 +382,7 @@ impl Boxer {
                         .collect();
                     TypeTok::Struct(boxed)
                 } //assume it is a nested struct
-                _ => return Err(ToyError::new(ToyErrorType::MalformedStructInterface))
+                _ => return Err(ToyError::new(ToyErrorType::MalformedStructInterface)),
             };
             params.insert(key, value);
         }
@@ -384,7 +391,6 @@ impl Boxer {
         return Ok(TBox::StructInterface(Box::new(name), Box::new(params)));
     }
     fn box_statement(&mut self, toks: Vec<Token>) -> Result<TBox, ToyError> {
-
         let first = toks[0].tok_type();
 
         if first == "Let" {
@@ -398,7 +404,9 @@ impl Boxer {
             return Ok(stmt);
         }
         if first == "Return" {
-            return Ok(TBox::Return(Box::new(TBox::Expr(toks[1..toks.len()].to_vec()))));
+            return Ok(TBox::Return(Box::new(TBox::Expr(
+                toks[1..toks.len()].to_vec(),
+            ))));
         }
         if first == "Break" {
             return Ok(TBox::Break);
@@ -438,7 +446,7 @@ impl Boxer {
             }
 
             if i >= len || toks[i].tok_type() != "Assign" {
-                return Err(ToyError::new(ToyErrorType::MalformedVariableReassign)) //this might be wrong
+                return Err(ToyError::new(ToyErrorType::MalformedVariableReassign)); //this might be wrong
             }
             let val_toks = toks[i + 1..].to_vec();
 
@@ -451,15 +459,18 @@ impl Boxer {
                 _ => unreachable!(),
             };
             let to_reassign_toks = toks[2..toks.len()].to_vec();
-            return Ok(TBox::StructReassign(Box::new(struct_name), field_names, to_reassign_toks));
+            return Ok(TBox::StructReassign(
+                Box::new(struct_name),
+                field_names,
+                to_reassign_toks,
+            ));
         }
 
-        return Ok(TBox::Expr(toks))
+        return Ok(TBox::Expr(toks));
     }
 
     /// Parse an if statement from a token slice, returning the TBox and number of tokens consumed
     fn box_if_standalone(&mut self, input: &Vec<Token>) -> Result<(TBox, usize), ToyError> {
-
         let mut i = 1;
 
         let mut cond: Vec<Token> = Vec::new();

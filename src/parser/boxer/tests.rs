@@ -316,8 +316,9 @@ fn test_boxer_string_lit() {
 fn test_boxer_while_loops() {
     let mut l = Lexer::new();
     let mut b = Boxer::new();
-    let toks =
-        l.lex("let x = 0; while x < 10{if x == 0{continue;} if x == 7{break;} x++;}x;".to_string()).unwrap();
+    let toks = l
+        .lex("let x = 0; while x < 10{if x == 0{continue;} if x == 7{break;} x++;}x;".to_string())
+        .unwrap();
     let boxes = b.box_toks(toks);
     assert_eq!(
         boxes.unwrap(),

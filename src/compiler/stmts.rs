@@ -5,11 +5,11 @@ use crate::token::TypeTok;
 use cranelift::prelude::*;
 use cranelift_module::{Linkage, Module};
 
+use crate::errors::{ToyError, ToyErrorType};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::env;
 use std::rc::Rc;
-use crate::errors::{ToyError, ToyErrorType};
 
 impl Compiler {
     fn compile_struct_reassign<M: Module>(
@@ -18,7 +18,7 @@ impl Compiler {
         module: &mut M,
         func_builder: &mut FunctionBuilder<'_>,
         scope: &Rc<RefCell<Scope>>,
-    )->Result<(), ToyError>{
+    ) -> Result<(), ToyError> {
         let (name, fields, value) = match node.clone() {
             Ast::StructReassign(n, f, v) => (*n, f, *v),
             _ => unreachable!(),
@@ -35,9 +35,9 @@ impl Compiler {
             .collect();
 
         for (i, field) in fields.iter().enumerate() {
-            let boxed_field = match current_struct.get(field){
+            let boxed_field = match current_struct.get(field) {
                 Some(boxed_field) => boxed_field.clone(),
-                None => return Err(ToyError::new(ToyErrorType::KeyNotOnStruct))
+                None => return Err(ToyError::new(ToyErrorType::KeyNotOnStruct)),
             };
 
             if i == fields.len() - 1 {
@@ -154,7 +154,7 @@ impl Compiler {
 
         builder.switch_to_block(merge_block);
         builder.seal_block(merge_block);
-        return Ok(())
+        return Ok(());
     }
     fn compile_func_dec<M: Module>(
         &mut self,
@@ -214,7 +214,6 @@ impl Compiler {
         func_builder.switch_to_block(entry_block);
         func_builder.seal_block(entry_block);
 
-
         let block_params: Vec<Value> = func_builder.block_params(entry_block).to_vec();
         for (i, param) in params.iter().enumerate() {
             if let Ast::FuncParam(param_name, param_type) = param {
@@ -233,9 +232,11 @@ impl Compiler {
                         .iter()
                         .map(|(k, v)| (k.clone(), *v.clone()))
                         .collect();
-                    parent_scope
-                        .borrow_mut()
-                        .set_unresolved_struct(*param_name.clone(), unboxed, var);
+                    parent_scope.borrow_mut().set_unresolved_struct(
+                        *param_name.clone(),
+                        unboxed,
+                        var,
+                    );
                 }
             }
         }
@@ -260,7 +261,7 @@ impl Compiler {
         _module: &mut M,
         func_builder: &mut FunctionBuilder<'_>,
         scope: &Rc<RefCell<Scope>>,
-    ) -> Result<(), ToyError>{
+    ) -> Result<(), ToyError> {
         let (cond, body) = match node.clone() {
             Ast::WhileStmt(c, b) => (*c, b),
             _ => unreachable!(),
@@ -281,7 +282,7 @@ impl Compiler {
         func_builder.switch_to_block(cond_block);
         let (v, t) = self.compile_expr(&cond, _module, func_builder, scope)?;
         if t != TypeTok::Bool {
-            return Err(ToyError::new(ToyErrorType::ExpressionNotBoolean))
+            return Err(ToyError::new(ToyErrorType::ExpressionNotBoolean));
         }
         func_builder
             .ins()
@@ -357,7 +358,9 @@ impl Compiler {
                 func_builder.ins().jump(merge_block, &[]);
             } else {
                 //this should be impossible no?
-                return Err(ToyError::new(ToyErrorType::InvalidLocationForBreakStatement));
+                return Err(ToyError::new(
+                    ToyErrorType::InvalidLocationForBreakStatement,
+                ));
             }
             return Ok(None);
         }
@@ -366,7 +369,9 @@ impl Compiler {
             if let Some(cond_block) = self.loop_cond_block {
                 func_builder.ins().jump(cond_block, &[]);
             } else {
-                return Err(ToyError::new(ToyErrorType::InvalidLocationForContinueStatement))
+                return Err(ToyError::new(
+                    ToyErrorType::InvalidLocationForContinueStatement,
+                ));
             }
             return Ok(None);
         }

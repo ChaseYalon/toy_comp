@@ -1100,3 +1100,38 @@ fn test_ast_gen_struct_func_param() {
         ]
     )
 }
+
+#[test]
+fn test_ast_gen_not() {
+    setup_ast!(
+        r#"let x = false || false; if !x{println("duh")} else {println("something has gone wrong")}"#,
+        ast
+    );
+    assert_eq!(
+        ast,
+        vec![
+            Ast::VarDec(
+                Box::new("x".to_string()),
+                TypeTok::Bool,
+                Box::new(Ast::InfixExpr(
+                    Box::new(Ast::BoolLit(false)),
+                    Box::new(Ast::BoolLit(false)),
+                    InfixOp::Or
+                ))
+            ),
+            Ast::IfStmt(
+                Box::new(Ast::Not(Box::new(Ast::VarRef(Box::new("x".to_string()))))),
+                vec![Ast::FuncCall(
+                    Box::new("println".to_string()),
+                    vec![Ast::StringLit(Box::new("duh".to_string()))]
+                )],
+                Some(vec![Ast::FuncCall(
+                    Box::new("println".to_string()),
+                    vec![Ast::StringLit(Box::new(
+                        "something has gone wrong".to_string()
+                    ))]
+                )])
+            )
+        ]
+    )
+}

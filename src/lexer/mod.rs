@@ -1,7 +1,7 @@
 use crate::debug;
+use crate::errors::{ToyError, ToyErrorType};
 use crate::token::{Token, TypeTok};
 use ordered_float::OrderedFloat;
-use crate::errors::{ToyError, ToyErrorType};
 
 #[derive(Debug)]
 pub struct Lexer {
@@ -93,7 +93,7 @@ impl Lexer {
 
         self.toks.push(Token::Type(arr_type));
         self.cp = i;
-        return Ok(true)
+        return Ok(true);
     }
 
     pub fn lex(&mut self, input: String) -> Result<Vec<Token>, ToyError> {
@@ -367,7 +367,9 @@ impl Lexer {
                     self.cp += 2;
                     continue;
                 }
-                todo!("Chase, you have to implement the not operator in the lexer");
+                self.toks.push(Token::Not);
+                self.eat();
+                continue;
             }
             if c == '{' {
                 self.flush();

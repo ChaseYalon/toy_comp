@@ -6,9 +6,9 @@ use crate::token::TypeTok;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use crate::errors::{ToyError, ToyErrorType};
 use cranelift::prelude::*;
 use cranelift_module::Module;
-use crate::errors::{ToyError, ToyErrorType};
 
 impl Compiler {
     pub fn compile_arr_lit<M: Module>(
@@ -80,7 +80,7 @@ impl Compiler {
                 TypeTok::FloatArr(1) => TypeTok::Float,
                 TypeTok::AnyArr(1) => TypeTok::Any,
 
-                _ => return Err(ToyError::new(ToyErrorType::ArrayTypeInvalid))
+                _ => return Err(ToyError::new(ToyErrorType::ArrayTypeInvalid)),
             };
         }
 

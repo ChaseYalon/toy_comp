@@ -1,12 +1,12 @@
 use ordered_float::OrderedFloat;
 
 use crate::debug;
+use crate::errors::{ToyError, ToyErrorType};
 use crate::parser::ast::Ast;
 use crate::parser::toy_box::TBox;
 use crate::token::Token;
 use crate::token::TypeTok;
 use std::collections::HashMap;
-use crate::errors::{ToyError, ToyErrorType};
 
 mod exprs;
 pub struct AstGenerator {
@@ -53,6 +53,7 @@ impl AstGenerator {
 
         map.insert(Token::And.tok_type(), 1);
         map.insert(Token::Or.tok_type(), 1);
+        map.insert(Token::Not.tok_type(), 1); //we must be careful with not, it can only bind to the right
 
         let mut var_type_scopes = Vec::new();
         var_type_scopes.push(HashMap::new());
@@ -130,7 +131,7 @@ impl AstGenerator {
                 }
                 "RParen" => {
                     if depth == 0 {
-                        return Err(ToyError::new(ToyErrorType::UnclosedDelimiter))
+                        return Err(ToyError::new(ToyErrorType::UnclosedDelimiter));
                     }
                     depth -= 1;
                     continue;
@@ -215,7 +216,12 @@ impl AstGenerator {
         self.bp += 1;
     }
 
-    fn parse_var_dec(&mut self, name: &Token, val: &Vec<Token>, var_type: Option<TypeTok>) -> Result<Ast, ToyError> {
+    fn parse_var_dec(
+        &mut self,
+        name: &Token,
+        val: &Vec<Token>,
+        var_type: Option<TypeTok>,
+    ) -> Result<Ast, ToyError> {
         let name_str = *name.get_var_name().unwrap();
         let (val_ast, val_type) = self.parse_expr(val)?;
         let ret_var_type: TypeTok;
@@ -237,7 +243,7 @@ impl AstGenerator {
         let name_s: String;
         match name {
             Token::VarRef(box_str) => name_s = *box_str.clone(),
-            _ => unreachable!()
+            _ => unreachable!(),
         }
         return Ok(Ast::VarRef(Box::new(name_s)));
     }
@@ -248,7 +254,10 @@ impl AstGenerator {
             _ => unreachable!(),
         };
 
-        let b_cond = self.parse_bool_expr(&cond);
+        let (b_cond, b_type) = self.parse_expr(&cond)?;
+        if b_type != TypeTok::Bool {
+            return Err(ToyError::new(ToyErrorType::ExpressionNotBoolean));
+        }
 
         self.push_scope();
         let mut stmt_vec: Vec<Ast> = Vec::new();
@@ -268,7 +277,7 @@ impl AstGenerator {
             self.pop_scope()?;
             else_val = Some(else_vec);
         }
-        let if_stmt = Ast::IfStmt(Box::new(b_cond?), stmt_vec, else_val);
+        let if_stmt = Ast::IfStmt(Box::new(b_cond), stmt_vec, else_val);
 
         if should_eat {
             self.eat();
@@ -404,7 +413,7 @@ impl AstGenerator {
                 if !arr_type.type_str().contains(&v_type.type_str())
                     && arr_type != TypeTok::AnyArr(1)
                 {
-                    return Err(ToyError::new(ToyErrorType::ArrayElementsMustMatchArrayType))
+                    return Err(ToyError::new(ToyErrorType::ArrayElementsMustMatchArrayType));
                 }
                 Ast::ArrReassign(Box::new(arr_name), idx, Box::new(value))
             }
@@ -432,7 +441,7 @@ impl AstGenerator {
             self.eat();
         }
 
-        return Ok(node)
+        return Ok(node);
     }
 
     pub fn generate(&mut self, boxes: Vec<TBox>) -> Result<Vec<Ast>, ToyError> {

@@ -2,6 +2,7 @@ use super::Compiler;
 use crate::parser::ast::Ast;
 use crate::token::TypeTok;
 
+use crate::errors::ToyError;
 use crate::ffi::*;
 use cranelift::prelude::*;
 use cranelift_codegen::isa;
@@ -10,7 +11,6 @@ use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{Linkage, Module, default_libcall_names};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use target_lexicon::Triple;
-use crate::errors::ToyError;
 
 impl Compiler {
     pub fn make_jit(&self) -> JITModule {

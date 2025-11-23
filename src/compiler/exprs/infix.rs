@@ -5,9 +5,9 @@ use crate::token::TypeTok;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use crate::errors::{ToyError, ToyErrorType};
 use cranelift::prelude::*;
 use cranelift_module::Module;
-use crate::errors::{ToyError, ToyErrorType};
 impl Compiler {
     fn compile_string_infix<M: Module>(
         &mut self,
@@ -19,7 +19,10 @@ impl Compiler {
     ) -> Result<(Value, TypeTok), ToyError> {
         return match op {
             InfixOp::Plus => {
-                let toy_concat = self.funcs.get("concat").ok_or_else(||{return ToyError::new(ToyErrorType::InternalFunctionUndefined)})?;
+                let toy_concat = self
+                    .funcs
+                    .get("concat")
+                    .ok_or_else(|| return ToyError::new(ToyErrorType::InternalFunctionUndefined))?;
 
                 let func_ref = module.declare_func_in_func(toy_concat.1, builder.func);
                 let call_inst = builder.ins().call(func_ref, &[left.clone(), right.clone()]);
@@ -28,7 +31,10 @@ impl Compiler {
                 Ok((heap_ptr, TypeTok::Str))
             }
             InfixOp::Equals => {
-                let toy_strequal = self.funcs.get("strequal").ok_or_else(||return ToyError::new(ToyErrorType::InternalFunctionUndefined))?;
+                let toy_strequal = self
+                    .funcs
+                    .get("strequal")
+                    .ok_or_else(|| return ToyError::new(ToyErrorType::InternalFunctionUndefined))?;
                 let func_ref = module.declare_func_in_func(toy_strequal.1, builder.func);
                 let call_inst = builder.ins().call(func_ref, &[left.clone(), right.clone()]);
                 let results = builder.inst_results(call_inst);
@@ -36,7 +42,10 @@ impl Compiler {
                 Ok((heap_ptr, TypeTok::Bool))
             }
             InfixOp::NotEquals => {
-                let toy_strequal = self.funcs.get("strequal").ok_or_else(||return ToyError::new(ToyErrorType::InternalFunctionUndefined))?;
+                let toy_strequal = self
+                    .funcs
+                    .get("strequal")
+                    .ok_or_else(|| return ToyError::new(ToyErrorType::InternalFunctionUndefined))?;
                 let func_ref = module.declare_func_in_func(toy_strequal.1, builder.func);
                 let call_inst = builder.ins().call(func_ref, &[left.clone(), right.clone()]);
                 let results = builder.inst_results(call_inst);
@@ -48,7 +57,7 @@ impl Compiler {
 
                 Ok((flipped, TypeTok::Bool))
             }
-            _ => Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType))
+            _ => Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType)),
         };
     }
     fn compile_int_expression<M: Module>(
@@ -91,7 +100,7 @@ impl Compiler {
             }
             _ => return Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType)),
         };
-        return Ok(to_ret)
+        return Ok(to_ret);
     }
     fn compile_partially_or_fully_float_expression<M: Module>(
         &mut self,
@@ -107,7 +116,7 @@ impl Compiler {
             let int_to_float = self
                 .funcs
                 .get("toy_int_to_float")
-                .ok_or_else(||return ToyError::new(ToyErrorType::InternalFunctionUndefined))?;
+                .ok_or_else(|| return ToyError::new(ToyErrorType::InternalFunctionUndefined))?;
             let func_ref = module.declare_func_in_func(int_to_float.1, builder.func);
             let call_inst = builder.ins().call(func_ref, &[left]);
             builder.inst_results(call_inst)[0]
@@ -115,7 +124,7 @@ impl Compiler {
             let float_bits_to_double = self
                 .funcs
                 .get("toy_float_bits_to_double")
-                .ok_or_else(||return ToyError::new(ToyErrorType::InternalFunctionUndefined))?;
+                .ok_or_else(|| return ToyError::new(ToyErrorType::InternalFunctionUndefined))?;
             let func_ref = module.declare_func_in_func(float_bits_to_double.1, builder.func);
             let call_inst = builder.ins().call(func_ref, &[left]);
             builder.inst_results(call_inst)[0]
@@ -125,7 +134,7 @@ impl Compiler {
             let int_to_float = self
                 .funcs
                 .get("toy_int_to_float")
-                .ok_or_else(||return ToyError::new(ToyErrorType::InternalFunctionUndefined))?;
+                .ok_or_else(|| return ToyError::new(ToyErrorType::InternalFunctionUndefined))?;
             let func_ref = module.declare_func_in_func(int_to_float.1, builder.func);
             let call_inst = builder.ins().call(func_ref, &[right]);
             builder.inst_results(call_inst)[0]
@@ -133,7 +142,7 @@ impl Compiler {
             let float_bits_to_double = self
                 .funcs
                 .get("toy_float_bits_to_double")
-                .ok_or_else(||return ToyError::new(ToyErrorType::InternalFunctionUndefined))?;
+                .ok_or_else(|| return ToyError::new(ToyErrorType::InternalFunctionUndefined))?;
             let func_ref = module.declare_func_in_func(float_bits_to_double.1, builder.func);
             let call_inst = builder.ins().call(func_ref, &[right]);
             builder.inst_results(call_inst)[0]
@@ -181,7 +190,7 @@ impl Compiler {
         let double_to_bits = self
             .funcs
             .get("toy_double_to_float_bits")
-            .ok_or_else(||return ToyError::new(ToyErrorType::InternalFunctionUndefined))?;
+            .ok_or_else(|| return ToyError::new(ToyErrorType::InternalFunctionUndefined))?;
         let func_ref = module.declare_func_in_func(double_to_bits.1, builder.func);
         let call_inst = builder.ins().call(func_ref, &[result_f64]);
         let result_bits = builder.inst_results(call_inst)[0];
@@ -231,6 +240,6 @@ impl Compiler {
                 l, r, l_type_str, r_type_str, op, module, builder,
             );
         }
-        return Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType))
+        return Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType));
     }
 }
