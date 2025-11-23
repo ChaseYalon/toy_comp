@@ -440,3 +440,47 @@ int64_t toy_arrlen(int64_t arr_in_ptr) {
     ToyArr* arr_ptr = (ToyArr*) arr_in_ptr;
     return arr_ptr->length;
 }
+
+char* _read_line() {
+    size_t size = 256;
+    size_t len = 0;
+    char *buffer = malloc(size);
+    if (!buffer) return NULL;
+
+    for (;;) {
+        int c = fgetc(stdin);
+        if (c == EOF) {
+            if (len == 0) { 
+                free(buffer);
+                return NULL;
+            }
+            break;
+        }
+
+        if (c == '\n') {
+            break;
+        }
+
+        buffer[len++] = (char)c;
+
+        // expand buffer if needed
+        if (len + 1 >= size) {
+            size *= 2;
+            char *newbuf = realloc(buffer, size);
+            if (!newbuf) {
+                free(buffer);
+                return NULL;
+            }
+            buffer = newbuf;
+        }
+    }
+
+    buffer[len] = '\0';
+    return buffer;
+}
+int64_t toy_input(int64_t i_prompt){
+    char* prompt = (char*) i_prompt;
+    printf("%s", prompt);
+    char* u_in = _read_line();
+    return (int64_t) u_in;
+}

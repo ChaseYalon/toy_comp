@@ -41,6 +41,7 @@ impl Compiler {
         jit_builder.symbol("toy_put", toy_put as *const u8);
         jit_builder.symbol("toy_get", toy_get as *const u8);
         jit_builder.symbol("toy_create_map", toy_create_map as *const u8);
+        jit_builder.symbol("toy_input", toy_input as *const u8);
         JITModule::new(jit_builder)
     }
 
@@ -355,6 +356,12 @@ impl Compiler {
             .unwrap();
         self.funcs
             .insert("toy_create_map".to_string(), (TypeTok::Void, func, vec![]));
+        
+        let mut sig: Signature = module.make_signature();
+        sig.returns.push(AbiParam::new(types::I64));
+        sig.params.push(AbiParam::new(types::I64));
+        let func = module.declare_function("toy_input", Linkage::Import, &sig).unwrap();
+        self.funcs.insert("input".to_string(),(TypeTok::Str, func, vec!["prompt".to_string()]));
     }
 
     pub fn compile_to_object(&mut self, ast: Vec<Ast>) -> Result<Vec<u8>, ToyError> {
