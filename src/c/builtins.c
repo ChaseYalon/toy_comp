@@ -8,6 +8,18 @@
 #include <inttypes.h>
 
 #include "builtins.h"
+#include "ctla/ctla.h"
+
+
+DebugHeap* DEBUG_HEAP = NULL;
+__attribute__((constructor))
+static void _toy_init() {
+    DEBUG_HEAP = DebugHeap_create();
+}
+#define META_MALLOC(size) \
+    ((getenv("TOY_DEBUG") && strcmp(getenv("TOY_DEBUG"), "TRUE") == 0) \
+        ? ToyMallocDebug(size, DEBUG_HEAP) \
+        : malloc(size))
 
 //datatype is 0 for string, 1 for bool, 2 for int, 3 for float, 4 for str[], 5 for bool[], 6 for int[], 7 for float[]
 //if datatype is 0 (input is string) then nput is a pointer
@@ -119,7 +131,7 @@ int64_t toy_malloc(int64_t ptr) {
     char* input = (char *)ptr;
     
     size_t len = strlen(input);
-    char* out = malloc(len + 1); //+1 for null terminator
+    char* out = META_MALLOC(len + 1); //+1 for null terminator
     if (out == NULL){
         fprintf(stderr, "[ERROR] Toy malloc failed\n");
         abort();
@@ -142,7 +154,7 @@ int64_t toy_concat(int64_t sp1, int64_t sp2) {
     size_t len2 = strlen(str2);
     size_t combinedLen = len1 + len2 + 1; // +1 for null terminator
     
-    char* out = malloc(combinedLen);
+    char* out = META_MALLOC(combinedLen);
     if (out == NULL){
         fprintf(stderr, "[ERROR] Malloc failed\n");
         abort();
@@ -192,6 +204,7 @@ int64_t toy_type_to_str(int64_t val, int64_t type) {
         abort();
     }
     if (type == 2) {
+        //temporary buffer, does not need META_MALLOC
         char* str = malloc(21);
         if (!str) {
             fprintf(stderr, "[ERROR] Memory allocation failed\n");
@@ -362,7 +375,7 @@ int64_t toy_double_to_float_bits(double d) {
 }
 int64_t toy_malloc_arr(int64_t len, int64_t type) {
     size_t size = (size_t)(len * 16 * 1.4); // allocate 40% more space
-    ToyArrVal* arr_ptr = malloc(size);
+    ToyArrVal* arr_ptr = META_MALLOC(size);
 
     ToyArrVal empty = { .value = 0, .type = 2, ._pad = {0} };
 
@@ -370,7 +383,7 @@ int64_t toy_malloc_arr(int64_t len, int64_t type) {
         memcpy((uint8_t*)arr_ptr + i * 16, &empty, 16);
     }
 
-    ToyArr* arr = malloc(sizeof(ToyArr));
+    ToyArr* arr = META_MALLOC(sizeof(ToyArr));
     arr->length = len;
     arr->capacity = (int64_t)(len * 1.4);
     arr->arr = arr_ptr;
@@ -399,7 +412,7 @@ void toy_write_to_arr(int64_t arr_in_ptr, int64_t value, int64_t idx, int64_t ty
             new_capacity = idx * 1.4;
         }
 
-        ToyArrVal* new_data = malloc(new_capacity * sizeof(ToyArrVal));
+        ToyArrVal* new_data = META_MALLOC(new_capacity * sizeof(ToyArrVal));
         if (!new_data) {
             fprintf(stderr, "[ERROR] Failed to allocate new array buffer\n");
             abort();
@@ -407,7 +420,7 @@ void toy_write_to_arr(int64_t arr_in_ptr, int64_t value, int64_t idx, int64_t ty
         // Copy old arr into new arr
         memcpy(new_data, arr_ptr->arr, arr_ptr->length * sizeof(ToyArrVal));
 
-        // Free old arr
+        // Free old arr - check if this is ok, might cause double free
         free(arr_ptr->arr);
 
         // Update metadata
@@ -444,7 +457,8 @@ int64_t toy_arrlen(int64_t arr_in_ptr) {
 char* _read_line() {
     size_t size = 256;
     size_t len = 0;
-    char *buffer = malloc(size);
+    //toy_input is marked as allocating a buffer, this is the actual buffer allocation
+    char *buffer = META_MALLOC(size);
     if (!buffer) return NULL;
 
     for (;;) {

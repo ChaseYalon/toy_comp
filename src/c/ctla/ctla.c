@@ -1,0 +1,38 @@
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include "ctla.h"
+
+DebugHeap* DebugHeap_create() {
+    DebugMap* m = DebugMap_create();
+    DebugHeap* d = malloc(sizeof(DebugHeap));
+    d->Map = m;
+    d->TotalLiveAllocations = 0;
+    return d;
+}
+
+void DebugHeap_free(DebugHeap*d) {
+    DebugMap_free(d->Map);
+    if (d->TotalLiveAllocations != 0) {
+        fprintf(stderr, "[WARN] There are %d live allocations remaining, at heap deallocations\n", d->TotalLiveAllocations);
+    }
+    free(d);
+
+}
+
+void* ToyMallocDebug(size_t size, DebugHeap* d) {
+    void* buff = malloc(size);
+    DebugMap_put(d->Map, buff, size);
+    d->TotalLiveAllocations++;
+    return buff;
+}
+void ToyMallocFree(void* buff, DebugHeap* d) {
+    if (!buff){
+        fprintf(stderr, "[ERROR] Tried to free a null buffer\n");
+        abort();
+    }
+    DebugMap_put(d->Map, buff, -1);
+    d->TotalLiveAllocations--;
+    free(buff);
+}

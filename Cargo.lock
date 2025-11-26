@@ -116,6 +116,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cmake"
+version = "0.1.54"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e7caa3f9de89ddbe2c607f4101924c5abec803763ae9534e4f4d7d8f84aa81f0"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "cranelift"
 version = "0.104.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -596,7 +605,7 @@ name = "toy_comp"
 version = "0.1.0"
 dependencies = [
  "bindgen",
- "cc",
+ "cmake",
  "cranelift",
  "cranelift-codegen",
  "cranelift-jit",

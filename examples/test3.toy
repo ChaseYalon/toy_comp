@@ -1,0 +1,12 @@
+fn sum(xs: int[], i: int): int {
+    if i == len(xs) {
+        return 0;
+    } else {
+        return xs[i] + sum(xs, i + 1);
+    }
+}
+
+let arr: int[] = [1, 2, 3];
+let total = sum(arr, 0);
+println("hi");
+println(total);
