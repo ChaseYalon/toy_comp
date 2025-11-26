@@ -1,3 +1,4 @@
+#since I wrote this, CMake and Ninja have become build requirements, add then to the script
 import sys
 import platform
 import shutil

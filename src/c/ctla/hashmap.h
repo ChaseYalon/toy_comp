@@ -21,3 +21,4 @@ DebugMap* DebugMap_create();
 void DebugMap_put(DebugMap *map, void *key, int64_t value);
 int DebugMap_get(DebugMap *map, void *key, int64_t *value);
 void DebugMap_free(DebugMap *map);
+void _PrintDebug_map(DebugMap* map);

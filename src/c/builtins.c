@@ -16,10 +16,6 @@ __attribute__((constructor))
 static void _toy_init() {
     DEBUG_HEAP = DebugHeap_create();
 }
-#define META_MALLOC(size) \
-    ((getenv("TOY_DEBUG") && strcmp(getenv("TOY_DEBUG"), "TRUE") == 0) \
-        ? ToyMallocDebug(size, DEBUG_HEAP) \
-        : malloc(size))
 
 //datatype is 0 for string, 1 for bool, 2 for int, 3 for float, 4 for str[], 5 for bool[], 6 for int[], 7 for float[]
 //if datatype is 0 (input is string) then nput is a pointer

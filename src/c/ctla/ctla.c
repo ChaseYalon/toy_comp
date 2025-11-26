@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include "ctla.h"
+#include "hashmap.h"
 
 DebugHeap* DebugHeap_create() {
     DebugMap* m = DebugMap_create();
@@ -15,7 +16,7 @@ DebugHeap* DebugHeap_create() {
 void DebugHeap_free(DebugHeap*d) {
     DebugMap_free(d->Map);
     if (d->TotalLiveAllocations != 0) {
-        fprintf(stderr, "[WARN] There are %d live allocations remaining, at heap deallocations\n", d->TotalLiveAllocations);
+        fprintf(stderr, "[WARN] There are %lld live allocations remaining, at heap deallocations\n", d->TotalLiveAllocations);
     }
     free(d);
 
@@ -35,4 +36,10 @@ void ToyMallocFree(void* buff, DebugHeap* d) {
     DebugMap_put(d->Map, buff, -1);
     d->TotalLiveAllocations--;
     free(buff);
+}
+
+void _PrintDebug_heap(DebugHeap* d) {
+    _PrintDebug_map(d->Map);
+    printf("Total Live entries remaining: %lld\n", d->TotalLiveAllocations);
+
 }

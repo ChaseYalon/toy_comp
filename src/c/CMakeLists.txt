@@ -57,7 +57,6 @@ set_target_properties(runtime core PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY "${OUT_BASE}"
 )
 
-# Install (optional, works with `cmake --install`)
 install(TARGETS runtime core
     ARCHIVE DESTINATION "${OUT_BASE}"
 )

@@ -1,5 +1,13 @@
 #pragma once
 #include <stdint.h>
+#include <stdlib.h>
+#include "ctla/ctla.h"
+
+extern DebugHeap* DEBUG_HEAP;
+#define META_MALLOC(size) \
+    ((getenv("TOY_DEBUG") && strcmp(getenv("TOY_DEBUG"), "TRUE") == 0) \
+        ? ToyMallocDebug(size, DEBUG_HEAP) \
+        : malloc(size))
 
 typedef struct {
     int64_t value;

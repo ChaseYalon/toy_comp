@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
+#include <stdbool.h>
 
 int64_t _hash(void *key, int64_t capacity) {
     return ((int64_t)key >> 3) % capacity;
@@ -65,4 +65,21 @@ void DebugMap_free(DebugMap *map) {
     free(map->buckets);
     free(map);
 
+}
+
+#include <stdio.h>
+#include <stdint.h>
+
+void _PrintDebug_map(DebugMap* map) {
+    if (!map) return;
+
+    for (int64_t i = 0; i < map->capacity; i++) {
+        Entry* current = map->buckets[i];
+        if (current){
+            while (current) {
+                printf("  key: %p, value: %lld\n", current->key, current->value);
+                current = current->next;
+            }
+        }
+    }
 }

@@ -4,13 +4,14 @@ use std::path::PathBuf;
 
 fn main() {
     let target = env::var("TARGET").unwrap();
+    unsafe { env::set_var("TOY_DEBUG", "TRUE"); }
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
 
     let c_src = manifest_dir.join("src").join("c");
 
    cmake::Config::new(&c_src)
         .generator("Ninja")       // always use Ninja
-        .profile("Release")     
+        .profile("Debug")     
         .build();
 
     let out_dir = manifest_dir.join("lib").join(&target);

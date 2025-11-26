@@ -3,10 +3,10 @@
 #include <stdio.h>
 #include <string.h>
 #include "hashmap.h"
-
+#include "builtins.h"
 
 int64_t toy_create_map() {
-    ToyHashMap *m = malloc(sizeof(ToyHashMap));
+    ToyHashMap *m = META_MALLOC(sizeof(ToyHashMap));
     m->count = 0;
     for (int i = 0; i < MAX_ENTRIES; i++)
         m->entries[i] = NULL;
@@ -30,7 +30,7 @@ void toy_put(int64_t i_map, int64_t key, int64_t value) {
         abort();
     }
 
-    _Entry *e = malloc(sizeof(_Entry));
+    _Entry *e = META_MALLOC(sizeof(_Entry));
     e->key = key;
     e->value = value;
     map->entries[map->count++] = e;

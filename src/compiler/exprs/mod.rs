@@ -71,10 +71,10 @@ impl Compiler {
         let mut last_type: TypeTok = TypeTok::Str;
         let (ret_type, id, param_names) = o_func.unwrap();
         for (i, p) in params.iter().enumerate() {
-            let mut g_param_name: String = "".to_string();
+            //let mut g_param_name: String = "".to_string();
             if let Ast::FuncParam(param_name_b, _) = p {
                 let param_name = *param_name_b.clone();
-                g_param_name = param_name.clone();
+                //g_param_name = param_name.clone();
                 self.current_struct_name = Some(param_name.clone());
             }
             if p.node_type() == "StructLit" {

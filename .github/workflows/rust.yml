@@ -24,16 +24,16 @@ jobs:
       if: runner.os == 'Windows'
       run: "winget install LLVM.LLVM"
       
-    - name: Install GCC (Linux only)
+    - name: Install clang (Linux only)
       if: runner.os == 'Linux'
-      run: sudo apt-get update && sudo apt-get install -y gcc
+      run: sudo apt-get update && sudo apt-get install -y clang
     
     - name: Set Cargo target for Linux
       if: runner.os == 'Linux'
       run: echo "CARGO_BUILD_TARGET=x86_64-unknown-linux-gnu" >> $GITHUB_ENV
     
-    - name: Verify GCC installation
-      run: gcc --version
+    - name: Verify clang installation
+      run: clang --version
     
     - name: Build
       run: cargo build --verbose
