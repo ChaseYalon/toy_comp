@@ -2,9 +2,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <string.h>
 #include "ctla.h"
 #include "hashmap.h"
-
+#include "../builtins.h"
 DebugHeap* DebugHeap_create() {
     DebugMap* m = DebugMap_create();
     DebugHeap* d = malloc(sizeof(DebugHeap));
@@ -28,13 +29,16 @@ void* ToyMallocDebug(size_t size, DebugHeap* d) {
     d->TotalLiveAllocations++;
     return buff;
 }
-void ToyMallocFree(void* buff, DebugHeap* d) {
+void toy_free(void* buff) {
     if (!buff){
         fprintf(stderr, "[ERROR] Tried to free a null buffer\n");
         abort();
     }
-    DebugMap_put(d->Map, buff, -1);
-    d->TotalLiveAllocations--;
+    if(strcmp(getenv("TOY_DEBUG"), "TRUE") == 0) {
+
+        DebugMap_put(DEBUG_HEAP->Map, buff, -1);
+        DEBUG_HEAP->TotalLiveAllocations--;
+    }
     free(buff);
 }
 

@@ -48,6 +48,7 @@
         "lruntime",
         "lshell",
         "luser",
+        "msstore",
         "msys",
         "msystem",
         "noconfirm",
@@ -62,9 +63,11 @@
         "sdiv",
         "srem",
         "strequal",
+        "tirgen",
         "uextend",
         "winget",
         "Yalon"
     ],
-    "python.REPL.enableREPLSmartSend": false
+    "python.REPL.enableREPLSmartSend": false,
+    "cmake.sourceDirectory": "C:/Users/chase_qlo04cr/sideProjects/toy_compiler/toy_comp/src/c"
 }

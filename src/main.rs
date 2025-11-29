@@ -1,17 +1,16 @@
 #![feature(error_generic_member_access)]
 #![feature(backtrace_frames)]
 
-use crate::compiler::Compiler;
 use std::env;
 use std::fs;
 use std::io::{self, Write};
 use std::process;
-pub mod compiler;
 mod lexer;
 pub mod parser;
 mod token;
 #[macro_use]
 mod macros;
+pub mod codegen;
 mod errors;
 mod ffi;
 use crate::{lexer::Lexer, parser::Parser};
@@ -23,7 +22,6 @@ fn main() {
             let mut input = String::from("");
             let mut l = Lexer::new();
             let mut p = Parser::new();
-            let mut c = Compiler::new();
             print!(">");
             io::stdout().flush().unwrap();
 
@@ -46,13 +44,6 @@ fn main() {
                     std::process::exit(1);
                 }
             };
-
-            let user_fn = c.compile(result, !should_jit, Some("output.exe")).unwrap();
-            if user_fn.is_some() {
-                println!(">>{}", user_fn.unwrap()());
-            } else {
-                continue;
-            }
         }
     }
     let mut filename: &String = &"NULL".to_string();
@@ -66,7 +57,6 @@ fn main() {
     });
     let mut l = Lexer::new();
     let mut p = Parser::new();
-    let mut c = Compiler::new();
     let should_jit = if args.contains(&"--aot".to_string()) {
         false
     } else {
@@ -77,10 +67,4 @@ fn main() {
     } else {
         None
     };
-    let res = c
-        .compile(p.parse(l.lex(contents).unwrap()).unwrap(), should_jit, path)
-        .unwrap();
-    if res.is_some() {
-        println!("User fn: {}", res.unwrap()());
-    }
 }

@@ -4,20 +4,25 @@ use std::path::PathBuf;
 
 fn main() {
     let target = env::var("TARGET").unwrap();
-    unsafe { env::set_var("TOY_DEBUG", "TRUE"); }
+    unsafe {
+        env::set_var("TOY_DEBUG", "TRUE");
+    }
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
 
     let c_src = manifest_dir.join("src").join("c");
 
-   cmake::Config::new(&c_src)
-        .generator("Ninja")       // always use Ninja
-        .profile("Debug")     
+    cmake::Config::new(&c_src)
+        .generator("Ninja") // always use Ninja
+        .profile("Debug")
         .build();
 
     let out_dir = manifest_dir.join("lib").join(&target);
 
     if !out_dir.exists() {
-        panic!("Expected build output directory does not exist: {}", out_dir.display());
+        panic!(
+            "Expected build output directory does not exist: {}",
+            out_dir.display()
+        );
     }
 
     let runtime = out_dir.join("libruntime.a");
@@ -48,8 +53,7 @@ fn main() {
         .generate()
         .expect("Unable to generate bindings");
 
-    let bindings_string =
-        "#![allow(unused)]\n".to_string()
+    let bindings_string = "#![allow(unused)]\n".to_string()
         + &bindings
             .to_string()
             .replace(r#"extern "C""#, r#"unsafe extern "C""#);

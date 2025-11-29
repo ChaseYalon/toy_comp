@@ -1123,3 +1123,10 @@ fn test_lexer_nd_struct_reassign() {
         ]
     )
 }
+
+#[test]
+fn test_lexer_stupid_bug() {
+    let mut l = Lexer::new();
+    let toks = l.lex("true".to_string()).unwrap();
+    assert_eq!(toks, vec![Token::BoolLit(true)])
+}

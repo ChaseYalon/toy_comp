@@ -115,7 +115,7 @@ impl fmt::Display for Ast {
             match self {
                 Ast::InfixExpr(a, b, c) =>
                     format!("INFIX_EXPR left({}), Right({}), Opp({})", *a, *b, c),
-                Ast::IntLit(i) => format!("INT({:.2}", i),
+                Ast::IntLit(i) => format!("INT({:.2})", i),
                 Ast::VarDec(name, var_type, value) =>
                     format!("Name({}), Value({}), Type({:?})", *name, value, var_type),
                 Ast::VarRef(var) => format!("Var({})", *var),

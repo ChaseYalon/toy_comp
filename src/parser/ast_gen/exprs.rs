@@ -269,11 +269,12 @@ impl AstGenerator {
     pub fn parse_expr(&self, toks: &Vec<Token>) -> Result<(Ast, TypeTok), ToyError> {
         //guard clause for not expressions - seems hacky but works
         if toks[0].tok_type() == "Not" {
-            let (to_be_negated_val, to_be_negated_type) = self.parse_expr(&toks[1..toks.len()].to_vec())?;
+            let (to_be_negated_val, to_be_negated_type) =
+                self.parse_expr(&toks[1..toks.len()].to_vec())?;
             if to_be_negated_type != TypeTok::Bool {
-                return Err(ToyError::new(ToyErrorType::ExpressionNotBoolean))
+                return Err(ToyError::new(ToyErrorType::ExpressionNotBoolean));
             }
-            return Ok((Ast::Not(Box::new(to_be_negated_val)), TypeTok::Bool))
+            return Ok((Ast::Not(Box::new(to_be_negated_val)), TypeTok::Bool));
         }
         //guard clause for single tokens
         if toks.len() == 1 {

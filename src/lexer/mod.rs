@@ -28,7 +28,7 @@ impl Lexer {
         };
     }
     pub fn peek(&self, i: usize) -> char {
-        if self.chars.len() < self.cp + i {
+        if self.cp + i >= self.chars.len() {
             //Not sure what to do hereP
             return '\0';
         }

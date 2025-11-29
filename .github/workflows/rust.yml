@@ -22,7 +22,7 @@ jobs:
     
     - name: Install clang
       if: runner.os == 'Windows'
-      run: "winget install LLVM.LLVM"
+      run: cargo install llvmenv && llvmenv init && llvmenv build-entry 21 && llvmenv global 32 
       
     - name: Install clang (Linux only)
       if: runner.os == 'Linux'
