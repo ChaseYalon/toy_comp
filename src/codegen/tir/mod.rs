@@ -1,8 +1,5 @@
 #![allow(unused)]
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::rc::Rc;
-use crate::codegen::tir::ir::{Function, SSAValue, TirBuilder};
+use crate::codegen::tir::ir::{BlockId, Function, SSAValue, TirBuilder};
 use crate::errors::ToyErrorType;
 use crate::parser::ast::InfixOp;
 use crate::token::TypeTok;
@@ -11,18 +8,21 @@ use crate::{
     errors::ToyError,
     parser::ast::Ast,
 };
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
 mod ir;
 #[derive(Debug, Clone, PartialEq)]
-pub struct Scope{
+pub struct Scope {
     parent: Option<Rc<RefCell<Scope>>>,
-    vars: HashMap<String, SSAValue>
+    vars: HashMap<String, SSAValue>,
 }
 impl Scope {
-    pub fn new_child(parent: &Rc<RefCell<Scope>>) -> Rc<RefCell<Scope>>{
-        return Rc::new(RefCell::new(Scope { 
-            parent: Some(parent.clone()), 
-            vars: HashMap::new() 
-        }))
+    pub fn new_child(parent: &Rc<RefCell<Scope>>) -> Rc<RefCell<Scope>> {
+        return Rc::new(RefCell::new(Scope {
+            parent: Some(parent.clone()),
+            vars: HashMap::new(),
+        }));
     }
     pub fn get_var(&self, name: &str) -> Result<SSAValue, ToyError> {
         if self.vars.contains_key(name) {
@@ -31,7 +31,7 @@ impl Scope {
         if self.parent.is_some() {
             return self.parent.as_ref().unwrap().borrow().get_var(name);
         }
-        return Err(ToyError::new(ToyErrorType::UndefinedVariable))
+        return Err(ToyError::new(ToyErrorType::UndefinedVariable));
     }
     pub fn set_var(&mut self, name: String, val: SSAValue) {
         self.vars.insert(name, val);
@@ -39,7 +39,8 @@ impl Scope {
 }
 pub struct AstToIrConverter {
     builder: TirBuilder,
-    global_scope: Rc<RefCell<Scope>>
+    global_scope: Rc<RefCell<Scope>>,
+    last_val: Option<i64>,
 }
 
 impl AstToIrConverter {
@@ -48,12 +49,17 @@ impl AstToIrConverter {
             builder: TirBuilder::new(),
             global_scope: Rc::new(RefCell::new(Scope {
                 parent: None,
-                vars: HashMap::new()
-            }))
+                vars: HashMap::new(),
+            })),
+            last_val: None,
         };
     }
-    fn compile_expr(&mut self, node: Ast, scope: &Rc<RefCell<Scope>>) -> Result<SSAValue, ToyError> {
-        return match node {
+    fn compile_expr(
+        &mut self,
+        node: Ast,
+        scope: &Rc<RefCell<Scope>>,
+    ) -> Result<SSAValue, ToyError> {
+        let res = match node {
             Ast::IntLit(v) => self.builder.iconst(v, TypeTok::Int),
             Ast::BoolLit(b) => self.builder.iconst(if b { 1 } else { 0 }, TypeTok::Bool),
             Ast::InfixExpr(left_i, right_i, op) => {
@@ -77,41 +83,150 @@ impl AstToIrConverter {
                     self.builder.numeric_infix(left, right, op)
                 };
             },
-            Ast::VarRef(n) => {
-                scope.as_ref().borrow().get_var(&*n)
+            Ast::EmptyExpr(c) => self.compile_expr(*c, scope),
+            Ast::VarRef(n) => scope.as_ref().borrow().get_var(&*n),
+            Ast::FuncCall(n, p) => {
+                let mut ssa_params: Vec<SSAValue> = Vec::new();
+                for param in p {
+                    let compiled_param = self.compile_expr(param, scope)?;
+                    ssa_params.push(compiled_param);
+                }
+                // `call` checks local functions first, then extern
+                self.builder.call(*n, ssa_params)
             }
             _ => todo!("Chase you have not implemented {} expressions yet", node),
-        };
+        }?;
+        return Ok(res);
     }
-    fn compile_var_dec(&mut self, name: String, ast_val: Ast, scope: &Rc<RefCell<Scope>>) -> Result<SSAValue, ToyError> {
+    fn compile_var_dec(
+        &mut self,
+        name: String,
+        ast_val: Ast,
+        scope: &Rc<RefCell<Scope>>,
+    ) -> Result<SSAValue, ToyError> {
         let compiled_val = self.compile_expr(ast_val, scope)?;
-        scope.as_ref().borrow_mut().set_var(name, compiled_val.clone());
-    return Ok(compiled_val);
-    }
-    fn compile_var_reassign(&mut self, name: String, ast_val: Ast, scope: &Rc<RefCell<Scope>> ) -> Result<SSAValue, ToyError> {
-        let compiled_val = self.compile_expr(ast_val, scope)?;
-        scope.as_ref().borrow_mut().set_var(name, compiled_val.clone());
+        scope
+            .as_ref()
+            .borrow_mut()
+            .set_var(name, compiled_val.clone());
         return Ok(compiled_val);
+    }
+    fn compile_var_reassign(
+        &mut self,
+        name: String,
+        ast_val: Ast,
+        scope: &Rc<RefCell<Scope>>,
+    ) -> Result<SSAValue, ToyError> {
+        let compiled_val = self.compile_expr(ast_val, scope)?;
+        scope
+            .as_ref()
+            .borrow_mut()
+            .set_var(name, compiled_val.clone());
+        return Ok(compiled_val);
+    }
+    fn compile_if_stmt(&mut self, node: Ast, scope: &Rc<RefCell<Scope>>) -> Result<(), ToyError> {
+        let (cond, body, alt) = match node {
+            Ast::IfStmt(c, b, a) => (*c, b, a),
+            _ => unreachable!(),
+        };
+        let compiled_cond = self.compile_expr(cond, scope)?;
+        let (true_id, false_id) = self.builder.jump_cond(compiled_cond)?;
+        self.builder.switch_block(true_id);
+        let child_scope = Scope::new_child(scope);
+        for ast in body {
+            self.compile_stmt(ast, &child_scope);
+        }
+        //if there is no else, then the false is the merge block
+        let mut merge_id: Option<BlockId> = None;
+        if alt.is_none() {
+            self.builder.jump_block_un_cond(false_id);
+            self.builder.switch_block(false_id);
+        } else {
+            merge_id = Some(self.builder.create_block()?);
+            self.builder.jump_block_un_cond(merge_id.unwrap());
+            self.builder.switch_block(false_id);
+            let else_child = Scope::new_child(scope);
+            for ast in alt.unwrap() {
+                self.compile_stmt(ast, &else_child);
+            }
+            self.builder.jump_block_un_cond(merge_id.unwrap());
+            self.builder.switch_block(merge_id.unwrap());
+        }
+
+        return Ok(());
+    }
+    fn compile_func_dec(&mut self, node: Ast, scope: &Rc<RefCell<Scope>>) -> Result<(), ToyError>{
+        let (name, params, ret_type, body) = match node {
+            Ast::FuncDec(n, p, r, b) => (*n, p, r, b),
+            _ => unreachable!()
+        };
+        let func_scope = Scope::new_child(scope);
+        let mut ssa_params: Vec<SSAValue> = Vec::new();
+        for p in params {
+            let (name, param_type) = match p {
+                Ast::FuncParam(n, t) => (*n, t),
+                _ => unreachable!()
+            };
+            let ssa_v = self.builder.generic_ssa(param_type);
+            func_scope.as_ref().borrow_mut().set_var(name, ssa_v.clone());
+            ssa_params.push(ssa_v);
+        }
+        self.builder.new_func(Box::new(name), ssa_params, ret_type);
+        for stmt in body {
+            self.compile_stmt(stmt, &func_scope)?;
+        }
+        // Switch back to user_main after compiling the function
+        self.builder.switch_fn("user_main".to_string())?;
+        return Ok(())
     }
     fn compile_stmt(&mut self, node: Ast, scope: &Rc<RefCell<Scope>>) -> Result<(), ToyError> {
         match node {
-            Ast::IntLit(_) => self.compile_expr(node, scope)?,
-            Ast::BoolLit(_) => self.compile_expr(node, scope)?,
-            Ast::InfixExpr(_, _, _) => self.compile_expr(node, scope)?,
-            Ast::VarDec(box_name, _, box_val) => self.compile_var_dec(*box_name, *box_val, scope)?,
-            Ast::VarRef(_) => self.compile_expr(node, scope)?,
-            Ast::VarReassign(boxed_name, boxed_val) => self.compile_var_reassign(*boxed_name, *boxed_val, scope)?,
+            Ast::IntLit(_) => {
+                let _ = self.compile_expr(node, scope)?;
+            }
+            Ast::BoolLit(_) => {
+                let _ = self.compile_expr(node, scope)?;
+            }
+            Ast::InfixExpr(_, _, _) => {
+                let _ = self.compile_expr(node, scope)?;
+            }
+            Ast::EmptyExpr(_) => {
+                let _ = self.compile_expr(node, scope);
+            }
+            Ast::FuncCall(_, _) => {
+                let _ = self.compile_expr(node, scope);
+            }
+            Ast::VarDec(box_name, _, box_val) => {
+                let _ = self.compile_var_dec(*box_name, *box_val, scope)?;
+            }
+            Ast::VarRef(_) => {
+                let _ = self.compile_expr(node, scope)?;
+            }
+            Ast::VarReassign(boxed_name, boxed_val) => {
+                let _ = self.compile_var_reassign(*boxed_name, *boxed_val, scope)?;
+            }
+            Ast::IfStmt(_, _, _) => self.compile_if_stmt(node, scope)?,
+            Ast::FuncDec(_, _, _, _) => self.compile_func_dec(node, scope)?,
+            Ast::Return(v) => {
+                let ast_val = *v;
+                let compiled_val = self.compile_expr(ast_val, scope)?;
+                self.builder.ret(compiled_val);
+            }
             _ => todo!("Chase you have not implemented {} yet", node),
         };
-        return Ok(())
+        return Ok(());
     }
     pub fn convert(&mut self, ast: Vec<Ast>) -> Result<Vec<Function>, ToyError> {
+        //register external functions here
         self.builder
             .new_func(Box::new("user_main".to_string()), vec![], TypeTok::Int);
         let user_main_scope = Scope::new_child(&self.global_scope);
         for node in ast {
             self.compile_stmt(node, &user_main_scope)?;
         }
+        //seems bad
+        let to_res = self.builder.iconst(0, TypeTok::Int)?;
+        self.builder.ret(to_res);
         return Ok(self.builder.funcs.clone());
     }
 }

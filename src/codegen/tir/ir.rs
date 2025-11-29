@@ -1,5 +1,7 @@
 #![allow(unused)]
 
+use std::collections::HashMap;
+
 use crate::{
     errors::{ToyError, ToyErrorType},
     parser::ast::InfixOp,
@@ -40,6 +42,8 @@ pub enum TirType {
     ///interfaces are represented as a vec of other types, there are no field names, everything is done by position
     StructInterface(Vec<TirType>),
     Void,
+    ///represents a pointer
+    I8PTR,
 }
 #[derive(PartialEq, Debug, Clone)]
 
@@ -59,13 +63,13 @@ pub enum TIR {
     /// first value is the handle for the expression, second and third are left and right, 4th is operator
     BoolInfix(ValueId, SSAValue, SSAValue, BoolInfixOp),
     ///jumps to first block if the ValueId points to an i1 of "1" (true), second "0" (false), compiler will return an error if it is not an i1
-    JumpCond(SSAValue, BlockId, BlockId),
+    JumpCond(ValueId, SSAValue, BlockId, BlockId),
     ///jumps unconditionally to AFTER the ValueId provided
-    Jump(ValueId),
+    Jump(ValueId, ValueId),
     ///jumps unconditionally to the BlockId specified
-    JumpUnCond(BlockId),
+    JumpBlockUnCond(ValueId, BlockId),
     ///returns the value pointed to, as value if less then the word size, otherwise as a pointer
-    Ret(SSAValue),
+    Ret(ValueId, SSAValue),
     ///call locally defined function, functions are called by name, SSA values are passed by order to the function , the bool represents weather the return value from the function is HEAP allocated, CTLA will take ownership of any returned values,
     CallLocalFunction(ValueId, Box<String>, Vec<SSAValue>, bool),
     ///call externally defined function, same rules as above final type is just return type
@@ -95,27 +99,28 @@ pub struct Function {
     pub body: Vec<Block>,
     pub name: Box<String>,
     pub ret_type: TirType,
+    pub ins_counter: usize
 }
 pub struct TirBuilder {
-    inst_counter: ValueId,
     block_counter: BlockId,
     pub funcs: Vec<Function>,
     curr_func: Option<usize>,  //index into self.funcs
     curr_block: Option<usize>, //index into self.curr_func.body,
+    extern_funcs: HashMap<String, (bool, TirType)>//external function name to is_allocator, return_type
 }
 impl TirBuilder {
     pub fn new() -> TirBuilder {
         return TirBuilder {
-            inst_counter: 0,
             block_counter: 0,
             funcs: vec![],
             curr_func: None,
             curr_block: None,
+            extern_funcs: HashMap::new()
         };
     }
     fn _next_value_id(&mut self) -> ValueId {
-        self.inst_counter += 1;
-        return self.inst_counter - 1;
+        self.funcs[self.curr_func.unwrap()].ins_counter += 1;
+        return self.funcs[self.curr_func.unwrap()].ins_counter - 1;
     }
     fn _next_block_id(&mut self) -> BlockId {
         self.block_counter += 1;
@@ -127,6 +132,7 @@ impl TirBuilder {
             params: params,
             body: vec![],
             ret_type: self._type_tok_to_tir_type(ret_type),
+            ins_counter: 0
         };
         let block = Block {
             id: self._next_block_id(),
@@ -143,6 +149,7 @@ impl TirBuilder {
             TypeTok::Bool => TirType::I1,
             TypeTok::Float => TirType::F64,
             TypeTok::Void => TirType::Void,
+            TypeTok::Str => TirType::I8PTR,
             _ => todo!("Chase, you have not implemented this yt"),
         };
     }
@@ -231,7 +238,7 @@ impl TirBuilder {
             return Err(ToyError::new(ToyErrorType::ExpressionNotBoolean));
         }
     }
-    ///first block returned is true block, second block is false block
+    ///first block returned is true block, second block is false block, does not switch blocks
     pub fn jump_cond(&mut self, cond: SSAValue) -> Result<(BlockId, BlockId), ToyError> {
         let true_id = self._next_block_id();
         let false_id = self._next_block_id();
@@ -245,7 +252,8 @@ impl TirBuilder {
         };
         self.funcs[self.curr_func.unwrap()].body.push(true_block);
         self.funcs[self.curr_func.unwrap()].body.push(false_block);
-        let ins = TIR::JumpCond(cond, true_id, false_id);
+        let id = self._next_value_id();
+        let ins = TIR::JumpCond(id, cond, true_id, false_id);
         self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()]
             .ins
             .push(ins);
@@ -253,7 +261,7 @@ impl TirBuilder {
     }
     pub fn jump(&mut self, val: SSAValue) -> Result<SSAValue, ToyError> {
         let id = self._next_value_id();
-        let ins = TIR::Jump(id);
+        let ins = TIR::Jump(id, val.val);
         self.funcs[self.curr_block.unwrap()].body[self.curr_block.unwrap()]
             .ins
             .push(ins);
@@ -276,8 +284,8 @@ impl TirBuilder {
     }
     //I am leaving the Result because I am sure there will be some error later and I would rather not break the API
     pub fn ret(&mut self, val: SSAValue) -> Result<SSAValue, ToyError> {
-        let id = self._next_block_id();
-        let ins = TIR::Ret(val);
+        let id = self._next_value_id();
+        let ins = TIR::Ret(id, val);
         self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()]
             .ins
             .push(ins);
@@ -286,43 +294,78 @@ impl TirBuilder {
             ty: None, //A function call is an expression, a return "statement" is not
         });
     }
-    ///name is self evident, params are the values, passed by order, is_extern means if it is an externally defined function, is allocator means if the result from a function is heap allocated and CTLA will take ownership
-    ///if the function is extern you must specify the return type, otherwise just put None, (or anything else the value is irrelevant, the return type will be looked up)
-    pub fn call_func(
+    /// Calls a locally defined function by name. 
+    /// The return type is automatically looked up from the function definition.
+    /// `is_allocator` indicates if the return value is heap-allocated (CTLA takes ownership).
+    pub fn call_local(
         &mut self,
         name: String,
         params: Vec<SSAValue>,
-        is_extern: bool,
         is_allocator: bool,
-        i_ret_type: Option<TirType>,
     ) -> Result<SSAValue, ToyError> {
+        let ret_type = self
+            .funcs
+            .iter()
+            .find(|f| *f.name == name)
+            .map(|f| f.ret_type.clone())
+            .ok_or_else(|| ToyError::new(ToyErrorType::UndefinedFunction))?;
+
         let id = self._next_value_id();
-        let ret_type: TirType;
-        let ins = if is_extern {
-            ret_type = i_ret_type.clone().unwrap();
-            TIR::CallExternFunction(
-                id,
-                Box::new(name),
-                params,
-                is_allocator,
-                i_ret_type.unwrap(),
-            )
-        } else {
-            ret_type = self
-                .funcs
-                .iter()
-                .find(|f| *f.name == name)
-                .map(|f| f.ret_type.clone())
-                .unwrap();
-            TIR::CallLocalFunction(id, Box::new(name), params, is_allocator)
-        };
+        let ins = TIR::CallLocalFunction(id, Box::new(name), params, is_allocator);
         self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()]
             .ins
             .push(ins);
-        return Ok(SSAValue {
+
+        Ok(SSAValue {
             val: id,
             ty: Some(ret_type),
-        });
+        })
+    }
+
+    /// Calls an externally defined function by name.
+    /// The function must be registered with `register_extern` first.
+    /// Returns an error if the function is not registered.
+    pub fn call_extern(
+        &mut self,
+        name: String,
+        params: Vec<SSAValue>,
+    ) -> Result<SSAValue, ToyError> {
+        let (is_allocator, ret_type) = self
+            .extern_funcs
+            .get(&name)
+            .cloned()
+            .ok_or_else(|| ToyError::new(ToyErrorType::UndefinedFunction))?;
+
+        let id = self._next_value_id();
+        let ins = TIR::CallExternFunction(id, Box::new(name), params, is_allocator, ret_type.clone());
+        self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()]
+            .ins
+            .push(ins);
+
+        Ok(SSAValue {
+            val: id,
+            ty: Some(ret_type),
+        })
+    }
+
+    /// Calls a function by name, automatically determining if it's local or extern.
+    /// Checks local functions first, then falls back to registered extern functions.
+    pub fn call(
+        &mut self,
+        name: String,
+        params: Vec<SSAValue>,
+    ) -> Result<SSAValue, ToyError> {
+        // Check if it's a local function first
+        if self.funcs.iter().any(|f| *f.name == name) {
+            return self.call_local(name, params, false);
+        }
+        
+        // Otherwise, try extern
+        if self.extern_funcs.contains_key(&name) {
+            return self.call_extern(name, params);
+        }
+
+        Err(ToyError::new(ToyErrorType::UndefinedFunction))
     }
     pub fn create_struct_interface(&mut self, name: String, types: Vec<TirType>) -> TirType {
         let id = self._next_value_id();
@@ -401,5 +444,38 @@ impl TirBuilder {
         }
         //this should be unreachable
         return Err(ToyError::new(ToyErrorType::ExpressionNotBoolean));
+    }
+    pub fn jump_block_un_cond(&mut self, block_id: BlockId) -> Result<SSAValue, ToyError> {
+        let id = self._next_value_id();
+        let ins = TIR::JumpBlockUnCond(id, block_id);
+        self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()]
+            .ins
+            .push(ins);
+        return Ok(SSAValue { val: id, ty: None });
+    }
+    pub fn create_block(&mut self) -> Result<BlockId, ToyError> {
+        let id = self._next_block_id();
+        let b = Block {
+            id: id,
+            ins: vec![],
+        };
+        self.funcs[self.curr_func.unwrap()].body.push(b);
+        return Ok(id);
+    }
+    //utils
+    pub fn generic_ssa(&mut self, t: TypeTok) -> SSAValue {
+        let id = self._next_value_id();
+        let ty = self._type_tok_to_tir_type(t);
+        return SSAValue { val: id, ty: Some(ty) };
+    }
+    pub fn get_func_ret_type(&self, name: String) -> Result<TirType, ToyError> {
+        self.funcs
+            .iter()
+            .find(|f| *f.name == name)
+            .map(|f| f.clone().ret_type)
+            .ok_or(ToyError::new(ToyErrorType::UndefinedFunction))
+    }
+    pub fn register_extern(&mut self, name: String, is_allocator: bool, ret_type: TypeTok) {
+        self.extern_funcs.insert(name, (is_allocator, self._type_tok_to_tir_type(ret_type)));
     }
 }
