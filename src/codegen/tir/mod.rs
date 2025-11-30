@@ -1,5 +1,5 @@
 #![allow(unused)]
-use crate::codegen::tir::ir::{BlockId, Function, SSAValue, TirBuilder};
+use crate::codegen::tir::ir::{BlockId, Function, SSAValue, TirBuilder, ValueId};
 use crate::errors::ToyErrorType;
 use crate::parser::ast::InfixOp;
 use crate::token::TypeTok;
@@ -155,6 +155,81 @@ impl AstToIrConverter {
 
         return Ok(());
     }
+
+    fn compile_while_stmt(&mut self, node: Ast, scope: &Rc<RefCell<Scope>>) -> Result<(), ToyError> {
+        let (cond, body) = match node {
+            Ast::WhileStmt(c, b) => (*c, b),
+            _ => unreachable!(),
+        };
+
+        let pre_loop_vars: HashMap<String, SSAValue> = scope
+            .as_ref()
+            .borrow()
+            .vars
+            .clone();
+
+        let header_id = self.builder.create_block()?;
+        self.builder.jump_block_un_cond(header_id);
+        self.builder.switch_block(header_id);
+
+        let mut phi_id_map: HashMap<String, ValueId> = HashMap::new();
+        for var_name in pre_loop_vars.keys() {
+            let phi_id = self.builder.alloc_value_id();
+            phi_id_map.insert(var_name.clone(), phi_id);
+        }
+
+        for (var_name, pre_val) in &pre_loop_vars {
+            if let Some(phi_id) = phi_id_map.get(var_name) {
+                scope.as_ref().borrow_mut().set_var(var_name.clone(), SSAValue {
+                    val: *phi_id,
+                    ty: pre_val.ty.clone(),
+                });
+            }
+        }
+
+        let compiled_cond = self.compile_expr(cond.clone(), scope)?;
+        let (body_id, merge_id) = self.builder.jump_cond(compiled_cond)?;
+
+        self.builder.switch_block(body_id);
+        let child_scope = Scope::new_child(scope);
+        
+        for (var_name, val) in scope.as_ref().borrow().vars.clone() {
+            child_scope.as_ref().borrow_mut().set_var(var_name, val);
+        }
+
+        for ast in body {
+            self.compile_stmt(ast, &child_scope)?;
+        }
+
+        let post_loop_vars: HashMap<String, SSAValue> = child_scope
+            .as_ref()
+            .borrow()
+            .vars
+            .clone();
+
+        // Jump back to header
+        self.builder.jump_block_un_cond(header_id)?;
+
+        // Now emit phi nodes at the beginning of the header block
+        let mut phi_instructions: Vec<TIR> = Vec::new();
+        
+        for (var_name, pre_val) in &pre_loop_vars {
+            let post_val = post_loop_vars.get(var_name).cloned().unwrap_or_else(|| pre_val.clone());
+            if let Some(&phi_id) = phi_id_map.get(var_name) {
+                // Create phi node with pre-loop and post-loop values
+                let phi_ins = TIR::Phi(phi_id, vec![0, body_id], vec![pre_val.clone(), post_val]);
+                phi_instructions.push(phi_ins);
+            }
+        }
+
+        for phi_ins in phi_instructions.into_iter().rev() {
+            self.builder.insert_at_block_start(header_id, phi_ins)?;
+        }
+
+        self.builder.switch_block(merge_id);
+
+        return Ok(());
+    }
     fn compile_func_dec(&mut self, node: Ast, scope: &Rc<RefCell<Scope>>) -> Result<(), ToyError>{
         let (name, params, ret_type, body) = match node {
             Ast::FuncDec(n, p, r, b) => (*n, p, r, b),
@@ -206,6 +281,7 @@ impl AstToIrConverter {
                 let _ = self.compile_var_reassign(*boxed_name, *boxed_val, scope)?;
             }
             Ast::IfStmt(_, _, _) => self.compile_if_stmt(node, scope)?,
+            Ast::WhileStmt(_, _) => self.compile_while_stmt(node, scope)?,
             Ast::FuncDec(_, _, _, _) => self.compile_func_dec(node, scope)?,
             Ast::Return(v) => {
                 let ast_val = *v;

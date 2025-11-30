@@ -85,6 +85,8 @@ pub enum TIR {
     WriteStructLiteral(ValueId, SSAValue, u64, SSAValue),
     ///negates the given ssa value, assumes it is i1 but will do bitwise not otherwise
     Not(ValueId, SSAValue),
+    ///phi node where a given value corresponds to a given entrance block
+    Phi(ValueId, Vec<BlockId>, Vec<SSAValue>)
 }
 #[derive(PartialEq, Debug, Clone)]
 
@@ -211,9 +213,25 @@ impl TirBuilder {
         if let Some(left_t) = left.clone().ty
             && let Some(right_t) = right.clone().ty
         {
-            if left_t != TirType::I1 || right_t != TirType::I1 {
-                return Err(ToyError::new(ToyErrorType::ExpressionNotBoolean));
+            // Comparison operators (>, <, >=, <=, ==, !=) can work on I64 values
+            // Logical operators (&& ||) require I1 values
+            let is_comparison = matches!(op, InfixOp::LessThan | InfixOp::GreaterThan | InfixOp::GreaterThanEqt | InfixOp::LessThanEqt | InfixOp::Equals | InfixOp::NotEquals);
+            let is_logical = matches!(op, InfixOp::And | InfixOp::Or);
+
+            if is_comparison {
+                // Comparison operators: both operands must be the same type (I64)
+                if left_t != right_t || left_t != TirType::I64 {
+                    return Err(ToyError::new(ToyErrorType::ExpressionNotNumeric));
+                }
+            } else if is_logical {
+                // Logical operators: both operands must be I1
+                if left_t != TirType::I1 || right_t != TirType::I1 {
+                    return Err(ToyError::new(ToyErrorType::ExpressionNotBoolean));
+                }
+            } else {
+                return Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType));
             }
+
             let n_op = match op {
                 InfixOp::And => BoolInfixOp::And,
                 InfixOp::Or => BoolInfixOp::Or,
@@ -453,6 +471,24 @@ impl TirBuilder {
             .push(ins);
         return Ok(SSAValue { val: id, ty: None });
     }
+    /// Emit a phi node that takes values from multiple predecessor blocks
+    /// block_ids: the IDs of the predecessor blocks
+    /// values: the SSA values from each predecessor block (must match order of block_ids)
+    pub fn emit_phi(&mut self, block_ids: Vec<BlockId>, values: Vec<SSAValue>) -> Result<SSAValue, ToyError> {
+        if block_ids.is_empty() || values.is_empty() || block_ids.len() != values.len() {
+            return Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType));
+        }
+        let id = self._next_value_id();
+        let ins = TIR::Phi(id, block_ids, values.clone());
+        self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()]
+            .ins
+            .push(ins);
+        // Use the type from the first value
+        return Ok(SSAValue {
+            val: id,
+            ty: values[0].ty.clone(),
+        });
+    }
     pub fn create_block(&mut self) -> Result<BlockId, ToyError> {
         let id = self._next_block_id();
         let b = Block {
@@ -461,6 +497,33 @@ impl TirBuilder {
         };
         self.funcs[self.curr_func.unwrap()].body.push(b);
         return Ok(id);
+    }
+    /// Insert a TIR instruction at the beginning of a block (useful for phi nodes)
+    pub fn insert_at_block_start(&mut self, block_id: BlockId, ins: TIR) -> Result<(), ToyError> {
+        if let Some(func_idx) = self.curr_func {
+            if let Some(block_idx) = self.funcs[func_idx].body.iter().position(|b| b.id == block_id) {
+                self.funcs[func_idx].body[block_idx].ins.insert(0, ins);
+                return Ok(());
+            }
+        }
+        Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType))
+    }
+    /// Get the number of instructions currently in a block
+    pub fn get_block_ins_count(&self, block_id: BlockId) -> Result<usize, ToyError> {
+        if let Some(func_idx) = self.curr_func {
+            if let Some(block) = self.funcs[func_idx].body.iter().find(|b| b.id == block_id) {
+                return Ok(block.ins.len());
+            }
+        }
+        Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType))
+    }
+    /// Get the next value ID without emitting an instruction
+    pub fn peek_next_value_id(&self) -> ValueId {
+        self.funcs[self.curr_func.unwrap()].ins_counter
+    }
+    /// Manually allocate a new value ID
+    pub fn alloc_value_id(&mut self) -> ValueId {
+        self._next_value_id()
     }
     //utils
     pub fn generic_ssa(&mut self, t: TypeTok) -> SSAValue {

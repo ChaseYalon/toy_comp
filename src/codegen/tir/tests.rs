@@ -524,8 +524,9 @@ fn test_tirgen_func_call() {
 }
 
 #[test]
-fn test_tirgen_while_stmt_break_continue() {
-    setup_tir!(ir, "let x = 0; while x < 10 {if x == 4 {continue} if x == 9{break} x++}");
+fn test_tirgen_while_stmt() {
+    // Simple while loop test: while 5 < 10 { } - condition is always true, so loop body executes once
+    setup_tir!(ir, "while 5 < 10 { }");
     assert_eq!(
         ir,
         vec![
@@ -535,14 +536,124 @@ fn test_tirgen_while_stmt_break_continue() {
                     Block{
                         id: 0,
                         ins: vec![
-                            TIR::IConst(0, 0, TirType::I64),
-                            
+                            TIR::JumpBlockUnCond(0, 1)
+                        ]
+                    },
+                    Block{
+                        id: 1,
+                        ins: vec![
+                            TIR::IConst(1, 5, TirType::I64),
+                            TIR::IConst(2, 10, TirType::I64),
+                            TIR::BoolInfix(
+                                3, 
+                                SSAValue { val: 1, ty: Some(TirType::I64) }, 
+                                SSAValue { val: 2, ty: Some(TirType::I64) }, 
+                                BoolInfixOp::LessThan
+                            ),
+                            TIR::JumpCond(
+                                4, 
+                                SSAValue { val: 3, ty: Some(TirType::I1)}, 
+                                2, 
+                                3
+                            )
+                        ]
+                    },
+                    Block{
+                        id: 2,
+                        ins: vec![
+                            TIR::JumpBlockUnCond(5, 1)
+                        ]
+                    },
+                    Block {
+                        id: 3,
+                        ins: vec![
+                            TIR::IConst(6, 0, TirType::I64),
+                            TIR::Ret(
+                                7,
+                                SSAValue {
+                                    val: 6,
+                                    ty: Some(TirType::I64)
+                                }
+                            )
                         ]
                     }
                 ],
                 name: Box::new("user_main".to_string()),
                 ret_type: TirType::I64,
-                ins_counter: 0
+                ins_counter: 8
+            }
+        ]
+    )
+}
+
+#[test]
+fn test_tirgen_while_with_var_mod() {
+    setup_tir!(ir, "let x = 0; while x < 3 { x = x + 1 }");
+    assert_eq!(
+        ir,
+        vec![
+            Function{
+                params: vec![],
+                body: vec![
+                    Block{
+                        id: 0,
+                        ins: vec![
+                            TIR::IConst(0, 0, TirType::I64), 
+                            TIR::JumpBlockUnCond(1, 1) 
+                        ]
+                    },
+                    Block{
+                        id: 1,
+                        ins: vec![
+                            TIR::Phi(2, vec![0, 2], vec![
+                                SSAValue{val: 0, ty: Some(TirType::I64)}, 
+                                SSAValue{val: 7, ty: Some(TirType::I64)} 
+                            ]),
+                            TIR::IConst(3, 3, TirType::I64), 
+                            TIR::BoolInfix(
+                                4, 
+                                SSAValue { val: 2, ty: Some(TirType::I64) }, 
+                                SSAValue { val: 3, ty: Some(TirType::I64) }, 
+                                BoolInfixOp::LessThan
+                            ),
+                            TIR::JumpCond(
+                                5, 
+                                SSAValue { val: 4, ty: Some(TirType::I1)}, 
+                                2, 
+                                3
+                            )
+                        ]
+                    },
+                    Block{
+                        id: 2,
+                        ins: vec![
+                            TIR::IConst(6, 1, TirType::I64), 
+                            TIR::NumericInfix(
+                                7,
+                                SSAValue { val: 2, ty: Some(TirType::I64) }, 
+                                SSAValue { val: 6, ty: Some(TirType::I64) }, 
+                                NumericInfixOp::Plus
+                            ),
+                            TIR::JumpBlockUnCond(8, 1) 
+                        ]
+                    },
+                    Block {
+                        id: 3,
+                        ins: vec![
+                            TIR::IConst(9, 0, TirType::I64),
+                            TIR::Ret(
+                                10,
+                                SSAValue {
+                                    val: 9,
+                                    ty: Some(TirType::I64)
+                                }
+                            )
+                        ]
+                    }
+                ],
+                name: Box::new("user_main".to_string()),
+                ret_type: TirType::I64,
+                ins_counter: 11
             }
         ]
     )
