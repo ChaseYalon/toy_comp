@@ -7,6 +7,8 @@ pub struct Generator {
 }
 impl Generator {
     pub fn new() -> Generator {
-        return Generator { ast_t_ir: AstToIrConverter::new() }
+        return Generator {
+            ast_t_ir: AstToIrConverter::new(),
+        };
     }
 }

@@ -23,6 +23,7 @@
         "elems",
         "fadd",
         "fcmp",
+        "fconst",
         "fdiv",
         "fmul",
         "fptm",

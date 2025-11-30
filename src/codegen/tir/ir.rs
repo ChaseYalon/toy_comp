@@ -55,6 +55,10 @@ pub struct SSAValue {
 pub enum TIR {
     ///value as i64, regardless of weather it is an i64 or i1, and TirType to specify that
     IConst(ValueId, i64, TirType),
+    ///value as f64 (if you are using f32, dont), tirType is ony used for later validation
+    FConst(ValueId, f64, TirType),
+    ///takes a specified integer ssa value (i64, plz dont do I1) and converts it to a float, final type should be F64
+    ItoF(ValueId, SSAValue, TirType),
     ///numeric infix is any expression that returns a number so 5 + 3, NOT 5 < 3 (see: TBoolInfix)
     ///first valueId is handle for the expression, second and third are left and right, finally InfixOp
     NumericInfix(ValueId, SSAValue, SSAValue, NumericInfixOp),
@@ -88,7 +92,7 @@ pub enum TIR {
     ///phi node where a given value corresponds to a given entrance block
     Phi(ValueId, Vec<BlockId>, Vec<SSAValue>),
     ///takes a string and puts it into global data
-    GlobalString(ValueId, Box<String>)
+    GlobalString(ValueId, Box<String>),
 }
 #[derive(PartialEq, Debug, Clone)]
 
@@ -103,14 +107,14 @@ pub struct Function {
     pub body: Vec<Block>,
     pub name: Box<String>,
     pub ret_type: TirType,
-    pub ins_counter: usize
+    pub ins_counter: usize,
 }
 pub struct TirBuilder {
     block_counter: BlockId,
     pub funcs: Vec<Function>,
-    curr_func: Option<usize>,  //index into self.funcs
-    curr_block: Option<usize>, //index into self.curr_func.body,
-    extern_funcs: HashMap<String, (bool, TirType)>//external function name to is_allocator, return_type
+    curr_func: Option<usize>,                       //index into self.funcs
+    curr_block: Option<usize>,                      //index into self.curr_func.body,
+    extern_funcs: HashMap<String, (bool, TirType)>, //external function name to is_allocator, return_type
 }
 impl TirBuilder {
     pub fn new() -> TirBuilder {
@@ -119,7 +123,7 @@ impl TirBuilder {
             funcs: vec![],
             curr_func: None,
             curr_block: None,
-            extern_funcs: HashMap::new()
+            extern_funcs: HashMap::new(),
         };
     }
     fn _next_value_id(&mut self) -> ValueId {
@@ -136,7 +140,7 @@ impl TirBuilder {
             params: params,
             body: vec![],
             ret_type: self._type_tok_to_tir_type(ret_type),
-            ins_counter: 0
+            ins_counter: 0,
         };
         let block = Block {
             id: self._next_block_id(),
@@ -167,6 +171,28 @@ impl TirBuilder {
         return Ok(SSAValue {
             val: id,
             ty: Some(t),
+        });
+    }
+    pub fn fconst(&mut self, value: f64) -> Result<SSAValue, ToyError> {
+        let id = self._next_value_id();
+        let ins = TIR::FConst(id, value, TirType::F64);
+        self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()]
+            .ins
+            .push(ins);
+        return Ok(SSAValue {
+            val: id,
+            ty: Some(TirType::F64),
+        });
+    }
+    pub fn i_to_f(&mut self, val: SSAValue) -> Result<SSAValue, ToyError> {
+        let id = self._next_value_id();
+        let ins = TIR::ItoF(id, val, TirType::F64);
+        self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()]
+            .ins
+            .push(ins);
+        return Ok(SSAValue {
+            val: id,
+            ty: Some(TirType::F64),
         });
     }
     pub fn numeric_infix(
@@ -217,7 +243,15 @@ impl TirBuilder {
         {
             // Comparison operators (>, <, >=, <=, ==, !=) can work on I64 values
             // Logical operators (&& ||) require I1 values
-            let is_comparison = matches!(op, InfixOp::LessThan | InfixOp::GreaterThan | InfixOp::GreaterThanEqt | InfixOp::LessThanEqt | InfixOp::Equals | InfixOp::NotEquals);
+            let is_comparison = matches!(
+                op,
+                InfixOp::LessThan
+                    | InfixOp::GreaterThan
+                    | InfixOp::GreaterThanEqt
+                    | InfixOp::LessThanEqt
+                    | InfixOp::Equals
+                    | InfixOp::NotEquals
+            );
             let is_logical = matches!(op, InfixOp::And | InfixOp::Or);
 
             if is_comparison {
@@ -314,7 +348,7 @@ impl TirBuilder {
             ty: None, //A function call is an expression, a return "statement" is not
         });
     }
-    /// Calls a locally defined function by name. 
+    /// Calls a locally defined function by name.
     /// The return type is automatically looked up from the function definition.
     /// `is_allocator` indicates if the return value is heap-allocated (CTLA takes ownership).
     pub fn call_local(
@@ -357,7 +391,8 @@ impl TirBuilder {
             .ok_or_else(|| ToyError::new(ToyErrorType::UndefinedFunction))?;
 
         let id = self._next_value_id();
-        let ins = TIR::CallExternFunction(id, Box::new(name), params, is_allocator, ret_type.clone());
+        let ins =
+            TIR::CallExternFunction(id, Box::new(name), params, is_allocator, ret_type.clone());
         self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()]
             .ins
             .push(ins);
@@ -370,16 +405,12 @@ impl TirBuilder {
 
     /// Calls a function by name, automatically determining if it's local or extern.
     /// Checks local functions first, then falls back to registered extern functions.
-    pub fn call(
-        &mut self,
-        name: String,
-        params: Vec<SSAValue>,
-    ) -> Result<SSAValue, ToyError> {
+    pub fn call(&mut self, name: String, params: Vec<SSAValue>) -> Result<SSAValue, ToyError> {
         // Check if it's a local function first
         if self.funcs.iter().any(|f| *f.name == name) {
             return self.call_local(name, params, false);
         }
-        
+
         // Otherwise, try extern
         if self.extern_funcs.contains_key(&name) {
             return self.call_extern(name, params);
@@ -476,7 +507,11 @@ impl TirBuilder {
     /// Emit a phi node that takes values from multiple predecessor blocks
     /// block_ids: the IDs of the predecessor blocks
     /// values: the SSA values from each predecessor block (must match order of block_ids)
-    pub fn emit_phi(&mut self, block_ids: Vec<BlockId>, values: Vec<SSAValue>) -> Result<SSAValue, ToyError> {
+    pub fn emit_phi(
+        &mut self,
+        block_ids: Vec<BlockId>,
+        values: Vec<SSAValue>,
+    ) -> Result<SSAValue, ToyError> {
         if block_ids.is_empty() || values.is_empty() || block_ids.len() != values.len() {
             return Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType));
         }
@@ -503,7 +538,11 @@ impl TirBuilder {
     /// Insert a TIR instruction at the beginning of a block (useful for phi nodes)
     pub fn insert_at_block_start(&mut self, block_id: BlockId, ins: TIR) -> Result<(), ToyError> {
         if let Some(func_idx) = self.curr_func {
-            if let Some(block_idx) = self.funcs[func_idx].body.iter().position(|b| b.id == block_id) {
+            if let Some(block_idx) = self.funcs[func_idx]
+                .body
+                .iter()
+                .position(|b| b.id == block_id)
+            {
                 self.funcs[func_idx].body[block_idx].ins.insert(0, ins);
                 return Ok(());
             }
@@ -531,7 +570,10 @@ impl TirBuilder {
     pub fn generic_ssa(&mut self, t: TypeTok) -> SSAValue {
         let id = self._next_value_id();
         let ty = self._type_tok_to_tir_type(t);
-        return SSAValue { val: id, ty: Some(ty) };
+        return SSAValue {
+            val: id,
+            ty: Some(ty),
+        };
     }
     pub fn get_func_ret_type(&self, name: String) -> Result<TirType, ToyError> {
         self.funcs
@@ -541,15 +583,18 @@ impl TirBuilder {
             .ok_or(ToyError::new(ToyErrorType::UndefinedFunction))
     }
     pub fn register_extern(&mut self, name: String, is_allocator: bool, ret_type: TypeTok) {
-        self.extern_funcs.insert(name, (is_allocator, self._type_tok_to_tir_type(ret_type)));
+        self.extern_funcs
+            .insert(name, (is_allocator, self._type_tok_to_tir_type(ret_type)));
     }
     pub fn global_string(&mut self, name: String) -> Result<SSAValue, ToyError> {
         let id = self._next_value_id();
         let ins = TIR::GlobalString(id, Box::new(name));
-        self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()].ins.push(ins);
-        let val = SSAValue{
+        self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()]
+            .ins
+            .push(ins);
+        let val = SSAValue {
             val: id,
-            ty: Some(TirType::I8PTR)
+            ty: Some(TirType::I8PTR),
         };
         return Ok(val);
     }
