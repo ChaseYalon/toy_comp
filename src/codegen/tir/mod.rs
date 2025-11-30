@@ -71,16 +71,27 @@ impl AstToIrConverter {
                     InfixOp::GreaterThan,
                     InfixOp::GreaterThanEqt,
                     InfixOp::GreaterThan,
-                    InfixOp::Equals,
-                    InfixOp::NotEquals,
+                    //can be str also InfixOp::Equals,
+                    InfixOp::NotEquals, //will be str in the future 
                     InfixOp::And,
                     InfixOp::Or,
                 ]
-                .contains(&op)
+                .contains(&op) || ((op == InfixOp::Equals) && left.ty == Some(TirType::I1) && right.ty == Some(TirType::I1))
                 {
                     self.builder.boolean_infix(left, right, op)
-                } else {
+                //this will cause num and str infix ops to break but I dont give a fuck
+                } else if left.ty == Some(TirType::I64) && right.ty == Some(TirType::I64){
                     self.builder.numeric_infix(left, right, op)
+                } else {
+                    //in this point we assume it is a string expression
+                    if op == InfixOp::Equals {
+                        return self.builder.call_extern("toy_strequal".to_string(), vec![left, right]);
+                    }
+                    if op == InfixOp::Plus {
+                        return self.builder.call_extern("toy_concat".to_string(), vec![left, right])
+                    }
+                    return Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType)) //should be impossible
+
                 };
             },
             Ast::EmptyExpr(c) => self.compile_expr(*c, scope),
@@ -93,6 +104,10 @@ impl AstToIrConverter {
                 }
                 // `call` checks local functions first, then extern
                 self.builder.call(*n, ssa_params)
+            },
+            Ast::StringLit(s) => {
+                let st = *s;
+                self.builder.global_string(st)
             }
             _ => todo!("Chase you have not implemented {} expressions yet", node),
         }?;
@@ -207,16 +222,13 @@ impl AstToIrConverter {
             .vars
             .clone();
 
-        // Jump back to header
         self.builder.jump_block_un_cond(header_id)?;
 
-        // Now emit phi nodes at the beginning of the header block
         let mut phi_instructions: Vec<TIR> = Vec::new();
         
         for (var_name, pre_val) in &pre_loop_vars {
             let post_val = post_loop_vars.get(var_name).cloned().unwrap_or_else(|| pre_val.clone());
             if let Some(&phi_id) = phi_id_map.get(var_name) {
-                // Create phi node with pre-loop and post-loop values
                 let phi_ins = TIR::Phi(phi_id, vec![0, body_id], vec![pre_val.clone(), post_val]);
                 phi_instructions.push(phi_ins);
             }
@@ -256,26 +268,17 @@ impl AstToIrConverter {
     }
     fn compile_stmt(&mut self, node: Ast, scope: &Rc<RefCell<Scope>>) -> Result<(), ToyError> {
         match node {
-            Ast::IntLit(_) => {
+            Ast::IntLit(_) |
+            Ast::BoolLit(_) |
+            Ast::InfixExpr(_, _, _) |
+            Ast::EmptyExpr(_) | 
+            Ast::FuncCall(_, _) |
+            Ast::VarRef(_) |
+            Ast::StringLit(_) => {
                 let _ = self.compile_expr(node, scope)?;
-            }
-            Ast::BoolLit(_) => {
-                let _ = self.compile_expr(node, scope)?;
-            }
-            Ast::InfixExpr(_, _, _) => {
-                let _ = self.compile_expr(node, scope)?;
-            }
-            Ast::EmptyExpr(_) => {
-                let _ = self.compile_expr(node, scope);
-            }
-            Ast::FuncCall(_, _) => {
-                let _ = self.compile_expr(node, scope);
             }
             Ast::VarDec(box_name, _, box_val) => {
                 let _ = self.compile_var_dec(*box_name, *box_val, scope)?;
-            }
-            Ast::VarRef(_) => {
-                let _ = self.compile_expr(node, scope)?;
             }
             Ast::VarReassign(boxed_name, boxed_val) => {
                 let _ = self.compile_var_reassign(*boxed_name, *boxed_val, scope)?;
@@ -292,8 +295,32 @@ impl AstToIrConverter {
         };
         return Ok(());
     }
+    fn register_extern_funcs(&mut self) {
+        //everything is either void, int64_t (int) or float (double/f64)
+        self.builder.register_extern("toy_print".to_string(), false, TypeTok::Void);//builtins.c
+        self.builder.register_extern("toy_println".to_string(), false, TypeTok::Void);
+        self.builder.register_extern("toy_malloc".to_string(), true, TypeTok::Int);
+        self.builder.register_extern("toy_concat".to_string(), true, TypeTok::Int);
+        self.builder.register_extern("toy_strequal".to_string(), false, TypeTok::Int);
+        self.builder.register_extern("toy_strlen".to_string(), false, TypeTok::Int);
+        self.builder.register_extern("toy_type_to_str".to_string(), true, TypeTok::Int);
+        self.builder.register_extern("toy_type_to_bool".to_string(), false, TypeTok::Int);
+        self.builder.register_extern("toy_type_to_int".to_string(), false, TypeTok::Int);
+        self.builder.register_extern("toy_type_to_float".to_string(), false, TypeTok::Int); //int representation of float bits, reinterpreted with union
+        self.builder.register_extern("toy_int_to_float".to_string(), false, TypeTok::Float);
+        self.builder.register_extern("toy_float_bits_to_double".to_string(), false, TypeTok::Float);
+        self.builder.register_extern("toy_double_to_float_bits".to_string(), false, TypeTok::Int);
+        self.builder.register_extern("toy_malloc_arr".to_string(), true, TypeTok::Int);
+        self.builder.register_extern("toy_write_to_arr".to_string(), false, TypeTok::Void);
+        self.builder.register_extern("toy_read_from_arr".to_string(), false, TypeTok::Int);
+        self.builder.register_extern("toy_arrlen".to_string(), false, TypeTok::Int);
+        self.builder.register_extern("toy_input".to_string(), true, TypeTok::Int);
+        self.builder.register_extern("toy_free".to_string(), false, TypeTok::Void); //ctla/ctla.c
+
+    }
     pub fn convert(&mut self, ast: Vec<Ast>) -> Result<Vec<Function>, ToyError> {
-        //register external functions here
+        self.register_extern_funcs();
+
         self.builder
             .new_func(Box::new("user_main".to_string()), vec![], TypeTok::Int);
         let user_main_scope = Scope::new_child(&self.global_scope);

@@ -455,7 +455,10 @@ char* _read_line() {
     size_t len = 0;
     //toy_input is marked as allocating a buffer, this is the actual buffer allocation
     char *buffer = META_MALLOC(size);
-    if (!buffer) return NULL;
+    if (!buffer) {
+        fprintf(stderr, "[ERROR] META_MALLOC failed\n");
+        abort();
+    }
 
     for (;;) {
         int c = fgetc(stdin);

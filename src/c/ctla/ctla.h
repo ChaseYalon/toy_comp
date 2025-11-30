@@ -10,5 +10,5 @@ typedef struct {
 DebugHeap* DebugHeap_create();
 void DebugHeap_free(DebugHeap*d);
 void* ToyMallocDebug(size_t size, DebugHeap* d);
-void ToyMallocFree(void* buff, DebugHeap* d);
+void toy_free(void* buff);
 void _PrintDebug_heap(DebugHeap* d);

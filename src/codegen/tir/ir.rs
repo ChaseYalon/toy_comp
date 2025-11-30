@@ -86,7 +86,9 @@ pub enum TIR {
     ///negates the given ssa value, assumes it is i1 but will do bitwise not otherwise
     Not(ValueId, SSAValue),
     ///phi node where a given value corresponds to a given entrance block
-    Phi(ValueId, Vec<BlockId>, Vec<SSAValue>)
+    Phi(ValueId, Vec<BlockId>, Vec<SSAValue>),
+    ///takes a string and puts it into global data
+    GlobalString(ValueId, Box<String>)
 }
 #[derive(PartialEq, Debug, Clone)]
 
@@ -540,5 +542,15 @@ impl TirBuilder {
     }
     pub fn register_extern(&mut self, name: String, is_allocator: bool, ret_type: TypeTok) {
         self.extern_funcs.insert(name, (is_allocator, self._type_tok_to_tir_type(ret_type)));
+    }
+    pub fn global_string(&mut self, name: String) -> Result<SSAValue, ToyError> {
+        let id = self._next_value_id();
+        let ins = TIR::GlobalString(id, Box::new(name));
+        self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()].ins.push(ins);
+        let val = SSAValue{
+            val: id,
+            ty: Some(TirType::I8PTR)
+        };
+        return Ok(val);
     }
 }

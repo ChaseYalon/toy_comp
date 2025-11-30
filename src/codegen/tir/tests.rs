@@ -658,3 +658,50 @@ fn test_tirgen_while_with_var_mod() {
         ]
     )
 }
+
+#[test]
+fn test_tirgen_string_lit_concat_and_equals() {
+    setup_tir!(ir, r#"let x = "foo"; let y = "fee"; let z = x + y; let a = x == y;"#);
+    assert_eq!(
+        ir,
+        vec![
+            Function{
+                params: vec![],
+                name: Box::new("user_main".to_string()),
+                ret_type: TirType::I64,
+                body: vec![
+                    Block {
+                        id: 0,
+                        ins: vec![
+                            TIR::GlobalString(0, Box::new("foo".to_string())),
+                            TIR::GlobalString(1, Box::new("fee".to_string())),
+                            TIR::CallExternFunction(
+                                2, 
+                                Box::new("toy_concat".to_string()), 
+                                vec![
+                                    SSAValue{val: 0, ty: Some(TirType::I8PTR)},
+                                    SSAValue{val: 1, ty: Some(TirType::I8PTR)}
+                                ], 
+                                true, 
+                                TirType::I64
+                            ),
+                            TIR::CallExternFunction(
+                                3, 
+                                Box::new("toy_strequal".to_string()), 
+                                vec![
+                                    SSAValue{val: 0, ty: Some(TirType::I8PTR)},
+                                    SSAValue{val: 1, ty: Some(TirType::I8PTR)}
+                                ], 
+                                false, 
+                                TirType::I64
+                            ),
+                            TIR::IConst(4, 0, TirType::I64),
+                            TIR::Ret(5, SSAValue { val: 4, ty: Some(TirType::I64) })
+                        ]
+                    }
+                ],
+                ins_counter: 6
+            }
+        ]
+    )
+}
