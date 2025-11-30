@@ -1135,3 +1135,36 @@ fn test_ast_gen_not() {
         ]
     )
 }
+
+#[test]
+fn test_ast_gen_arr_ref_bug() {
+    setup_ast!("let arr = [1, 2, 3]; arr[2] = 9; let x = arr[1] + 3;", ast);
+
+    assert_eq!(
+        ast,
+        vec![
+            Ast::VarDec(
+                Box::new("arr".to_string()),
+                TypeTok::IntArr(1),
+                Box::new(Ast::ArrLit(
+                    TypeTok::IntArr(1),
+                    vec![Ast::IntLit(1), Ast::IntLit(2), Ast::IntLit(3)]
+                ))
+            ),
+            Ast::ArrReassign(
+                Box::new("arr".to_string()),
+                vec![Ast::IntLit(2)],
+                Box::new(Ast::IntLit(9))
+            ),
+            Ast::VarDec(
+                Box::new("x".to_string()),
+                TypeTok::Int,
+                Box::new(Ast::InfixExpr(
+                    Box::new(Ast::ArrRef(Box::new("arr".to_string()), vec![Ast::IntLit(1)])),
+                    Box::new(Ast::IntLit(3)),
+                    InfixOp::Plus
+                ))
+            )
+        ]
+    )
+}

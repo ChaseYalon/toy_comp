@@ -418,6 +418,29 @@ impl TirBuilder {
 
         Err(ToyError::new(ToyErrorType::UndefinedFunction))
     }
+
+    /// Calls an externally defined function that returns void.
+    /// Use this for functions like toy_write_to_arr that don't return a value.
+    pub fn call_extern_void(
+        &mut self,
+        name: String,
+        params: Vec<SSAValue>,
+    ) -> Result<(), ToyError> {
+        let (is_allocator, ret_type) = self
+            .extern_funcs
+            .get(&name)
+            .cloned()
+            .ok_or_else(|| ToyError::new(ToyErrorType::UndefinedFunction))?;
+
+        let id = self._next_value_id();
+        let ins =
+            TIR::CallExternFunction(id, Box::new(name), params, is_allocator, ret_type);
+        self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()]
+            .ins
+            .push(ins);
+
+        Ok(())
+    }
     pub fn create_struct_interface(&mut self, name: String, types: Vec<TirType>) -> TirType {
         let id = self._next_value_id();
         let struct_type = TirType::StructInterface(types);
@@ -597,5 +620,30 @@ impl TirBuilder {
             ty: Some(TirType::I8PTR),
         };
         return Ok(val);
+    }
+    pub fn inject_type_param(
+        &mut self,
+        t: &TypeTok,
+        inject_dimension: bool,
+        param_values: &mut Vec<SSAValue>,
+    ) -> Result<(), ToyError> {
+        let (n, degree) = match t {
+            &TypeTok::Str => (0, 0),
+            &TypeTok::Bool => (1, 0),
+            &TypeTok::Int => (2, 0),
+            &TypeTok::Float => (3, 0),
+            &TypeTok::StrArr(n) => (4, n),
+            &TypeTok::BoolArr(n) => (5, n),
+            &TypeTok::IntArr(n) => (6, n),
+            &TypeTok::FloatArr(n) => (7, n),
+            _ => return Err(ToyError::new(ToyErrorType::TypeIdNotAssigned)),
+        };
+        let v = self.iconst(n, TypeTok::Int)?;
+        param_values.push(v);
+        if inject_dimension {
+            let d = self.iconst(degree as i64, TypeTok::Int)?;
+            param_values.push(d);
+        }
+        return Ok(());
     }
 }

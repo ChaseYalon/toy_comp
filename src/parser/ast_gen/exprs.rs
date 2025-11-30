@@ -400,6 +400,7 @@ impl AstGenerator {
 
             let mut i = 2;
             let mut idx_exprs: Vec<Ast> = Vec::new();
+            let mut arr_ref_end = 0;
 
             while i < toks.len() {
                 // find closing bracket
@@ -421,6 +422,7 @@ impl AstGenerator {
                 let inner_toks = &toks[i..j - 1];
                 let idx_expr = self.parse_num_expr(&inner_toks.to_vec())?;
                 idx_exprs.push(idx_expr);
+                arr_ref_end = j;
 
                 if j >= toks.len() || toks[j].tok_type() != "LBrack" {
                     break;
@@ -451,7 +453,53 @@ impl AstGenerator {
                 };
             }
 
-            return Ok((Ast::ArrRef(Box::new(name), idx_exprs), item_type));
+            let arr_ref_ast = Ast::ArrRef(Box::new(name), idx_exprs);
+
+            if arr_ref_end < toks.len() {
+                let remaining_toks = &toks[arr_ref_end..];
+                if !remaining_toks.is_empty() {
+                    let op_tok = &remaining_toks[0];
+                    let right_toks = &remaining_toks[1..];
+                    let (right_ast, right_type) = self.parse_expr(&right_toks.to_vec())?;
+
+                    let op = match op_tok {
+                        Token::Plus => InfixOp::Plus,
+                        Token::Minus => InfixOp::Minus,
+                        Token::Multiply => InfixOp::Multiply,
+                        Token::Divide => InfixOp::Divide,
+                        Token::Modulo => InfixOp::Modulo,
+                        Token::LessThan => InfixOp::LessThan,
+                        Token::LessThanEqt => InfixOp::LessThanEqt,
+                        Token::GreaterThan => InfixOp::GreaterThan,
+                        Token::GreaterThanEqt => InfixOp::GreaterThanEqt,
+                        Token::Equals => InfixOp::Equals,
+                        Token::NotEquals => InfixOp::NotEquals,
+                        Token::And => InfixOp::And,
+                        Token::Or => InfixOp::Or,
+                        _ => return Err(ToyError::new(ToyErrorType::InvalidInfixOperation)),
+                    };
+
+                    let result_type = match op {
+                        InfixOp::Plus | InfixOp::Minus | InfixOp::Multiply | InfixOp::Divide | InfixOp::Modulo => {
+                            if item_type == TypeTok::Float || right_type == TypeTok::Float {
+                                TypeTok::Float
+                            } else if item_type == TypeTok::Str || right_type == TypeTok::Str {
+                                TypeTok::Str
+                            } else {
+                                TypeTok::Int
+                            }
+                        }
+                        _ => TypeTok::Bool,
+                    };
+
+                    return Ok((
+                        Ast::InfixExpr(Box::new(arr_ref_ast), Box::new(right_ast), op),
+                        result_type,
+                    ));
+                }
+            }
+
+            return Ok((arr_ref_ast, item_type));
         }
 
         //Arr literals

@@ -32,6 +32,7 @@
         "funcs",
         "iadd",
         "iconst",
+        "idxs",
         "imul",
         "insts",
         "isub",

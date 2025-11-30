@@ -66,14 +66,14 @@ impl AstToIrConverter {
             Ast::InfixExpr(left_i, right_i, op) => {
                 let mut left = self.compile_expr(*left_i, scope)?;
                 let mut right = self.compile_expr(*right_i, scope)?;
-                
+
                 //implement type promotion
                 if left.ty == Some(TirType::F64) && right.ty == Some(TirType::I64) {
                     right = self.builder.i_to_f(right)?;
                 } else if left.ty == Some(TirType::I64) && right.ty == Some(TirType::F64) {
                     left = self.builder.i_to_f(left)?;
                 }
-                
+
                 return if vec![
                     InfixOp::LessThan,
                     InfixOp::LessThan,
@@ -92,8 +92,9 @@ impl AstToIrConverter {
                 {
                     self.builder.boolean_infix(left, right, op)
                 //this will cause num and str infix ops to break but I dont give a fuck
-                } else if (left.ty == Some(TirType::I64) && right.ty == Some(TirType::I64)) 
-                    || (left.ty == Some(TirType::F64) && right.ty == Some(TirType::F64)) {
+                } else if (left.ty == Some(TirType::I64) && right.ty == Some(TirType::I64))
+                    || (left.ty == Some(TirType::F64) && right.ty == Some(TirType::F64))
+                {
                     self.builder.numeric_infix(left, right, op)
                 } else {
                     //at this point we assume it is a string expression
@@ -124,6 +125,39 @@ impl AstToIrConverter {
             Ast::StringLit(s) => {
                 let st = *s;
                 self.builder.global_string(st)
+            },
+            Ast::ArrLit(ty, vals) => {
+                let mut ssa_vals: Vec<SSAValue> = Vec::new();
+                for val in vals.clone() {
+                    let compiled_val = self.compile_expr(val, scope)?;
+                    ssa_vals.push(compiled_val);
+                }
+                let len = self.compile_expr(Ast::IntLit(vals.len() as i64), scope)?;
+                let mut params = vec![len];
+                self.builder.inject_type_param(&ty, false, &mut params);
+                let arr = self.builder.call("toy_malloc_arr".to_string(), params)?;
+                for (i, ssa_val) in ssa_vals.iter().enumerate() {
+                    let idx = self.builder.iconst(i as i64, TypeTok::Int)?;
+                    let mut write_params: Vec<SSAValue> = vec![arr.clone(), ssa_val.clone(), idx];
+                    self.builder.inject_type_param(&ty, false, &mut write_params);
+                    self.builder.call("toy_write_to_arr".to_string(), write_params);
+                }
+
+                return Ok(arr);
+            },
+            Ast::ArrRef(n, idxs) => {
+                if idxs.is_empty() {
+                    return Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType));
+                }
+                
+                let mut current_arr = scope.as_ref().borrow().get_var(&*n)?;
+                for idx_expr in idxs {
+                    let idx = self.compile_expr(idx_expr, scope)?;
+                    let read_params = vec![current_arr, idx];
+                    current_arr = self.builder.call("toy_read_from_arr".to_string(), read_params)?;
+                }
+                
+                return Ok(current_arr);
             }
             _ => todo!("Chase you have not implemented {} expressions yet", node),
         }?;
@@ -295,7 +329,9 @@ impl AstToIrConverter {
             | Ast::EmptyExpr(_)
             | Ast::FuncCall(_, _)
             | Ast::VarRef(_)
-            | Ast::StringLit(_) => {
+            | Ast::StringLit(_)
+            | Ast::ArrLit(_, _)
+            | Ast::ArrRef(_, _) => {
                 let _ = self.compile_expr(node, scope)?;
             }
             Ast::VarDec(box_name, _, box_val) => {
@@ -311,6 +347,32 @@ impl AstToIrConverter {
                 let ast_val = *v;
                 let compiled_val = self.compile_expr(ast_val, scope)?;
                 self.builder.ret(compiled_val);
+            },
+            Ast::ArrReassign(name, idxs, val) => {
+                if idxs.is_empty() {
+                    return Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType));
+                }
+                let mut current_arr = scope.as_ref().borrow().get_var(&*name)?;
+                
+                for i in 0..(idxs.len() - 1) {
+                    let idx = self.compile_expr(idxs[i].clone(), scope)?;
+                    let read_params = vec![current_arr, idx];
+                    current_arr = self.builder.call("toy_read_from_arr".to_string(), read_params)?;
+                }
+                let last_idx = self.compile_expr(idxs[idxs.len() - 1].clone(), scope)?;
+                let compiled_val = self.compile_expr(*val, scope)?;
+                
+                let type_val = match compiled_val.ty {
+                    Some(TirType::I8PTR) => 0, // String
+                    Some(TirType::I1) => 1,    // Bool
+                    Some(TirType::I64) => 2,   // Int
+                    Some(TirType::F64) => 3,   // Float
+                    _ => 2, // Default to Int
+                };
+                let type_param = self.builder.iconst(type_val, TypeTok::Int)?;
+                
+                let write_params = vec![current_arr, compiled_val, last_idx, type_param];
+                self.builder.call("toy_write_to_arr".to_string(), write_params)?;
             }
             _ => todo!("Chase you have not implemented {} yet", node),
         };
@@ -362,7 +424,7 @@ impl AstToIrConverter {
     }
     pub fn convert(&mut self, ast: Vec<Ast>) -> Result<Vec<Function>, ToyError> {
         self.register_extern_funcs();
-
+        println!("Ast: {:?}", ast);
         self.builder
             .new_func(Box::new("user_main".to_string()), vec![], TypeTok::Int);
         let user_main_scope = Scope::new_child(&self.global_scope);

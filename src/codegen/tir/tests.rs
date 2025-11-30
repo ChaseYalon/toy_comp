@@ -771,33 +771,167 @@ fn test_tirgen_float_lit_and_opps() {
     setup_tir!(ir, "let x = 9.2 + 6");
     assert_eq!(
         ir,
+        vec![Function {
+            name: Box::new("user_main".to_string()),
+            params: vec![],
+            body: vec![Block {
+                id: 0,
+                ins: vec![
+                    TIR::FConst(0, 9.2, TirType::F64),
+                    TIR::IConst(1, 6, TirType::I64),
+                    TIR::ItoF(
+                        2,
+                        SSAValue {
+                            val: 1,
+                            ty: Some(TirType::I64)
+                        },
+                        TirType::F64
+                    ),
+                    TIR::NumericInfix(
+                        3,
+                        SSAValue {
+                            val: 0,
+                            ty: Some(TirType::F64)
+                        },
+                        SSAValue {
+                            val: 2,
+                            ty: Some(TirType::F64)
+                        },
+                        NumericInfixOp::Plus
+                    ),
+                    TIR::IConst(4, 0, TirType::I64),
+                    TIR::Ret(
+                        5,
+                        SSAValue {
+                            val: 4,
+                            ty: Some(TirType::I64)
+                        }
+                    )
+                ],
+            }],
+            ret_type: TirType::I64,
+            ins_counter: 6,
+        }]
+    )
+}
+
+
+#[test]
+fn test_tirgen_arr_lit_read_and_write() {
+    setup_tir!(ir, "let arr = [1, 2, 3]; arr[2] = 9; let x = arr[1] + 3;");
+    assert_eq!(
+        ir,
         vec![
             Function{
                 name: Box::new("user_main".to_string()),
                 params: vec![],
+                ret_type: TirType::I64,
+                ins_counter: 25,
                 body: vec![
                     Block{
                         id: 0,
                         ins: vec![
-                            TIR::FConst(0, 9.2, TirType::F64),
-                            TIR::IConst(1, 6, TirType::I64),
-                            TIR::ItoF(2, SSAValue { val: 1, ty: Some(TirType::I64) }, TirType::F64),
+                            TIR::IConst(0, 1, TirType::I64), 
+                            TIR::IConst(1, 2, TirType::I64), 
+                            TIR::IConst(2, 3, TirType::I64),
+                            TIR::IConst(3, 3, TirType::I64),
+                            TIR::IConst(4, 6, TirType::I64),
+                            TIR::CallExternFunction(
+                                5, 
+                                Box::new("toy_malloc_arr".to_string()), 
+                                vec![
+                                    SSAValue{val: 3, ty: Some(TirType::I64)},
+                                    SSAValue{val: 4, ty: Some(TirType::I64)}
+                                ], 
+                                true, 
+                                TirType::I64
+                            ),
+                            TIR::IConst(6, 0, TirType::I64), 
+                            TIR::IConst(7, 6, TirType::I64),
+                            TIR::CallExternFunction(
+                                8, 
+                                Box::new("toy_write_to_arr".to_string()), 
+                                vec![
+                                    SSAValue{val: 5, ty: Some(TirType::I64)},
+                                    SSAValue{val: 0, ty: Some(TirType::I64)}, 
+                                    SSAValue{val: 6, ty: Some(TirType::I64)}, 
+                                    SSAValue{val: 7, ty: Some(TirType::I64)}
+                                ], 
+                                false, 
+                                TirType::Void
+                            ),
+                            TIR::IConst(9, 1, TirType::I64),
+                            TIR::IConst(10, 6, TirType::I64), 
+                            TIR::CallExternFunction(
+                                11, 
+                                Box::new("toy_write_to_arr".to_string()), 
+                                vec![
+                                    SSAValue{val: 5, ty: Some(TirType::I64)},
+                                    SSAValue{val: 1, ty: Some(TirType::I64)},
+                                    SSAValue{val: 9, ty: Some(TirType::I64)},
+                                    SSAValue{val: 10, ty: Some(TirType::I64)}
+                                ], 
+                                false, 
+                                TirType::Void
+                            ),
+                            TIR::IConst(12, 2, TirType::I64), 
+                            TIR::IConst(13, 6, TirType::I64),
+                            TIR::CallExternFunction(
+                                14, 
+                                Box::new("toy_write_to_arr".to_string()), 
+                                vec![
+                                    SSAValue{val: 5, ty: Some(TirType::I64)},
+                                    SSAValue{val: 2, ty: Some(TirType::I64)},
+                                    SSAValue{val: 12, ty: Some(TirType::I64)},
+                                    SSAValue{val: 13, ty: Some(TirType::I64)}
+                                ], 
+                                false, 
+                                TirType::Void
+                            ),
+                            TIR::IConst(15, 2, TirType::I64), 
+                            TIR::IConst(16, 9, TirType::I64), 
+                            TIR::IConst(17, 2, TirType::I64),
+                            TIR::CallExternFunction(
+                                18, 
+                                Box::new("toy_write_to_arr".to_string()), 
+                                vec![
+                                    SSAValue{val: 5, ty: Some(TirType::I64)},
+                                    SSAValue{val: 16, ty: Some(TirType::I64)},
+                                    SSAValue{val: 15, ty: Some(TirType::I64)},
+                                    SSAValue{val: 17, ty: Some(TirType::I64)}
+                                ], 
+                                false, 
+                                TirType::Void
+                            ),
+                            TIR::IConst(19, 1, TirType::I64),
+                            TIR::CallExternFunction(
+                                20, 
+                                Box::new("toy_read_from_arr".to_string()), 
+                                vec![
+                                    SSAValue{val: 5, ty: Some(TirType::I64)},
+                                    SSAValue{val: 19, ty: Some(TirType::I64)}
+                                ], 
+                                false, 
+                                TirType::I64
+                            ),
+                            TIR::IConst(21, 3, TirType::I64),
                             TIR::NumericInfix(
-                                3,
-                                SSAValue { val: 0, ty: Some(TirType::F64) },
-                                SSAValue { val: 2, ty: Some(TirType::F64) },
+                                22,
+                                SSAValue{val: 20, ty: Some(TirType::I64)},
+                                SSAValue{val: 21, ty: Some(TirType::I64)},
                                 NumericInfixOp::Plus
                             ),
-                            TIR::IConst(4, 0, TirType::I64),
-                            TIR::Ret(5, SSAValue { val: 4, ty: Some(TirType::I64) })
-                        ],
+                            // Implicit return 0
+                            TIR::IConst(23, 0, TirType::I64),
+                            TIR::Ret(
+                                24,
+                                SSAValue{val: 23, ty: Some(TirType::I64)}
+                            )
+                        ]
                     }
                 ],
-                ret_type: TirType::I64,
-                ins_counter: 6,
             }
         ]
     )
 }
-
-//TODO: Arrays, Structs
+//TODO: Structs
