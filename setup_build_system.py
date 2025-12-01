@@ -71,7 +71,6 @@ try:
 
         def install_msys2():
             if not os.path.exists(MSYS2_DIR):
-                print("Downloading MSYS2 installer...")
                 url = "https://github.com/msys2/msys2-installer/releases/latest/download/msys2-x86_64-latest.exe"
                 installer = "msys2-x86_64-latest.exe"
                 urllib.request.urlretrieve(url, installer)
@@ -104,7 +103,9 @@ try:
 
         # Rustup installation
         rustup_exe = os.path.expandvars(r"%USERPROFILE%\.cargo\bin\rustup.exe")
+        print(rustup_exe)
         if not detect_rustup_windows():
+
             print("Installing Rustup...")
             url = "https://win.rustup.rs/x86_64"
             urllib.request.urlretrieve(url, "rustup-init.exe")
