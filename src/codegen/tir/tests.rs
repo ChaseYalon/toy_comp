@@ -1070,3 +1070,38 @@ fn test_tirgen_struct_lit() {
         }]
     )
 }
+
+#[test]
+fn test_tirgen_not() {
+    setup_tir!(ir, "let x = false; let y = !x;");
+    assert_eq!(
+        ir,
+        vec![Function {
+            params: vec![],
+            name: Box::new("user_main".to_string()),
+            body: vec![Block {
+                id: 0,
+                ins: vec![
+                    TIR::IConst(0, 0, TirType::I1),
+                    TIR::Not(
+                        1,
+                        SSAValue {
+                            val: 0,
+                            ty: Some(TirType::I1)
+                        }
+                    ),
+                    TIR::IConst(2, 0, TirType::I64),
+                    TIR::Ret(
+                        3,
+                        SSAValue {
+                            val: 2,
+                            ty: Some(TirType::I64)
+                        }
+                    )
+                ]
+            }],
+            ins_counter: 4,
+            ret_type: TirType::I64
+        }]
+    )
+}

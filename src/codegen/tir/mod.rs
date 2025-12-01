@@ -118,12 +118,30 @@ impl AstToIrConverter {
             Ast::VarRef(n) => scope.as_ref().borrow().get_var(&*n),
             Ast::FuncCall(n, p) => {
                 let mut ssa_params: Vec<SSAValue> = Vec::new();
-                for param in p {
+                for param in p.clone() {
                     let compiled_param = self.compile_expr(param, scope)?;
                     ssa_params.push(compiled_param);
                 }
-                // `call` checks local functions first, then extern
-                self.builder.call(*n, ssa_params)
+                //map builtin names
+                let name: &str = match &*n.as_str() {
+                    "print" => "toy_print",
+                    "println" => "toy_println",
+                    "len" => {
+                        if p[0].node_type() == "StringLit" || p[0].node_type() == "InfixExpr" {//probably not ideal
+                            "toy_strlen"
+                        } else {
+                            "toy_arrlen"
+                        }
+                    },
+                    "str" => "toy_type_to_str",
+                    "int" => "toy_type_to_int",
+                    "float" => "toy_type_to_float",
+                    "bool" => "toy_type_to_bool",
+                    "input" => "toy_input",
+                    _ => &*n
+
+                };
+                self.builder.call(name.to_string(), ssa_params)
             }
             Ast::StringLit(s) => {
                 let st = *s;
@@ -217,6 +235,10 @@ impl AstToIrConverter {
                 }
 
                 return Ok(current_val);
+            },
+            Ast::Not(v) => {
+                let val = self.compile_expr(*v, scope)?;
+                self.builder.not(val)
             }
             _ => todo!("Chase you have not implemented {} expressions yet", node),
         }?;
@@ -391,7 +413,8 @@ impl AstToIrConverter {
             | Ast::StringLit(_)
             | Ast::ArrLit(_, _)
             | Ast::ArrRef(_, _)
-            | Ast::StructLit(_, _) => {
+            | Ast::StructLit(_, _)
+            | Ast::Not(_) => {
                 let _ = self.compile_expr(node, scope)?;
             }
             Ast::VarDec(box_name, _, box_val) => {
