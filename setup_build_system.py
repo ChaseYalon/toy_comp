@@ -5,6 +5,10 @@ import shutil
 import subprocess
 import os
 import urllib.request
+import ssl
+#turn off ssl validation
+ssl._create_default_https_context = ssl._create_unverified_context
+
 def detect_rustup() -> bool:
     path = shutil.which("rustup")
     if path is None:
@@ -73,8 +77,14 @@ if os_name == "Windows":
             rustup_exe = os.path.join(cargo_bin, "rustup.exe")
 
             subprocess.run([rustup_exe, "target", "add", "x86_64-pc-windows-gnu", "--toolchain", "nightly"], check=True)
-            subprocess.run(["Remove-Item", "rustup-init.exe"], check=True, shell=True)#remove the installer
-            subprocess.run("$env:PATH",  "=", "$env:USERPROFILE\\.cargo\bin;", "+", "$env:PATH")
+            cargo_bin = os.path.expandvars(r"%USERPROFILE%\.cargo\bin")
+            subprocess.run([
+                "powershell",
+                "-Command",
+                f"[Environment]::SetEnvironmentVariable('PATH', '{cargo_bin};' + [Environment]::GetEnvironmentVariable('PATH','User'), 'User')"
+            ], check=True)
+
+            os.environ["PATH"] = cargo_bin + ";" + os.environ["PATH"]
     if not detect_windows_clang():
         print("Installing Clang")
         subprocess.run("winget install LLVM.LLVM", shell=True, check=True)
