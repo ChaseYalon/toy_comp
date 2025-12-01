@@ -12,11 +12,11 @@ try:
     ssl._create_default_https_context = ssl._create_unverified_context
 
     print("Entering ToyLang build system setup wizard")
-    perm_grated = input(
+    perm_granted = input(
         "This wizard will require access to your network if it needs to download dependencies, "
         "and it will require access to read and write to your whole system. Is this ok [n/Y]: "
     )
-    if perm_grated.lower() == "n":
+    if perm_granted.lower() == "n":
         print("[ERROR] Permission denied")
         sys.exit(1)
 
@@ -28,19 +28,11 @@ try:
         print(f"[ERROR] Detected a {cpu_type} cpu, but only x86_64 is supported")
         sys.exit(1)
 
-    def detect_rustup_windows() -> bool:
-        rustup_path = os.path.expandvars(r"%USERPROFILE%\.cargo\bin\rustup.exe")
-        if not os.path.exists(rustup_path):
-            return False
-        try:
-            subprocess.run([rustup_path, "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-            return True
-        except Exception:
-            return False
-
     if os_name == "Windows":
         MSYS2_DIR = r"C:\msys64"
         MINGW64_BIN = os.path.join(MSYS2_DIR, "mingw64", "bin")
+        CARGO_BIN = os.path.expandvars(r"%USERPROFILE%\.cargo\bin")
+        RUSTUP_EXE = os.path.join(CARGO_BIN, "rustup.exe")
 
         def detect_mingw_clang() -> bool:
             clang_path = shutil.which("clang", path=MINGW64_BIN + ";" + os.environ.get("PATH", ""))
@@ -67,7 +59,9 @@ try:
             HWND_BROADCAST = 0xFFFF
             WM_SETTINGCHANGE = 0x001A
             SMTO_ABORTIFHUNG = 0x0002
-            ctypes.windll.user32.SendMessageTimeoutW(HWND_BROADCAST, WM_SETTINGCHANGE, 0, "Environment", SMTO_ABORTIFHUNG, 5000, None)
+            ctypes.windll.user32.SendMessageTimeoutW(
+                HWND_BROADCAST, WM_SETTINGCHANGE, 0, "Environment", SMTO_ABORTIFHUNG, 5000, None
+            )
 
         def install_msys2():
             if not os.path.exists(MSYS2_DIR):
@@ -94,6 +88,17 @@ try:
             ]
             msys_run(f"pacman -S --needed --noconfirm {' '.join(packages)}")
 
+        def detect_rustup_windows() -> bool:
+            if not os.path.exists(RUSTUP_EXE):
+                return False
+            try:
+                env = os.environ.copy()
+                env["PATH"] = CARGO_BIN + ";" + env.get("PATH", "")
+                subprocess.run([RUSTUP_EXE, "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, env=env)
+                return True
+            except Exception:
+                return False
+
         add_mingw_to_user_path()
         install_msys2()
         if not detect_mingw_clang():
@@ -101,11 +106,7 @@ try:
         else:
             print("MSYS2 MinGW-w64 Clang already installed, continuing...")
 
-        # Rustup installation
-        rustup_exe = os.path.expandvars(r"%USERPROFILE%\.cargo\bin\rustup.exe")
-        print(rustup_exe)
         if not detect_rustup_windows():
-
             print("Installing Rustup...")
             url = "https://win.rustup.rs/x86_64"
             urllib.request.urlretrieve(url, "rustup-init.exe")
@@ -113,8 +114,10 @@ try:
         else:
             print("Rustup already installed")
 
-        # Always call Rustup explicitly
-        subprocess.run([rustup_exe, "target", "add", "x86_64-pc-windows-gnu", "--toolchain", "nightly"], check=True)
+        # Always call Rustup via absolute path with explicit environment
+        env = os.environ.copy()
+        env["PATH"] = CARGO_BIN + ";" + env.get("PATH", "")
+        subprocess.run([RUSTUP_EXE, "target", "add", "x86_64-pc-windows-gnu", "--toolchain", "nightly"], check=True, env=env)
 
         # Install CMake and Ninja via winget if missing
         for winget_id, name in [("CMake.CMake", "cmake"), ("Ninja-build.Ninja", "ninja")]:
