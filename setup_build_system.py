@@ -120,7 +120,7 @@ try:
         subprocess.run([RUSTUP_EXE, "target", "add", "x86_64-pc-windows-gnu", "--toolchain", "nightly"], check=True, env=env)
 
         # Install CMake and Ninja via winget if missing
-        for winget_id, name in [("CMake.CMake", "cmake"), ("Ninja-build.Ninja", "ninja")]:
+        for winget_id, name in [("cmake", "cmake"), ("Ninja-build.Ninja", "ninja")]:
             if shutil.which(name) is None:
                 print(f"Installing {name} via winget...")
                 subprocess.run(["winget", "install", "--id", winget_id, "-e", "--silent"], check=True)
