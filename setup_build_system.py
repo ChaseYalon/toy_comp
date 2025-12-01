@@ -123,7 +123,7 @@ try:
         for winget_id, name in [("cmake", "cmake"), ("Ninja-build.Ninja", "ninja")]:
             if shutil.which(name) is None:
                 print(f"Installing {name} via winget...")
-                subprocess.run(["winget", "install", "--id", winget_id, "-e", "--silent"], check=True)
+                subprocess.run(["winget", "install", winget_id, "-e", "--silent"], check=True)
 
     elif os_name == "Linux":
         print("Linux detected, only Debian-based systems fully supported by this script")
@@ -148,5 +148,6 @@ except Exception as e:
     sys.exit(1)
 else:
     print("Build system installation complete!")
+    print("Please resart your shell for path to work")
     print("Run REPL: cargo run -- --repl")
     print("Run file: cargo run -- <PATH>")
