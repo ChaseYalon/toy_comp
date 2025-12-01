@@ -6,7 +6,7 @@ use crate::parser::ast::Ast;
 use crate::parser::toy_box::TBox;
 use crate::token::Token;
 use crate::token::TypeTok;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 mod exprs;
 pub struct AstGenerator {
@@ -426,7 +426,7 @@ impl AstGenerator {
                 Ast::StructReassign(Box::new(name), fields, Box::new(value))
             }
             TBox::StructInterface(name, types) => {
-                let boxed: HashMap<String, Box<TypeTok>> = (*types)
+                let boxed: BTreeMap<String, Box<TypeTok>> = (*types)
                     .clone()
                     .into_iter()
                     .map(|(k, v)| (k, Box::new(v)))

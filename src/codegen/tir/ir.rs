@@ -139,7 +139,7 @@ impl TirBuilder {
             name: name,
             params: params,
             body: vec![],
-            ret_type: self._type_tok_to_tir_type(ret_type),
+            ret_type: self.type_tok_to_tir_type(ret_type),
             ins_counter: 0,
         };
         let block = Block {
@@ -151,19 +151,10 @@ impl TirBuilder {
         self.funcs[self.curr_func.unwrap()].body.push(block);
         self.curr_block = Some(self.funcs[self.curr_func.unwrap()].body.len() - 1);
     }
-    fn _type_tok_to_tir_type(&self, t: TypeTok) -> TirType {
-        return match t {
-            TypeTok::Int => TirType::I64,
-            TypeTok::Bool => TirType::I1,
-            TypeTok::Float => TirType::F64,
-            TypeTok::Void => TirType::Void,
-            TypeTok::Str => TirType::I8PTR,
-            _ => todo!("Chase, you have not implemented this yt"),
-        };
-    }
+
     pub fn iconst(&mut self, value: i64, val_type: TypeTok) -> Result<SSAValue, ToyError> {
         let id = self._next_value_id();
-        let t = self._type_tok_to_tir_type(val_type);
+        let t = self.type_tok_to_tir_type(val_type);
         let ins = TIR::IConst(id, value, t.clone());
         self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()]
             .ins
@@ -433,8 +424,7 @@ impl TirBuilder {
             .ok_or_else(|| ToyError::new(ToyErrorType::UndefinedFunction))?;
 
         let id = self._next_value_id();
-        let ins =
-            TIR::CallExternFunction(id, Box::new(name), params, is_allocator, ret_type);
+        let ins = TIR::CallExternFunction(id, Box::new(name), params, is_allocator, ret_type);
         self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()]
             .ins
             .push(ins);
@@ -592,7 +582,7 @@ impl TirBuilder {
     //utils
     pub fn generic_ssa(&mut self, t: TypeTok) -> SSAValue {
         let id = self._next_value_id();
-        let ty = self._type_tok_to_tir_type(t);
+        let ty = self.type_tok_to_tir_type(t);
         return SSAValue {
             val: id,
             ty: Some(ty),
@@ -607,7 +597,7 @@ impl TirBuilder {
     }
     pub fn register_extern(&mut self, name: String, is_allocator: bool, ret_type: TypeTok) {
         self.extern_funcs
-            .insert(name, (is_allocator, self._type_tok_to_tir_type(ret_type)));
+            .insert(name, (is_allocator, self.type_tok_to_tir_type(ret_type)));
     }
     pub fn global_string(&mut self, name: String) -> Result<SSAValue, ToyError> {
         let id = self._next_value_id();
@@ -645,5 +635,15 @@ impl TirBuilder {
             param_values.push(d);
         }
         return Ok(());
+    }
+    pub fn type_tok_to_tir_type(&self, t: TypeTok) -> TirType {
+        return match t {
+            TypeTok::Int => TirType::I64,
+            TypeTok::Bool => TirType::I1,
+            TypeTok::Float => TirType::F64,
+            TypeTok::Void => TirType::Void,
+            TypeTok::Str => TirType::I8PTR,
+            _ => todo!("Chase, you have not implemented this yt"),
+        };
     }
 }

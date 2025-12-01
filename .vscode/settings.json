@@ -33,6 +33,7 @@
         "iadd",
         "iconst",
         "idxs",
+        "iface",
         "imul",
         "insts",
         "isub",

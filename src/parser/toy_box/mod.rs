@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fmt;
 
 use crate::token::{Token, TypeTok};
@@ -26,7 +26,7 @@ pub enum TBox {
     ///Array, idx's, new val
     ArrReassign(Token, Vec<Vec<Token>>, Vec<Token>),
     ///Name, types
-    StructInterface(Box<String>, Box<HashMap<String, TypeTok>>),
+    StructInterface(Box<String>, Box<BTreeMap<String, TypeTok>>),
     ///First token is struct name, then values, then the new value
     StructReassign(Box<String>, Vec<String>, Vec<Token>),
 }

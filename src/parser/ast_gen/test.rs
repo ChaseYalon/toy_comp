@@ -5,7 +5,7 @@ use crate::{
     token::TypeTok,
 };
 use ordered_float::OrderedFloat;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 macro_rules! setup_ast {
     ($i: expr, $ast: ident) => {
         let input = $i.to_string();
@@ -798,20 +798,20 @@ fn test_ast_gen_struct_def_and_ref() {
         vec![
             Ast::StructInterface(
                 Box::new("Name".to_string()),
-                Box::new(HashMap::from([
+                Box::new(BTreeMap::from([
                     ("first".to_string(), TypeTok::Str),
                     ("last".to_string(), TypeTok::Str)
                 ]))
             ),
             Ast::VarDec(
                 Box::new("me".to_string()),
-                TypeTok::Struct(HashMap::from([
+                TypeTok::Struct(BTreeMap::from([
                     ("first".to_string(), Box::new(TypeTok::Str)),
                     ("last".to_string(), Box::new(TypeTok::Str)),
                 ])),
                 Box::new(Ast::StructLit(
                     Box::new("Name".to_string()),
-                    Box::new(HashMap::from([
+                    Box::new(BTreeMap::from([
                         (
                             "first".to_string(),
                             (Ast::StringLit(Box::new("Chase".to_string())), TypeTok::Str)
@@ -845,20 +845,20 @@ fn test_ast_gen_struct_buggy() {
         vec![
             Ast::StructInterface(
                 Box::new("Foo".to_string()),
-                Box::new(HashMap::from([
+                Box::new(BTreeMap::from([
                     ("fee".to_string(), TypeTok::Int),
                     ("baz".to_string(), TypeTok::Bool)
                 ]))
             ),
             Ast::VarDec(
                 Box::new("x".to_string()),
-                TypeTok::Struct(HashMap::from([
+                TypeTok::Struct(BTreeMap::from([
                     ("fee".to_string(), Box::new(TypeTok::Int)),
                     ("baz".to_string(), Box::new(TypeTok::Bool)),
                 ])),
                 Box::new(Ast::StructLit(
                     Box::new("Foo".to_string()),
-                    Box::new(HashMap::from([
+                    Box::new(BTreeMap::from([
                         ("fee".to_string(), (Ast::IntLit(2), TypeTok::Int)),
                         ("baz".to_string(), (Ast::BoolLit(false), TypeTok::Bool))
                     ]))
@@ -883,17 +883,17 @@ fn test_ast_gen_nested_struct() {
         vec![
             Ast::StructInterface(
                 Box::new("Name".to_string()),
-                Box::new(HashMap::from([
+                Box::new(BTreeMap::from([
                     ("first".to_string(), TypeTok::Str),
                     ("last".to_string(), TypeTok::Str)
                 ]))
             ),
             Ast::StructInterface(
                 Box::new("Person".to_string()),
-                Box::new(HashMap::from([
+                Box::new(BTreeMap::from([
                     (
                         "name".to_string(),
-                        TypeTok::Struct(HashMap::from([
+                        TypeTok::Struct(BTreeMap::from([
                             ("first".to_string(), Box::new(TypeTok::Str)),
                             ("last".to_string(), Box::new(TypeTok::Str))
                         ]))
@@ -903,10 +903,10 @@ fn test_ast_gen_nested_struct() {
             ),
             Ast::VarDec(
                 Box::new("me".to_string()),
-                TypeTok::Struct(HashMap::from([
+                TypeTok::Struct(BTreeMap::from([
                     (
                         "name".to_string(),
-                        Box::new(TypeTok::Struct(HashMap::from([
+                        Box::new(TypeTok::Struct(BTreeMap::from([
                             ("first".to_string(), Box::new(TypeTok::Str)),
                             ("last".to_string(), Box::new(TypeTok::Str))
                         ])))
@@ -915,13 +915,13 @@ fn test_ast_gen_nested_struct() {
                 ]),),
                 Box::new(Ast::StructLit(
                     Box::new("Person".to_string()),
-                    Box::new(HashMap::from([
+                    Box::new(BTreeMap::from([
                         (
                             "name".to_string(),
                             (
                                 Ast::StructLit(
                                     Box::new("Name".to_string()),
-                                    Box::new(HashMap::from([
+                                    Box::new(BTreeMap::from([
                                         (
                                             "first".to_string(),
                                             (
@@ -938,7 +938,7 @@ fn test_ast_gen_nested_struct() {
                                         )
                                     ]))
                                 ),
-                                TypeTok::Struct(HashMap::from([
+                                TypeTok::Struct(BTreeMap::from([
                                     ("first".to_string(), Box::new(TypeTok::Str)),
                                     ("last".to_string(), Box::new(TypeTok::Str))
                                 ]))
@@ -977,22 +977,25 @@ fn test_ast_gen_struct_reassign() {
         vec![
             Ast::StructInterface(
                 Box::new("Foo".to_string()),
-                Box::new(HashMap::from([("bar".to_string(), TypeTok::Int)]))
+                Box::new(BTreeMap::from([("bar".to_string(), TypeTok::Int)]))
             ),
             Ast::StructInterface(
                 Box::new("Baz".to_string()),
-                Box::new(HashMap::from([(
+                Box::new(BTreeMap::from([(
                     "foo".to_string(),
-                    TypeTok::Struct(HashMap::from([("bar".to_string(), Box::new(TypeTok::Int))]))
+                    TypeTok::Struct(BTreeMap::from([(
+                        "bar".to_string(),
+                        Box::new(TypeTok::Int)
+                    )]))
                 )]))
             ),
             Ast::StructInterface(
                 Box::new("Qux".to_string()),
-                Box::new(HashMap::from([(
+                Box::new(BTreeMap::from([(
                     "baz".to_string(),
-                    TypeTok::Struct(HashMap::from([(
+                    TypeTok::Struct(BTreeMap::from([(
                         "foo".to_string(),
-                        Box::new(TypeTok::Struct(HashMap::from([(
+                        Box::new(TypeTok::Struct(BTreeMap::from([(
                             "bar".to_string(),
                             Box::new(TypeTok::Int)
                         )])))
@@ -1001,11 +1004,11 @@ fn test_ast_gen_struct_reassign() {
             ),
             Ast::VarDec(
                 Box::new("a".to_string()),
-                TypeTok::Struct(HashMap::from([(
+                TypeTok::Struct(BTreeMap::from([(
                     "baz".to_string(),
-                    Box::new(TypeTok::Struct(HashMap::from([(
+                    Box::new(TypeTok::Struct(BTreeMap::from([(
                         "foo".to_string(),
-                        Box::new(TypeTok::Struct(HashMap::from([(
+                        Box::new(TypeTok::Struct(BTreeMap::from([(
                             "bar".to_string(),
                             Box::new(TypeTok::Int)
                         )])))
@@ -1013,31 +1016,31 @@ fn test_ast_gen_struct_reassign() {
                 )])),
                 Box::new(Ast::StructLit(
                     Box::new("Qux".to_string()),
-                    Box::new(HashMap::from([(
+                    Box::new(BTreeMap::from([(
                         "baz".to_string(),
                         (
                             Ast::StructLit(
                                 Box::new("Baz".to_string()),
-                                Box::new(HashMap::from([(
+                                Box::new(BTreeMap::from([(
                                     "foo".to_string(),
                                     (
                                         Ast::StructLit(
                                             Box::new("Foo".to_string()),
-                                            Box::new(HashMap::from([(
+                                            Box::new(BTreeMap::from([(
                                                 "bar".to_string(),
                                                 (Ast::IntLit(1), TypeTok::Int)
                                             )]))
                                         ),
-                                        TypeTok::Struct(HashMap::from([(
+                                        TypeTok::Struct(BTreeMap::from([(
                                             "bar".to_string(),
                                             Box::new(TypeTok::Int)
                                         )]))
                                     )
                                 )]))
                             ),
-                            TypeTok::Struct(HashMap::from([(
+                            TypeTok::Struct(BTreeMap::from([(
                                 "foo".to_string(),
-                                Box::new(TypeTok::Struct(HashMap::from([(
+                                Box::new(TypeTok::Struct(BTreeMap::from([(
                                     "bar".to_string(),
                                     Box::new(TypeTok::Int)
                                 )])))
@@ -1051,7 +1054,7 @@ fn test_ast_gen_struct_reassign() {
                 vec!["baz".to_string(), "foo".to_string()],
                 Box::new(Ast::StructLit(
                     Box::new("Foo".to_string()),
-                    Box::new(HashMap::from([(
+                    Box::new(BTreeMap::from([(
                         "bar".to_string(),
                         (Ast::IntLit(2), TypeTok::Int)
                     )]))
@@ -1073,13 +1076,13 @@ fn test_ast_gen_struct_func_param() {
         vec![
             Ast::StructInterface(
                 Box::new("Foo".to_string()),
-                Box::new(HashMap::from([("a".to_string(), TypeTok::Int)]))
+                Box::new(BTreeMap::from([("a".to_string(), TypeTok::Int)]))
             ),
             Ast::FuncDec(
                 Box::new("bar".to_string()),
                 vec![Ast::FuncParam(
                     Box::new("f".to_string()),
-                    TypeTok::Struct(HashMap::from([("a".to_string(), Box::new(TypeTok::Int))]))
+                    TypeTok::Struct(BTreeMap::from([("a".to_string(), Box::new(TypeTok::Int))]))
                 )],
                 TypeTok::Int,
                 vec![Ast::Return(Box::new(Ast::StructRef(
@@ -1091,7 +1094,7 @@ fn test_ast_gen_struct_func_param() {
                 Box::new("bar".to_string()),
                 vec![Ast::StructLit(
                     Box::new("Foo".to_string()),
-                    Box::new(HashMap::from([(
+                    Box::new(BTreeMap::from([(
                         "a".to_string(),
                         (Ast::IntLit(1), TypeTok::Int)
                     )]))
@@ -1160,7 +1163,10 @@ fn test_ast_gen_arr_ref_bug() {
                 Box::new("x".to_string()),
                 TypeTok::Int,
                 Box::new(Ast::InfixExpr(
-                    Box::new(Ast::ArrRef(Box::new("arr".to_string()), vec![Ast::IntLit(1)])),
+                    Box::new(Ast::ArrRef(
+                        Box::new("arr".to_string()),
+                        vec![Ast::IntLit(1)]
+                    )),
                     Box::new(Ast::IntLit(3)),
                     InfixOp::Plus
                 ))

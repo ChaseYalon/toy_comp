@@ -3,7 +3,7 @@ use crate::debug;
 use crate::errors::{ToyError, ToyErrorType};
 use crate::parser::ast::{Ast, InfixOp};
 use crate::token::{Token, TypeTok};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 impl AstGenerator {
     pub fn parse_num_expr(&self, toks: &Vec<Token>) -> Result<Ast, ToyError> {
@@ -237,7 +237,7 @@ impl AstGenerator {
             unprocessed_kv.push(&inner[start..inner.len()]);
         }
 
-        let mut processed_kv: HashMap<String, (Ast, TypeTok)> = HashMap::new();
+        let mut processed_kv: BTreeMap<String, (Ast, TypeTok)> = BTreeMap::new();
         for kv in unprocessed_kv {
             if kv.len() < 3 {
                 return Err(ToyError::new(ToyErrorType::MalformedStructField));
@@ -480,7 +480,11 @@ impl AstGenerator {
                     };
 
                     let result_type = match op {
-                        InfixOp::Plus | InfixOp::Minus | InfixOp::Multiply | InfixOp::Divide | InfixOp::Modulo => {
+                        InfixOp::Plus
+                        | InfixOp::Minus
+                        | InfixOp::Multiply
+                        | InfixOp::Divide
+                        | InfixOp::Modulo => {
                             if item_type == TypeTok::Float || right_type == TypeTok::Float {
                                 TypeTok::Float
                             } else if item_type == TypeTok::Str || right_type == TypeTok::Str {

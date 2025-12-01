@@ -1,5 +1,5 @@
 use ordered_float::OrderedFloat;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -79,8 +79,8 @@ pub enum TypeTok {
     AnyArr(u64),
     FloatArr(u64),
 
-    Struct(HashMap<String, Box<TypeTok>>),
-    StructArr(HashMap<String, Box<TypeTok>>, u64),
+    Struct(BTreeMap<String, Box<TypeTok>>),
+    StructArr(BTreeMap<String, Box<TypeTok>>, u64),
 }
 
 impl Hash for TypeTok {
