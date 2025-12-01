@@ -6,6 +6,9 @@ try:
     import os
     import urllib.request
     import ssl
+    import time
+    import winreg
+    import ctypes
     #turn off ssl validation
     ssl._create_default_https_context = ssl._create_unverified_context
 
@@ -64,7 +67,7 @@ try:
                 )
                 output = result.stdout + result.stderr
                 # Optionally check that it's LLVM/Clang
-                if "clang" in output.lower() and "llvm" in output.lower():
+                if "clang" in output.lower() and "x86_64-w64-windows-gnu" in output.lower():
                     return True
                 return False
             except Exception:
@@ -85,9 +88,57 @@ try:
                 ], check=True)
 
                 os.environ["PATH"] = cargo_bin + ";" + os.environ["PATH"]
+        def install_windows_mingw_clang():
+            DOWNLOAD_URL = "https://github.com/msys2/msys2-installer/releases/latest/download/msys2-x86_64-latest.exe"
+            INSTALLER = "msys2-x86_64-latest.exe"
+            INSTALL_DIR = r"C:\msys64"
+
+            urllib.request.urlretrieve(DOWNLOAD_URL, INSTALLER)
+            subprocess.run([INSTALLER, "/S", f"/D={INSTALL_DIR}"], check=True)
+            bash = os.path.join(INSTALL_DIR, "usr", "bin", "bash.exe")
+
+            add_mingw64_to_user_path()
+            def msys_run(cmd):
+                return subprocess.run([bash, "-lc", cmd], check=True)
+
+            msys_run("pacman -Syu --noconfirm || true")
+            time.sleep(3)
+            msys_run("pacman -S --needed --noconfirm base-devel mingw-w64-x86_64-toolchain")
+            msys_run("pacman -S --needed --noconfirm base-devel mingw-w64-x86_64-llvm")
+            msys_run("pacman -S --needed --noconfirm base-devel mingw-w64-x86_64-clang")
+        def add_mingw64_to_user_path():
+            target = r"C:\msys64\mingw64\bin"
+            reg_path = r"Environment"
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, reg_path, 0, winreg.KEY_READ | winreg.KEY_WRITE)
+
+            try:
+                value, value_type = winreg.QueryValueEx(key, "Path")
+            except FileNotFoundError:
+                value, value_type = "", winreg.REG_EXPAND_SZ
+
+            paths = value.split(";") if value else []
+            if any(p.lower() == target.lower() for p in paths):
+                winreg.CloseKey(key)
+                return
+            new_value = value + ";" + target if value else target
+            winreg.SetValueEx(key, "Path", 0, value_type, new_value)
+            winreg.CloseKey(key)
+            HWND_BROADCAST = 0xFFFF
+            WM_SETTINGCHANGE = 0x001A
+            SMTO_ABORTIFHUNG = 0x0002
+
+            ctypes.windll.user32.SendMessageTimeoutW(
+                HWND_BROADCAST,
+                WM_SETTINGCHANGE,
+                0,
+                "Environment",
+                SMTO_ABORTIFHUNG,
+                5000,
+                None
+            )
+
         if not detect_windows_clang():
-            print("Installing Clang")
-            subprocess.run("winget install LLVM.LLVM", shell=True)
+            install_windows_mingw_clang()
         else:
             print("Clang already installed, continuing")
         if not detect_rustup():
