@@ -6,31 +6,17 @@ try:
     import os
     import urllib.request
     import ssl
-    import time
-    import winreg
     import ctypes
-    #turn off ssl validation
+    import time
+
     ssl._create_default_https_context = ssl._create_unverified_context
 
-    def detect_rustup() -> bool:
-        path = shutil.which("rustup")
-        if path is None:
-            return False
-
-        try:
-            subprocess.run(
-                ["rustup", "--version"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                check=True
-            )
-            return True
-        except Exception:
-            return False
-
     print("Entering ToyLang build system setup wizard")
-    perm_grated = input("This wizard will require access to your network if it needs to download dependencies, and it will require access to read and write to your whole system. Is this ok [n/Y]: ")
-    if perm_grated == "n":
+    perm_grated = input(
+        "This wizard will require access to your network if it needs to download dependencies, "
+        "and it will require access to read and write to your whole system. Is this ok [n/Y]: "
+    )
+    if perm_grated.lower() == "n":
         print("[ERROR] Permission denied")
         sys.exit(1)
 
@@ -38,149 +24,105 @@ try:
     cpu_type = platform.uname().machine
     print(f"OS detected as {os_name} with a {cpu_type} cpu")
 
-    if os_name != "Windows" and os_name != "Linux":
-        print(f"[ERROR] OS {os_name} is not supported, try to use a Linux VM if possible")
-        sys.exit(1)
-    if cpu_type != "x86_64" and cpu_type != "AMD64":
-        print(f"[ERROR] Detected a {cpu_type} cpu, but only x86_64 is supported, try QEMU emulation if possible")
+    if os_name != "Windows" or cpu_type not in ("x86_64", "AMD64"):
+        print(f"[ERROR] Only Windows x86_64 is supported")
         sys.exit(1)
 
-    print("Host target validation compete, installing build dependencies [Clang, Cargo, RustC] if not already installed")
-    #windows specific setup
-    if os_name == "Windows":
-        #windows stuff
+    MSYS2_DIR = r"C:\msys64"
+    MINGW64_BIN = os.path.join(MSYS2_DIR, "mingw64", "bin")
+
+    def detect_mingw_clang() -> bool:
+        clang_path = shutil.which("clang", path=MINGW64_BIN + ";" + os.environ.get("PATH", ""))
+        return clang_path is not None
+
+    def add_mingw_to_user_path():
         import winreg
-        #misc setup
-        def detect_windows_clang() -> bool:
-            clang_path = shutil.which("clang")
-            if clang_path is None:
-                return False
-
-            try:
-                # Run 'clang --version' to ensure it works
-                result = subprocess.run(
-                    ["clang", "--version"],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    check=True
-                )
-                output = result.stdout + result.stderr
-                # Optionally check that it's LLVM/Clang
-                if "clang" in output.lower() and "x86_64-w64-windows-gnu" in output.lower():
-                    return True
-                return False
-            except Exception:
-                return False
-        def install_rustup_windows():
-                url = "https://win.rustup.rs/x86_64"
-                urllib.request.urlretrieve(url, "rustup-init.exe")
-                subprocess.run(["rustup-init.exe", "-y"], check=True)
-                cargo_bin = os.path.expanduser(r"~\.cargo\bin")
-                rustup_exe = os.path.join(cargo_bin, "rustup.exe")
-
-                subprocess.run([rustup_exe, "target", "add", "x86_64-pc-windows-gnu", "--toolchain", "nightly"], check=True)
-                cargo_bin = os.path.expandvars(r"%USERPROFILE%\.cargo\bin")
-                subprocess.run([
-                    "powershell",
-                    "-Command",
-                    f"[Environment]::SetEnvironmentVariable('PATH', '{cargo_bin};' + [Environment]::GetEnvironmentVariable('PATH','User'), 'User')"
-                ], check=True)
-
-                os.environ["PATH"] = cargo_bin + ";" + os.environ["PATH"]
-        def install_windows_mingw_clang():
-            subprocess.run(["winget install --id=MSYS2.MSYS2 -e --silent"], check=True)
-
-            bash = os.path.join(INSTALL_DIR, "usr", "bin", "bash.exe")
-
-            add_mingw64_to_user_path()
-            def msys_run(cmd):
-                return subprocess.run([bash, "-lc", cmd], check=True)
-
-            msys_run("pacman -Syu --noconfirm || true")
-            time.sleep(3)
-            msys_run("pacman -S --needed --noconfirm base-devel mingw-w64-x86_64-toolchain")
-            msys_run("pacman -S --needed --noconfirm base-devel mingw-w64-x86_64-llvm")
-            msys_run("pacman -S --needed --noconfirm base-devel mingw-w64-x86_64-clang")
-        def add_mingw64_to_user_path():
-            target = r"C:\msys64\mingw64\bin"
-            reg_path = r"Environment"
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, reg_path, 0, winreg.KEY_READ | winreg.KEY_WRITE)
-
-            try:
-                value, value_type = winreg.QueryValueEx(key, "Path")
-            except FileNotFoundError:
-                value, value_type = "", winreg.REG_EXPAND_SZ
-
-            paths = value.split(";") if value else []
-            if any(p.lower() == target.lower() for p in paths):
-                winreg.CloseKey(key)
-                return
-            new_value = value + ";" + target if value else target
-            winreg.SetValueEx(key, "Path", 0, value_type, new_value)
+        target = MINGW64_BIN
+        reg_path = r"Environment"
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, reg_path, 0, winreg.KEY_READ | winreg.KEY_WRITE)
+        try:
+            value, value_type = winreg.QueryValueEx(key, "Path")
+        except FileNotFoundError:
+            value, value_type = "", winreg.REG_EXPAND_SZ
+        paths = value.split(";") if value else []
+        if any(p.lower() == target.lower() for p in paths):
             winreg.CloseKey(key)
-            HWND_BROADCAST = 0xFFFF
-            WM_SETTINGCHANGE = 0x001A
-            SMTO_ABORTIFHUNG = 0x0002
+            return
+        new_value = value + ";" + target if value else target
+        winreg.SetValueEx(key, "Path", 0, value_type, new_value)
+        winreg.CloseKey(key)
 
-            ctypes.windll.user32.SendMessageTimeoutW(
-                HWND_BROADCAST,
-                WM_SETTINGCHANGE,
-                0,
-                "Environment",
-                SMTO_ABORTIFHUNG,
-                5000,
-                None
-            )
+        # Notify Windows of path change
+        HWND_BROADCAST = 0xFFFF
+        WM_SETTINGCHANGE = 0x001A
+        SMTO_ABORTIFHUNG = 0x0002
+        ctypes.windll.user32.SendMessageTimeoutW(HWND_BROADCAST, WM_SETTINGCHANGE, 0, "Environment", SMTO_ABORTIFHUNG, 5000, None)
 
-        if not detect_windows_clang():
-            install_windows_mingw_clang()
-        else:
-            print("Clang already installed, continuing")
-        if not detect_rustup():
-            print("Installing rustup")
-            install_rustup_windows()
-        else:
-            print("Rustup already installed, switching to correct toolchain")
-            subprocess.run(["rustup", "target", "add", "x86_64-pc-windows-gnu", "--toolchain", "nightly"], check=True)
+    def install_msys2():
+        if not os.path.exists(MSYS2_DIR):
+            print("Downloading MSYS2 installer...")
+            url = "https://github.com/msys2/msys2-installer/releases/latest/download/msys2-x86_64-latest.exe"
+            installer = "msys2-x86_64-latest.exe"
+            urllib.request.urlretrieve(url, installer)
+            print("Running MSYS2 installer (silent)...")
+            subprocess.run([installer, "/S", f"/D={MSYS2_DIR}"], check=True)
 
-        #install cmake
-        subprocess.run(["winget", "install", "CMAKE"], shell=True)
+    def msys_run(cmd):
+        bash = os.path.join(MSYS2_DIR, "usr", "bin", "bash.exe")
+        return subprocess.run([bash, "-lc", cmd], check=True)
 
-        #install ninja
-        subprocess.run(["winget", "install", "Ninja-build.Ninja"], shell=True)
+    def install_mingw_packages():
+        # Update system
+        print("Updating MSYS2 base system...")
+        msys_run("pacman -Syu --noconfirm || true")
+        time.sleep(2)
+        # Install required packages
+        print("Installing MinGW-w64 toolchain and LLVM/Clang...")
+        packages = [
+            "base-devel",
+            "mingw-w64-x86_64-toolchain",
+            "mingw-w64-x86_64-llvm",
+            "mingw-w64-x86_64-clang",
+        ]
+        msys_run(f"pacman -S --needed --noconfirm {' '.join(packages)}")
 
+    add_mingw_to_user_path()
+    install_msys2()
+    if not detect_mingw_clang():
+        install_mingw_packages()
+    else:
+        print("MSYS2 MinGW-w64 Clang already installed, continuing...")
 
-    if os_name == "Linux":
-        #TODO: Make this not true
-        print("Please note: Only Debian based distro can use this script, any GLIBC based distro can run the compiler, but you must install dependencies manually")
-        if shutil.which("clang") is not None:
-            print("Clang already installed, continuing")
-        else:
-            print("Installing Clang")
-            cmds = [
-                ["sudo", "apt", "update"],
-                ["sudo", "apt", "install", "-y", "clang", "cmake", "ninja-build"]
-            ]
-            for cmd in cmds:
-                subprocess.run(cmd, check=True)
-            print("Clang installed")
-        if not detect_rustup():
-            print("Installing rustup")
-            cmd = (
-                "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | "
-                "sh -s -- -y"
-            )
-            subprocess.run(cmd, shell=True, check=True)
-            subprocess.run("cargo", shell=True, check=True)
-        else:
-            print("Rust already installed")
-        #run regardless
-        subprocess.run(["rustup", "target", "add", "x86_64-pc-windows-gnu", "--toolchain", "nightly"], check=True)
+    # Rustup installation
+    def detect_rustup() -> bool:
+        path = shutil.which("rustup")
+        if path is None:
+            return False
+        try:
+            subprocess.run(["rustup", "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+            return True
+        except Exception:
+            return False
+
+    if not detect_rustup():
+        print("Installing Rustup...")
+        url = "https://win.rustup.rs/x86_64"
+        urllib.request.urlretrieve(url, "rustup-init.exe")
+        subprocess.run(["rustup-init.exe", "-y"], check=True)
+
+    subprocess.run(["rustup", "target", "add", "x86_64-pc-windows-gnu", "--toolchain", "nightly"], check=True)
+
+    # Install CMake and Ninja
+    for winget_id, name in [("CMake.CMake", "cmake"), ("Ninja-build.Ninja", "ninja")]:
+        if shutil.which(name) is None:
+            print(f"Installing {name} via winget...")
+            subprocess.run(["winget", "install", "--id", winget_id, "-e", "--silent"], check=True)
+
 except Exception as e:
-    print("[ERROR] Installer failed, please try again, or manually install dependencies")
+    print("[ERROR] Installer failed. Try again or install dependencies manually.")
     print(e)
     sys.exit(1)
 else:
-    print("Congrats!! Build system install complete, you can now get a repl by saying cargo run -- --repl or pass it a .toy file like cargo run -- <PATH>")
-    print("Type cargo run -- --help for more details")
+    print("Build system installation complete!")
+    print("Run REPL: cargo run -- --repl")
+    print("Run file: cargo run -- <PATH>")
