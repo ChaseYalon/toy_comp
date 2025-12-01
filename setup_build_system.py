@@ -89,12 +89,8 @@ try:
 
                 os.environ["PATH"] = cargo_bin + ";" + os.environ["PATH"]
         def install_windows_mingw_clang():
-            DOWNLOAD_URL = "https://github.com/msys2/msys2-installer/releases/latest/download/msys2-x86_64-latest.exe"
-            INSTALLER = "msys2-x86_64-latest.exe"
-            INSTALL_DIR = r"C:\msys64"
+            subprocess.run(["winget install --id=MSYS2.MSYS2 -e --silent"], check=True)
 
-            urllib.request.urlretrieve(DOWNLOAD_URL, INSTALLER)
-            subprocess.run([INSTALLER, "/S", f"/D={INSTALL_DIR}"], check=True)
             bash = os.path.join(INSTALL_DIR, "usr", "bin", "bash.exe")
 
             add_mingw64_to_user_path()
