@@ -68,7 +68,7 @@ try:
                 subprocess.run(["winget", "install", "-e", "--id", "MSYS2.MSYS2"])
 
         def msys_run(cmd):
-            bash = "C:\msys64\msys2.exe"
+            bash = "C:\\msys64\\msys2.exe"
             return subprocess.run([bash, "-lc", cmd], check=True)
 
         def install_mingw_packages():
