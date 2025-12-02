@@ -65,14 +65,10 @@ try:
 
         def install_msys2():
             if not os.path.exists(MSYS2_DIR):
-                url = "https://github.com/msys2/msys2-installer/releases/latest/download/msys2-x86_64-latest.exe"
-                installer = "msys2-x86_64-latest.exe"
-                urllib.request.urlretrieve(url, installer)
-                print("Running MSYS2 installer (silent)...")
-                subprocess.run([installer, "/S", f"/D={MSYS2_DIR}"], check=True)
+                subprocess.run(["winget", "install", "-e", "--id", "MSYS2.MSYS2"])
 
         def msys_run(cmd):
-            bash = os.path.join(MSYS2_DIR, "usr", "bin", "bash.exe")
+            bash = "C:\msys64\msys2.exe"
             return subprocess.run([bash, "-lc", cmd], check=True)
 
         def install_mingw_packages():
@@ -148,6 +144,5 @@ except Exception as e:
     sys.exit(1)
 else:
     print("Build system installation complete!")
-    print("Please resart your shell for path to work")
     print("Run REPL: cargo run -- --repl")
     print("Run file: cargo run -- <PATH>")
