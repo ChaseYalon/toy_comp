@@ -10,7 +10,7 @@
 
 #cmake build
 src/c/build
-
+build
 libruntime.a
 libcore.a
 

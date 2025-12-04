@@ -1,8 +1,0 @@
-C:/Users/chase_qlo04cr/sideProjects/toy_compiler/toy_comp/build/CMakeFiles/runtime.dir
-C:/Users/chase_qlo04cr/sideProjects/toy_compiler/toy_comp/build/CMakeFiles/core.dir
-C:/Users/chase_qlo04cr/sideProjects/toy_compiler/toy_comp/build/CMakeFiles/edit_cache.dir
-C:/Users/chase_qlo04cr/sideProjects/toy_compiler/toy_comp/build/CMakeFiles/rebuild_cache.dir
-C:/Users/chase_qlo04cr/sideProjects/toy_compiler/toy_comp/build/CMakeFiles/list_install_components.dir
-C:/Users/chase_qlo04cr/sideProjects/toy_compiler/toy_comp/build/CMakeFiles/install.dir
-C:/Users/chase_qlo04cr/sideProjects/toy_compiler/toy_comp/build/CMakeFiles/install/local.dir
-C:/Users/chase_qlo04cr/sideProjects/toy_compiler/toy_comp/build/CMakeFiles/install/strip.dir
