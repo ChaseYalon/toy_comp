@@ -42,6 +42,7 @@ pub enum ToyErrorType {
     MalformedStructInterface,
     MalformedFuncCall,
     ExpressionNotNumeric,
+    MissingInstruction
 }
 
 #[derive(Debug, Error)]
@@ -107,6 +108,7 @@ impl fmt::Display for ToyErrorType {
             Self::MalformedStructInterface => write!(f, "Malformed Struct"),
             Self::MalformedFuncCall => write!(f, "Malformed FuncCall"),
             Self::TypeHintNeeded => write!(f, "TypeHintNeeded"),
+            Self::MissingInstruction => write!(f, "MissingInstruction"),
             _ => todo!("chase implement {:?}", self),
         }
     }

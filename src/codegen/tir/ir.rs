@@ -94,8 +94,32 @@ pub enum TIR {
     ///takes a string and puts it into global data
     GlobalString(ValueId, Box<String>),
 }
-#[derive(PartialEq, Debug, Clone)]
 
+impl TIR {
+    pub fn get_id(&self) -> ValueId {
+        match self {
+            TIR::IConst(id, _, _) => *id,
+            TIR::FConst(id, _, _) => *id,
+            TIR::ItoF(id, _, _) => *id,
+            TIR::NumericInfix(id, _, _, _) => *id,
+            TIR::BoolInfix(id, _, _, _) => *id,
+            TIR::JumpCond(id, _, _, _) => *id,
+            TIR::Jump(id, _) => *id,
+            TIR::JumpBlockUnCond(id, _) => *id,
+            TIR::Ret(id, _) => *id,
+            TIR::CallLocalFunction(id, _, _, _) => *id,
+            TIR::CallExternFunction(id, _, _, _, _) => *id,
+            TIR::CreateStructInterface(id, _, _) => *id,
+            TIR::CreateStructLiteral(id, _, _) => *id,
+            TIR::ReadStructLiteral(id, _, _) => *id,
+            TIR::WriteStructLiteral(id, _, _, _) => *id,
+            TIR::Not(id, _) => *id,
+            TIR::Phi(id, _, _) => *id,
+            TIR::GlobalString(id, _) => *id,
+        }
+    }
+}
+#[derive(PartialEq, Debug, Clone)]
 pub struct Block {
     pub id: BlockId,
     pub ins: Vec<TIR>,

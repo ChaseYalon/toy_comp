@@ -12,6 +12,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 pub mod ir;
+pub mod viewer;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Scope {
     parent: Option<Rc<RefCell<Scope>>>,
