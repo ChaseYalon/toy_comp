@@ -137,10 +137,10 @@ impl TirBuilder {
     pub fn new_func(&mut self, name: Box<String>, params: Vec<SSAValue>, ret_type: TypeTok) {
         let func = Function {
             name: name,
-            params: params,
+            params: params.clone(),
             body: vec![],
             ret_type: self.type_tok_to_tir_type(ret_type),
-            ins_counter: 0,
+            ins_counter: params.len(),
         };
         let block = Block {
             id: self._next_block_id(),
@@ -150,6 +150,13 @@ impl TirBuilder {
         self.curr_func = Some(self.funcs.len() - 1); //item just pushed;
         self.funcs[self.curr_func.unwrap()].body.push(block);
         self.curr_block = Some(self.funcs[self.curr_func.unwrap()].body.len() - 1);
+    }
+
+    /// Updates the parameters of the current function
+    pub fn set_func_params(&mut self, params: Vec<SSAValue>) {
+        if let Some(func_idx) = self.curr_func {
+            self.funcs[func_idx].params = params;
+        }
     }
 
     pub fn iconst(&mut self, value: i64, val_type: TypeTok) -> Result<SSAValue, ToyError> {
@@ -314,7 +321,16 @@ impl TirBuilder {
         return Ok(val);
     }
     pub fn switch_block(&mut self, id: BlockId) {
-        self.curr_block = Some(id);
+        // Find the block by its ID and get its index in the body vector
+        if let Some(func_idx) = self.curr_func {
+            if let Some(block_idx) = self.funcs[func_idx]
+                .body
+                .iter()
+                .position(|b| b.id == id)
+            {
+                self.curr_block = Some(block_idx);
+            }
+        }
     }
     ///switches the function to the given name, will set the block two the first block in the function, will crash if function is empty
     pub fn switch_fn(&mut self, name: String) -> Result<(), ToyError> {
@@ -642,7 +658,13 @@ impl TirBuilder {
             TypeTok::Bool => TirType::I1,
             TypeTok::Float => TirType::F64,
             TypeTok::Void => TirType::Void,
-            TypeTok::Str => TirType::I8PTR,
+            TypeTok::Str
+            | TypeTok::StrArr(_)
+            | TypeTok::BoolArr(_)
+            | TypeTok::IntArr(_)
+            | TypeTok::FloatArr(_)
+            | TypeTok::AnyArr(_) => TirType::I8PTR,
+
             _ => todo!("Chase, you have not implemented this yt"),
         };
     }

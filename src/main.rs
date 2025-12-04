@@ -5,6 +5,7 @@ use std::env;
 use std::fs;
 use std::io::{self, Write};
 use std::process;
+
 mod lexer;
 pub mod parser;
 mod token;
@@ -13,58 +14,80 @@ mod macros;
 pub mod codegen;
 mod errors;
 mod ffi;
-use crate::{lexer::Lexer, parser::Parser};
+
+use crate::codegen::Generator;
+use crate::lexer::Lexer;
+use crate::parser::Parser;
+
+fn run_repl() {
+    loop {
+        print!("> ");
+        io::stdout().flush().unwrap();
+
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .expect("Failed to read line");
+
+        let input = input.trim();
+        if input == "exit" {
+            println!("Exiting");
+            return;
+        }
+
+        if let Err(e) = compile_and_print(input.to_string()) {
+            eprintln!("Error: {}", e);
+        }
+    }
+}
+
+fn compile_and_print(source: String) -> Result<(), Box<dyn std::error::Error>> {
+    let mut lexer = Lexer::new();
+    let mut parser = Parser::new();
+    let mut generator = Generator::new();
+
+    let tokens = lexer.lex(source)?;
+    let ast = parser.parse(tokens)?;
+    let tir = generator.generate(ast)?;
+
+    println!("=== Generated TIR ===");
+    for func in &tir {
+        println!("Function: {}", func.name);
+        println!("  Params: {:?}", func.params);
+        println!("  Return Type: {:?}", func.ret_type);
+        for block in &func.body {
+            println!("  Block {}:", block.id);
+            for ins in &block.ins {
+                println!("    {:?}", ins);
+            }
+        }
+        println!();
+    }
+
+    Ok(())
+}
+
+fn compile_file(filename: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let contents = fs::read_to_string(filename)?;
+    compile_and_print(contents)
+}
 
 fn main() {
     let args: Vec<String> = env::args().collect();
+
     if args.contains(&"--repl".to_string()) {
-        loop {
-            let mut input = String::from("");
-            let mut l = Lexer::new();
-            let mut p = Parser::new();
-            print!(">");
-            io::stdout().flush().unwrap();
-
-            io::stdin()
-                .read_line(&mut input)
-                .expect("Failed to read line");
-            input = String::from(input.trim());
-            if input == String::from("exit") {
-                println!("Exiting");
-                std::process::exit(0);
-            }
-            let args: Vec<String> = env::args().collect();
-            let should_jit = args.contains(&"--aot".to_string());
-
-            // Do this:
-            let result = match p.parse(l.lex(String::from(input)).unwrap()) {
-                Ok(ast) => ast,
-                Err(e) => {
-                    eprintln!("{}", e); // This will use your Display implementation
-                    std::process::exit(1);
-                }
-            };
-        }
-    }
-    let mut filename: &String = &"NULL".to_string();
-    if args.len() > 1 {
-        filename = &args[1];
+        run_repl();
+        return;
     }
 
-    let contents = fs::read_to_string(filename).unwrap_or_else(|err| {
-        eprintln!("Error reading {}: {}", filename, err);
+    if args.len() < 2 {
+        eprintln!("Usage: {} <filename> [--repl]", args[0]);
         process::exit(1);
-    });
-    let mut l = Lexer::new();
-    let mut p = Parser::new();
-    let should_jit = if args.contains(&"--aot".to_string()) {
-        false
-    } else {
-        true
-    };
-    let path = if !should_jit {
-        Some("output.exe")
-    } else {
-        None
-    };
+    }
+
+    let filename = &args[1];
+    if let Err(e) = compile_file(filename) {
+        eprintln!("Error: {}", e);
+        process::exit(1);
+    }
 }

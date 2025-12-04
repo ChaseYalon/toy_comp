@@ -13,3 +13,6 @@ src/c/build
 
 libruntime.a
 libcore.a
+
+#for debug stuff
+temp.txt

@@ -516,7 +516,7 @@ fn test_tirgen_func_call() {
                     id: 1,
                     ins: vec![
                         TIR::NumericInfix(
-                            0,
+                            2,
                             SSAValue {
                                 val: 0,
                                 ty: Some(TirType::I64)
@@ -528,15 +528,15 @@ fn test_tirgen_func_call() {
                             NumericInfixOp::Plus
                         ),
                         TIR::Ret(
-                            1,
+                            3,
                             SSAValue {
-                                val: 0,
+                                val: 2,
                                 ty: Some(TirType::I64)
                             }
                         )
                     ]
                 }],
-                ins_counter: 2,
+                ins_counter: 4,
                 ret_type: TirType::I64
             }
         ]
@@ -1103,5 +1103,229 @@ fn test_tirgen_not() {
             ins_counter: 4,
             ret_type: TirType::I64
         }]
+    )
+}
+
+//why do the ids start with 1?
+#[test]
+fn test_tirgen_recursion_bug() {
+    setup_tir!(
+        ir,
+        "
+    fn fib(n: int): int{
+        if n == 0 {
+            return 0;
+        }
+        if n == 1 {
+            return 1;
+        }
+        return fib(n - 1) + fib(n - 2);
+    }
+    println(fib(40));"
+    );
+    assert_eq!(
+        ir,
+        vec![
+            Function {
+                name: Box::new("user_main".to_string()),
+                params: vec![],
+                ret_type: TirType::I64,
+                body: vec![Block {
+                    id: 0,
+                    ins: vec![
+                        TIR::IConst(1, 40, TirType::I64),
+                        TIR::CallLocalFunction(
+                            2,
+                            Box::new("fib".to_string()),
+                            vec![SSAValue {
+                                val: 1,
+                                ty: Some(TirType::I64)
+                            }],
+                            false
+                        ),
+                        TIR::CallExternFunction(
+                            3,
+                            Box::new("toy_println".to_string()),
+                            vec![SSAValue {
+                                val: 2,
+                                ty: Some(TirType::I64)
+                            }],
+                            false,
+                            TirType::Void
+                        ),
+                        TIR::IConst(4, 0, TirType::I64),
+                        TIR::Ret(
+                            5,
+                            SSAValue {
+                                val: 4,
+                                ty: Some(TirType::I64)
+                            }
+                        )
+                    ]
+                }],
+                ins_counter: 6
+            },
+            Function {
+                name: Box::new("fib".to_string()),
+                params: vec![SSAValue {
+                    val: 0,
+                    ty: Some(TirType::I64)
+                }],
+                ret_type: TirType::I64,
+                body: vec![
+                    Block {
+                        id: 1,
+                        ins: vec![
+                            TIR::IConst(1, 0, TirType::I64),
+                            TIR::BoolInfix(
+                                2,
+                                SSAValue {
+                                    val: 0,
+                                    ty: Some(TirType::I64)
+                                },
+                                SSAValue {
+                                    val: 1,
+                                    ty: Some(TirType::I64)
+                                },
+                                BoolInfixOp::Equals
+                            ),
+                            TIR::JumpCond(
+                                3,
+                                SSAValue {
+                                    val: 2,
+                                    ty: Some(TirType::I1)
+                                },
+                                2,
+                                3
+                            )
+                        ]
+                    },
+                    Block {
+                        id: 2,
+                        ins: vec![
+                            TIR::IConst(4, 0, TirType::I64),
+                            TIR::Ret(
+                                5,
+                                SSAValue {
+                                    val: 4,
+                                    ty: Some(TirType::I64)
+                                }
+                            ),
+                            TIR::JumpBlockUnCond(6, 3)
+                        ]
+                    },
+                    Block {
+                        id: 3,
+                        ins: vec![
+                            TIR::IConst(7, 1, TirType::I64),
+                            TIR::BoolInfix(
+                                8,
+                                SSAValue {
+                                    val: 0,
+                                    ty: Some(TirType::I64)
+                                },
+                                SSAValue {
+                                    val: 7,
+                                    ty: Some(TirType::I64)
+                                },
+                                BoolInfixOp::Equals
+                            ),
+                            TIR::JumpCond(
+                                9,
+                                SSAValue {
+                                    val: 8,
+                                    ty: Some(TirType::I1)
+                                },
+                                4,
+                                5
+                            )
+                        ]
+                    },
+                    Block {
+                        id: 4,
+                        ins: vec![
+                            TIR::IConst(10, 1, TirType::I64),
+                            TIR::Ret(
+                                11,
+                                SSAValue {
+                                    val: 10,
+                                    ty: Some(TirType::I64)
+                                }
+                            ),
+                            TIR::JumpBlockUnCond(12, 5)
+                        ]
+                    },
+                    Block {
+                        id: 5,
+                        ins: vec![
+                            TIR::IConst(13, 1, TirType::I64),
+                            TIR::NumericInfix(
+                                14,
+                                SSAValue {
+                                    val: 0,
+                                    ty: Some(TirType::I64)
+                                },
+                                SSAValue {
+                                    val: 13,
+                                    ty: Some(TirType::I64)
+                                },
+                                NumericInfixOp::Minus
+                            ),
+                            TIR::CallLocalFunction(
+                                15,
+                                Box::new("fib".to_string()),
+                                vec![SSAValue {
+                                    val: 14,
+                                    ty: Some(TirType::I64)
+                                }],
+                                false
+                            ),
+                            TIR::IConst(16, 2, TirType::I64),
+                            TIR::NumericInfix(
+                                17,
+                                SSAValue {
+                                    val: 0,
+                                    ty: Some(TirType::I64)
+                                },
+                                SSAValue {
+                                    val: 16,
+                                    ty: Some(TirType::I64)
+                                },
+                                NumericInfixOp::Minus
+                            ),
+                            TIR::CallLocalFunction(
+                                18,
+                                Box::new("fib".to_string()),
+                                vec![SSAValue {
+                                    val: 17,
+                                    ty: Some(TirType::I64)
+                                }],
+                                false
+                            ),
+                            TIR::NumericInfix(
+                                19,
+                                SSAValue {
+                                    val: 15,
+                                    ty: Some(TirType::I64)
+                                },
+                                SSAValue {
+                                    val: 18,
+                                    ty: Some(TirType::I64)
+                                },
+                                NumericInfixOp::Plus
+                            ),
+                            TIR::Ret(
+                                20,
+                                SSAValue {
+                                    val: 19,
+                                    ty: Some(TirType::I64)
+                                }
+                            )
+                        ]
+                    }
+                ],
+                ins_counter: 21
+            }
+        ]
     )
 }

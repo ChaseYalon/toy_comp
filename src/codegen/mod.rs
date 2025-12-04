@@ -1,14 +1,22 @@
-use crate::codegen::tir::AstToIrConverter;
-
 mod tir;
 
+use crate::errors::ToyError;
+use crate::parser::ast::Ast;
+use tir::AstToIrConverter;
+pub use tir::ir::{Block, Function, SSAValue, TIR, TirType};
+
 pub struct Generator {
-    ast_t_ir: AstToIrConverter,
+    converter: AstToIrConverter,
 }
+
 impl Generator {
     pub fn new() -> Generator {
-        return Generator {
-            ast_t_ir: AstToIrConverter::new(),
-        };
+        Generator {
+            converter: AstToIrConverter::new(),
+        }
+    }
+
+    pub fn generate(&mut self, ast: Vec<Ast>) -> Result<Vec<Function>, ToyError> {
+        self.converter.convert(ast)
     }
 }

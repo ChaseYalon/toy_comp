@@ -1,0 +1,12 @@
+# ninja log v6
+12	140	7865110183070914	CMakeFiles/runtime.dir/hashmap.c.obj	cd51a844c71be800
+18	147	7865110183120868	CMakeFiles/runtime.dir/stub.c.obj	f30406edc2627874
+24	155	7865110183190845	CMakeFiles/runtime.dir/ctla/ctla.c.obj	d601d606c6a6a505
+30	157	7865110183246184	CMakeFiles/runtime.dir/ctla/hashmap.c.obj	e9fdbd002e69623c
+55	165	7865110183496183	CMakeFiles/core.dir/ctla/ctla.c.obj	b04cd5a322e7a8cb
+5	173	7865110182992053	CMakeFiles/runtime.dir/builtins.c.obj	dc71b40b561e440b
+63	183	7865110183576254	CMakeFiles/core.dir/ctla/hashmap.c.obj	693d8400400800c8
+46	184	7865110183406187	CMakeFiles/core.dir/hashmap.c.obj	97027c326cda9b08
+37	212	7865110183316200	CMakeFiles/core.dir/builtins.c.obj	68351d5ccd9a774f
+174	565	7865110184678737	/lib/x86_64-pc-windows-gnu/libruntime.a	e6d5b76770cc4b1
+212	568	7865110185059705	/lib/x86_64-pc-windows-gnu/libcore.a	289998e0b6a7e73

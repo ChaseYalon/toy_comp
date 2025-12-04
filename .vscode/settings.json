@@ -1,5 +1,6 @@
 {
     "cSpell.words": [
+        "ABORTIFHUNG",
         "advapi",
         "arrlen",
         "arrs",
@@ -64,13 +65,17 @@
         "RTTI",
         "rustup",
         "sdiv",
+        "SETTINGCHANGE",
+        "SMTO",
         "srem",
         "strequal",
         "tirgen",
+        "TOLOWER",
         "uextend",
         "winget",
         "Yalon"
     ],
     "python.REPL.enableREPLSmartSend": false,
-    "cmake.sourceDirectory": "C:/Users/chase_qlo04cr/sideProjects/toy_compiler/toy_comp/src/c"
+    "cmake.sourceDirectory": "C:/Users/chase_qlo04cr/sideProjects/toy_compiler/toy_comp/src/c",
+    "mesonbuild.configureOnOpen": true
 }

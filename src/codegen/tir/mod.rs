@@ -11,7 +11,7 @@ use crate::{
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
-mod ir;
+pub mod ir;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Scope {
     parent: Option<Rc<RefCell<Scope>>>,
@@ -95,6 +95,10 @@ impl AstToIrConverter {
                 {
                     self.builder.boolean_infix(left, right, op)
                 //this will cause num and str infix ops to break but I dont give a fuck
+                } else if ((left.ty == Some(TirType::I64) && right.ty == Some(TirType::I64))
+                    || (left.ty == Some(TirType::F64) && right.ty == Some(TirType::F64)))
+                    && op == InfixOp::Equals{
+                    self.builder.boolean_infix(left, right, op)
                 } else if (left.ty == Some(TirType::I64) && right.ty == Some(TirType::I64))
                     || (left.ty == Some(TirType::F64) && right.ty == Some(TirType::F64))
                 {
