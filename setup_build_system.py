@@ -16,7 +16,7 @@ perm_granted = input(
     "This wizard will require access to your network if it needs to download dependencies, "
     "and it will require access to read and write to your whole system. Is this ok [n/Y]: "
 )
-if perm_granted.lower() == "n":
+if perm_granted.lower() == "n" and not argv[1] == "--ok":
     print("[ERROR] Permission denied")
     sys.exit(1)
 
