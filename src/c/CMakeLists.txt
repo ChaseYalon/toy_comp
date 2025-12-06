@@ -1,7 +1,7 @@
 # Force Clang
 set(CMAKE_C_COMPILER "clang")
 set(CMAKE_CXX_COMPILER "clang++")
-set(CMAKE_C_COMPILER_TARGET "x86_64-w64-windows-gnu")
+
 
 
 cmake_minimum_required(VERSION 3.10)
@@ -19,6 +19,7 @@ endif()
 
 # Detect OS
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+    set(CMAKE_C_COMPILER_TARGET "x86_64-w64-windows-gnu")
     set(TARGET_OS "pc-windows-gnu")
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(TARGET_OS "unknown-linux-gnu")
