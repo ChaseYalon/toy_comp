@@ -8,6 +8,7 @@ import ssl
 import ctypes
 import time
 
+
 ssl._create_default_https_context = ssl._create_unverified_context
 
 print("Entering ToyLang build system setup wizard")
@@ -29,6 +30,9 @@ if cpu_type not in ("x86_64", "AMD64"):
     sys.exit(1)
 
 if os_name == "Windows":
+    os.makedirs(".cargo", exist_ok=True)
+    with open(".cargo/config.toml", "w") as file:
+        file.write('[build]\ntarget = "x86_64-pc-windows-gnu"\n')
     MSYS2_DIR = r"C:\msys64"
     BASH_EXE = os.path.join(MSYS2_DIR, "usr", "bin", "bash.exe")
     MINGW64_BIN = os.path.join(MSYS2_DIR, "mingw64", "bin")
