@@ -12,11 +12,11 @@ ssl._create_default_https_context = ssl._create_unverified_context
 
 print("Entering ToyLang build system setup wizard")
 
-perm_granted = input(
+perm_granted = "Y" if len(sys.argv) > 1 and sys.argv[1] == "--ok" else input(
     "This wizard will require access to your network if it needs to download dependencies, "
     "and it will require access to read and write to your whole system. Is this ok [n/Y]: "
 )
-if perm_granted.lower() == "n" and not argv[1] == "--ok":
+if perm_granted.lower() == "n" and not sys.argv[1] == "--ok":
     print("[ERROR] Permission denied")
     sys.exit(1)
 
