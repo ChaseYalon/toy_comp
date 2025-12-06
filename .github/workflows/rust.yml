@@ -27,7 +27,7 @@ jobs:
           python-version: "3.x"
 
       - name: Configure
-        run: python setup_build_system.py
+        run: python setup_build_system.py --ok
 
       - name: Build
         run: cargo build --verbose
