@@ -48,9 +48,14 @@ endif()
 set(TARGET_TRIPLE "${TARGET_ARCH}-${TARGET_OS}")
 string(TOLOWER "${TARGET_TRIPLE}" TARGET_TRIPLE)
 
-# Output directory
-set(OUT_BASE "$ENV{CARGO_MANIFEST_DIR}/lib/${TARGET_TRIPLE}")
-file(MAKE_DIRECTORY ${OUT_BASE})
+# Output directory: prefer CARGO_MANIFEST_DIR if provided, otherwise use the CMake binary dir
+if(DEFINED ENV{CARGO_MANIFEST_DIR} AND NOT "$ENV{CARGO_MANIFEST_DIR}" STREQUAL "")
+    set(OUT_BASE "$ENV{CARGO_MANIFEST_DIR}/lib/${TARGET_TRIPLE}")
+else()
+    set(OUT_BASE "${CMAKE_BINARY_DIR}/lib/${TARGET_TRIPLE}")
+endif()
+
+file(MAKE_DIRECTORY "${OUT_BASE}")
 
 # Libraries
 add_library(runtime STATIC
