@@ -1,19 +1,35 @@
-name: Sonar code quality analysis
-on:
-  push:
-    branches:
-      - master
-  pull_request:
-    types: [opened, synchronize, reopened]
 jobs:
-  sonarqube:
-    name: SonarQube
+  sonarcloud:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
-      - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@v6
+          fetch-depth: 0
+
+      # Required for C/C++
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake
+
+      - name: Configure CMake (generate compile_commands.json)
+        run: |
+          "cd src/c" cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -B build
+
+      - name: Build
+        run: |
+          cmake --build build --parallel
+
+      - name: Move compile_commands.json where Sonar expects it
+        run: |
+          # SonarScanner requires the file to be inside the project root.
+          cp src/c/build/compile_commands.json compile_commands.json
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@v2
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.cfamily.compile-commands=compile_commands.json
