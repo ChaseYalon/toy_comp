@@ -27,9 +27,32 @@ jobs:
         run: |
           cmake --build build --parallel
 
-      - name: Move compile_commands.json where Sonar expects it
+      - name: Fix compile_commands.json paths for SonarCloud
         run: |
-          cp src/c/build/compile_commands.json compile_commands.json
+          python3 << 'EOF'
+          import json
+          import os
+          
+          # Read the compile commands
+          with open('src/c/build/compile_commands.json', 'r') as f:
+              commands = json.load(f)
+          
+          # Get the workspace root
+          workspace = os.getcwd()
+          
+          # Convert absolute paths to relative paths from workspace root
+          for cmd in commands:
+              if 'file' in cmd and cmd['file'].startswith('/'):
+                  cmd['file'] = os.path.relpath(cmd['file'], workspace)
+              if 'directory' in cmd:
+                  cmd['directory'] = workspace
+          
+          # Write to project root for SonarCloud
+          with open('compile_commands.json', 'w') as f:
+              json.dump(commands, f, indent=2)
+          
+          print(f"✓ Fixed {len(commands)} compilation units")
+          EOF
 
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@v2
