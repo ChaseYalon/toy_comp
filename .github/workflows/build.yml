@@ -32,9 +32,17 @@ jobs:
           python3 << 'EOF'
           import json
           import os
+          import sys
+          
+          compile_db_path = 'src/c/build/compile_commands.json'
+          
+          # Check if file exists
+          if not os.path.exists(compile_db_path):
+              print(f"Error: {compile_db_path} not found")
+              sys.exit(1)
           
           # Read the compile commands
-          with open('src/c/build/compile_commands.json', 'r') as f:
+          with open(compile_db_path, 'r') as f:
               commands = json.load(f)
           
           # Get the workspace root
@@ -42,7 +50,7 @@ jobs:
           
           # Convert absolute paths to relative paths from workspace root
           for cmd in commands:
-              if 'file' in cmd and cmd['file'].startswith('/'):
+              if 'file' in cmd and os.path.isabs(cmd['file']):
                   cmd['file'] = os.path.relpath(cmd['file'], workspace)
               if 'directory' in cmd:
                   cmd['directory'] = workspace
