@@ -14,10 +14,24 @@ macro_rules! setup_tir {
         let $o = t.convert(ast).unwrap();
     };
 }
+fn compare_tir(a: Vec<Function>, b: Vec<Function>) {
+    if a.len() != b.len() {
+        panic!("[ERROR] Generated: {} functions, got {} functions", a.len(), b.len());
+    }
+    for (i, func) in a.iter().enumerate() {
+        //g_ = generated
+        //r_ = received
+        let Function{body: g_body, name: g_name, ret_type: g_ret_type, params: g_params, ..} = func.clone();
+        let Function{body: r_body, name: r_name, ret_type: r_ret_type, params: r_params, ..} = b[i].clone();
+        assert_eq!(g_body, r_body);
+        assert_eq!(*g_name, *r_name);
+        assert_eq!(g_ret_type, r_ret_type);
+    }
+}
 #[test]
 fn test_tirgen_int_lit() {
     setup_tir!(ir, "5");
-    assert_eq!(
+    compare_tir(
         ir,
         vec![Function {
             params: vec![],
@@ -37,14 +51,16 @@ fn test_tirgen_int_lit() {
                 ]
             }],
             ins_counter: 3,
-            ret_type: TirType::I64
+            ret_type: TirType::I64,
+            heap_allocations: vec![],
+            heap_counter:0,
         }]
     )
 }
 #[test]
 fn test_tirgen_bool_lit() {
     setup_tir!(ir, "true");
-    assert_eq!(
+    compare_tir(
         ir,
         vec![Function {
             params: vec![],
@@ -64,14 +80,16 @@ fn test_tirgen_bool_lit() {
                 ]
             }],
             ins_counter: 3,
-            ret_type: TirType::I64
+            ret_type: TirType::I64,
+            heap_allocations: vec![],
+            heap_counter: 0,
         }]
     )
 }
 #[test]
 fn test_tirgen_numeric_infix() {
     setup_tir!(ir, "5 + 3 * 9");
-    assert_eq!(
+    compare_tir(
         ir,
         vec![Function {
             params: vec![],
@@ -117,14 +135,16 @@ fn test_tirgen_numeric_infix() {
                 ]
             }],
             ins_counter: 7,
-            ret_type: TirType::I64
+            ret_type: TirType::I64,
+            heap_allocations: vec![],
+            heap_counter: 0,
         }]
     )
 }
 #[test]
 fn test_tirgen_boolean_infix() {
     setup_tir!(ir, "true && false");
-    assert_eq!(
+    compare_tir(
         ir,
         vec![Function {
             params: vec![],
@@ -157,7 +177,9 @@ fn test_tirgen_boolean_infix() {
                 ]
             }],
             ins_counter: 5,
-            ret_type: TirType::I64
+            ret_type: TirType::I64,
+            heap_allocations: vec![],
+            heap_counter: 0
         }]
     )
 }
@@ -165,8 +187,7 @@ fn test_tirgen_boolean_infix() {
 #[test]
 fn test_tirgen_var_dec_and_reassign() {
     setup_tir!(ir, "let x = 9; x += 3");
-    assert_eq!(
-        ir,
+    compare_tir(        ir,
         vec![Function {
             params: vec![],
             name: Box::new("user_main".to_string()),
@@ -198,7 +219,9 @@ fn test_tirgen_var_dec_and_reassign() {
                 ]
             }],
             ins_counter: 5,
-            ret_type: TirType::I64
+            ret_type: TirType::I64,
+            heap_allocations: vec![],
+            heap_counter: 0,
         }]
     )
 }
@@ -206,8 +229,7 @@ fn test_tirgen_var_dec_and_reassign() {
 #[test]
 fn test_tirgen_var_ref() {
     setup_tir!(ir, "let x = 9; x + 4");
-    assert_eq!(
-        ir,
+    compare_tir(ir,
         vec![Function {
             params: vec![],
             name: Box::new("user_main".to_string()),
@@ -239,16 +261,17 @@ fn test_tirgen_var_ref() {
                 ]
             }],
             ins_counter: 5,
-            ret_type: TirType::I64
-        }]
+            ret_type: TirType::I64,
+            heap_allocations: vec![],
+            heap_counter: 0
+        }],
     )
 }
 
 #[test]
 fn test_tirgen_if_stmt() {
     setup_tir!(ir, "let x = true || false; if x {5}; 9 + 3;");
-    assert_eq!(
-        ir,
+    compare_tir(        ir,
         vec![Function {
             params: vec![],
             name: Box::new("user_main".to_string()),
@@ -314,7 +337,9 @@ fn test_tirgen_if_stmt() {
                 }
             ],
             ins_counter: 11,
-            ret_type: TirType::I64
+            ret_type: TirType::I64,
+            heap_allocations: vec![],
+            heap_counter: 0,
         }]
     )
 }
@@ -322,8 +347,7 @@ fn test_tirgen_if_stmt() {
 #[test]
 fn test_tirgen_if_else_stmt() {
     setup_tir!(ir, "let x = true || false; if x {5} else {9 + 3};");
-    assert_eq!(
-        ir,
+    compare_tir(        ir,
         vec![Function {
             params: vec![],
             name: Box::new("user_main".to_string()),
@@ -395,7 +419,9 @@ fn test_tirgen_if_else_stmt() {
                 }
             ],
             ins_counter: 12,
-            ret_type: TirType::I64
+            ret_type: TirType::I64,
+            heap_allocations: vec![],
+            heap_counter: 0
         }]
     )
 }
@@ -403,8 +429,7 @@ fn test_tirgen_if_else_stmt() {
 #[test]
 fn test_tirgen_empty_expr() {
     setup_tir!(ir, "let x = 9 * (4 + 3)");
-    assert_eq!(
-        ir,
+    compare_tir(        ir,
         vec![Function {
             params: vec![],
             name: Box::new("user_main".to_string()),
@@ -449,7 +474,9 @@ fn test_tirgen_empty_expr() {
                 ]
             }],
             ins_counter: 7,
-            ret_type: TirType::I64
+            ret_type: TirType::I64,
+            heap_allocations: vec![],
+            heap_counter: 0,
         }]
     )
 }
@@ -460,8 +487,7 @@ fn test_tirgen_func_call() {
         ir,
         "fn add(a: int, b: int): int { return a + b }; add(3, 5)"
     );
-    assert_eq!(
-        ir,
+    compare_tir(        ir,
         vec![
             Function {
                 params: vec![],
@@ -497,7 +523,9 @@ fn test_tirgen_func_call() {
                     ]
                 }],
                 ins_counter: 7,
-                ret_type: TirType::I64
+                ret_type: TirType::I64,
+                heap_allocations: vec![],
+                heap_counter: 0,
             },
             // add functionK
             Function {
@@ -537,7 +565,9 @@ fn test_tirgen_func_call() {
                     ]
                 }],
                 ins_counter: 4,
-                ret_type: TirType::I64
+                ret_type: TirType::I64,
+                heap_allocations: vec![],
+                heap_counter: 0,
             }
         ]
     )
@@ -547,8 +577,7 @@ fn test_tirgen_func_call() {
 fn test_tirgen_while_stmt() {
     // Simple while loop test: while 5 < 10 { } - condition is always true, so loop body executes once
     setup_tir!(ir, "while 5 < 10 { }");
-    assert_eq!(
-        ir,
+    compare_tir(        ir,
         vec![Function {
             params: vec![],
             body: vec![
@@ -604,7 +633,9 @@ fn test_tirgen_while_stmt() {
             ],
             name: Box::new("user_main".to_string()),
             ret_type: TirType::I64,
-            ins_counter: 8
+            ins_counter: 8,
+            heap_allocations: vec![],
+            heap_counter: 0,
         }]
     )
 }
@@ -612,8 +643,7 @@ fn test_tirgen_while_stmt() {
 #[test]
 fn test_tirgen_while_with_var_mod() {
     setup_tir!(ir, "let x = 0; while x < 3 { x = x + 1 }");
-    assert_eq!(
-        ir,
+    compare_tir(        ir,
         vec![Function {
             params: vec![],
             body: vec![
@@ -697,7 +727,9 @@ fn test_tirgen_while_with_var_mod() {
             ],
             name: Box::new("user_main".to_string()),
             ret_type: TirType::I64,
-            ins_counter: 11
+            ins_counter: 11,
+            heap_allocations: vec![],
+            heap_counter: 0
         }]
     )
 }
@@ -708,8 +740,7 @@ fn test_tirgen_string_lit_concat_and_equals() {
         ir,
         r#"let x = "foo"; let y = "fee"; let z = x + y; let a = x == y;"#
     );
-    assert_eq!(
-        ir,
+    compare_tir(        ir,
         vec![Function {
             params: vec![],
             name: Box::new("user_main".to_string()),
@@ -718,17 +749,31 @@ fn test_tirgen_string_lit_concat_and_equals() {
                 id: 0,
                 ins: vec![
                     TIR::GlobalString(0, Box::new("foo".to_string())),
-                    TIR::GlobalString(1, Box::new("fee".to_string())),
                     TIR::CallExternFunction(
-                        2,
+                        1,
+                        Box::new("toy_malloc".to_string()),
+                        vec![SSAValue{val: 0, ty: Some(TirType::I8PTR)}],
+                        true,
+                        TirType::I64
+                    ),
+                    TIR::GlobalString(2, Box::new("fee".to_string())),
+                    TIR::CallExternFunction(
+                        3,
+                        Box::new("toy_malloc".to_string()),
+                        vec![SSAValue{val: 2, ty: Some(TirType::I8PTR)}],
+                        true,
+                        TirType::I64
+                    ),
+                   TIR::CallExternFunction(
+                        4,
                         Box::new("toy_concat".to_string()),
                         vec![
                             SSAValue {
-                                val: 0,
+                                val: 1,
                                 ty: Some(TirType::I8PTR)
                             },
                             SSAValue {
-                                val: 1,
+                                val: 3,
                                 ty: Some(TirType::I8PTR)
                             }
                         ],
@@ -736,32 +781,34 @@ fn test_tirgen_string_lit_concat_and_equals() {
                         TirType::I64
                     ),
                     TIR::CallExternFunction(
-                        3,
+                        5,
                         Box::new("toy_strequal".to_string()),
                         vec![
                             SSAValue {
-                                val: 0,
+                                val: 1,
                                 ty: Some(TirType::I8PTR)
                             },
                             SSAValue {
-                                val: 1,
+                                val: 3,
                                 ty: Some(TirType::I8PTR)
                             }
                         ],
                         false,
                         TirType::I64
                     ),
-                    TIR::IConst(4, 0, TirType::I64),
+                    TIR::IConst(6, 0, TirType::I64),
                     TIR::Ret(
-                        5,
+                        7,
                         SSAValue {
-                            val: 4,
+                            val: 6,
                             ty: Some(TirType::I64)
                         }
                     )
                 ]
             }],
-            ins_counter: 6
+            ins_counter: 8,
+            heap_allocations: vec![],
+            heap_counter: 0,
         }]
     )
 }
@@ -769,8 +816,7 @@ fn test_tirgen_string_lit_concat_and_equals() {
 #[test]
 fn test_tirgen_float_lit_and_opps() {
     setup_tir!(ir, "let x = 9.2 + 6");
-    assert_eq!(
-        ir,
+    compare_tir(        ir,
         vec![Function {
             name: Box::new("user_main".to_string()),
             params: vec![],
@@ -811,6 +857,8 @@ fn test_tirgen_float_lit_and_opps() {
             }],
             ret_type: TirType::I64,
             ins_counter: 6,
+            heap_allocations: vec![],
+            heap_counter: 0,
         }]
     )
 }
@@ -818,8 +866,7 @@ fn test_tirgen_float_lit_and_opps() {
 #[test]
 fn test_tirgen_arr_lit_read_and_write() {
     setup_tir!(ir, "let arr = [1, 2, 3]; arr[2] = 9; let x = arr[1] + 3;");
-    assert_eq!(
-        ir,
+    compare_tir(        ir,
         vec![Function {
             name: Box::new("user_main".to_string()),
             params: vec![],
@@ -995,6 +1042,8 @@ fn test_tirgen_arr_lit_read_and_write() {
                     )
                 ]
             }],
+            heap_allocations: vec![],
+            heap_counter: 0,
         }]
     )
 }
@@ -1005,8 +1054,7 @@ fn test_tirgen_struct_lit() {
         ir,
         "struct Point{x: float, y: float}; let origin = Point{x: 0.0, y: 0.0}; let x = origin.x; origin.y = 3.4;"
     );
-    assert_eq!(
-        ir,
+    compare_tir(        ir,
         vec![Function {
             name: Box::new("user_main".to_string()),
             params: vec![],
@@ -1066,7 +1114,9 @@ fn test_tirgen_struct_lit() {
                     )
                 ]
             }],
-            ins_counter: 9
+            ins_counter: 9,
+            heap_allocations: vec![],
+            heap_counter: 0,
         }]
     )
 }
@@ -1074,8 +1124,7 @@ fn test_tirgen_struct_lit() {
 #[test]
 fn test_tirgen_not() {
     setup_tir!(ir, "let x = false; let y = !x;");
-    assert_eq!(
-        ir,
+    compare_tir(        ir,
         vec![Function {
             params: vec![],
             name: Box::new("user_main".to_string()),
@@ -1101,7 +1150,9 @@ fn test_tirgen_not() {
                 ]
             }],
             ins_counter: 4,
-            ret_type: TirType::I64
+            ret_type: TirType::I64,
+            heap_allocations: vec![],
+            heap_counter: 0,
         }]
     )
 }
@@ -1123,8 +1174,7 @@ fn test_tirgen_recursion_bug() {
     }
     println(fib(40));"
     );
-    assert_eq!(
-        ir,
+    compare_tir(        ir,
         vec![
             Function {
                 name: Box::new("user_main".to_string()),
@@ -1163,7 +1213,9 @@ fn test_tirgen_recursion_bug() {
                         )
                     ]
                 }],
-                ins_counter: 6
+                ins_counter: 6,
+                heap_allocations: vec![],
+                heap_counter: 0,
             },
             Function {
                 name: Box::new("fib".to_string()),
@@ -1324,8 +1376,12 @@ fn test_tirgen_recursion_bug() {
                         ]
                     }
                 ],
-                ins_counter: 21
+                ins_counter: 21,
+                heap_allocations: vec![],
+                heap_counter: 0
             }
         ]
     )
 }
+
+//TODO: Nested arrays

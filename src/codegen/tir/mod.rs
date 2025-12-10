@@ -12,7 +12,6 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 pub mod ir;
-pub mod viewer;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Scope {
     parent: Option<Rc<RefCell<Scope>>>,
@@ -39,7 +38,7 @@ impl Scope {
     }
 }
 pub struct AstToIrConverter {
-    builder: TirBuilder,
+    pub builder: TirBuilder,
     global_scope: Rc<RefCell<Scope>>,
     last_val: Option<i64>,
     ///struct name -> ((Field Name -> idx), TirType::Struct)
@@ -77,7 +76,9 @@ impl AstToIrConverter {
                 } else if left.ty == Some(TirType::I64) && right.ty == Some(TirType::F64) {
                     left = self.builder.i_to_f(left)?;
                 }
-
+                if left.ty == right.ty  && left.ty == Some(TirType::I64) {
+                    
+                }
                 return if vec![
                     InfixOp::LessThan,
                     InfixOp::LessThan,
@@ -98,7 +99,8 @@ impl AstToIrConverter {
                 //this will cause num and str infix ops to break but I dont give a fuck
                 } else if ((left.ty == Some(TirType::I64) && right.ty == Some(TirType::I64))
                     || (left.ty == Some(TirType::F64) && right.ty == Some(TirType::F64)))
-                    && op == InfixOp::Equals{
+                    && op == InfixOp::Equals
+                {
                     self.builder.boolean_infix(left, right, op)
                 } else if (left.ty == Some(TirType::I64) && right.ty == Some(TirType::I64))
                     || (left.ty == Some(TirType::F64) && right.ty == Some(TirType::F64))
@@ -132,19 +134,19 @@ impl AstToIrConverter {
                     "print" => "toy_print",
                     "println" => "toy_println",
                     "len" => {
-                        if p[0].node_type() == "StringLit" || p[0].node_type() == "InfixExpr" {//probably not ideal
+                        if p[0].node_type() == "StringLit" || p[0].node_type() == "InfixExpr" {
+                            //probably not ideal
                             "toy_strlen"
                         } else {
                             "toy_arrlen"
                         }
-                    },
+                    }
                     "str" => "toy_type_to_str",
                     "int" => "toy_type_to_int",
                     "float" => "toy_type_to_float",
                     "bool" => "toy_type_to_bool",
                     "input" => "toy_input",
-                    _ => &*n
-
+                    _ => &*n,
                 };
                 self.builder.call(name.to_string(), ssa_params)
             }
@@ -240,7 +242,7 @@ impl AstToIrConverter {
                 }
 
                 return Ok(current_val);
-            },
+            }
             Ast::Not(v) => {
                 let val = self.compile_expr(*v, scope)?;
                 self.builder.not(val)

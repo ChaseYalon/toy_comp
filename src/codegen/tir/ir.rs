@@ -1,7 +1,7 @@
 #![allow(unused)]
 
 use std::collections::HashMap;
-
+type AllocationId = u64;
 use crate::{
     errors::{ToyError, ToyErrorType},
     parser::ast::InfixOp,
@@ -124,15 +124,30 @@ pub struct Block {
     pub id: BlockId,
     pub ins: Vec<TIR>,
 }
-#[derive(PartialEq, Debug, Clone)]
-
+#[derive(PartialEq, Clone, Debug)]
+pub struct HeapAllocation {
+    block: BlockId,
+    ///functions are detected by name
+    function: Box<String>,
+    ///instruction that creates the heap allocation
+    ins_value: ValueId,
+    ///unique id
+    allocation_id: AllocationId,
+    ///a vec representing every ssa value that references the allocation
+    refs: Vec<SSAValue>
+}
+#[derive(Clone, PartialEq, Debug)]
 pub struct Function {
     pub params: Vec<SSAValue>,
     pub body: Vec<Block>,
     pub name: Box<String>,
     pub ret_type: TirType,
     pub ins_counter: usize,
+    pub heap_counter: AllocationId,
+    ///this tracks all the heap allocations in a given function, but the same heap allocation can be in multiple functions, if
+    pub heap_allocations: Vec<HeapAllocation>
 }
+#[derive(Clone)]
 pub struct TirBuilder {
     block_counter: BlockId,
     pub funcs: Vec<Function>,
@@ -154,6 +169,10 @@ impl TirBuilder {
         self.funcs[self.curr_func.unwrap()].ins_counter += 1;
         return self.funcs[self.curr_func.unwrap()].ins_counter - 1;
     }
+    fn _next_alloc_id(&mut self) -> AllocationId {
+        self.funcs[self.curr_func.unwrap()].heap_counter += 1;
+        return self.funcs[self.curr_func.unwrap()].heap_counter - 1;
+    }
     fn _next_block_id(&mut self) -> BlockId {
         self.block_counter += 1;
         return self.block_counter - 1;
@@ -165,6 +184,8 @@ impl TirBuilder {
             body: vec![],
             ret_type: self.type_tok_to_tir_type(ret_type),
             ins_counter: params.len(),
+            heap_allocations: vec![],
+            heap_counter: 0
         };
         let block = Block {
             id: self._next_block_id(),
@@ -347,11 +368,7 @@ impl TirBuilder {
     pub fn switch_block(&mut self, id: BlockId) {
         // Find the block by its ID and get its index in the body vector
         if let Some(func_idx) = self.curr_func {
-            if let Some(block_idx) = self.funcs[func_idx]
-                .body
-                .iter()
-                .position(|b| b.id == id)
-            {
+            if let Some(block_idx) = self.funcs[func_idx].body.iter().position(|b| b.id == id) {
                 self.curr_block = Some(block_idx);
             }
         }
@@ -425,9 +442,18 @@ impl TirBuilder {
         let ins =
             TIR::CallExternFunction(id, Box::new(name), params, is_allocator, ret_type.clone());
         self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()]
-            .ins
-            .push(ins);
-
+            .ins 
+            .push(ins.clone());//SAFETY: that is the real value of the ins and the only ref later is for the ins_value in the HeapAllocation
+        if is_allocator {
+            let alloc = HeapAllocation{
+                block: self.curr_block.unwrap(),
+                allocation_id: self._next_alloc_id(),
+                ins_value: ins.get_id(),
+                function: self.funcs[self.curr_func.unwrap()].name.clone(),
+                refs: vec![]
+            };
+            self.funcs[self.curr_func.unwrap()].heap_allocations.push(alloc)
+        }
         Ok(SSAValue {
             val: id,
             ty: Some(ret_type),
@@ -649,7 +675,9 @@ impl TirBuilder {
             val: id,
             ty: Some(TirType::I8PTR),
         };
-        return Ok(val);
+        let mut val2 = self.call_extern("toy_malloc".to_string(), vec![val])?;
+        val2.ty = Some(TirType::I8PTR);
+        return Ok(val2);
     }
     pub fn inject_type_param(
         &mut self,
@@ -691,5 +719,18 @@ impl TirBuilder {
 
             _ => todo!("Chase, you have not implemented this yt"),
         };
+    }
+    ///will erase all functions saved in the builder and set current func to the indicated
+    pub fn set_funcs(&mut self, funcs: Vec<Function>, func: usize) {
+        self.funcs = funcs;
+        self.curr_func = Some(func);
+        return self.curr_block = Some(0);
+    }
+    pub fn detect_heap_allocations(&self) -> Vec<HeapAllocation> {
+        let mut allocs: Vec<HeapAllocation> = vec![];
+        for func in self.funcs.clone() {
+            allocs.extend(func.heap_allocations);
+        }
+        return allocs
     }
 }

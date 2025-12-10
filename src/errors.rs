@@ -42,7 +42,7 @@ pub enum ToyErrorType {
     MalformedStructInterface,
     MalformedFuncCall,
     ExpressionNotNumeric,
-    MissingInstruction
+    MissingInstruction,
 }
 
 #[derive(Debug, Error)]

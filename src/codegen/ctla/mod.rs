@@ -1,20 +1,23 @@
-use crate::{codegen::{Function, tir::viewer::Viewer}, errors::ToyError};
-
-
+use crate::{
+    codegen::{
+        Function, SSAValue, TIR, TirType, tir::{ir::TirBuilder}
+    },
+    errors::ToyError,
+};
 
 pub struct CTLA {
-    viewer: Viewer
+    builder: TirBuilder
 }
 
 impl CTLA {
     pub fn new() -> CTLA {
-        return CTLA { 
-            viewer: Viewer::new()
-        }
+        return CTLA {
+            builder: TirBuilder::new()
+        };
     }
-    pub fn analyze(&mut self, funcs: Vec<Function>) -> Result<Vec<Function>, ToyError> {
-        self.viewer.set_funcs(funcs);
-        return Ok(self.viewer.funcs());
+    pub fn analyze(&mut self, builder: TirBuilder) -> Result<Vec<Function>, ToyError> {
+        self.builder = builder;
+        return Ok(self.builder.funcs.clone());
     }
 }
 
