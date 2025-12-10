@@ -16,3 +16,5 @@ libcore.a
 
 #for debug stuff
 temp.txt
+
+.cache
