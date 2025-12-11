@@ -166,7 +166,8 @@ impl AstToIrConverter {
                 let arr = self.builder.call("toy_malloc_arr".to_string(), params)?;
                 for (i, ssa_val) in ssa_vals.iter().enumerate() {
                     let idx = self.builder.iconst(i as i64, TypeTok::Int)?;
-                    let mut write_params: Vec<SSAValue> = vec![arr.clone(), ssa_val.clone(), idx];
+                    let x: SSAValue = ssa_val;
+                    let mut write_params: Vec<SSAValue> = [arr.clone(), x, idx].to_vec();
                     self.builder
                         .inject_type_param(&ty, false, &mut write_params);
                     self.builder

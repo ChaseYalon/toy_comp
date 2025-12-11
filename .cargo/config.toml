@@ -1,4 +1,2 @@
 [build]
 target = "x86_64-pc-windows-gnu"
-[env]
-LLVM_SYS_211_PREFIX = "C:/msys64/mingw64"

@@ -19,7 +19,7 @@ impl Generator {
     }
 
     pub fn generate(&mut self, ast: Vec<Ast>) -> Result<Vec<Function>, ToyError> {
-        let tir = self.converter.convert(ast)?;
+        let _ = self.converter.convert(ast)?;
         self.analyzer.analyze(self.converter.builder.clone())
     }
 }

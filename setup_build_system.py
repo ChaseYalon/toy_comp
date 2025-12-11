@@ -9,14 +9,18 @@ import ctypes
 import time
 
 
-perm_granted = input(
+ssl._create_default_https_context = ssl._create_unverified_context # type: ignore
+
+print("Entering ToyLang build system setup wizard")
+
+perm_granted = "Y" if len(sys.argv) > 1 and sys.argv[1] == "--ok" else input(
     "This wizard will require access to your network if it needs to download dependencies, "
     "and it will require access to read and write to your whole system. Is this ok [n/Y]: "
 )
-print("Entering ToyLang build system setup wizard")
-if perm_granted.lower() == "n":
+if perm_granted.lower() == "n" and not sys.argv[1] == "--ok":
     print("[ERROR] Permission denied")
     sys.exit(1)
+
 os_name = platform.system()
 cpu_type = platform.uname().machine
 print(f"OS detected as {os_name} with a {cpu_type} cpu")
@@ -26,6 +30,9 @@ if cpu_type not in ("x86_64", "AMD64"):
     sys.exit(1)
 
 if os_name == "Windows":
+    os.makedirs(".cargo", exist_ok=True)
+    with open(".cargo/config.toml", "w") as file:
+        file.write('[build]\ntarget = "x86_64-pc-windows-gnu"\n')
     MSYS2_DIR = r"C:\msys64"
     BASH_EXE = os.path.join(MSYS2_DIR, "usr", "bin", "bash.exe")
     MINGW64_BIN = os.path.join(MSYS2_DIR, "mingw64", "bin")
@@ -50,7 +57,7 @@ if os_name == "Windows":
         except FileNotFoundError:
             value, value_type = "", winreg.REG_EXPAND_SZ
 
-        paths = value.split(";") if value else []
+        paths: list[str] = value.split(";") if value else []
 
         if not any(p.lower() == target.lower() for p in paths):
             new_value = value + ";" + target if value else target
@@ -77,7 +84,7 @@ if os_name == "Windows":
             subprocess.run(["winget", "install", "-e", "--id", "MSYS2.MSYS2"], check=True)
 
     def msys(cmd: str):
-        return subprocess.run([BASH_EXE, "-lc", cmd], check=True)
+        return subprocess.run([BASH_EXE, "-lc", cmd])
 
     def first_msys_update():
         """Initial MSYS2 update that may kill bash.exe (expected)."""
