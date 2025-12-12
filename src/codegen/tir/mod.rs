@@ -166,7 +166,7 @@ impl AstToIrConverter {
                 let arr = self.builder.call("toy_malloc_arr".to_string(), params)?;
                 for (i, ssa_val) in ssa_vals.iter().enumerate() {
                     let idx = self.builder.iconst(i as i64, TypeTok::Int)?;
-                    let x: SSAValue = ssa_val;
+                    let x: SSAValue = ssa_val.clone();
                     let mut write_params: Vec<SSAValue> = [arr.clone(), x, idx].to_vec();
                     self.builder
                         .inject_type_param(&ty, false, &mut write_params);
@@ -225,7 +225,7 @@ impl AstToIrConverter {
                     for (_, (field_map, iface_type)) in &self.interfaces {
                         if let TirType::StructInterface(iface_fields) = iface_type {
                             if iface_fields == &field_types {
-                                if let Some(&idx) = field_map.get(&field_name) {
+                                if let Some(&idx) = (field_map as &HashMap<String, usize>).get(&field_name) {
                                     field_idx = Some(idx);
                                     field_type = Some(field_types[idx].clone());
                                     break;
@@ -329,7 +329,7 @@ impl AstToIrConverter {
         let mut phi_id_map: HashMap<String, ValueId> = HashMap::new();
         for var_name in pre_loop_vars.keys() {
             let phi_id = self.builder.alloc_value_id();
-            phi_id_map.insert(var_name.clone(), phi_id);
+            phi_id_map.insert((var_name as &String).clone(), phi_id);
         }
 
         for (var_name, pre_val) in &pre_loop_vars {
@@ -368,9 +368,9 @@ impl AstToIrConverter {
             let post_val = post_loop_vars
                 .get(var_name)
                 .cloned()
-                .unwrap_or_else(|| pre_val.clone());
+                .unwrap_or_else(|| (pre_val as &SSAValue).clone());
             if let Some(&phi_id) = phi_id_map.get(var_name) {
-                let phi_ins = TIR::Phi(phi_id, vec![0, body_id], vec![pre_val.clone(), post_val]);
+                let phi_ins = TIR::Phi(phi_id, vec![0, body_id], vec![(pre_val as &SSAValue).clone(), post_val]);
                 phi_instructions.push(phi_ins);
             }
         }
@@ -504,7 +504,7 @@ impl AstToIrConverter {
                     for (_, (field_map, iface_type)) in &self.interfaces {
                         if let TirType::StructInterface(iface_fields) = iface_type {
                             if iface_fields == &field_types {
-                                if let Some(&idx) = field_map.get(field_name) {
+                                if let Some(&idx) = (field_map as &HashMap<String, usize>).get(field_name) {
                                     field_idx = Some(idx);
                                     field_type = Some(field_types[idx].clone());
                                     break;
@@ -539,7 +539,7 @@ impl AstToIrConverter {
                 for (_, (field_map, iface_type)) in &self.interfaces {
                     if let TirType::StructInterface(iface_fields) = iface_type {
                         if iface_fields == &field_types {
-                            if let Some(&idx) = field_map.get(last_field) {
+                            if let Some(&idx) = (field_map as &HashMap<String, usize>).get(last_field) {
                                 field_idx = Some(idx);
                                 field_type = Some(field_types[idx].clone());
                                 break;
