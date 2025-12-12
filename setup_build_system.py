@@ -11,10 +11,10 @@ import time
 
 perm_granted = input(
     "This wizard will require access to your network if it needs to download dependencies, "
-    "and it will require access to read and write to your whole system. Is this ok [n/Y]: "
+    "and it will require access to read and write to your whole system. Is this ok [y/N]: "
 )
 print("Entering ToyLang build system setup wizard")
-if perm_granted.lower() == "n":
+if perm_granted.lower() != "y":
     print("[ERROR] Permission denied")
     sys.exit(1)
 os_name = platform.system()
@@ -25,6 +25,9 @@ if cpu_type not in ("x86_64", "AMD64"):
     print(f"[ERROR] Detected a {cpu_type} cpu, but only x86_64 is supported")
     sys.exit(1)
 
+if os_name != "Windows" and os_name != "Linux":
+    print(f"[ERROR] Only windows and linux are supported, {os_name} was detected")
+    sys.exit(1)
 if os_name == "Windows":
     MSYS2_DIR = r"C:\msys64"
     BASH_EXE = os.path.join(MSYS2_DIR, "usr", "bin", "bash.exe")
@@ -155,12 +158,18 @@ if os_name == "Windows":
 elif os_name == "Linux":
     print("Linux detected, only Debian-based systems fully supported by this script")
     if shutil.which("clang") is None:
-        print("Installing Clang + CMake + Ninja via apt...")
         subprocess.run(["sudo", "apt", "update"], check=True)
         subprocess.run(
-            ["sudo", "apt", "install", "-y", "clang", "cmake", "ninja-build", "build-essential"],
+            ["sudo", "apt", "install", "-y", "clang"],
             check=True
         )
+    if shutil.which("cmake") is None:
+        subprocess.run(["sudo", "apt", "update"], check=True)
+        subprocess.run(["sudo", "apt", "install", "-y", "cmake"],  check=True)
+    
+    if shutil.which("ninja") is None:
+        subprocess.run(["sudo", "apt", "update"], check=True)
+        subprocess.run(["sudo", "apt", "install", "-y", "ninja-build"], check=True)
 
     if shutil.which("rustup") is None:
         print("Installing Rustup...")
@@ -169,7 +178,12 @@ elif os_name == "Linux":
             shell=True,
             check=True
         )
-
+    #handle custom llvm installation
+    subprocess.run(["mkdir", "tmp"], check=True, shell=True)
+    subprocess.run(["cd", "tmp"], check=True, shell=True)
+    subprocess.run(["wget", "https://github.com/llvm/llvm-project/releases/download/llvmorg-21.1.7/LLVM-21.1.7-Linux-X64.tar.xz"], check=True)
+    subprocess.run(["tar", "-xvf", "LLVM-21.1.7-Linux-X64.tar.xz"], check=True)
+    #rust
     subprocess.run(["rustup", "target", "add", "x86_64-pc-windows-gnu", "--toolchain", "nightly"], check=True)
 
 print("Build system installation complete!")
