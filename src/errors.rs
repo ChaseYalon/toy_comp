@@ -1,6 +1,8 @@
 use crate::token::Token;
 use std::backtrace::Backtrace;
 use std::fmt;
+use inkwell::builder::BuilderError;
+use inkwell::support::LLVMString;
 use thiserror::Error;
 #[derive(Debug)]
 pub enum ToyErrorType {
@@ -43,13 +45,7 @@ pub enum ToyErrorType {
     MalformedFuncCall,
     ExpressionNotNumeric,
     MissingInstruction,
-    LlvmModuleVerificationFailed(String),
-    LlvmCompilationFailed(String),
-    LlvmLinkingFailed(String),
-    LlvmValueNotFound(usize),
-    LlvmBlockNotFound(usize),
-    LlvmFunctionNotFound(String),
-    LlvmInvalidType(String),
+    LlvmError(String)
 }
 
 #[derive(Debug, Error)]
@@ -116,14 +112,19 @@ impl fmt::Display for ToyErrorType {
             Self::MalformedFuncCall => write!(f, "Malformed FuncCall"),
             Self::TypeHintNeeded => write!(f, "TypeHintNeeded"),
             Self::MissingInstruction => write!(f, "MissingInstruction"),
-            Self::LlvmModuleVerificationFailed(msg) => write!(f, "LLVM module verification failed: {}", msg),
-            Self::LlvmCompilationFailed(msg) => write!(f, "LLVM compilation failed: {}", msg),
-            Self::LlvmLinkingFailed(msg) => write!(f, "LLVM linking failed: {}", msg),
-            Self::LlvmValueNotFound(id) => write!(f, "LLVM value not found for SSA value {}", id),
-            Self::LlvmBlockNotFound(id) => write!(f, "LLVM basic block not found for block {}", id),
-            Self::LlvmFunctionNotFound(name) => write!(f, "LLVM function not found: {}", name),
-            Self::LlvmInvalidType(msg) => write!(f, "LLVM invalid type: {}", msg),
-            _ => todo!("chase implement {:?}", self),
+            Self::LlvmError(s) => write!(f, "Llvm Error ({})", s),
+            _ => todo!("chase implement error type {:?}", self),
         }
+    }
+}
+
+impl From<BuilderError> for ToyError {
+    fn from(err: BuilderError) -> Self {
+        return ToyError::new(ToyErrorType::LlvmError(err.to_string()));
+    }
+}
+impl From<LLVMString> for ToyError {
+    fn from(err: LLVMString) -> Self {
+        return ToyError::new(ToyErrorType::LlvmError(err.to_string()));
     }
 }

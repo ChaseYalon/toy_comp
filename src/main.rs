@@ -55,8 +55,6 @@ fn compile_and_print(source: String) -> Result<(), Box<dyn std::error::Error>> {
     let ast = parser.parse(tokens)?;
     generator.generate(ast)?;
     
-    drop(generator);
-
     Ok(())
 }
 

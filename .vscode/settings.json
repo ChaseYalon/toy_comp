@@ -68,6 +68,7 @@
         "rustup",
         "sdiv",
         "SETTINGCHANGE",
+        "sitofp",
         "SMTO",
         "srem",
         "strequal",
