@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use inkwell::{AddressSpace, basic_block::BasicBlock, context::Context, module::{Linkage, Module}, types::{BasicMetadataTypeEnum, BasicTypeEnum}, values::BasicValueEnum};
+use inkwell::{AddressSpace, basic_block::BasicBlock, builder::Builder, context::Context, module::{Linkage, Module}, types::{BasicMetadataTypeEnum, BasicTypeEnum}, values::{BasicValue, BasicValueEnum, FunctionValue}};
 
 use crate::{codegen::{Block, Function, SSAValue, TIR, TirType}, errors::ToyError};
 
@@ -19,15 +19,23 @@ impl<'a> LlvmGenerator<'a> {
             tir_to_val: HashMap::new()
         }
     }
-    fn compile_instruction(&mut self, inst: TIR) ->Result<(), ToyError> {
-        return Ok(());
+    fn compile_instruction(&mut self, inst: TIR, builder: &Builder, curr_func_name: String) ->Result<BasicValueEnum, ToyError> {
+        let (llvm_ir, val) =  match inst {
+            //this will cause bugs not accounting for bools
+            TIR::IConst(id, val, ty) => (self.ctx.i64_type().const_int(val as u64, true).as_basic_value_enum(), SSAValue{val: id, ty: Some(ty)}), //this as u64 scares the shit out of me, LLVM should reinterpret the bits with twos complement but who the hell knows
+            _ => todo!("Chase you have not implemented {:?} ins yet", inst)
+        };
+        self.tir_to_val.insert((curr_func_name, val), llvm_ir);
+        return Ok(llvm_ir);
     }
-    fn compile_tir_block(&mut self, tir_block: Block, m: &Module, ctx: &Context) -> Result<BasicBlock, ToyError>{
+    fn compile_tir_block(&mut self, tir_block: Block, builder: &Builder, func: FunctionValue<'a>, name: String) -> Result<BasicBlock<'a>, ToyError>{
+        let llvm_block = self.ctx.append_basic_block(func, &name);
+        builder.position_at_end(llvm_block);
         for ins in tir_block.ins {
-
+            self.compile_instruction(ins, builder, name.clone());
         }
 
-        return Ok(());
+        return Ok(llvm_block);
     }
     fn compile_tir_function(&mut self, func: Function) -> Result<(), ToyError> {
         //<Boiler plate to setup function>
@@ -60,6 +68,9 @@ impl<'a> LlvmGenerator<'a> {
         for (n, p) in func.params.iter().enumerate() {
             let p_val = llvm_func.get_nth_param(n as u32).unwrap();//is probably safe, maybe will cause bugs :D
             self.tir_to_val.insert((*func.name.clone(), p.clone()), p_val);
+        }
+        for b in func.body {
+            let llvm_block = self.compile_tir_block(b, &builder, llvm_func, *func.name.clone())?;
         }
 
         return Ok(())

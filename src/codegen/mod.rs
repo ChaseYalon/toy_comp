@@ -5,6 +5,7 @@ use crate::parser::ast::Ast;
 use crate::{codegen::ctla::CTLA, errors::ToyError};
 use crate::codegen::llvm::LlvmGenerator;
 use inkwell::context::Context;
+use inkwell::module::Module;
 use tir::AstToIrConverter;
 pub use tir::ir::{Block, Function, SSAValue, TIR, TirType};
 
@@ -15,11 +16,11 @@ pub struct Generator<'a> {
 }
 
 impl<'a> Generator<'a> {
-    pub fn new(ctx: &'a Context) -> Generator<'a> {
+    pub fn new(ctx: &'a Context, main_module: Module<'a>) -> Generator<'a> {
         Generator {
             converter: AstToIrConverter::new(),
             analyzer: CTLA::new(),
-            generator: LlvmGenerator::new(ctx)//I hate that that is nesscary
+            generator: LlvmGenerator::new(ctx, main_module)//I hate that that is nesscary
         }
     }
 

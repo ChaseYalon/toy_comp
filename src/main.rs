@@ -16,6 +16,7 @@ mod errors;
 mod ffi;
 
 use inkwell::context::Context;
+use inkwell::module::Module;
 
 use crate::codegen::Generator;
 use crate::lexer::Lexer;
@@ -43,11 +44,12 @@ fn run_repl() {
     }
 }
 
-fn compile_and_print<'a>(source: String) -> Result<(), Box<dyn std::error::Error>> {
+fn compile_and_print(source: String) -> Result<(), Box<dyn std::error::Error>> {
     let mut lexer = Lexer::new();
     let mut parser = Parser::new();
-    let ctx = Context::create();
-    let mut generator = Generator::new(&ctx);
+    let ctx: Context = Context::create();
+    let main_module: Module = ctx.create_module("main");
+    let mut generator = Generator::new(&ctx, main_module);
 
     let tokens = lexer.lex(source)?;
     let ast = parser.parse(tokens)?;
