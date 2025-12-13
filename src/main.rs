@@ -15,6 +15,8 @@ pub mod codegen;
 mod errors;
 mod ffi;
 
+use inkwell::context::Context;
+
 use crate::codegen::Generator;
 use crate::lexer::Lexer;
 use crate::parser::Parser;
@@ -41,28 +43,17 @@ fn run_repl() {
     }
 }
 
-fn compile_and_print(source: String) -> Result<(), Box<dyn std::error::Error>> {
+fn compile_and_print<'a>(source: String) -> Result<(), Box<dyn std::error::Error>> {
     let mut lexer = Lexer::new();
     let mut parser = Parser::new();
-    let mut generator = Generator::new();
+    let ctx = Context::create();
+    let mut generator = Generator::new(&ctx);
 
     let tokens = lexer.lex(source)?;
     let ast = parser.parse(tokens)?;
-    let tir = generator.generate(ast)?;
-
-    println!("=== Generated TIR ===");
-    for func in &tir {
-        println!("Function: {}", func.name);
-        println!("  Params: {:?}", func.params);
-        println!("  Return Type: {:?}", func.ret_type);
-        for block in &func.body {
-            println!("  Block {}:", block.id);
-            for ins in &block.ins {
-                println!("    {:?}", ins);
-            }
-        }
-        println!();
-    }
+    generator.generate(ast)?;
+    
+    drop(generator);
 
     Ok(())
 }

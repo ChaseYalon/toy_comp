@@ -1,6 +1,6 @@
 use crate::{
     codegen::{
-        Function, SSAValue, TIR, TirType, tir::{ir::TirBuilder}
+        Function, tir::{ir::TirBuilder}
     },
     errors::ToyError,
 };

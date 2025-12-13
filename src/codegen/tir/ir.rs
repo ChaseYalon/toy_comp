@@ -31,7 +31,7 @@ pub enum BoolInfixOp {
 ///randomly generated "handle" that points to an ssa node
 pub type ValueId = usize;
 pub type BlockId = usize;
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Hash, Eq)]
 pub enum TirType {
     ///used for integers
     I64,
@@ -45,7 +45,7 @@ pub enum TirType {
     ///represents a pointer
     I8PTR,
 }
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Hash, Eq)]
 
 pub struct SSAValue {
     pub val: ValueId,
@@ -68,8 +68,6 @@ pub enum TIR {
     BoolInfix(ValueId, SSAValue, SSAValue, BoolInfixOp),
     ///jumps to first block if the ValueId points to an i1 of "1" (true), second "0" (false), compiler will return an error if it is not an i1
     JumpCond(ValueId, SSAValue, BlockId, BlockId),
-    ///jumps unconditionally to AFTER the ValueId provided
-    Jump(ValueId, ValueId),
     ///jumps unconditionally to the BlockId specified
     JumpBlockUnCond(ValueId, BlockId),
     ///returns the value pointed to, as value if less then the word size, otherwise as a pointer
@@ -104,7 +102,6 @@ impl TIR {
             TIR::NumericInfix(id, _, _, _) => *id,
             TIR::BoolInfix(id, _, _, _) => *id,
             TIR::JumpCond(id, _, _, _) => *id,
-            TIR::Jump(id, _) => *id,
             TIR::JumpBlockUnCond(id, _) => *id,
             TIR::Ret(id, _) => *id,
             TIR::CallLocalFunction(id, _, _, _) => *id,
@@ -138,6 +135,7 @@ pub struct HeapAllocation {
 }
 #[derive(Clone, PartialEq, Debug)]
 pub struct Function {
+    ///the ssa values where the params can be referenced
     pub params: Vec<SSAValue>,
     pub body: Vec<Block>,
     pub name: Box<String>,
@@ -355,15 +353,6 @@ impl TirBuilder {
             .ins
             .push(ins);
         return Ok((true_id, false_id));
-    }
-    pub fn jump(&mut self, val: SSAValue) -> Result<SSAValue, ToyError> {
-        let id = self._next_value_id();
-        let ins = TIR::Jump(id, val.val);
-        self.funcs[self.curr_block.unwrap()].body[self.curr_block.unwrap()]
-            .ins
-            .push(ins);
-        let val = SSAValue { val: id, ty: None };
-        return Ok(val);
     }
     pub fn switch_block(&mut self, id: BlockId) {
         // Find the block by its ID and get its index in the body vector

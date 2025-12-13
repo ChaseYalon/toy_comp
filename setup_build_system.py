@@ -30,6 +30,9 @@ if os_name != "Windows" and os_name != "Linux":
     print(f"[ERROR] Only windows and linux are supported, {os_name} was detected")
     sys.exit(1)
 if os_name == "Windows":
+    os.makedirs(".cargo", exist_ok=True)
+    with open(".cargo/config.toml", "w") as file:
+        file.write('[build]\ntarget = "x86_64-pc-windows-gnu"\n')
     MSYS2_DIR = r"C:\msys64"
     BASH_EXE = os.path.join(MSYS2_DIR, "usr", "bin", "bash.exe")
     MINGW64_BIN = os.path.join(MSYS2_DIR, "mingw64", "bin")
