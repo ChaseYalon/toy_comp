@@ -154,6 +154,9 @@ if os_name == "Windows":
         check=True,
         env=env
     )
+    subprocess.run([
+        RUSTUP_EXE, "default", "nightly-x86_64-pc-windows-gnu"
+    ])
 
     for winget_id, name in [("cmake", "cmake"), ("Ninja-build.Ninja", "ninja")]:
         if shutil.which(name) is None:
