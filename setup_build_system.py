@@ -170,7 +170,7 @@ elif os_name == "Linux":
 
     print("Linux detected, Debian/Ubuntu-based systems supported")
 
-    # Add LLVM 21 repo
+    # Add LLVM 21 repository
     run([
         "sudo", "bash", "-c",
         'echo "deb http://apt.llvm.org/$(lsb_release -sc) llvm-toolchain-$(lsb_release -sc)-21 main" '
@@ -184,7 +184,7 @@ elif os_name == "Linux":
     # Update once
     run(["sudo", "apt-get", "update"])
 
-    # Install all deps unconditionally (safe + idempotent)
+    # Install LLVM + build deps (NO Polly)
     run([
         "sudo", "apt-get", "install", "-y",
         "clang-21",
@@ -211,9 +211,11 @@ elif os_name == "Linux":
 
     run(["git", "lfs", "install"])
 
-    # llvm-sys environment
+    # llvm-sys environment (force dynamic, disable Polly)
     os.environ["LLVM_SYS_211_PREFIX"] = "/usr/lib/llvm-21"
     os.environ["LLVM_SYS_211_LINK_POLLY"] = "0"
+    os.environ["LLVM_SYS_211_NO_POLLY"] = "1"
+    os.environ["LLVM_SYS_211_PREFER_DYNAMIC"] = "1"
 
     # Rust target
     run([
