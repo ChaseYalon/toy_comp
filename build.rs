@@ -5,21 +5,20 @@ use std::path::PathBuf;
 fn main() {
     let target = env::var("TARGET").unwrap();
     let profile = env::var("PROFILE").unwrap();
-    if profile == "test" {
-        unsafe {
+    unsafe {
+        if profile == "test" {
             env::set_var("TOY_DEBUG", "TRUE");
-        }
-    } else {
-        unsafe {
+        } else {
             env::set_var("TOY_DEBUG", "FALSE");
         }
     }
-    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
 
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let c_src = manifest_dir.join("src").join("c");
 
+    // Build the C runtime with Ninja
     cmake::Config::new(&c_src)
-        .generator("Ninja") // always use Ninja
+        .generator("Ninja")
         .profile("Debug")
         .build();
 
@@ -43,18 +42,26 @@ fn main() {
     }
 
     println!("cargo:rustc-link-search=native={}", out_dir.display());
-
     println!("cargo:rustc-link-arg=-lcore");
-    println!("cargo:rustc-link-search=native=C:/msys64/mingw64/lib");
-    println!("cargo:rustc-link-search=native=C:/msys64/mingw64/bin");
-    println!("cargo:rustc-link-lib=dylib=ffi-8");
+    if cfg!(target_os = "windows") {
+        println!("cargo:rustc-link-search=native=C:/msys64/mingw64/lib");
+        println!("cargo:rustc-link-search=native=C:/msys64/mingw64/bin");
+
+        println!("cargo:rustc-link-lib=dylib=ffi-8");
+    } else {
+        println!("cargo:rustc-link-lib=static=ffi");
+        println!("cargo:rustc-link-lib=static=zstd");
+    }
+
     println!("cargo:rustc-link-lib=dylib=LLVM-21");
     println!("cargo:rustc-link-arg=-Wl,--allow-multiple-definition");
 
+    // Re-run triggers for headers
     println!("cargo:rerun-if-changed=src/c/builtins.h");
     println!("cargo:rerun-if-changed=src/c/hashmap.h");
     println!("cargo:rerun-if-changed=src/c/stub.h");
 
+    // Generate bindings
     let bindings = bindgen::Builder::default()
         .header("src/c/builtins.h")
         .header("src/c/hashmap.h")

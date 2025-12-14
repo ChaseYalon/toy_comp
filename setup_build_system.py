@@ -161,37 +161,27 @@ if os_name == "Windows":
             subprocess.run(["winget", "install", winget_id, "-e", "--silent"], check=True)
 
 elif os_name == "Linux":
+    import subprocess
+    import shutil
+    import os
+
     def is_git_lfs_installed():
         try:
-            # Run `git lfs version`
-            result = subprocess.run(
-                ["git", "lfs", "version"],
-                capture_output=True,
-                text=True,
-                check=True
-            )
-            print("Git LFS version:", result.stdout.strip())
+            subprocess.run(["git", "lfs", "version"], capture_output=True, check=True)
             return True
         except (subprocess.CalledProcessError, FileNotFoundError):
-            # CalledProcessError: git lfs returns non-zero exit code
-            # FileNotFoundError: git command not found
             return False
 
-    print("Linux detected, only Debian-based systems fully supported by this script")
-    if shutil.which("clang") is None:
-        subprocess.run(["sudo", "apt", "update"], check=True)
-        subprocess.run(
-            ["sudo", "apt", "install", "-y", "clang"],
-            check=True
-        )
-    if shutil.which("cmake") is None:
-        subprocess.run(["sudo", "apt", "update"], check=True)
-        subprocess.run(["sudo", "apt", "install", "-y", "cmake"],  check=True)
-    
-    if shutil.which("ninja") is None:
-        subprocess.run(["sudo", "apt", "update"], check=True)
-        subprocess.run(["sudo", "apt", "install", "-y", "ninja-build"], check=True)
+    print("Linux detected, Debian/Ubuntu-based systems supported")
 
+    # Essential build tools
+    for pkg in ["clang-21", "llvm-21", "llvm-21-dev", "lld-21", "libpolly-21-dev",
+                "libffi-dev", "zlib1g-dev", "libzstd-dev", "libxml2-dev", "cmake", "ninja-build", "pkg-config"]:
+        if shutil.which(pkg.split("-")[0]) is None:
+            subprocess.run(["sudo", "apt", "update"], check=True)
+            subprocess.run(["sudo", "apt", "install", "-y", pkg], check=True)
+
+    # Rust setup
     if shutil.which("rustup") is None:
         print("Installing Rustup...")
         subprocess.run(
@@ -199,36 +189,21 @@ elif os_name == "Linux":
             shell=True,
             check=True
         )
-    if not is_git_lfs_installed():
-        subprocess.run(["sudo", "apt", "install", "-y", "git-lfs"])
-        subprocess.run(["git", "lfs", "install"])
-        subprocess.run(["git", "lfs", "pull"])
-    #custom llvm
-    subprocess.run([
-        "sudo", "wget", "-qO", "/etc/apt/trusted.gpg.d/apt.llvm.org.asc",
-        "https://apt.llvm.org/llvm-snapshot.gpg.key"
-    ], check=True)
-    subprocess.run(
-        'echo "deb http://apt.llvm.org/$(lsb_release -sc) llvm-toolchain-$(lsb_release -sc)-21 main" | sudo tee /etc/apt/sources.list.d/llvm.list',
-        shell=True,
-        check=True
-    )
-    subprocess.run(["sudo",  "apt", "update"])
-    subprocess.run(["sudo", "apt", "install", "clang-21", "llvm-21", "llvm-21-dev", "lld-21", "libpolly-21-dev"])
-    subprocess.run(["sudo", "apt", "install", "-y", "libffi-dev"], check=True)
-    os.environ["LLVM_SYS_211_PREFIX"] = "/opt/llvm-21"
-    os.environ["LLVM_SYS_211_LINK_POLLY"] = "0"
-    subprocess.run(["sudo", "mkdir", "-p", "/opt/llvm-21/bin"])
-    subprocess.run(["sudo",  "ln", "-s", "/usr/bin/llvm-config-21", "/opt/llvm-21/bin/llvm-config"])
-    bashrc_path = os.path.expanduser("~/.bashrc")
-    with open(bashrc_path, "a") as f:
-        f.write('export LLVM_SYS_211_PREFIX=/opt/llvm-21\n')
-        f.write('export LLVM_SYS_211_LINK_POLLY=0\n')
 
-    subprocess.run(["source", "~/.bashrc"], shell=True)
-    #rust
+    # Git LFS
+    if not is_git_lfs_installed():
+        subprocess.run(["sudo", "apt", "install", "-y", "git-lfs"], check=True)
+        subprocess.run(["git", "lfs", "install"], check=True)
+        subprocess.run(["git", "lfs", "pull"], check=True)
+
+    # Environment variables for llvm-sys
+    os.environ["LLVM_SYS_211_PREFIX"] = "/usr/lib/llvm-21"
+    os.environ["LLVM_SYS_211_LINK_POLLY"] = "0"
+
+    # Rust targets
     subprocess.run(["rustup", "target", "add", "x86_64-unknown-linux-gnu", "--toolchain", "nightly"], check=True)
-    #subprocess.run(["rustup", "target", "add", "x86_64-pc-windows-gnu", "--toolchain", "nightly"], check=True)
+
+
 print("Build system installation complete!")
 print("Please restart your shell for path changes to take effect")
 print("\n\n")
