@@ -788,7 +788,7 @@ impl<'a> LlvmGenerator<'a> {
         );
         self.declare_individual_function(
             "toy_write_to_arr",
-            vec![TirType::I64, TirType::I64, TirType::I64],
+            vec![TirType::I64, TirType::I64, TirType::I64, TirType::I64],
             TirType::Void,
         );
         self.declare_individual_function(
@@ -913,10 +913,8 @@ impl<'a> LlvmGenerator<'a> {
         let p_args: Vec<String> = env::args().collect();
         if p_args.clone().contains(&"--repl".to_owned()) || p_args.clone().contains(&"--run".to_owned()) {
             let mut prgm = Command::new(format!("{}{}", "./", output_name.as_str()));
-            let child = prgm.spawn().unwrap().wait().unwrap();
-            if !child.success() {
-                return Err(ToyError::new(ToyErrorType::InternalLinkerFailure));
-            }
+            let _ = prgm.spawn().unwrap().wait().unwrap();
+
             fs::remove_file(output_name.as_str()).unwrap();
             fs::remove_file(format!("{}.o", prgm_name)).unwrap();
             fs::remove_file(format!("{}.ll", prgm_name)).unwrap();

@@ -1010,7 +1010,7 @@ fn test_tirgen_arr_lit_read_and_write() {
                     ),
                     TIR::IConst(15, 2, TirType::I64),
                     TIR::IConst(16, 9, TirType::I64),
-                    TIR::IConst(17, 2, TirType::I64),
+                    TIR::IConst(17, 6, TirType::I64),
                     TIR::CallExternFunction(
                         18,
                         Box::new("toy_write_to_arr".to_string()),

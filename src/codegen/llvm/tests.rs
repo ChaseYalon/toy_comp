@@ -18,7 +18,6 @@ fn capture_program_output(program: String) -> String {
         .expect("Failed to spawn process")
         .wait_with_output()
         .expect("Failed to wait on child");
-
     let s = String::from_utf8(output.stdout).expect("Invalid UTF-8 output");
     return s;
 }
@@ -118,4 +117,14 @@ fn test_llvm_codegen_string() {
         "string_ops"
     );
     assert!(output.contains("hello worldfalse"));
+}
+
+#[test]
+fn test_llvm_arrays() {
+    compile_code_aot!(
+        output,
+        r#"let arr: int[] = [1, 2, 3, 4, 5]; arr[2] = 9; print(arr[2]); println(len(arr));"#,
+        "arrays"
+    );
+    assert!(output.contains("95"));
 }

@@ -4,8 +4,15 @@ use std::path::PathBuf;
 
 fn main() {
     let target = env::var("TARGET").unwrap();
-    unsafe {
-        env::set_var("TOY_DEBUG", "TRUE");
+    let profile = env::var("PROFILE").unwrap();
+    if profile == "test"{
+        unsafe {
+            env::set_var("TOY_DEBUG", "TRUE");
+        }
+    } else {
+        unsafe {
+            env::set_var("TOY_DEBUG", "FALSE");
+        }
     }
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
 

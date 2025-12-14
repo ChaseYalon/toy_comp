@@ -552,10 +552,10 @@ impl AstToIrConverter {
                 let compiled_val = self.compile_expr(*val, scope)?;
 
                 let type_val = match compiled_val.ty {
-                    Some(TirType::I8PTR) => 0, // String
-                    Some(TirType::I1) => 1,    // Bool
-                    Some(TirType::I64) => 2,   // Int
-                    Some(TirType::F64) => 3,   // Float
+                    Some(TirType::I8PTR) => 4, // String
+                    Some(TirType::I1) => 5,    // Bool
+                    Some(TirType::I64) => 6,   // Int
+                    Some(TirType::F64) => 7,   // Float
                     _ => 2,                    // Default to Int
                 };
                 let type_param = self.builder.iconst(type_val, TypeTok::Int)?;
