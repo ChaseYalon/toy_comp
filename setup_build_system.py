@@ -83,7 +83,7 @@ if os_name == "Windows":
             subprocess.run(["winget", "install", "-e", "--id", "MSYS2.MSYS2"], check=True)
 
     def msys(cmd: str):
-        return subprocess.run([BASH_EXE, "-lc", cmd], check=True)
+        return subprocess.run([BASH_EXE, "-lc", cmd])
 
     def first_msys_update():
         """Initial MSYS2 update that may kill bash.exe (expected)."""
@@ -106,9 +106,10 @@ if os_name == "Windows":
             "pacman -S --needed --noconfirm "
             "mingw-w64-x86_64-toolchain "
             "mingw-w64-x86_64-clang "
-            "mingw-w64-x86_64-llvm"
-            "mingw-w64-x86_64-libffi"#not sure if this is nesscary
+            "mingw-w64-x86_64-llvm "
+            "mingw-w64-x86_64-libffi"
         )
+
 
     def detect_rustup_windows() -> bool:
         if not os.path.exists(RUSTUP_EXE):
