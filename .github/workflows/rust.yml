@@ -37,7 +37,7 @@ jobs:
       - name: Install LLVM
         uses: KyleMayes/install-llvm-action@v2
         with:
-          version: "21"
+          version: "21.1"
           env: true
 
       - name: Build
