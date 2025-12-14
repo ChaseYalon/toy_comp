@@ -179,7 +179,7 @@ elif os_name == "Linux":
                 "libffi-dev", "zlib1g-dev", "libzstd-dev", "libxml2-dev", "cmake", "ninja-build", "pkg-config"]:
         if shutil.which(pkg.split("-")[0]) is None:
             subprocess.run(["sudo", "apt", "update"], check=True)
-            subprocess.run(["sudo", "apt", "install", "-y", pkg], check=True)
+            subprocess.run(["sudo", "apt", "install", "-y", "pkg"], check=True)
 
     # Rust setup
     if shutil.which("rustup") is None:
