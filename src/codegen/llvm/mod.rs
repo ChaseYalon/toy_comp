@@ -30,6 +30,7 @@ use std::path::Path;
 
 use std::env;
 use std::process::Command;
+use std::fs;
 pub static FILE_EXTENSION_EXE: &str = if cfg!(target_os = "windows") {
     ".exe"
 } else {
@@ -842,6 +843,7 @@ impl<'a> LlvmGenerator<'a> {
         self.main_module.set_triple(&triple);
         self.main_module
             .set_data_layout(&target_machine.get_target_data().get_data_layout());
+
         let obj_file = format!("{}.o", prgm_name);
         let obj_path = Path::new(&obj_file);
         target_machine.write_to_file(&self.main_module, FileType::Object, obj_path)?;
@@ -898,7 +900,6 @@ impl<'a> LlvmGenerator<'a> {
                 output_name.as_str(),
             ]
         };
-
         let rstatus = Command::new(lib_path.join("ld.lld"))
             .args(args.clone())
             .status();
@@ -909,13 +910,16 @@ impl<'a> LlvmGenerator<'a> {
         if !status.success() {
             return Err(ToyError::new(ToyErrorType::InternalLinkerFailure));
         }
-        //it should automatically run the program in the repl, it doesn't, I will fix i later I have more important things todo
-        if args.clone().contains(&&"--repl") || args.clone().contains(&&"--run") {
+        let p_args: Vec<String> = env::args().collect();
+        if p_args.clone().contains(&"--repl".to_owned()) || p_args.clone().contains(&"--run".to_owned()) {
             let mut prgm = Command::new(format!("{}{}", "./", output_name.as_str()));
-            match prgm.spawn() {
-                Ok(_) => {}
-                Err(_) => return Err(ToyError::new(ToyErrorType::InternalLinkerFailure)), //is his the right error
+            let child = prgm.spawn().unwrap().wait().unwrap();
+            if !child.success() {
+                return Err(ToyError::new(ToyErrorType::InternalLinkerFailure));
             }
+            fs::remove_file(output_name.as_str()).unwrap();
+            fs::remove_file(format!("{}.o", prgm_name)).unwrap();
+            fs::remove_file(format!("{}.ll", prgm_name)).unwrap();
         }
         return Ok(());
     }

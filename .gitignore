@@ -20,3 +20,6 @@ temp.txt
 */.cargo
 config.toml
 .cache
+
+#llvm ir
+*.ll
