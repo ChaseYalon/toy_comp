@@ -165,43 +165,62 @@ elif os_name == "Linux":
     import shutil
     import os
 
-    def is_git_lfs_installed():
-        try:
-            subprocess.run(["git", "lfs", "version"], capture_output=True, check=True)
-            return True
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            return False
+    def run(cmd: list[str]):
+        subprocess.run(cmd, check=True)
 
     print("Linux detected, Debian/Ubuntu-based systems supported")
 
-    # Essential build tools
-    for pkg in ["clang-21", "llvm-21", "llvm-21-dev", "lld-21", "libpolly-21-dev",
-                "libffi-dev", "zlib1g-dev", "libzstd-dev", "libxml2-dev", "cmake", "ninja-build", "pkg-config"]:
-        if shutil.which(pkg.split("-")[0]) is None:
-            subprocess.run(["sudo", "apt", "update"], check=True)
-            subprocess.run(["sudo", "apt", "install", "-y", "pkg"], check=True)
+    # Add LLVM 21 repo
+    run([
+        "sudo", "bash", "-c",
+        'echo "deb http://apt.llvm.org/$(lsb_release -sc) llvm-toolchain-$(lsb_release -sc)-21 main" '
+        '> /etc/apt/sources.list.d/llvm.list'
+    ])
+    run([
+        "sudo", "bash", "-c",
+        "wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add -"
+    ])
 
-    # Rust setup
+    # Update once
+    run(["sudo", "apt-get", "update"])
+
+    # Install all deps unconditionally (safe + idempotent)
+    run([
+        "sudo", "apt-get", "install", "-y",
+        "clang-21",
+        "llvm-21",
+        "llvm-21-dev",
+        "lld-21",
+        "libffi-dev",
+        "zlib1g-dev",
+        "libzstd-dev",
+        "libxml2-dev",
+        "cmake",
+        "ninja-build",
+        "pkg-config",
+        "git-lfs"
+    ])
+
+    # Rustup
     if shutil.which("rustup") is None:
         print("Installing Rustup...")
-        subprocess.run(
-            "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y",
-            shell=True,
-            check=True
-        )
+        run([
+            "bash", "-c",
+            "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"
+        ])
 
-    # Git LFS
-    if not is_git_lfs_installed():
-        subprocess.run(["sudo", "apt", "install", "-y", "git-lfs"], check=True)
-        subprocess.run(["git", "lfs", "install"], check=True)
-        subprocess.run(["git", "lfs", "pull"], check=True)
+    run(["git", "lfs", "install"])
 
-    # Environment variables for llvm-sys
+    # llvm-sys environment
     os.environ["LLVM_SYS_211_PREFIX"] = "/usr/lib/llvm-21"
     os.environ["LLVM_SYS_211_LINK_POLLY"] = "0"
 
-    # Rust targets
-    subprocess.run(["rustup", "target", "add", "x86_64-unknown-linux-gnu", "--toolchain", "nightly"], check=True)
+    # Rust target
+    run([
+        "rustup", "target", "add",
+        "x86_64-unknown-linux-gnu",
+        "--toolchain", "nightly"
+    ])
 
 
 print("Build system installation complete!")
