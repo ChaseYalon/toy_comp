@@ -6,20 +6,27 @@ use crate::token::{Token, TypeTok};
 use std::collections::BTreeMap;
 
 impl AstGenerator {
-    pub fn parse_num_expr(&self, toks: &Vec<Token>) -> Result<Ast, ToyError> {
+    pub fn parse_num_expr(&self, toks: &Vec<Token>) -> Result<(Ast, TypeTok), ToyError> {
         if toks.len() == 1 {
             if toks[0].tok_type() == "IntLit" {
-                return Ok(Ast::IntLit(toks[0].get_val().unwrap()));
+                return Ok((Ast::IntLit(toks[0].get_val().unwrap()), TypeTok::Int));
             }
             if toks[0].tok_type() == "VarRef" {
-                return self.parse_var_ref(&toks[0]);
+                let name = match &toks[0] {
+                    Token::VarRef(n) => n,
+                    _ => unreachable!(),
+                };
+                let ty = self
+                    .lookup_var_type(name)
+                    .ok_or_else(|| ToyError::new(ToyErrorType::TypeHintNeeded))?;
+                return Ok((self.parse_var_ref(&toks[0])?, ty));
             }
             if toks[0].tok_type() == "FloatLit" {
                 let val = match toks[0] {
                     Token::FloatLit(f) => f,
                     _ => unreachable!(),
                 };
-                return Ok(Ast::FloatLit(val));
+                return Ok((Ast::FloatLit(val), TypeTok::Float));
             }
         }
         if toks.len() == 0 {
@@ -29,19 +36,29 @@ impl AstGenerator {
         let left = &toks[0..best_idx];
         let right = &toks[best_idx + 1..toks.len()];
 
-        let (l_node, _) = self.parse_expr(&left.to_vec())?;
-        let (r_node, _) = self.parse_expr(&right.to_vec())?;
-        return Ok(Ast::InfixExpr(
-            Box::new(l_node),
-            Box::new(r_node),
-            match best_tok {
-                Token::Plus => InfixOp::Plus,
-                Token::Minus => InfixOp::Minus,
-                Token::Multiply => InfixOp::Multiply,
-                Token::Divide => InfixOp::Divide,
-                Token::Modulo => InfixOp::Modulo,
-                _ => return Err(ToyError::new(ToyErrorType::InvalidInfixOperation)),
-            },
+        let (l_node, l_type) = self.parse_expr(&left.to_vec())?;
+        let (r_node, r_type) = self.parse_expr(&right.to_vec())?;
+
+        let res_type = if l_type == TypeTok::Float || r_type == TypeTok::Float {
+            TypeTok::Float
+        } else {
+            TypeTok::Int
+        };
+
+        return Ok((
+            Ast::InfixExpr(
+                Box::new(l_node),
+                Box::new(r_node),
+                match best_tok {
+                    Token::Plus => InfixOp::Plus,
+                    Token::Minus => InfixOp::Minus,
+                    Token::Multiply => InfixOp::Multiply,
+                    Token::Divide => InfixOp::Divide,
+                    Token::Modulo => InfixOp::Modulo,
+                    _ => return Err(ToyError::new(ToyErrorType::InvalidInfixOperation)),
+                },
+            ),
+            res_type,
         ));
     }
 
@@ -420,7 +437,7 @@ impl AstGenerator {
                 }
 
                 let inner_toks = &toks[i..j - 1];
-                let idx_expr = self.parse_num_expr(&inner_toks.to_vec())?;
+                let (idx_expr, _) = self.parse_num_expr(&inner_toks.to_vec())?;
                 idx_exprs.push(idx_expr);
                 arr_ref_end = j;
 
@@ -553,29 +570,15 @@ impl AstGenerator {
                 let left = &toks[0..best_idx];
                 let (_, left_type) = self.parse_expr(&left.to_vec())?;
 
-                // if either side has float, type promote
-                let has_float = toks.iter().any(|t| t.tok_type() == "FloatLit");
-
                 let res = match left_type {
                     TypeTok::Str => (self.parse_str_expr(toks)?, TypeTok::Str),
-                    TypeTok::Int if has_float => (self.parse_num_expr(toks)?, TypeTok::Float),
-                    TypeTok::Int => (self.parse_num_expr(toks)?, TypeTok::Int),
+                    TypeTok::Int | TypeTok::Float => self.parse_num_expr(toks)?,
                     TypeTok::Bool => (self.parse_bool_expr(toks)?, TypeTok::Bool),
-                    TypeTok::Float => (self.parse_num_expr(toks)?, TypeTok::Float),
                     _ => return Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType)), //like the second of three times I check this
                 };
                 return Ok(res);
             }
-            Token::Minus | Token::Divide | Token::Multiply | Token::Modulo => {
-                // if there is any float should type promote to float
-                let has_float = toks.iter().any(|t| t.tok_type() == "FloatLit");
-
-                if has_float {
-                    Ok((self.parse_num_expr(toks)?, TypeTok::Float))
-                } else {
-                    Ok((self.parse_num_expr(toks)?, TypeTok::Int))
-                }
-            }
+            Token::Minus | Token::Divide | Token::Multiply | Token::Modulo => self.parse_num_expr(toks),
             Token::BoolLit(_)
             | Token::LessThan
             | Token::LessThanEqt

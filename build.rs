@@ -36,7 +36,7 @@ fn main() {
     }
 
     println!("cargo:rustc-link-search=native={}", out_dir.display());
-    
+
     println!("cargo:rustc-link-arg=-lcore");
     println!("cargo:rustc-link-search=native=C:/msys64/mingw64/lib");
     println!("cargo:rustc-link-search=native=C:/msys64/mingw64/bin");

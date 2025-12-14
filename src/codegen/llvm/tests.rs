@@ -1,10 +1,10 @@
-use std::thread;
-use std::time::Duration;
-use std::process::{Command, Stdio};
+use crate::codegen::Generator;
 use crate::lexer::Lexer;
 use crate::parser::Parser;
-use crate::codegen::{Generator};
-use inkwell::{context::Context, module::{Module}};
+use inkwell::{context::Context, module::Module};
+use std::process::{Command, Stdio};
+use std::thread;
+use std::time::Duration;
 
 use std::env;
 use std::path::PathBuf;
@@ -50,7 +50,7 @@ macro_rules! compile_code_aot {
 }
 
 #[test]
-fn test_int_lit(){
+fn test_int_lit() {
     compile_code_aot!(output, "println(5);", "int_lit");
     assert!(output.contains("5"));
 }
@@ -61,3 +61,23 @@ fn test_llvm_codegen_paren_infix() {
     assert!(output.contains("-10"));
 }
 
+#[test]
+fn test_llvm_codegen_booleans() {
+    compile_code_aot!(output, "let x = true || false; println(!x);", "bools");
+    assert!(output.contains("false"));
+}
+#[test]
+fn test_llvm_codegen_nested_expr() {
+    compile_code_aot!(
+        output,
+        "let x = 9 + 2; let y = x - 4; println(y);",
+        "chained_expr"
+    );
+    assert!(output.contains("7"));
+}
+
+#[test]
+fn test_llvm_codegen_float_stuff() {
+    compile_code_aot!(output, "let x = 9.3 * 3; let y = x / 6; println(y + 2.2);", "floats");
+    assert!(output.contains("6.85"));
+}

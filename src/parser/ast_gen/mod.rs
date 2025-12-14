@@ -405,7 +405,7 @@ impl AstGenerator {
                 };
                 let mut idx: Vec<Ast> = Vec::new();
                 for item in i {
-                    let l_idx = self.parse_num_expr(&item)?;
+                    let (l_idx, _) = self.parse_num_expr(&item)?;
                     idx.push(l_idx);
                 }
                 let (value, v_type) = self.parse_expr(&v)?;

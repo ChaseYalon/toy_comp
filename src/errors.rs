@@ -1,8 +1,8 @@
 use crate::token::Token;
-use std::backtrace::Backtrace;
-use std::fmt;
 use inkwell::builder::BuilderError;
 use inkwell::support::LLVMString;
+use std::backtrace::Backtrace;
+use std::fmt;
 use thiserror::Error;
 #[derive(Debug)]
 pub enum ToyErrorType {
@@ -45,7 +45,7 @@ pub enum ToyErrorType {
     MalformedFuncCall,
     ExpressionNotNumeric,
     MissingInstruction,
-    LlvmError(String)
+    LlvmError(String),
 }
 
 #[derive(Debug, Error)]
