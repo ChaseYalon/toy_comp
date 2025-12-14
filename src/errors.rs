@@ -46,6 +46,7 @@ pub enum ToyErrorType {
     ExpressionNotNumeric,
     MissingInstruction,
     LlvmError(String),
+    UndefinedSSAValue,
 }
 
 #[derive(Debug, Error)]

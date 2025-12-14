@@ -80,6 +80,7 @@
         "TOLOWER",
         "uextend",
         "winget",
+        "worldfalse",
         "Yalon"
     ],
     "python.REPL.enableREPLSmartSend": false,

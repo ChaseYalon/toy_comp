@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap};
 
 use inkwell::{
     AddressSpace,
@@ -58,6 +58,29 @@ impl<'a> LlvmGenerator<'a> {
             phi_fixups: vec![],
         };
     }
+    fn get_ssa_val(&self, func_name: &str, ssa: SSAValue) -> BasicValueEnum<'a> {
+        if let Some(v) = self.tir_to_val.get(&(func_name.to_string(), ssa.clone())) {
+            return *v;
+        }
+        // Try alternative types for pointers/ints
+        if let Some(ty) = &ssa.ty {
+            let alt_ty = match ty {
+                TirType::I64 => Some(TirType::I8PTR),
+                TirType::I8PTR => Some(TirType::I64),
+                _ => None,
+            };
+            if let Some(at) = alt_ty {
+                let alt_ssa = SSAValue {
+                    val: ssa.val,
+                    ty: Some(at),
+                };
+                if let Some(v) = self.tir_to_val.get(&(func_name.to_string(), alt_ssa)) {
+                    return *v;
+                }
+            }
+        }
+        panic!("Undefined SSA Value: {:?} in function {}", ssa, func_name);
+    }
     fn compile_instruction(
         &mut self,
         inst: TIR,
@@ -88,9 +111,7 @@ impl<'a> LlvmGenerator<'a> {
             )),
             TIR::ItoF(id, ssa_ref, ty) => {
                 let ins: FloatValue<'_> = builder.build_signed_int_to_float(
-                    self.tir_to_val
-                        .get(&(curr_func_name.clone(), ssa_ref))
-                        .unwrap()
+                    self.get_ssa_val(&curr_func_name, ssa_ref)
                         .into_int_value(),
                     self.ctx.f64_type(),
                     "sitofp",
@@ -120,10 +141,7 @@ impl<'a> LlvmGenerator<'a> {
                     .iter()
                     .zip(param_types.iter())
                     .map(|(p, expected_type)| {
-                        let v = self
-                            .tir_to_val
-                            .get(&(curr_func_name.clone(), p.clone()))
-                            .unwrap();
+                        let v = self.get_ssa_val(&curr_func_name, p.clone());
 
                         if expected_type.is_int_type() && v.is_float_value() {
                             builder
@@ -193,10 +211,7 @@ impl<'a> LlvmGenerator<'a> {
                     .iter()
                     .zip(param_types.iter())
                     .map(|(p, expected_type)| {
-                        let v = self
-                            .tir_to_val
-                            .get(&(curr_func_name.clone(), p.clone()))
-                            .unwrap();
+                        let v = self.get_ssa_val(&curr_func_name, p.clone());
 
                         if expected_type.is_int_type() && v.is_float_value() {
                             builder
@@ -250,23 +265,14 @@ impl<'a> LlvmGenerator<'a> {
                         SSAValue { val: id, ty: None },
                     ))
                 } else {
-                    let val = self
-                        .tir_to_val
-                        .get(&(curr_func_name.clone(), v.clone()))
-                        .unwrap();
-                    builder.build_return(Some(val))?;
+                    let val = self.get_ssa_val(&curr_func_name, v.clone());
+                    builder.build_return(Some(&val))?;
                     Some((val.to_owned(), v))
                 }
             }
             TIR::NumericInfix(id, l, r, op) => {
-                let lhs = self
-                    .tir_to_val
-                    .get(&(curr_func_name.clone(), l.clone()))
-                    .unwrap();
-                let rhs = self
-                    .tir_to_val
-                    .get(&(curr_func_name.clone(), r.clone()))
-                    .unwrap();
+                let lhs = self.get_ssa_val(&curr_func_name, l.clone());
+                let rhs = self.get_ssa_val(&curr_func_name, r.clone());
                 //tirgen wil guarantee that they are both either int or float
                 if l.ty.unwrap() == TirType::F64 {
                     //float arithmetic
@@ -362,14 +368,8 @@ impl<'a> LlvmGenerator<'a> {
                 }
             }
             TIR::BoolInfix(id, l, r, op) => {
-                let lhs = self
-                    .tir_to_val
-                    .get(&(curr_func_name.clone(), l.clone()))
-                    .unwrap();
-                let rhs = self
-                    .tir_to_val
-                    .get(&(curr_func_name.clone(), r.clone()))
-                    .unwrap();
+                let lhs = self.get_ssa_val(&curr_func_name, l.clone());
+                let rhs = self.get_ssa_val(&curr_func_name, r.clone());
                 let res = match op {
                     BoolInfixOp::And => {
                         builder.build_and(lhs.into_int_value(), rhs.into_int_value(), "and_res")?
@@ -480,10 +480,7 @@ impl<'a> LlvmGenerator<'a> {
                 ))
             }
             TIR::Not(id, v) => {
-                let val = self
-                    .tir_to_val
-                    .get(&(curr_func_name.clone(), v.clone()))
-                    .unwrap()
+                let val = self.get_ssa_val(&curr_func_name, v.clone())
                     .into_int_value();
 
                 let one = self.ctx.bool_type().const_int(1, false);
@@ -499,7 +496,7 @@ impl<'a> LlvmGenerator<'a> {
                 ))
             }
             TIR::JumpCond(_, cond, if_true, if_false) => {
-                let compiled_cond = self.tir_to_val.get(&(curr_func_name.clone(), cond)).unwrap().into_int_value();
+                let compiled_cond = self.get_ssa_val(&curr_func_name, cond).into_int_value();
                 let true_block = self.block_id_to_block.get(&if_true).unwrap();
                 let false_block = self.block_id_to_block.get(&if_false).unwrap();
                 builder.build_conditional_branch(compiled_cond, *true_block, *false_block)?;
@@ -541,12 +538,34 @@ impl<'a> LlvmGenerator<'a> {
                     {
                         phi.add_incoming(&[(&*val, *block)]);
                     } else {
-                        self.phi_fixups.push((
-                            phi,
-                            curr_func_name.clone(),
-                            *block_id,
-                            ssa_val.clone(),
-                        ));
+                        // Try alternative type lookup for phi incoming values
+                        let mut found = false;
+                        if let Some(ty) = &ssa_val.ty {
+                            let alt_ty = match ty {
+                                TirType::I64 => Some(TirType::I8PTR),
+                                TirType::I8PTR => Some(TirType::I64),
+                                _ => None,
+                            };
+                            if let Some(at) = alt_ty {
+                                let alt_ssa = SSAValue {
+                                    val: ssa_val.val,
+                                    ty: Some(at),
+                                };
+                                if let Some(val) = self.tir_to_val.get(&(curr_func_name.clone(), alt_ssa)) {
+                                    phi.add_incoming(&[(&*val, *block)]);
+                                    found = true;
+                                }
+                            }
+                        }
+                        
+                        if !found {
+                            self.phi_fixups.push((
+                                phi,
+                                curr_func_name.clone(),
+                                *block_id,
+                                ssa_val.clone(),
+                            ));
+                        }
                     }
                 }
 
@@ -555,6 +574,23 @@ impl<'a> LlvmGenerator<'a> {
                     SSAValue {
                         val: id,
                         ty: first_val_ssa.ty.clone(),
+                    },
+                ))
+            }
+            TIR::GlobalString(id, va) => {
+                let str_val = builder.build_global_string_ptr(&va, format!("global_str_{}", id).as_str())?;
+                let str_ptr = str_val.as_pointer_value();
+                let ptr_i64 = builder.build_ptr_to_int(
+                    str_ptr,
+                    self.ctx.i64_type(),
+                    "str_ptr_to_i64",
+                )?;
+                self.tir_to_val.insert((curr_func_name.clone(), SSAValue { val: id, ty: Some(TirType::I64) }), ptr_i64.into());
+                Some((
+                    ptr_i64.into(),
+                    SSAValue {
+                        val: id,
+                        ty: Some(TirType::I8PTR),
                     },
                 ))
             }
@@ -641,10 +677,11 @@ impl<'a> LlvmGenerator<'a> {
             self.compile_tir_block(b.clone(), &builder, *llvm_block, *func.name.clone())?;
         }
 
-        for (phi, func_name, block_id, ssa_val) in self.phi_fixups.drain(..) {
+        let fixups: Vec<_> = self.phi_fixups.drain(..).collect();
+        for (phi, func_name, block_id, ssa_val) in fixups {
             let block = self.block_id_to_block.get(&block_id).unwrap();
-            let val = self.tir_to_val.get(&(func_name, ssa_val)).unwrap();
-            phi.add_incoming(&[(&*val, *block)]);
+            let val = self.get_ssa_val(&func_name, ssa_val);
+            phi.add_incoming(&[(&val, *block)]);
         }
 
         return Ok(());

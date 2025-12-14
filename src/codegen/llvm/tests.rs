@@ -109,3 +109,13 @@ fn test_llvm_codegen_funcs() {
     );
     assert!(output.contains("14"));
 }
+
+#[test]
+fn test_llvm_codegen_string() {
+    compile_code_aot!(
+        output,
+        r#"let s: str = "hello "; let t = "world"; print(s + t); println(s == t);"#,
+        "string_ops"
+    );
+    assert!(output.contains("hello worldfalse"));
+}
