@@ -34,6 +34,12 @@ jobs:
       - name: Configure
         run: python setup_build_system.py --ok
 
+      - name: Install LLVM
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "21"
+          env: true
+
       - name: Build
         run: cargo build --verbose
 
