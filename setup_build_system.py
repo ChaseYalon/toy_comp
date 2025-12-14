@@ -224,7 +224,8 @@ elif os_name == "Linux":
 
     subprocess.run(["source", "~/.bashrc"], shell=True)
     #rust
-    subprocess.run(["rustup", "target", "add", "x86_64-pc-windows-gnu", "--toolchain", "nightly"], check=True)
+    subprocess.run(["rustup", "target", "add", "x86_64-unknown-linux-gnu", "--toolchain", "nightly"], check=True)
+    #subprocess.run(["rustup", "target", "add", "x86_64-pc-windows-gnu", "--toolchain", "nightly"], check=True)
 print("Build system installation complete!")
 print("Please restart your shell for path changes to take effect")
 print("\n\n")
