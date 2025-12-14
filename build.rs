@@ -5,7 +5,7 @@ use std::path::PathBuf;
 fn main() {
     let target = env::var("TARGET").unwrap();
     let profile = env::var("PROFILE").unwrap();
-    if profile == "test"{
+    if profile == "test" {
         unsafe {
             env::set_var("TOY_DEBUG", "TRUE");
         }

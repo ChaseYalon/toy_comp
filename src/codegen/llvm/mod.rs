@@ -1,4 +1,4 @@
-use std::{collections::HashMap};
+use std::collections::HashMap;
 
 use inkwell::{
     AddressSpace,
@@ -7,7 +7,7 @@ use inkwell::{
     context::Context,
     module::{Linkage, Module},
     targets::{TargetMachineOptions, TargetTriple},
-    types::{BasicMetadataTypeEnum, BasicTypeEnum, FunctionType, StructType, BasicType},
+    types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType, StructType},
     values::{
         BasicMetadataValueEnum, BasicValue, BasicValueEnum, FloatValue, FunctionValue, PhiValue,
         ValueKind,
@@ -29,8 +29,8 @@ use inkwell::{
 use std::path::Path;
 
 use std::env;
-use std::process::Command;
 use std::fs;
+use std::process::Command;
 pub static FILE_EXTENSION_EXE: &str = if cfg!(target_os = "windows") {
     ".exe"
 } else {
@@ -90,7 +90,10 @@ impl<'a> LlvmGenerator<'a> {
             TirType::I64 => self.ctx.i64_type().as_basic_type_enum(),
             TirType::I1 => self.ctx.bool_type().as_basic_type_enum(),
             TirType::F64 => self.ctx.f64_type().as_basic_type_enum(),
-            TirType::I8PTR => self.ctx.ptr_type(AddressSpace::default()).as_basic_type_enum(),
+            TirType::I8PTR => self
+                .ctx
+                .ptr_type(AddressSpace::default())
+                .as_basic_type_enum(),
             TirType::Void => panic!("Void cannot be converted to BasicTypeEnum"),
             TirType::StructInterface(fields) => {
                 if let Some(st) = self.struct_types.get(ty) {
@@ -100,7 +103,9 @@ impl<'a> LlvmGenerator<'a> {
                     for field in fields {
                         llvm_fields.push(self.tir_type_to_llvm_type(field));
                     }
-                    self.ctx.struct_type(&llvm_fields, false).as_basic_type_enum()
+                    self.ctx
+                        .struct_type(&llvm_fields, false)
+                        .as_basic_type_enum()
                 }
             }
         }
@@ -132,12 +137,11 @@ impl<'a> LlvmGenerator<'a> {
                 SSAValue {
                     val: id,
                     ty: Some(ty),
-                }
+                },
             )),
             TIR::ItoF(id, ssa_ref, ty) => {
                 let ins: FloatValue<'_> = builder.build_signed_int_to_float(
-                    self.get_ssa_val(&curr_func_name, ssa_ref)
-                        .into_int_value(),
+                    self.get_ssa_val(&curr_func_name, ssa_ref).into_int_value(),
                     self.ctx.f64_type(),
                     "sitofp",
                 )?;
@@ -224,12 +228,16 @@ impl<'a> LlvmGenerator<'a> {
                         TirType::I64 => self.ctx.i64_type().fn_type(&compiled_types, false),
                         TirType::F64 => self.ctx.f64_type().fn_type(&compiled_types, false),
                         TirType::I1 => self.ctx.bool_type().fn_type(&compiled_types, false),
-                        TirType::I8PTR => self.ctx.ptr_type(AddressSpace::default()).fn_type(&compiled_types, false),
+                        TirType::I8PTR => self
+                            .ctx
+                            .ptr_type(AddressSpace::default())
+                            .fn_type(&compiled_types, false),
                         TirType::Void => self.ctx.void_type().fn_type(&compiled_types, false),
                         _ => todo!("Chase you have not implemented this return type yet"),
                     };
-                    
-                    self.main_module.add_function(&*name, fn_type, Some(Linkage::External))
+
+                    self.main_module
+                        .add_function(&*name, fn_type, Some(Linkage::External))
                 };
                 let param_types = func_body.get_type().get_param_types();
                 let llvm_params: Vec<BasicMetadataValueEnum> = params
@@ -505,7 +513,8 @@ impl<'a> LlvmGenerator<'a> {
                 ))
             }
             TIR::Not(id, v) => {
-                let val = self.get_ssa_val(&curr_func_name, v.clone())
+                let val = self
+                    .get_ssa_val(&curr_func_name, v.clone())
                     .into_int_value();
 
                 let one = self.ctx.bool_type().const_int(1, false);
@@ -536,10 +545,7 @@ impl<'a> LlvmGenerator<'a> {
                 let first_val_ssa = &vals[0];
                 let mut ty = None;
                 for val in &vals {
-                    if let Some(v) = self
-                        .tir_to_val
-                        .get(&(curr_func_name.clone(), val.clone()))
-                    {
+                    if let Some(v) = self.tir_to_val.get(&(curr_func_name.clone(), val.clone())) {
                         ty = Some(v.get_type());
                         break;
                     }
@@ -576,13 +582,15 @@ impl<'a> LlvmGenerator<'a> {
                                     val: ssa_val.val,
                                     ty: Some(at),
                                 };
-                                if let Some(val) = self.tir_to_val.get(&(curr_func_name.clone(), alt_ssa)) {
+                                if let Some(val) =
+                                    self.tir_to_val.get(&(curr_func_name.clone(), alt_ssa))
+                                {
                                     phi.add_incoming(&[(&*val, *block)]);
                                     found = true;
                                 }
                             }
                         }
-                        
+
                         if !found {
                             self.phi_fixups.push((
                                 phi,
@@ -603,14 +611,21 @@ impl<'a> LlvmGenerator<'a> {
                 ))
             }
             TIR::GlobalString(id, va) => {
-                let str_val = builder.build_global_string_ptr(&va, format!("global_str_{}", id).as_str())?;
+                let str_val =
+                    builder.build_global_string_ptr(&va, format!("global_str_{}", id).as_str())?;
                 let str_ptr = str_val.as_pointer_value();
-                let ptr_i64 = builder.build_ptr_to_int(
-                    str_ptr,
-                    self.ctx.i64_type(),
-                    "str_ptr_to_i64",
-                )?;
-                self.tir_to_val.insert((curr_func_name.clone(), SSAValue { val: id, ty: Some(TirType::I64) }), ptr_i64.into());
+                let ptr_i64 =
+                    builder.build_ptr_to_int(str_ptr, self.ctx.i64_type(), "str_ptr_to_i64")?;
+                self.tir_to_val.insert(
+                    (
+                        curr_func_name.clone(),
+                        SSAValue {
+                            val: id,
+                            ty: Some(TirType::I64),
+                        },
+                    ),
+                    ptr_i64.into(),
+                );
                 Some((
                     ptr_i64.into(),
                     SSAValue {
@@ -639,34 +654,71 @@ impl<'a> LlvmGenerator<'a> {
                 for val in vals {
                     llvm_vals.push(self.get_ssa_val(&curr_func_name, val.clone()));
                 }
-                
+
                 let mut struct_val = struct_type.get_undef().as_basic_value_enum();
                 for (i, val) in llvm_vals.iter().enumerate() {
-                    struct_val = builder.build_insert_value(struct_val.into_struct_value(), *val, i as u32, "insert_field")?.as_basic_value_enum();
+                    struct_val = builder
+                        .build_insert_value(
+                            struct_val.into_struct_value(),
+                            *val,
+                            i as u32,
+                            "insert_field",
+                        )?
+                        .as_basic_value_enum();
                 }
-                
-                Some((struct_val, SSAValue { val: id, ty: Some(ty) }))
+
+                Some((
+                    struct_val,
+                    SSAValue {
+                        val: id,
+                        ty: Some(ty),
+                    },
+                ))
             }
             TIR::ReadStructLiteral(id, struct_val, idx) => {
-                let llvm_struct = self.get_ssa_val(&curr_func_name, struct_val.clone()).into_struct_value();
+                let llvm_struct = self
+                    .get_ssa_val(&curr_func_name, struct_val.clone())
+                    .into_struct_value();
                 let val = builder.build_extract_value(llvm_struct, idx as u32, "extract_field")?;
-                
-                let struct_ty = struct_val.ty.as_ref().expect("Struct value must have a type");
+
+                let struct_ty = struct_val
+                    .ty
+                    .as_ref()
+                    .expect("Struct value must have a type");
                 let field_ty = if let TirType::StructInterface(fields) = struct_ty {
                     fields[idx as usize].clone()
                 } else {
                     panic!("Expected StructInterface type");
                 };
-                
-                Some((val.as_basic_value_enum(), SSAValue { val: id, ty: Some(field_ty) }))
+
+                Some((
+                    val.as_basic_value_enum(),
+                    SSAValue {
+                        val: id,
+                        ty: Some(field_ty),
+                    },
+                ))
             }
             TIR::WriteStructLiteral(id, struct_val, idx, new_val) => {
-                let llvm_struct = self.get_ssa_val(&curr_func_name, struct_val.clone()).into_struct_value();
+                let llvm_struct = self
+                    .get_ssa_val(&curr_func_name, struct_val.clone())
+                    .into_struct_value();
                 let llvm_new_val = self.get_ssa_val(&curr_func_name, new_val.clone());
-                
-                let res = builder.build_insert_value(llvm_struct, llvm_new_val, idx as u32, "insert_field")?;
-                
-                Some((res.as_basic_value_enum(), SSAValue { val: id, ty: struct_val.ty }))
+
+                let res = builder.build_insert_value(
+                    llvm_struct,
+                    llvm_new_val,
+                    idx as u32,
+                    "insert_field",
+                )?;
+
+                Some((
+                    res.as_basic_value_enum(),
+                    SSAValue {
+                        val: id,
+                        ty: struct_val.ty,
+                    },
+                ))
             }
         };
         if let Some((llvm_ir, val)) = res {
@@ -736,13 +788,20 @@ impl<'a> LlvmGenerator<'a> {
         //</Boiler plate to setup function>
         for (n, p) in func.params.iter().enumerate() {
             let p_val = llvm_func.get_nth_param(n as u32).unwrap(); //is probably safe, maybe will cause bugs :D
-            self.tir_to_val
-                .insert((*self.curr_tir_func.as_ref().unwrap().name.clone(), p.clone()), p_val);
+            self.tir_to_val.insert(
+                (
+                    *self.curr_tir_func.as_ref().unwrap().name.clone(),
+                    p.clone(),
+                ),
+                p_val,
+            );
         }
-        
+
         for b in &func.body {
-             let llvm_block = self.ctx.append_basic_block(llvm_func, &format!("block_{}", b.id));
-             self.block_id_to_block.insert(b.id, llvm_block);
+            let llvm_block = self
+                .ctx
+                .append_basic_block(llvm_func, &format!("block_{}", b.id));
+            self.block_id_to_block.insert(b.id, llvm_block);
         }
 
         for b in &func.body {
@@ -983,12 +1042,14 @@ impl<'a> LlvmGenerator<'a> {
             return Err(ToyError::new(ToyErrorType::InternalLinkerFailure));
         }
         let p_args: Vec<String> = env::args().collect();
-        if p_args.clone().contains(&"--repl".to_owned()) || p_args.clone().contains(&"--run".to_owned()) {
+        if p_args.clone().contains(&"--repl".to_owned())
+            || p_args.clone().contains(&"--run".to_owned())
+        {
             let mut prgm = Command::new(format!("{}{}", "./", output_name.as_str()));
             let _ = prgm.spawn().unwrap().wait().unwrap();
 
             fs::remove_file(output_name.as_str()).unwrap();
-        } 
+        }
         fs::remove_file(format!("{}.o", prgm_name)).unwrap();
         fs::remove_file(format!("{}.ll", prgm_name)).unwrap();
         return Ok(());

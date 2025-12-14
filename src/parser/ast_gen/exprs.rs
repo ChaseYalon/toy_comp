@@ -578,7 +578,9 @@ impl AstGenerator {
                 };
                 return Ok(res);
             }
-            Token::Minus | Token::Divide | Token::Multiply | Token::Modulo => self.parse_num_expr(toks),
+            Token::Minus | Token::Divide | Token::Multiply | Token::Modulo => {
+                self.parse_num_expr(toks)
+            }
             Token::BoolLit(_)
             | Token::LessThan
             | Token::LessThanEqt

@@ -203,15 +203,24 @@ elif os_name == "Linux":
         subprocess.run(["git", "lfs", "install"])
         subprocess.run(["git", "lfs", "pull"])
     #custom llvm
-    subprocess.run(["sudo", "wget", "-qO", "/etc/apt/trusted.gpg.d/apt.llvm.org.asc https://apt.llvm.org/llvm-snapshot.gpg.key"])
-    subprocess.run(["echo",  '"deb http://apt.llvm.org/$(lsb_release -sc)', 'llvm-toolchain-$(lsb_release -sc)-21 main"', "|", "sudo",  "tee", "/etc/apt/sources.list.d/llvm.list"])
+    subprocess.run([
+        "sudo", "wget", "-qO", "/etc/apt/trusted.gpg.d/apt.llvm.org.asc",
+        "https://apt.llvm.org/llvm-snapshot.gpg.key"
+    ], check=True)
+    subprocess.run(
+        'echo "deb http://apt.llvm.org/$(lsb_release -sc) llvm-toolchain-$(lsb_release -sc)-21 main" | sudo tee /etc/apt/sources.list.d/llvm.list',
+        shell=True,
+        check=True
+    )
     subprocess.run(["sudo",  "apt", "update"])
     subprocess.run(["sudo", "apt", "install", "clang-21", "llvm-21", "llvm-21-dev", "lld-21", "libpolly-21-dev"])
     subprocess.run(["sudo", "mkdir", "-p", "/opt/llvm-21/bin"])
     subprocess.run(["sudo",  "ln", "-s", "/usr/bin/llvm-config-21", "/opt/llvm-21/bin/llvm-config"])
-    with open("/root/.bashrc", "a") as f:
+    bashrc_path = os.path.expanduser("~/.bashrc")
+    with open(bashrc_path, "a") as f:
         f.write('export LLVM_SYS_211_PREFIX=/opt/llvm-21\n')
-        f.write('export LLVM_SYS_211_LINK_POLLY=0')
+        f.write('export LLVM_SYS_211_LINK_POLLY=0\n')
+
     subprocess.run(["source", "~/.bashrc"], shell=True)
     #rust
     subprocess.run(["rustup", "target", "add", "x86_64-pc-windows-gnu", "--toolchain", "nightly"], check=True)

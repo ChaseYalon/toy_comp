@@ -1563,7 +1563,10 @@ fn test_tirgen_broken_floats() {
 
 #[test]
 fn test_tirgen_nested_arrays() {
-    setup_tir!(ir, r#"let arr: str[][] = [["hi", "bye"], ["hello", "world"]];"#);
+    setup_tir!(
+        ir,
+        r#"let arr: str[][] = [["hi", "bye"], ["hello", "world"]];"#
+    );
     compare_tir(
         ir,
         vec![Function {

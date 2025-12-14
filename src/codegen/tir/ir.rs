@@ -422,7 +422,13 @@ impl TirBuilder {
             .ok_or_else(|| ToyError::new(ToyErrorType::UndefinedFunction))?;
 
         let id = self._next_value_id();
-        let ins = TIR::CallLocalFunction(id, Box::new(name), params.clone(), is_allocator, ret_type.clone());
+        let ins = TIR::CallLocalFunction(
+            id,
+            Box::new(name),
+            params.clone(),
+            is_allocator,
+            ret_type.clone(),
+        );
         self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()]
             .ins
             .push(ins);
