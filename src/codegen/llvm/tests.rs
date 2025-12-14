@@ -51,6 +51,13 @@ macro_rules! compile_code_aot {
 
 #[test]
 fn test_int_lit(){
-    compile_code_aot!(output, "println(5)", "int_lit");
+    compile_code_aot!(output, "println(5);", "int_lit");
     assert!(output.contains("5"));
 }
+
+#[test]
+fn test_llvm_codegen_paren_infix() {
+    compile_code_aot!(output, "println((5 + 3) - 6 * 3)", "paren_infix");
+    assert!(output.contains("-10"));
+}
+

@@ -107,6 +107,7 @@ if os_name == "Windows":
             "mingw-w64-x86_64-toolchain "
             "mingw-w64-x86_64-clang "
             "mingw-w64-x86_64-llvm"
+            "mingw-w64-x86_64-libffi"#not sure if this is nesscary
         )
 
     def detect_rustup_windows() -> bool:

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use inkwell::{AddressSpace, basic_block::BasicBlock, builder::Builder, context::Context, module::{Linkage, Module}, targets::{TargetMachineOptions, TargetTriple}, types::{BasicMetadataTypeEnum, BasicTypeEnum, FunctionType}, values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, FloatValue, FunctionValue, ValueKind}};
 
-use crate::{codegen::{Block, Function, SSAValue, TIR, TirType, tir::ir::BlockId}, errors::{ToyError, ToyErrorType}};
+use crate::{codegen::{Block, Function, SSAValue, TIR, TirType, tir::ir::{BlockId, NumericInfixOp}}, errors::{ToyError, ToyErrorType}};
 use inkwell::{
     OptimizationLevel,
     targets::{
@@ -73,6 +73,33 @@ impl<'a> LlvmGenerator<'a> {
                     builder.build_return(Some(val))?;
                     (val.to_owned(), v)
                 }
+            }
+            TIR::NumericInfix(id, l, r, op) => {
+                let lhs = self.tir_to_val.get(&(curr_func_name.clone(), l.clone())).unwrap();
+                let rhs = self.tir_to_val.get(&(curr_func_name.clone(), r.clone())).unwrap();
+                //tirgen wil guarantee that they are both either int or float
+                if l.ty.unwrap() == TirType::F64 {
+                    //float arithmetic
+                    let val = match op {
+                        NumericInfixOp::Plus => builder.build_float_add(lhs.into_float_value(), rhs.into_float_value(), "sum")?,
+                        NumericInfixOp::Minus => builder.build_float_sub(lhs.into_float_value(), rhs.into_float_value(), "diff")?,
+                        NumericInfixOp::Multiply => builder.build_float_mul(lhs.into_float_value(), rhs.into_float_value(), "product")?,
+                        NumericInfixOp::Divide => builder.build_float_div(lhs.into_float_value(), rhs.into_float_value(), "quotient")?,
+                        NumericInfixOp::Modulo => builder.build_float_rem(lhs.into_float_value(), rhs.into_float_value(), "res")?
+                    };
+                    (val.into(), SSAValue{val: id, ty: Some(TirType::F64)})
+                } else {
+                    let val = match op {
+                        NumericInfixOp::Plus => builder.build_int_add(lhs.into_int_value(), rhs.into_int_value(), "sum")?,
+                        NumericInfixOp::Minus => builder.build_int_sub(lhs.into_int_value(), rhs.into_int_value(), "diff")?,
+                        NumericInfixOp::Multiply => builder.build_int_mul(lhs.into_int_value(), rhs.into_int_value(), "product")?,
+                        NumericInfixOp::Divide => builder.build_int_signed_div(lhs.into_int_value(), rhs.into_int_value(), "quotient")?,
+                        NumericInfixOp::Modulo => builder.build_int_signed_rem(lhs.into_int_value(), rhs.into_int_value(), "res")?
+                    };
+                    (val.into(), SSAValue{val: id, ty:Some(TirType::I64)})
+                    
+                }
+
             }
             _ => todo!("Chase you have not implemented {:?} ins yet", inst)
         };
@@ -286,14 +313,16 @@ impl<'a> LlvmGenerator<'a> {
             .get_target_data()
             .get_data_layout()
         );
-        let obj_path = Path::new("temp/out.o");
+        let obj_file = format!("{}.o", prgm_name);
+        let obj_path = Path::new(&obj_file);
         target_machine
         .write_to_file(
             &self.main_module,
             FileType::Object,
             obj_path
         )?;
-        self.main_module.print_to_file(Path::new("temp/out.ll"))?;
+        let ll_file = format!("{}.ll", prgm_name);
+        self.main_module.print_to_file(Path::new(&ll_file))?;
 
         //linker
         let target = env!("TARGET").replace("\"", "");
