@@ -53,7 +53,7 @@ fn compile_and_print(source: String) -> Result<(), Box<dyn std::error::Error>> {
 
     let tokens = lexer.lex(source)?;
     let ast = parser.parse(tokens)?;
-    generator.generate(ast)?;
+    generator.generate(ast, "program".to_string())?;
     
     Ok(())
 }

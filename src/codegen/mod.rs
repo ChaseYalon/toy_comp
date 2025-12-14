@@ -24,17 +24,11 @@ impl<'a> Generator<'a> {
         }
     }
 
-    pub fn generate(&mut self, ast: Vec<Ast>) -> Result<(), ToyError>{
+    pub fn generate(&mut self, ast: Vec<Ast>, name: String) -> Result<(), ToyError>{
         let _ = self.converter.convert(ast)?;
         let ir = self.analyzer.analyze(self.converter.builder.clone())?;
-        self.generator.generate(ir)?;
+        self.generator.generate(ir, name)?;
         return Ok(());
     }
 
-    pub fn compile(&mut self, ast: Vec<Ast>, output_path: &str) -> Result<(), ToyError>{
-        let _ = self.converter.convert(ast)?;
-        let ir = self.analyzer.analyze(self.converter.builder.clone())?;
-        self.generator.generate(ir)?;
-        return Ok(());
-    }
 }

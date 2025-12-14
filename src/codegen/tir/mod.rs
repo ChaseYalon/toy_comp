@@ -15,7 +15,7 @@ pub mod ir;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Scope {
     parent: Option<Rc<RefCell<Scope>>>,
-    vars: HashMap<String, SSAValue>,
+    vars: HashMap<String, (SSAValue, TypeTok)>,
 }
 impl Scope {
     pub fn new_child(parent: &Rc<RefCell<Scope>>) -> Rc<RefCell<Scope>> {
@@ -26,15 +26,24 @@ impl Scope {
     }
     pub fn get_var(&self, name: &str) -> Result<SSAValue, ToyError> {
         if self.vars.contains_key(name) {
-            return Ok(self.vars.get(name).unwrap().clone());
+            return Ok(self.vars.get(name).unwrap().0.clone());
         }
         if self.parent.is_some() {
             return self.parent.as_ref().unwrap().borrow().get_var(name);
         }
         return Err(ToyError::new(ToyErrorType::UndefinedVariable));
     }
-    pub fn set_var(&mut self, name: String, val: SSAValue) {
-        self.vars.insert(name, val);
+    pub fn get_var_type(&self, name: &str) -> Result<TypeTok, ToyError> {
+        if self.vars.contains_key(name) {
+            return Ok(self.vars.get(name).unwrap().1.clone());
+        }
+        if self.parent.is_some() {
+            return self.parent.as_ref().unwrap().borrow().get_var_type(name);
+        }
+        return Err(ToyError::new(ToyErrorType::UndefinedVariable));
+    }
+    pub fn set_var(&mut self, name: String, val: SSAValue, ty: TypeTok) {
+        self.vars.insert(name, (val, ty));
     }
 }
 pub struct AstToIrConverter {
@@ -57,6 +66,47 @@ impl AstToIrConverter {
             interfaces: HashMap::new(),
         };
     }
+    fn get_expr_type(&self, node: &Ast, scope: &Rc<RefCell<Scope>>) -> Result<TypeTok, ToyError> {
+        match node {
+            Ast::IntLit(_) => Ok(TypeTok::Int),
+            Ast::BoolLit(_) => Ok(TypeTok::Bool),
+            Ast::StringLit(_) => Ok(TypeTok::Str),
+            Ast::FloatLit(_) => Ok(TypeTok::Float),
+            Ast::VarRef(n) => scope.as_ref().borrow().get_var_type(n),
+            Ast::InfixExpr(l, r, op) => {
+                match op {
+                    InfixOp::Equals | InfixOp::NotEquals | InfixOp::LessThan | InfixOp::GreaterThan | InfixOp::LessThanEqt | InfixOp::GreaterThanEqt | InfixOp::And | InfixOp::Or => Ok(TypeTok::Bool),
+                    _ => self.get_expr_type(l, scope),
+                }
+            }
+            Ast::EmptyExpr(e) => self.get_expr_type(e, scope),
+            Ast::FuncCall(n, _) => {
+                match n.as_str() {
+                    "print" | "println" | "toy_write_to_arr" => Ok(TypeTok::Void),
+                    "len" | "toy_strlen" | "toy_arrlen" | "toy_type_to_int" | "toy_type_to_bool" | "toy_type_to_float" | "toy_malloc_arr" | "toy_input" => Ok(TypeTok::Int),
+                    "str" | "toy_type_to_str" => Ok(TypeTok::Str),
+                    "int" => Ok(TypeTok::Int),
+                    "float" => Ok(TypeTok::Float),
+                    "bool" => Ok(TypeTok::Bool),
+                    _ => Ok(TypeTok::Int),
+                }
+            }
+            Ast::ArrLit(ty, _) => Ok(ty.clone()),
+            Ast::ArrRef(n, _) => {
+                let arr_ty = scope.as_ref().borrow().get_var_type(n)?;
+                match arr_ty {
+                    TypeTok::IntArr(_) => Ok(TypeTok::Int),
+                    TypeTok::BoolArr(_) => Ok(TypeTok::Bool),
+                    TypeTok::FloatArr(_) => Ok(TypeTok::Float),
+                    TypeTok::StrArr(_) => Ok(TypeTok::Str),
+                    _ => Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType)),
+                }
+            }
+            Ast::StructLit(_, _) => Ok(TypeTok::Int),
+             _ => Ok(TypeTok::Void),
+        }
+    }
+
     fn compile_expr(
         &mut self,
         node: Ast,
@@ -148,7 +198,35 @@ impl AstToIrConverter {
                     "input" => "toy_input",
                     _ => &*n,
                 };
-                self.builder.call(name.to_string(), ssa_params)
+                
+                let mut final_params = Vec::new();
+                if vec![
+                    "toy_print",
+                    "toy_println",
+                ].contains(&name) {
+                    if p.len() != 1 {
+                        return Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType));
+                    }
+                    final_params.push(ssa_params[0].clone());
+                    let ty = self.get_expr_type(&p[0], scope)?;
+                    self.builder.inject_type_param(&ty, true, &mut final_params)?;
+                } else if vec![
+                    "toy_type_to_str",
+                    "toy_type_to_int",
+                    "toy_type_to_bool",
+                    "toy_type_to_float",
+                ].contains(&name) {
+                    if p.len() != 1 {
+                        return Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType));
+                    }
+                    final_params.push(ssa_params[0].clone());
+                    let ty = self.get_expr_type(&p[0], scope)?;
+                    self.builder.inject_type_param(&ty, false, &mut final_params)?;
+                } else {
+                    final_params = ssa_params;
+                }
+
+                self.builder.call(name.to_string(), final_params)
             }
             Ast::StringLit(s) => {
                 let st = *s;
@@ -256,13 +334,14 @@ impl AstToIrConverter {
         &mut self,
         name: String,
         ast_val: Ast,
+        ty: TypeTok,
         scope: &Rc<RefCell<Scope>>,
     ) -> Result<SSAValue, ToyError> {
         let compiled_val = self.compile_expr(ast_val, scope)?;
         scope
             .as_ref()
             .borrow_mut()
-            .set_var(name, compiled_val.clone());
+            .set_var(name, compiled_val.clone(), ty);
         return Ok(compiled_val);
     }
     fn compile_var_reassign(
@@ -272,10 +351,11 @@ impl AstToIrConverter {
         scope: &Rc<RefCell<Scope>>,
     ) -> Result<SSAValue, ToyError> {
         let compiled_val = self.compile_expr(ast_val, scope)?;
+        let ty = scope.as_ref().borrow().get_var_type(&name)?;
         scope
             .as_ref()
             .borrow_mut()
-            .set_var(name, compiled_val.clone());
+            .set_var(name, compiled_val.clone(), ty);
         return Ok(compiled_val);
     }
     fn compile_if_stmt(&mut self, node: Ast, scope: &Rc<RefCell<Scope>>) -> Result<(), ToyError> {
@@ -320,7 +400,7 @@ impl AstToIrConverter {
             _ => unreachable!(),
         };
 
-        let pre_loop_vars: HashMap<String, SSAValue> = scope.as_ref().borrow().vars.clone();
+        let pre_loop_vars: HashMap<String, (SSAValue, TypeTok)> = scope.as_ref().borrow().vars.clone();
 
         let header_id = self.builder.create_block()?;
         self.builder.jump_block_un_cond(header_id);
@@ -338,8 +418,9 @@ impl AstToIrConverter {
                     var_name.clone(),
                     SSAValue {
                         val: *phi_id,
-                        ty: pre_val.ty.clone(),
+                        ty: pre_val.0.ty.clone(),
                     },
+                    pre_val.1.clone(),
                 );
             }
         }
@@ -351,14 +432,14 @@ impl AstToIrConverter {
         let child_scope = Scope::new_child(scope);
 
         for (var_name, val) in scope.as_ref().borrow().vars.clone() {
-            child_scope.as_ref().borrow_mut().set_var(var_name, val);
+            child_scope.as_ref().borrow_mut().set_var(var_name, val.0, val.1);
         }
 
         for ast in body {
             self.compile_stmt(ast, &child_scope)?;
         }
 
-        let post_loop_vars: HashMap<String, SSAValue> = child_scope.as_ref().borrow().vars.clone();
+        let post_loop_vars: HashMap<String, (SSAValue, TypeTok)> = child_scope.as_ref().borrow().vars.clone();
 
         self.builder.jump_block_un_cond(header_id)?;
 
@@ -368,9 +449,9 @@ impl AstToIrConverter {
             let post_val = post_loop_vars
                 .get(var_name)
                 .cloned()
-                .unwrap_or_else(|| (pre_val as &SSAValue).clone());
+                .unwrap_or_else(|| (pre_val.clone()));
             if let Some(&phi_id) = phi_id_map.get(var_name) {
-                let phi_ins = TIR::Phi(phi_id, vec![0, body_id], vec![(pre_val as &SSAValue).clone(), post_val]);
+                let phi_ins = TIR::Phi(phi_id, vec![0, body_id], vec![pre_val.0.clone(), post_val.0]);
                 phi_instructions.push(phi_ins);
             }
         }
@@ -395,11 +476,11 @@ impl AstToIrConverter {
                 Ast::FuncParam(n, t) => (*n, t),
                 _ => unreachable!(),
             };
-            let ssa_v = self.builder.generic_ssa(param_type);
+            let ssa_v = self.builder.generic_ssa(param_type.clone());
             func_scope
                 .as_ref()
                 .borrow_mut()
-                .set_var(name, ssa_v.clone());
+                .set_var(name, ssa_v.clone(), param_type);
             ssa_params.push(ssa_v);
         }
         self.builder.new_func(Box::new(name), ssa_params, ret_type);
@@ -425,8 +506,8 @@ impl AstToIrConverter {
             | Ast::Not(_) => {
                 let _ = self.compile_expr(node, scope)?;
             }
-            Ast::VarDec(box_name, _, box_val) => {
-                let _ = self.compile_var_dec(*box_name, *box_val, scope)?;
+            Ast::VarDec(box_name, ty, box_val) => {
+                let _ = self.compile_var_dec(*box_name, *box_val, ty, scope)?;
             }
             Ast::VarReassign(boxed_name, boxed_val) => {
                 let _ = self.compile_var_reassign(*boxed_name, *boxed_val, scope)?;

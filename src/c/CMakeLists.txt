@@ -50,6 +50,7 @@ add_library(core STATIC
     hashmap.c
     ctla/ctla.c
     ctla/hashmap.c
+    llvm_stubs.c
 )
 
 # Set archive output directories

@@ -2,17 +2,22 @@ use std::collections::HashMap;
 
 use inkwell::{AddressSpace, basic_block::BasicBlock, builder::Builder, context::Context, module::{Linkage, Module}, targets::{TargetMachineOptions, TargetTriple}, types::{BasicMetadataTypeEnum, BasicTypeEnum, FunctionType}, values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, FloatValue, FunctionValue, ValueKind}};
 
-use crate::{codegen::{Block, Function, SSAValue, TIR, TirType, tir::ir::BlockId}, errors::ToyError};
+use crate::{codegen::{Block, Function, SSAValue, TIR, TirType, tir::ir::BlockId}, errors::{ToyError, ToyErrorType}};
 use inkwell::{
     OptimizationLevel,
     targets::{
-        InitializationConfig, Target, TargetMachine, FileType,
+        InitializationConfig, Target, FileType,
     },
 };
 use std::path::Path;
 
 use std::env;
-
+use std::process::Command;
+pub static FILE_EXTENSION_EXE: &str = if cfg!(target_os = "windows") {
+    ".exe"
+} else {
+    ""
+};
 pub struct LlvmGenerator<'a> {
     ctx: &'a Context, 
     main_module: Module<'a>,
@@ -47,10 +52,9 @@ impl<'a> LlvmGenerator<'a> {
             TIR::CallExternFunction(id, name, params, _, ret_type) => {
                 let hm_func = self.func_map.get(&*name).unwrap();
                 let func_body = self.main_module.add_function(&*name, hm_func.to_owned(), Some(Linkage::External));
-
-                let llvm_params: Vec<BasicMetadataValueEnum> = params.iter().map(|p| {self.tir_to_val.get(&((*name).clone(), p.clone())).unwrap()}.to_owned().into()).collect();
+                let llvm_params: Vec<BasicMetadataValueEnum> = params.iter().map(|p| {self.tir_to_val.get(&((curr_func_name).clone(), p.clone())).unwrap()}.to_owned().into()).collect();
                 let call_ins = builder.build_call(func_body, llvm_params.as_slice(), &*name)?;
-                let ret = if ret_type ==TirType::Void { match call_ins.try_as_basic_value() {
+                let ret = if ret_type !=TirType::Void { match call_ins.try_as_basic_value() {
                     ValueKind::Basic(v) => v,
                     _ => panic!("void"),
                 }} else {
@@ -58,6 +62,17 @@ impl<'a> LlvmGenerator<'a> {
                 };
                 (ret, SSAValue{val: id, ty: Some(ret_type)})
 
+            }
+            TIR::Ret(id, v) => {
+                //there might be a bug here with not adding the return val on the else branch to the tir_to_val
+                if v.ty.is_none() {
+                    builder.build_return(None)?;
+                    (self.ctx.i64_type().const_int(0 as u64, true).into(), SSAValue{val: id, ty: None})
+                } else {
+                    let val = self.tir_to_val.get(&(curr_func_name.clone(), v.clone())).unwrap();
+                    builder.build_return(Some(val))?;
+                    (val.to_owned(), v)
+                }
             }
             _ => todo!("Chase you have not implemented {:?} ins yet", inst)
         };
@@ -99,7 +114,7 @@ impl<'a> LlvmGenerator<'a> {
             _ => todo!("Chase you have not implemented this return type yet")
         };
         
-        let llvm_func = self.main_module.add_function(&*func.name.clone(), fn_type, Some(if &*func.name == "user_main" {Linkage::AvailableExternally} else {Linkage::Internal}));
+        let llvm_func = self.main_module.add_function(&*func.name.clone(), fn_type, Some(if &*func.name == "user_main" {Linkage::External} else {Linkage::Internal}));
         //</Boiler plate to setup function>
         for (n, p) in func.params.iter().enumerate() {
             let p_val = llvm_func.get_nth_param(n as u32).unwrap();//is probably safe, maybe will cause bugs :D
@@ -110,8 +125,7 @@ impl<'a> LlvmGenerator<'a> {
             self.block_id_to_block.insert(b.id, llvm_block);
         }
 
-        return Ok(())
-
+        return Ok(());
     }
     fn _tir_to_llvm_type(&self, t: TirType) -> BasicTypeEnum<'a> {
         return match t {
@@ -244,9 +258,12 @@ impl<'a> LlvmGenerator<'a> {
         }
         return Ok(())
     }
-    pub fn generate(&mut self, funcs: Vec<Function>) -> Result<(), ToyError> {
+    pub fn generate(&mut self, funcs: Vec<Function>, prgm_name: String) -> Result<(), ToyError> {
         self.generate_internal(funcs)?;
+
+        //llvm shit
         let args: Vec<String> = env::args().collect();
+        Target::initialize_x86(&InitializationConfig::default());
         let opt_level = if args.contains(&"--repl".to_string()) || args.contains(&"--no-op".to_string()) {
             OptimizationLevel::None
         } else {
@@ -259,7 +276,7 @@ impl<'a> LlvmGenerator<'a> {
         });
         let options = TargetMachineOptions::new()
             .set_abi("gnu")
-            .set_cpu("x86_64")
+            //.set_cpu("x64")
             .set_level(opt_level);
         let target = Target::from_triple(&triple).unwrap();
         let target_machine = target.create_target_machine_from_options(&triple, options).unwrap();
@@ -269,12 +286,86 @@ impl<'a> LlvmGenerator<'a> {
             .get_target_data()
             .get_data_layout()
         );
+        let obj_path = Path::new("temp/out.o");
         target_machine
         .write_to_file(
             &self.main_module,
             FileType::Object,
-            Path::new("temp/out.o"),
+            obj_path
         )?;
+        self.main_module.print_to_file(Path::new("temp/out.ll"))?;
+
+        //linker
+        let target = env!("TARGET").replace("\"", "");
+        let lib_str = format!("lib/{}/", target);
+        let lib_path = Path::new(&lib_str);
+        let crt2_path = lib_path.join("crt2.o");
+        let crtbegin_path = lib_path.join("crtbegin.o");
+        let crt1_path = lib_path.join("crt1.o");
+        let crti_path = lib_path.join("crti.o");
+        let lbruntime_path = lib_path.join("libruntime.a");
+        let crtn_path = lib_path.join("crtn.o");
+        let libc_path = lib_path.join("libc.so.6");
+        let libm_path = lib_path.join("libm.so.6");
+        let output_name = format!("{}{}", prgm_name, FILE_EXTENSION_EXE);
+        let args: Vec<&str> = if env::consts::OS == "windows" {
+            vec![
+                "-m",
+                "i386pep",
+                crt2_path.to_str().unwrap(),
+                crtbegin_path.to_str().unwrap(),
+                obj_path.to_str().unwrap(),
+                "-L",
+                lib_path.to_str().unwrap(),
+                "-lruntime",
+                "-lmingw32",
+                "-lmingwex",
+                "-lmsvcrt",
+                "-lkernel32",
+                "-luser32",
+                "-lshell32",
+                "-lgcc",
+                "-o",
+                output_name.as_str()
+            ]
+        } else {
+            vec![
+                "-m",
+                "elf_x86_64",
+                crt1_path.to_str().unwrap(),
+                crti_path.to_str().unwrap(),
+                obj_path.to_str().unwrap(),
+                lbruntime_path.to_str().unwrap(),
+                crtn_path.to_str().unwrap(),
+                libc_path.to_str().unwrap(),
+                libm_path.to_str().unwrap(),
+                "-dynamic-linker",
+                "/lib64/ld-linux-x86-64.so.2",
+                "-o",
+                output_name.as_str(),
+            ]
+        };
+
+        let rstatus = Command::new(lib_path.join("ld.lld")).args(args.clone()).status();
+        let status = match rstatus {
+            Ok(f) => f,
+            Err(_) => return Err(ToyError::new(ToyErrorType::InternalLinkerFailure)),
+        };
+        if !status.success() {
+            return Err(ToyError::new(ToyErrorType::InternalLinkerFailure));
+        }
+        //it should automatically run the program in the repl, it doesn't, I will fix i later I have more important things todo
+        if args.clone().contains(&&"--repl") || args.clone().contains(&&"--run") {
+            let mut prgm = Command::new(format!("{}{}", "./",output_name.as_str()));
+            match prgm.spawn(){
+                Ok(_) => {},
+                Err(_) => return Err(ToyError::new(ToyErrorType::InternalLinkerFailure))//is his the right error
+            }
+        }
         return Ok(());
     }
 }
+
+
+#[cfg(test)]
+mod tests;

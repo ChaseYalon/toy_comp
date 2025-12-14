@@ -1193,21 +1193,33 @@ fn test_tirgen_recursion_bug() {
                             }],
                             false
                         ),
+                        TIR::IConst(3, 2, TirType::I64),
+                        TIR::IConst(4, 0, TirType::I64),
                         TIR::CallExternFunction(
-                            3,
+                            5,
                             Box::new("toy_println".to_string()),
-                            vec![SSAValue {
-                                val: 2,
-                                ty: Some(TirType::I64)
-                            }],
+                            vec![
+                                SSAValue {
+                                    val: 2,
+                                    ty: Some(TirType::I64)
+                                },
+                                SSAValue{
+                                    val: 3,
+                                    ty: Some(TirType::I64)
+                                },
+                                SSAValue{
+                                    val: 4,
+                                    ty: Some(TirType::I64)
+                                }
+                            ],
                             false,
                             TirType::Void
                         ),
-                        TIR::IConst(4, 0, TirType::I64),
+                        TIR::IConst(6, 0, TirType::I64),
                         TIR::Ret(
-                            5,
+                            7,
                             SSAValue {
-                                val: 4,
+                                val: 6,
                                 ty: Some(TirType::I64)
                             }
                         )
