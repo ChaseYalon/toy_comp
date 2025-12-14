@@ -3,23 +3,30 @@ use crate::debug;
 use crate::errors::{ToyError, ToyErrorType};
 use crate::parser::ast::{Ast, InfixOp};
 use crate::token::{Token, TypeTok};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 impl AstGenerator {
-    pub fn parse_num_expr(&self, toks: &Vec<Token>) -> Result<Ast, ToyError> {
+    pub fn parse_num_expr(&self, toks: &Vec<Token>) -> Result<(Ast, TypeTok), ToyError> {
         if toks.len() == 1 {
             if toks[0].tok_type() == "IntLit" {
-                return Ok(Ast::IntLit(toks[0].get_val().unwrap()));
+                return Ok((Ast::IntLit(toks[0].get_val().unwrap()), TypeTok::Int));
             }
             if toks[0].tok_type() == "VarRef" {
-                return self.parse_var_ref(&toks[0]);
+                let name = match &toks[0] {
+                    Token::VarRef(n) => n,
+                    _ => unreachable!(),
+                };
+                let ty = self
+                    .lookup_var_type(name)
+                    .ok_or_else(|| ToyError::new(ToyErrorType::TypeHintNeeded))?;
+                return Ok((self.parse_var_ref(&toks[0])?, ty));
             }
             if toks[0].tok_type() == "FloatLit" {
                 let val = match toks[0] {
                     Token::FloatLit(f) => f,
                     _ => unreachable!(),
                 };
-                return Ok(Ast::FloatLit(val));
+                return Ok((Ast::FloatLit(val), TypeTok::Float));
             }
         }
         if toks.len() == 0 {
@@ -29,19 +36,29 @@ impl AstGenerator {
         let left = &toks[0..best_idx];
         let right = &toks[best_idx + 1..toks.len()];
 
-        let (l_node, _) = self.parse_expr(&left.to_vec())?;
-        let (r_node, _) = self.parse_expr(&right.to_vec())?;
-        return Ok(Ast::InfixExpr(
-            Box::new(l_node),
-            Box::new(r_node),
-            match best_tok {
-                Token::Plus => InfixOp::Plus,
-                Token::Minus => InfixOp::Minus,
-                Token::Multiply => InfixOp::Multiply,
-                Token::Divide => InfixOp::Divide,
-                Token::Modulo => InfixOp::Modulo,
-                _ => return Err(ToyError::new(ToyErrorType::InvalidInfixOperation)),
-            },
+        let (l_node, l_type) = self.parse_expr(&left.to_vec())?;
+        let (r_node, r_type) = self.parse_expr(&right.to_vec())?;
+
+        let res_type = if l_type == TypeTok::Float || r_type == TypeTok::Float {
+            TypeTok::Float
+        } else {
+            TypeTok::Int
+        };
+
+        return Ok((
+            Ast::InfixExpr(
+                Box::new(l_node),
+                Box::new(r_node),
+                match best_tok {
+                    Token::Plus => InfixOp::Plus,
+                    Token::Minus => InfixOp::Minus,
+                    Token::Multiply => InfixOp::Multiply,
+                    Token::Divide => InfixOp::Divide,
+                    Token::Modulo => InfixOp::Modulo,
+                    _ => return Err(ToyError::new(ToyErrorType::InvalidInfixOperation)),
+                },
+            ),
+            res_type,
         ));
     }
 
@@ -237,7 +254,7 @@ impl AstGenerator {
             unprocessed_kv.push(&inner[start..inner.len()]);
         }
 
-        let mut processed_kv: HashMap<String, (Ast, TypeTok)> = HashMap::new();
+        let mut processed_kv: BTreeMap<String, (Ast, TypeTok)> = BTreeMap::new();
         for kv in unprocessed_kv {
             if kv.len() < 3 {
                 return Err(ToyError::new(ToyErrorType::MalformedStructField));
@@ -269,11 +286,12 @@ impl AstGenerator {
     pub fn parse_expr(&self, toks: &Vec<Token>) -> Result<(Ast, TypeTok), ToyError> {
         //guard clause for not expressions - seems hacky but works
         if toks[0].tok_type() == "Not" {
-            let (to_be_negated_val, to_be_negated_type) = self.parse_expr(&toks[1..toks.len()].to_vec())?;
+            let (to_be_negated_val, to_be_negated_type) =
+                self.parse_expr(&toks[1..toks.len()].to_vec())?;
             if to_be_negated_type != TypeTok::Bool {
-                return Err(ToyError::new(ToyErrorType::ExpressionNotBoolean))
+                return Err(ToyError::new(ToyErrorType::ExpressionNotBoolean));
             }
-            return Ok((Ast::Not(Box::new(to_be_negated_val)), TypeTok::Bool))
+            return Ok((Ast::Not(Box::new(to_be_negated_val)), TypeTok::Bool));
         }
         //guard clause for single tokens
         if toks.len() == 1 {
@@ -399,6 +417,7 @@ impl AstGenerator {
 
             let mut i = 2;
             let mut idx_exprs: Vec<Ast> = Vec::new();
+            let mut arr_ref_end = 0;
 
             while i < toks.len() {
                 // find closing bracket
@@ -418,8 +437,9 @@ impl AstGenerator {
                 }
 
                 let inner_toks = &toks[i..j - 1];
-                let idx_expr = self.parse_num_expr(&inner_toks.to_vec())?;
+                let (idx_expr, _) = self.parse_num_expr(&inner_toks.to_vec())?;
                 idx_exprs.push(idx_expr);
+                arr_ref_end = j;
 
                 if j >= toks.len() || toks[j].tok_type() != "LBrack" {
                     break;
@@ -450,7 +470,57 @@ impl AstGenerator {
                 };
             }
 
-            return Ok((Ast::ArrRef(Box::new(name), idx_exprs), item_type));
+            let arr_ref_ast = Ast::ArrRef(Box::new(name), idx_exprs);
+
+            if arr_ref_end < toks.len() {
+                let remaining_toks = &toks[arr_ref_end..];
+                if !remaining_toks.is_empty() {
+                    let op_tok = &remaining_toks[0];
+                    let right_toks = &remaining_toks[1..];
+                    let (right_ast, right_type) = self.parse_expr(&right_toks.to_vec())?;
+
+                    let op = match op_tok {
+                        Token::Plus => InfixOp::Plus,
+                        Token::Minus => InfixOp::Minus,
+                        Token::Multiply => InfixOp::Multiply,
+                        Token::Divide => InfixOp::Divide,
+                        Token::Modulo => InfixOp::Modulo,
+                        Token::LessThan => InfixOp::LessThan,
+                        Token::LessThanEqt => InfixOp::LessThanEqt,
+                        Token::GreaterThan => InfixOp::GreaterThan,
+                        Token::GreaterThanEqt => InfixOp::GreaterThanEqt,
+                        Token::Equals => InfixOp::Equals,
+                        Token::NotEquals => InfixOp::NotEquals,
+                        Token::And => InfixOp::And,
+                        Token::Or => InfixOp::Or,
+                        _ => return Err(ToyError::new(ToyErrorType::InvalidInfixOperation)),
+                    };
+
+                    let result_type = match op {
+                        InfixOp::Plus
+                        | InfixOp::Minus
+                        | InfixOp::Multiply
+                        | InfixOp::Divide
+                        | InfixOp::Modulo => {
+                            if item_type == TypeTok::Float || right_type == TypeTok::Float {
+                                TypeTok::Float
+                            } else if item_type == TypeTok::Str || right_type == TypeTok::Str {
+                                TypeTok::Str
+                            } else {
+                                TypeTok::Int
+                            }
+                        }
+                        _ => TypeTok::Bool,
+                    };
+
+                    return Ok((
+                        Ast::InfixExpr(Box::new(arr_ref_ast), Box::new(right_ast), op),
+                        result_type,
+                    ));
+                }
+            }
+
+            return Ok((arr_ref_ast, item_type));
         }
 
         //Arr literals
@@ -500,29 +570,15 @@ impl AstGenerator {
                 let left = &toks[0..best_idx];
                 let (_, left_type) = self.parse_expr(&left.to_vec())?;
 
-                // if either side has float, type promote
-                let has_float = toks.iter().any(|t| t.tok_type() == "FloatLit");
-
                 let res = match left_type {
                     TypeTok::Str => (self.parse_str_expr(toks)?, TypeTok::Str),
-                    TypeTok::Int if has_float => (self.parse_num_expr(toks)?, TypeTok::Float),
-                    TypeTok::Int => (self.parse_num_expr(toks)?, TypeTok::Int),
+                    TypeTok::Int | TypeTok::Float => self.parse_num_expr(toks)?,
                     TypeTok::Bool => (self.parse_bool_expr(toks)?, TypeTok::Bool),
-                    TypeTok::Float => (self.parse_num_expr(toks)?, TypeTok::Float),
                     _ => return Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType)), //like the second of three times I check this
                 };
                 return Ok(res);
             }
-            Token::Minus | Token::Divide | Token::Multiply | Token::Modulo => {
-                // if there is any float should type promote to float
-                let has_float = toks.iter().any(|t| t.tok_type() == "FloatLit");
-
-                if has_float {
-                    Ok((self.parse_num_expr(toks)?, TypeTok::Float))
-                } else {
-                    Ok((self.parse_num_expr(toks)?, TypeTok::Int))
-                }
-            }
+            Token::Minus | Token::Divide | Token::Multiply | Token::Modulo => self.parse_num_expr(toks),
             Token::BoolLit(_)
             | Token::LessThan
             | Token::LessThanEqt

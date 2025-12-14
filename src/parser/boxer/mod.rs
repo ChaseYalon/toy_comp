@@ -1,12 +1,12 @@
 use crate::errors::{ToyError, ToyErrorType};
 use crate::parser::toy_box::TBox;
 use crate::token::{Token, TypeTok};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 pub struct Boxer {
     toks: Vec<Token>,
     tp: usize, // token pointer
-    interfaces: HashMap<String, HashMap<String, TypeTok>>,
+    interfaces: BTreeMap<String, BTreeMap<String, TypeTok>>,
 }
 
 impl Boxer {
@@ -14,7 +14,7 @@ impl Boxer {
         Boxer {
             toks: Vec::new(),
             tp: 0,
-            interfaces: HashMap::new(),
+            interfaces: BTreeMap::new(),
         }
     }
     fn pre_process(&self, input: &Vec<Token>) -> Vec<Token> {
@@ -77,7 +77,7 @@ impl Boxer {
                 Token::Type(t) => t,
                 Token::VarRef(v) => {
                     let temp = self.interfaces.get(&*v).unwrap().clone();
-                    let boxed: HashMap<String, Box<TypeTok>> = temp
+                    let boxed: BTreeMap<String, Box<TypeTok>> = temp
                         .clone()
                         .into_iter()
                         .map(|(k, v)| (k, Box::new(v)))
@@ -290,7 +290,7 @@ impl Boxer {
                     Token::Type(tok) => tok,
                     Token::VarRef(v) => {
                         let unboxed = self.interfaces.get(&*v).unwrap().clone();
-                        let boxed: HashMap<String, Box<TypeTok>> = unboxed
+                        let boxed: BTreeMap<String, Box<TypeTok>> = unboxed
                             .clone()
                             .into_iter()
                             .map(|(k, v)| (k, Box::new(v)))
@@ -361,7 +361,7 @@ impl Boxer {
         let item_groups: Vec<&[Token]> = toks[2..toks.len() - 1]
             .split(|item| item == &Token::Comma)
             .collect();
-        let mut params: HashMap<String, TypeTok> = HashMap::new();
+        let mut params: BTreeMap<String, TypeTok> = BTreeMap::new();
 
         for group in item_groups {
             if group[1] != Token::Colon {
@@ -375,7 +375,7 @@ impl Boxer {
                 Token::Type(t) => t,
                 Token::VarRef(v) => {
                     let temp = self.interfaces.get(&*v).unwrap().clone();
-                    let boxed: HashMap<String, Box<TypeTok>> = temp
+                    let boxed: BTreeMap<String, Box<TypeTok>> = temp
                         .clone()
                         .into_iter()
                         .map(|(k, v)| (k, Box::new(v)))

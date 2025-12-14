@@ -1,7 +1,7 @@
 use super::{Boxer, TBox, Token};
 use crate::{lexer::Lexer, token::TypeTok};
 use ordered_float::OrderedFloat;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 #[test]
 fn test_boxer_int_literal() {
     let input = String::from("4");
@@ -603,7 +603,7 @@ fn test_boxer_struct_lit_and_ref() {
         vec![
             TBox::StructInterface(
                 Box::new("Point".to_string()),
-                Box::new(HashMap::from([
+                Box::new(BTreeMap::from([
                     ("x".to_string(), TypeTok::Float),
                     ("y".to_string(), TypeTok::Float),
                 ]))
@@ -645,7 +645,7 @@ fn test_boxer_struct_problematic() {
         vec![
             TBox::StructInterface(
                 Box::new("Name".to_string()),
-                Box::new(HashMap::from([
+                Box::new(BTreeMap::from([
                     ("first".to_string(), TypeTok::Str),
                     ("last".to_string(), TypeTok::Str),
                 ]))
@@ -687,17 +687,17 @@ fn test_boxer_nested_structs() {
         vec![
             TBox::StructInterface(
                 Box::new("Name".to_string()),
-                Box::new(HashMap::from([
+                Box::new(BTreeMap::from([
                     ("first".to_string(), TypeTok::Str),
                     ("last".to_string(), TypeTok::Str),
                 ]))
             ),
             TBox::StructInterface(
                 Box::new("Person".to_string()),
-                Box::new(HashMap::from([
+                Box::new(BTreeMap::from([
                     (
                         "name".to_string(),
-                        TypeTok::Struct(HashMap::from([
+                        TypeTok::Struct(BTreeMap::from([
                             ("first".to_string(), Box::new(TypeTok::Str)),
                             ("last".to_string(), Box::new(TypeTok::Str)),
                         ]))
@@ -747,13 +747,13 @@ fn test_boxer_struct_reassign() {
         vec![
             TBox::StructInterface(
                 Box::new("Fee".to_string()),
-                Box::new(HashMap::from([("a".to_string(), TypeTok::Int)]))
+                Box::new(BTreeMap::from([("a".to_string(), TypeTok::Int)]))
             ),
             TBox::StructInterface(
                 Box::new("Foo".to_string()),
-                Box::new(HashMap::from([(
+                Box::new(BTreeMap::from([(
                     "a".to_string(),
-                    TypeTok::Struct(HashMap::from([("a".to_string(), Box::new(TypeTok::Int))]))
+                    TypeTok::Struct(BTreeMap::from([("a".to_string(), Box::new(TypeTok::Int))]))
                 )]))
             ),
             TBox::VarDec(
@@ -797,13 +797,13 @@ fn test_boxer_struct_func_param() {
         vec![
             TBox::StructInterface(
                 Box::new("Foo".to_string()),
-                Box::new(HashMap::from([("a".to_string(), TypeTok::Int)]))
+                Box::new(BTreeMap::from([("a".to_string(), TypeTok::Int)]))
             ),
             TBox::FuncDec(
                 Token::VarName(Box::new("bar".to_string())),
                 vec![TBox::FuncParam(
                     Token::VarRef(Box::new("f".to_string())),
-                    TypeTok::Struct(HashMap::from([("a".to_string(), Box::new(TypeTok::Int))]))
+                    TypeTok::Struct(BTreeMap::from([("a".to_string(), Box::new(TypeTok::Int))]))
                 )],
                 TypeTok::Int,
                 vec![TBox::Return(Box::new(TBox::Expr(vec![Token::StructRef(

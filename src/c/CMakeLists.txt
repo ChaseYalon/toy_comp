@@ -66,6 +66,7 @@ add_library(core STATIC
     hashmap.c
     ctla/ctla.c
     ctla/hashmap.c
+    llvm_stubs.c
 )
 
 set_target_properties(runtime core PROPERTIES

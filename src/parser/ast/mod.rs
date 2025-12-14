@@ -2,7 +2,7 @@ use std::fmt::{self};
 
 use crate::token::TypeTok;
 use ordered_float::OrderedFloat;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Ast {
     IntLit(i64),
@@ -49,10 +49,10 @@ pub enum Ast {
     ArrReassign(Box<String>, Vec<Ast>, Box<Ast>),
 
     ///Name, types
-    StructInterface(Box<String>, Box<HashMap<String, TypeTok>>),
+    StructInterface(Box<String>, Box<BTreeMap<String, TypeTok>>),
 
     ///Interface name, key, value (types MUST match)
-    StructLit(Box<String>, Box<HashMap<String, (Ast, TypeTok)>>),
+    StructLit(Box<String>, Box<BTreeMap<String, (Ast, TypeTok)>>),
 
     ///Struct name (the variable the struct is assigned to NOT the interface), key (key validity and type is checked) key list so me.foo.bar is Box::new("me"), vec!["foo, "bar"]
     StructRef(Box<String>, Vec<String>),
@@ -115,7 +115,7 @@ impl fmt::Display for Ast {
             match self {
                 Ast::InfixExpr(a, b, c) =>
                     format!("INFIX_EXPR left({}), Right({}), Opp({})", *a, *b, c),
-                Ast::IntLit(i) => format!("INT({:.2}", i),
+                Ast::IntLit(i) => format!("INT({:.2})", i),
                 Ast::VarDec(name, var_type, value) =>
                     format!("Name({}), Value({}), Type({:?})", *name, value, var_type),
                 Ast::VarRef(var) => format!("Var({})", *var),

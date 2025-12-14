@@ -8,19 +8,16 @@ import ssl
 import ctypes
 import time
 
-
-ssl._create_default_https_context = ssl._create_unverified_context
-
-print("Entering ToyLang build system setup wizard")
+ssl._create_default_https_context = ssl._create_unverified_context # type: ignore
 
 perm_granted = "Y" if len(sys.argv) > 1 and sys.argv[1] == "--ok" else input(
     "This wizard will require access to your network if it needs to download dependencies, "
-    "and it will require access to read and write to your whole system. Is this ok [n/Y]: "
+    "and it will require access to read and write to your whole system. Is this ok [y/N]: "
 )
-if perm_granted.lower() == "n" and not sys.argv[1] == "--ok":
+print("Entering ToyLang build system setup wizard")
+if perm_granted.lower() != "y":
     print("[ERROR] Permission denied")
     sys.exit(1)
-
 os_name = platform.system()
 cpu_type = platform.uname().machine
 print(f"OS detected as {os_name} with a {cpu_type} cpu")
@@ -29,6 +26,9 @@ if cpu_type not in ("x86_64", "AMD64"):
     print(f"[ERROR] Detected a {cpu_type} cpu, but only x86_64 is supported")
     sys.exit(1)
 
+if os_name != "Windows" and os_name != "Linux":
+    print(f"[ERROR] Only windows and linux are supported, {os_name} was detected")
+    sys.exit(1)
 if os_name == "Windows":
     os.makedirs(".cargo", exist_ok=True)
     with open(".cargo/config.toml", "w") as file:
@@ -42,7 +42,6 @@ if os_name == "Windows":
     def detect_mingw_clang() -> bool:
         path = MINGW64_BIN + ";" + os.environ.get("PATH", "")
         return shutil.which("clang", path=path) is not None
-
     def add_mingw_to_user_path():
         import winreg
         target = MINGW64_BIN
@@ -57,7 +56,7 @@ if os_name == "Windows":
         except FileNotFoundError:
             value, value_type = "", winreg.REG_EXPAND_SZ
 
-        paths = value.split(";") if value else []
+        paths: list[str] = value.split(";") if value else []
 
         if not any(p.lower() == target.lower() for p in paths):
             new_value = value + ";" + target if value else target
@@ -108,6 +107,7 @@ if os_name == "Windows":
             "mingw-w64-x86_64-toolchain "
             "mingw-w64-x86_64-clang "
             "mingw-w64-x86_64-llvm"
+            "mingw-w64-x86_64-libffi"#not sure if this is nesscary
         )
 
     def detect_rustup_windows() -> bool:
@@ -160,14 +160,36 @@ if os_name == "Windows":
             subprocess.run(["winget", "install", winget_id, "-e", "--silent"], check=True)
 
 elif os_name == "Linux":
+    def is_git_lfs_installed():
+        try:
+            # Run `git lfs version`
+            result = subprocess.run(
+                ["git", "lfs", "version"],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            print("Git LFS version:", result.stdout.strip())
+            return True
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            # CalledProcessError: git lfs returns non-zero exit code
+            # FileNotFoundError: git command not found
+            return False
+
     print("Linux detected, only Debian-based systems fully supported by this script")
     if shutil.which("clang") is None:
-        print("Installing Clang + CMake + Ninja via apt...")
         subprocess.run(["sudo", "apt", "update"], check=True)
         subprocess.run(
-            ["sudo", "apt", "install", "-y", "clang", "cmake", "ninja-build", "build-essential"],
+            ["sudo", "apt", "install", "-y", "clang"],
             check=True
         )
+    if shutil.which("cmake") is None:
+        subprocess.run(["sudo", "apt", "update"], check=True)
+        subprocess.run(["sudo", "apt", "install", "-y", "cmake"],  check=True)
+    
+    if shutil.which("ninja") is None:
+        subprocess.run(["sudo", "apt", "update"], check=True)
+        subprocess.run(["sudo", "apt", "install", "-y", "ninja-build"], check=True)
 
     if shutil.which("rustup") is None:
         print("Installing Rustup...")
@@ -176,9 +198,25 @@ elif os_name == "Linux":
             shell=True,
             check=True
         )
-
+    if not is_git_lfs_installed():
+        subprocess.run(["sudo", "apt", "install", "-y", "git-lfs"])
+        subprocess.run(["git", "lfs", "install"])
+        subprocess.run(["git", "lfs", "pull"])
+    #custom llvm
+    subprocess.run(["sudo", "wget", "-qO", "/etc/apt/trusted.gpg.d/apt.llvm.org.asc https://apt.llvm.org/llvm-snapshot.gpg.key"])
+    subprocess.run(["echo",  '"deb http://apt.llvm.org/$(lsb_release -sc)', 'llvm-toolchain-$(lsb_release -sc)-21 main"', "|", "sudo",  "tee", "/etc/apt/sources.list.d/llvm.list"])
+    subprocess.run(["sudo",  "apt", "update"])
+    subprocess.run(["sudo", "apt", "install", "clang-21", "llvm-21", "llvm-21-dev", "lld-21", "libpolly-21-dev"])
+    subprocess.run(["sudo", "mkdir", "-p", "/opt/llvm-21/bin"])
+    subprocess.run(["sudo",  "ln", "-s", "/usr/bin/llvm-config-21", "/opt/llvm-21/bin/llvm-config"])
+    with open("/root/.bashrc", "a") as f:
+        f.write('export LLVM_SYS_211_PREFIX=/opt/llvm-21\n')
+        f.write('export LLVM_SYS_211_LINK_POLLY=0')
+    subprocess.run(["source", "~/.bashrc"], shell=True)
+    #rust
     subprocess.run(["rustup", "target", "add", "x86_64-pc-windows-gnu", "--toolchain", "nightly"], check=True)
-
 print("Build system installation complete!")
+print("Please restart your shell for path changes to take effect")
+print("\n\n")
 print("Run REPL: cargo run -- --repl")
 print("Run file: cargo run -- <PATH>")

@@ -1,12 +1,12 @@
 use crate::token::Token;
-use cranelift_module;
+use inkwell::builder::BuilderError;
+use inkwell::support::LLVMString;
 use std::backtrace::Backtrace;
 use std::fmt;
 use thiserror::Error;
 #[derive(Debug)]
 pub enum ToyErrorType {
     InternalFunctionUndefined,
-    CraneliftError(cranelift_module::ModuleError),
     InternalLinkerFailure,
     InternalParserFailure,
     InvalidInfixOperation,
@@ -43,6 +43,10 @@ pub enum ToyErrorType {
     UnknownCharacter(char),
     MalformedStructInterface,
     MalformedFuncCall,
+    ExpressionNotNumeric,
+    MissingInstruction,
+    LlvmError(String),
+    UndefinedSSAValue,
 }
 
 #[derive(Debug, Error)]
@@ -77,20 +81,11 @@ impl ToyError {
         };
     }
 }
-impl From<cranelift_module::ModuleError> for ToyError {
-    fn from(err: cranelift_module::ModuleError) -> Self {
-        return ToyError {
-            error_type: ToyErrorType::CraneliftError(err),
-            backtrace: Backtrace::capture(),
-        };
-    }
-}
 
 impl fmt::Display for ToyErrorType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InternalFunctionUndefined => write!(f, "Internal Function Undefined"),
-            Self::CraneliftError(err) => write!(f, "CraneliftError: {}", err),
             Self::InternalLinkerFailure => write!(f, "Internal Linker Failure"),
             Self::InternalParserFailure => write!(f, "Internal Parser Failure"),
             Self::InvalidInfixOperation => write!(f, "Invalid Infix Operation"),
@@ -117,7 +112,20 @@ impl fmt::Display for ToyErrorType {
             Self::MalformedStructInterface => write!(f, "Malformed Struct"),
             Self::MalformedFuncCall => write!(f, "Malformed FuncCall"),
             Self::TypeHintNeeded => write!(f, "TypeHintNeeded"),
-            _ => todo!("chase implement {:?}", self),
+            Self::MissingInstruction => write!(f, "MissingInstruction"),
+            Self::LlvmError(s) => write!(f, "Llvm Error ({})", s),
+            _ => todo!("chase implement error type {:?}", self),
         }
+    }
+}
+
+impl From<BuilderError> for ToyError {
+    fn from(err: BuilderError) -> Self {
+        return ToyError::new(ToyErrorType::LlvmError(err.to_string()));
+    }
+}
+impl From<LLVMString> for ToyError {
+    fn from(err: LLVMString) -> Self {
+        return ToyError::new(ToyErrorType::LlvmError(err.to_string()));
     }
 }

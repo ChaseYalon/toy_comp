@@ -388,6 +388,7 @@ int64_t toy_malloc_arr(int64_t len, int64_t type) {
     return (int64_t)arr;
 }
 
+//type refers to the type of the array NOT the type of its elements or the value being written
 void toy_write_to_arr(int64_t arr_in_ptr, int64_t value, int64_t idx, int64_t type) {
     ToyArr* arr_ptr = (ToyArr*) arr_in_ptr;
     if (arr_ptr == NULL){
@@ -455,7 +456,10 @@ char* _read_line() {
     size_t len = 0;
     //toy_input is marked as allocating a buffer, this is the actual buffer allocation
     char *buffer = META_MALLOC(size);
-    if (!buffer) return NULL;
+    if (!buffer) {
+        fprintf(stderr, "[ERROR] META_MALLOC failed\n");
+        abort();
+    }
 
     for (;;) {
         int c = fgetc(stdin);

@@ -1,0 +1,13 @@
+{
+    "recommendations": [
+        "streetsidesoftware.code-spell-checker",
+        "llvm-vs-code-extensions.vscode-clangd",
+        "tamasfe.even-better-toml",
+        "ms-vscode.cmake-tools",
+        "ms-python.python",
+        "ms-python.debugpy",
+        "ms-python.vscode-python-envs",
+        "rust-lang.rust-analyzer",
+        "RReverser.llvm"
+    ]
+}
