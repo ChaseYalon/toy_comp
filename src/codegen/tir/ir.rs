@@ -626,13 +626,13 @@ impl TirBuilder {
                     }
                 })
         });
-        let ins = TIR::WriteStructLiteral(id, struct_val, field_idx, new_val);
+        let ins = TIR::WriteStructLiteral(id, struct_val.clone(), field_idx, new_val);
         self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()]
             .ins
             .push(ins);
         return Ok(SSAValue {
             val: id,
-            ty: Some(field_type),
+            ty: struct_val.ty,
         });
     }
 
@@ -813,9 +813,16 @@ impl TirBuilder {
             | TypeTok::BoolArr(_)
             | TypeTok::IntArr(_)
             | TypeTok::FloatArr(_)
-            | TypeTok::AnyArr(_) => TirType::I8PTR,
-
-            _ => todo!("Chase, you have not implemented this yt"),
+            | TypeTok::AnyArr(_)
+            | TypeTok::StructArr(_, _) => TirType::I8PTR,
+            TypeTok::Struct(fields) => {
+                let mut types = Vec::new();
+                for (_, val) in fields {
+                    types.push(self.type_tok_to_tir_type(*val));
+                }
+                TirType::StructInterface(types)
+            }
+            _ => todo!("Chase, you have not implemented this yet"),
         };
     }
     ///will erase all functions saved in the builder and set current func to the indicated

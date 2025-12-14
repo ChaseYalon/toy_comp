@@ -51,7 +51,7 @@ char* _toy_format(int64_t input, int64_t datatype, int64_t degree) {
         }
         case 2: { // int
             char* buff = malloc(21); // max 64-bit signed int
-            sprintf(buff, "%" PRId64 "", input);
+            sprintf(buff, "%" PRId64, input);
             return buff;
         }
         case 3: { // double
@@ -61,12 +61,24 @@ char* _toy_format(int64_t input, int64_t datatype, int64_t degree) {
             snprintf(buff, 64, "%f", u.d);
             return buff;
         }
-        case 4: 
-        case 5:
-        case 6:
-        case 7: {
-            int64_t total_len = 2; // '[' and ']'
+        case 4: case 5: case 6: case 7: { // arrays
+            if (input == 0) {
+                const char* literal = "NULL_ARRAY";
+                char* buff = malloc(strlen(literal)+1);
+                strcpy(buff, literal);
+                return buff;
+            }
+
+            if (degree <= 0) {
+                // just indicate array exists; don’t try to access elements
+                const char* literal = "[...]";
+                char* buff = malloc(strlen(literal)+1);
+                strcpy(buff, literal);
+                return buff;
+            }
+
             ToyArr* array = (ToyArr*) input;
+            int64_t total_len = 2; // '[' and ']'
             char** element_strs = malloc(sizeof(char*) * array->length);
 
             for (int64_t i = 0; i < array->length; i++) {
@@ -75,31 +87,26 @@ char* _toy_format(int64_t input, int64_t datatype, int64_t degree) {
                 if (i != array->length - 1) total_len += 2; // ", "
             }
 
-            // allocate final buffer
             char* buff = malloc(total_len + 1);
             char* ptr = buff;
-
             *ptr++ = '[';
             for (int64_t i = 0; i < array->length; i++) {
                 size_t len = strlen(element_strs[i]);
                 memcpy(ptr, element_strs[i], len);
                 ptr += len;
-
                 if (i != array->length - 1) {
                     *ptr++ = ',';
                     *ptr++ = ' ';
                 }
-
-                free(element_strs[i]); // free element string after copying
+                free(element_strs[i]);
             }
             *ptr++ = ']';
             *ptr = '\0';
-
             free(element_strs);
             return buff;
         }
         default:
-            fprintf(stderr, "[ERROR] Unknown datatype: %"PRId64"\n", datatype);
+            fprintf(stderr, "[ERROR] Unknown datatype: %" PRId64 "\n", datatype);
             abort();
     }
 }

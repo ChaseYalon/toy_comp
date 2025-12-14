@@ -128,3 +128,54 @@ fn test_llvm_arrays() {
     );
     assert!(output.contains("95"));
 }
+
+#[test]
+fn test_llvm_codegen_structs(){
+    compile_code_aot!(
+        output,
+        r#"
+        struct Point {x: int, y: int};
+        let p = Point { x: 5, y: 10 };
+        print(p.x);
+        print(p.y);
+        p.x = 20;
+        println(p.x);
+        "#,
+        "structs"
+    );
+    assert!(output.contains("51020"));
+}
+
+#[test]
+fn test_llvm_codegen_nested_array() {
+    compile_code_aot!(
+        output,
+        r#"
+        let arr: int[][] = [[1,2,3],[4,5,6],[7,8,9]];
+        print(arr[1][1]);
+        arr[2][2] = 42;
+        print(arr[2][2]);
+        print(len(arr));
+        println(arr);
+        "#,
+        "nested_arrays"
+    );
+    assert!(output.contains("5423[[1, 2, 3], [4, 5, 6], [7, 8, 42]]"));
+}
+
+#[test]
+fn test_llvm_codegen_nested_structs() {
+    compile_code_aot!(
+        output,
+        r#"
+        struct Point {x: int, y: int};
+        struct Circle {center: Point, radius: int};
+        let c = Circle { center: Point { x: 3, y: 4 }, radius: 10 };
+        print(c.center.x);
+        print(c.center.y);
+        println(c.radius);
+        "#,
+        "nested_structs"
+    );
+    assert!(output.contains("3410"));
+}

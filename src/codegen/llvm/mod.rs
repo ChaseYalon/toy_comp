@@ -7,7 +7,7 @@ use inkwell::{
     context::Context,
     module::{Linkage, Module},
     targets::{TargetMachineOptions, TargetTriple},
-    types::{BasicMetadataTypeEnum, BasicTypeEnum, FunctionType},
+    types::{BasicMetadataTypeEnum, BasicTypeEnum, FunctionType, StructType, BasicType},
     values::{
         BasicMetadataValueEnum, BasicValue, BasicValueEnum, FloatValue, FunctionValue, PhiValue,
         ValueKind,
@@ -45,6 +45,7 @@ pub struct LlvmGenerator<'a> {
     curr_func: Option<FunctionValue<'a>>,
     curr_tir_func: Option<Function>,
     phi_fixups: Vec<(PhiValue<'a>, String, BlockId, SSAValue)>,
+    struct_types: HashMap<TirType, StructType<'a>>,
 }
 impl<'a> LlvmGenerator<'a> {
     pub fn new(ctx: &'a Context, main_module: Module<'a>) -> LlvmGenerator<'a> {
@@ -57,6 +58,7 @@ impl<'a> LlvmGenerator<'a> {
             curr_func: None,
             curr_tir_func: None,
             phi_fixups: vec![],
+            struct_types: HashMap::new(),
         };
     }
     fn get_ssa_val(&self, func_name: &str, ssa: SSAValue) -> BasicValueEnum<'a> {
@@ -82,6 +84,28 @@ impl<'a> LlvmGenerator<'a> {
         }
         panic!("Undefined SSA Value: {:?} in function {}", ssa, func_name);
     }
+
+    fn tir_type_to_llvm_type(&self, ty: &TirType) -> BasicTypeEnum<'a> {
+        match ty {
+            TirType::I64 => self.ctx.i64_type().as_basic_type_enum(),
+            TirType::I1 => self.ctx.bool_type().as_basic_type_enum(),
+            TirType::F64 => self.ctx.f64_type().as_basic_type_enum(),
+            TirType::I8PTR => self.ctx.ptr_type(AddressSpace::default()).as_basic_type_enum(),
+            TirType::Void => panic!("Void cannot be converted to BasicTypeEnum"),
+            TirType::StructInterface(fields) => {
+                if let Some(st) = self.struct_types.get(ty) {
+                    st.as_basic_type_enum()
+                } else {
+                    let mut llvm_fields = Vec::new();
+                    for field in fields {
+                        llvm_fields.push(self.tir_type_to_llvm_type(field));
+                    }
+                    self.ctx.struct_type(&llvm_fields, false).as_basic_type_enum()
+                }
+            }
+        }
+    }
+
     fn compile_instruction(
         &mut self,
         inst: TIR,
@@ -595,7 +619,55 @@ impl<'a> LlvmGenerator<'a> {
                     },
                 ))
             }
-            _ => todo!("Chase you have not implemented {:?} ins yet", inst),
+            TIR::CreateStructInterface(_, name, ty) => {
+                if let TirType::StructInterface(fields) = &ty {
+                    let mut llvm_fields = Vec::new();
+                    for field in fields {
+                        llvm_fields.push(self.tir_type_to_llvm_type(field));
+                    }
+                    let struct_type = self.ctx.opaque_struct_type(&name);
+                    struct_type.set_body(&llvm_fields, false);
+                    self.struct_types.insert(ty.clone(), struct_type);
+                    None
+                } else {
+                    panic!("Invalid type for CreateStructInterface");
+                }
+            }
+            TIR::CreateStructLiteral(id, ty, vals) => {
+                let struct_type = self.struct_types.get(&ty).expect("Struct type not found");
+                let mut llvm_vals = Vec::new();
+                for val in vals {
+                    llvm_vals.push(self.get_ssa_val(&curr_func_name, val.clone()));
+                }
+                
+                let mut struct_val = struct_type.get_undef().as_basic_value_enum();
+                for (i, val) in llvm_vals.iter().enumerate() {
+                    struct_val = builder.build_insert_value(struct_val.into_struct_value(), *val, i as u32, "insert_field")?.as_basic_value_enum();
+                }
+                
+                Some((struct_val, SSAValue { val: id, ty: Some(ty) }))
+            }
+            TIR::ReadStructLiteral(id, struct_val, idx) => {
+                let llvm_struct = self.get_ssa_val(&curr_func_name, struct_val.clone()).into_struct_value();
+                let val = builder.build_extract_value(llvm_struct, idx as u32, "extract_field")?;
+                
+                let struct_ty = struct_val.ty.as_ref().expect("Struct value must have a type");
+                let field_ty = if let TirType::StructInterface(fields) = struct_ty {
+                    fields[idx as usize].clone()
+                } else {
+                    panic!("Expected StructInterface type");
+                };
+                
+                Some((val.as_basic_value_enum(), SSAValue { val: id, ty: Some(field_ty) }))
+            }
+            TIR::WriteStructLiteral(id, struct_val, idx, new_val) => {
+                let llvm_struct = self.get_ssa_val(&curr_func_name, struct_val.clone()).into_struct_value();
+                let llvm_new_val = self.get_ssa_val(&curr_func_name, new_val.clone());
+                
+                let res = builder.build_insert_value(llvm_struct, llvm_new_val, idx as u32, "insert_field")?;
+                
+                Some((res.as_basic_value_enum(), SSAValue { val: id, ty: struct_val.ty }))
+            }
         };
         if let Some((llvm_ir, val)) = res {
             self.tir_to_val.insert((curr_func_name, val), llvm_ir);
@@ -916,9 +988,9 @@ impl<'a> LlvmGenerator<'a> {
             let _ = prgm.spawn().unwrap().wait().unwrap();
 
             fs::remove_file(output_name.as_str()).unwrap();
-            fs::remove_file(format!("{}.o", prgm_name)).unwrap();
-            fs::remove_file(format!("{}.ll", prgm_name)).unwrap();
-        }
+        } 
+        fs::remove_file(format!("{}.o", prgm_name)).unwrap();
+        fs::remove_file(format!("{}.ll", prgm_name)).unwrap();
         return Ok(());
     }
 }

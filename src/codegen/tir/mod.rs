@@ -45,6 +45,17 @@ impl Scope {
     pub fn set_var(&mut self, name: String, val: SSAValue, ty: TypeTok) {
         self.vars.insert(name, (val, ty));
     }
+    pub fn update_var(&mut self, name: &str, val: SSAValue) -> Result<(), ToyError> {
+        if self.vars.contains_key(name) {
+            let ty = self.vars.get(name).unwrap().1.clone();
+            self.vars.insert(name.to_string(), (val, ty));
+            return Ok(());
+        }
+        if let Some(parent) = &self.parent {
+            return parent.borrow_mut().update_var(name, val);
+        }
+        return Err(ToyError::new(ToyErrorType::UndefinedVariable));
+    }
 }
 pub struct AstToIrConverter {
     pub builder: TirBuilder,
@@ -107,6 +118,22 @@ impl AstToIrConverter {
                 }
             }
             Ast::StructLit(_, _) => Ok(TypeTok::Int),
+            Ast::StructRef(name, fields) => {
+                let mut current_type = scope.as_ref().borrow().get_var_type(name)?;
+                for field in fields {
+                    match current_type {
+                        TypeTok::Struct(map) => {
+                            if let Some(t) = map.get(field) {
+                                current_type = *t.clone();
+                            } else {
+                                return Err(ToyError::new(ToyErrorType::KeyNotOnStruct));
+                            }
+                        }
+                        _ => return Err(ToyError::new(ToyErrorType::VariableNotAStruct)),
+                    }
+                }
+                Ok(current_type)
+            }
             Ast::Not(_) => Ok(TypeTok::Bool),
             _ => Err(ToyError::new(ToyErrorType::TypeIdNotAssigned)),
         }
@@ -239,21 +266,32 @@ impl AstToIrConverter {
             Ast::ArrLit(ty, vals) => {
                 let mut ssa_vals: Vec<SSAValue> = Vec::new();
                 for val in vals.clone() {
-                    let compiled_val = self.compile_expr(val, scope)?;
+                    let compiled_val = self.compile_expr(val.clone(), scope)?;
                     ssa_vals.push(compiled_val);
                 }
                 let len = self.compile_expr(Ast::IntLit(vals.len() as i64), scope)?;
                 let mut params = vec![len];
-                self.builder.inject_type_param(&ty, false, &mut params);
+
+                let elem_ty = match &ty {
+                    TypeTok::IntArr(n) => if *n > 1 { TypeTok::IntArr(n - 1) } else { TypeTok::Int },
+                    TypeTok::BoolArr(n) => if *n > 1 { TypeTok::BoolArr(n - 1) } else { TypeTok::Bool },
+                    TypeTok::StrArr(n) => if *n > 1 { TypeTok::StrArr(n - 1) } else { TypeTok::Str },
+                    TypeTok::FloatArr(n) => if *n > 1 { TypeTok::FloatArr(n - 1) } else { TypeTok::Float },
+                    TypeTok::AnyArr(n) => if *n > 1 { TypeTok::AnyArr(n - 1) } else { TypeTok::Any },
+                    TypeTok::StructArr(map, n) => if *n > 1 { TypeTok::StructArr(map.clone(), n - 1) } else { TypeTok::Struct(map.clone()) },
+                    _ => ty.clone(),
+                };
+
+                self.builder.inject_type_param(&elem_ty, false, &mut params)?;
                 let arr = self.builder.call("toy_malloc_arr".to_string(), params)?;
                 for (i, ssa_val) in ssa_vals.iter().enumerate() {
                     let idx = self.builder.iconst(i as i64, TypeTok::Int)?;
                     let x: SSAValue = ssa_val.clone();
                     let mut write_params: Vec<SSAValue> = [arr.clone(), x, idx].to_vec();
                     self.builder
-                        .inject_type_param(&ty, false, &mut write_params);
+                        .inject_type_param(&elem_ty, false, &mut write_params)?;
                     self.builder
-                        .call("toy_write_to_arr".to_string(), write_params);
+                        .call("toy_write_to_arr".to_string(), write_params)?;
                 }
 
                 return Ok(arr);
@@ -549,18 +587,11 @@ impl AstToIrConverter {
                         .call("toy_read_from_arr".to_string(), read_params)?;
                 }
                 let last_idx = self.compile_expr(idxs[idxs.len() - 1].clone(), scope)?;
+                let val_ty = self.get_expr_type(&val, scope)?;
                 let compiled_val = self.compile_expr(*val, scope)?;
 
-                let type_val = match compiled_val.ty {
-                    Some(TirType::I8PTR) => 4, // String
-                    Some(TirType::I1) => 5,    // Bool
-                    Some(TirType::I64) => 6,   // Int
-                    Some(TirType::F64) => 7,   // Float
-                    _ => 2,                    // Default to Int
-                };
-                let type_param = self.builder.iconst(type_val, TypeTok::Int)?;
-
-                let write_params = vec![current_arr, compiled_val, last_idx, type_param];
+                let mut write_params = vec![current_arr, compiled_val, last_idx];
+                self.builder.inject_type_param(&val_ty, false, &mut write_params)?;
                 self.builder
                     .call("toy_write_to_arr".to_string(), write_params)?;
             }
@@ -582,6 +613,9 @@ impl AstToIrConverter {
                     return Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType));
                 }
                 let mut current_val = scope.as_ref().borrow().get_var(&*var_name)?;
+                
+                let mut path: Vec<(SSAValue, usize, TirType)> = Vec::new();
+
                 for i in 0..(fields.len() - 1) {
                     let field_name = &fields[i];
                     let struct_type = current_val
@@ -615,6 +649,9 @@ impl AstToIrConverter {
                         field_idx.ok_or_else(|| ToyError::new(ToyErrorType::KeyNotOnStruct))?;
                     let ty =
                         field_type.ok_or_else(|| ToyError::new(ToyErrorType::KeyNotOnStruct))?;
+                    
+                    path.push((current_val.clone(), idx, ty.clone()));
+                    
                     current_val = self
                         .builder
                         .read_struct_literal(current_val, idx as u64, ty)?;
@@ -652,8 +689,14 @@ impl AstToIrConverter {
                 let ty = field_type.ok_or_else(|| ToyError::new(ToyErrorType::KeyNotOnStruct))?;
 
                 let compiled_val = self.compile_expr(*new_val, scope)?;
-                self.builder
+                let mut new_struct_val = self.builder
                     .write_struct_literal(current_val, idx as u64, compiled_val, ty)?;
+                
+                for (parent_struct, parent_idx, field_ty) in path.iter().rev() {
+                    new_struct_val = self.builder.write_struct_literal(parent_struct.clone(), *parent_idx as u64, new_struct_val, field_ty.clone())?;
+                }
+                
+                scope.as_ref().borrow_mut().update_var(&*var_name, new_struct_val)?;
             }
             _ => todo!("Chase you have not implemented {} yet", node),
         };
