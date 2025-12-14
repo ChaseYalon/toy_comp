@@ -73,7 +73,7 @@ pub enum TIR {
     ///returns the value pointed to, as value if less then the word size, otherwise as a pointer
     Ret(ValueId, SSAValue),
     ///call locally defined function, functions are called by name, SSA values are passed by order to the function , the bool represents weather the return value from the function is HEAP allocated, CTLA will take ownership of any returned values,
-    CallLocalFunction(ValueId, Box<String>, Vec<SSAValue>, bool),
+    CallLocalFunction(ValueId, Box<String>, Vec<SSAValue>, bool, TirType),
     ///call externally defined function, same rules as above final type is just return type
     CallExternFunction(ValueId, Box<String>, Vec<SSAValue>, bool, TirType),
     ///creates a new struct interface, with a ValueId and with the specified values (YOU ARE RESPONSIBLE FOR KEEPING TRACK OF Field -> Idx mapping),
@@ -104,7 +104,7 @@ impl TIR {
             TIR::JumpCond(id, _, _, _) => *id,
             TIR::JumpBlockUnCond(id, _) => *id,
             TIR::Ret(id, _) => *id,
-            TIR::CallLocalFunction(id, _, _, _) => *id,
+            TIR::CallLocalFunction(id, _, _, _, _) => *id,
             TIR::CallExternFunction(id, _, _, _, _) => *id,
             TIR::CreateStructInterface(id, _, _) => *id,
             TIR::CreateStructLiteral(id, _, _) => *id,
@@ -422,7 +422,7 @@ impl TirBuilder {
             .ok_or_else(|| ToyError::new(ToyErrorType::UndefinedFunction))?;
 
         let id = self._next_value_id();
-        let ins = TIR::CallLocalFunction(id, Box::new(name), params.clone(), is_allocator);
+        let ins = TIR::CallLocalFunction(id, Box::new(name), params.clone(), is_allocator, ret_type.clone());
         self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()]
             .ins
             .push(ins);

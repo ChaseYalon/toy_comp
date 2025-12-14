@@ -533,6 +533,7 @@ fn test_tirgen_func_call() {
                                 },
                             ],
                             false,
+                            TirType::I64,
                         ),
                         TIR::IConst(5, 0, TirType::I64),
                         TIR::Ret(
@@ -1228,6 +1229,7 @@ fn test_tirgen_recursion_bug() {
                                 ty: Some(TirType::I64),
                             }],
                             false,
+                            TirType::I64,
                         ),
                         TIR::IConst(3, 2, TirType::I64),
                         TIR::IConst(4, 0, TirType::I64),
@@ -1379,6 +1381,7 @@ fn test_tirgen_recursion_bug() {
                                     ty: Some(TirType::I64),
                                 }],
                                 false,
+                                TirType::I64,
                             ),
                             TIR::IConst(16, 2, TirType::I64),
                             TIR::NumericInfix(
@@ -1401,6 +1404,7 @@ fn test_tirgen_recursion_bug() {
                                     ty: Some(TirType::I64),
                                 }],
                                 false,
+                                TirType::I64,
                             ),
                             TIR::NumericInfix(
                                 19,

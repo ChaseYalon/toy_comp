@@ -9,7 +9,8 @@ use inkwell::{
     targets::{TargetMachineOptions, TargetTriple},
     types::{BasicMetadataTypeEnum, BasicTypeEnum, FunctionType},
     values::{
-        BasicMetadataValueEnum, BasicValue, BasicValueEnum, FloatValue, FunctionValue, ValueKind,
+        BasicMetadataValueEnum, BasicValue, BasicValueEnum, FloatValue, FunctionValue, PhiValue,
+        ValueKind,
     },
 };
 use inkwell::{FloatPredicate, IntPredicate};
@@ -40,6 +41,9 @@ pub struct LlvmGenerator<'a> {
     tir_to_val: HashMap<(String, SSAValue), BasicValueEnum<'a>>,
     func_map: HashMap<String, FunctionType<'a>>,
     block_id_to_block: HashMap<BlockId, BasicBlock<'a>>,
+    curr_func: Option<FunctionValue<'a>>,
+    curr_tir_func: Option<Function>,
+    phi_fixups: Vec<(PhiValue<'a>, String, BlockId, SSAValue)>,
 }
 impl<'a> LlvmGenerator<'a> {
     pub fn new(ctx: &'a Context, main_module: Module<'a>) -> LlvmGenerator<'a> {
@@ -49,6 +53,9 @@ impl<'a> LlvmGenerator<'a> {
             tir_to_val: HashMap::new(),
             func_map: HashMap::new(),
             block_id_to_block: HashMap::new(),
+            curr_func: None,
+            curr_tir_func: None,
+            phi_fixups: vec![],
         };
     }
     fn compile_instruction(
@@ -57,9 +64,9 @@ impl<'a> LlvmGenerator<'a> {
         builder: &Builder<'a>,
         curr_func_name: String,
     ) -> Result<(), ToyError> {
-        let (llvm_ir, val) = match inst {
+        let res = match inst {
             //this will cause bugs not accounting for bools
-            TIR::IConst(id, val, ty) => (
+            TIR::IConst(id, val, ty) => Some((
                 self.ctx
                     .i64_type()
                     .const_int((val as i64) as u64, true)
@@ -68,8 +75,8 @@ impl<'a> LlvmGenerator<'a> {
                     val: id,
                     ty: Some(ty),
                 },
-            ), //this as u64 scares the shit out of me, LLVM should reinterpret the bits with twos complement but who the hell knows
-            TIR::FConst(id, val, ty) => (
+            )), //this as u64 scares the shit out of me, LLVM should reinterpret the bits with twos complement but who the hell knows
+            TIR::FConst(id, val, ty) => Some((
                 self.ctx
                     .f64_type()
                     .const_float(val as f64)
@@ -78,7 +85,7 @@ impl<'a> LlvmGenerator<'a> {
                     val: id,
                     ty: Some(ty),
                 }
-            ),
+            )),
             TIR::ItoF(id, ssa_ref, ty) => {
                 let ins: FloatValue<'_> = builder.build_signed_int_to_float(
                     self.tir_to_val
@@ -88,23 +95,27 @@ impl<'a> LlvmGenerator<'a> {
                     self.ctx.f64_type(),
                     "sitofp",
                 )?;
-                (
+                Some((
                     ins.into(),
                     SSAValue {
                         val: id,
                         ty: Some(ty),
                     },
-                )
+                ))
             }
             //I am going to rush ahead to call_extern without dealing with any other function types for debuggability purposes
             TIR::CallExternFunction(id, name, params, _, ret_type) => {
-                let hm_func = self.func_map.get(&*name).unwrap();
-                let func_body = self.main_module.add_function(
-                    &*name,
-                    hm_func.to_owned(),
-                    Some(Linkage::External),
-                );
-                let param_types = hm_func.get_param_types();
+                let func_body = if let Some(f) = self.main_module.get_function(&name) {
+                    f
+                } else {
+                    let hm_func = self.func_map.get(&*name).unwrap();
+                    self.main_module.add_function(
+                        &*name,
+                        hm_func.to_owned(),
+                        Some(Linkage::External),
+                    )
+                };
+                let param_types = func_body.get_type().get_param_types();
                 let llvm_params: Vec<BasicMetadataValueEnum> = params
                     .iter()
                     .zip(param_types.iter())
@@ -148,29 +159,103 @@ impl<'a> LlvmGenerator<'a> {
                 } else {
                     self.ctx.i64_type().const_int(0 as u64, true).into() //TIR-Gen will make sure this is never called
                 };
-                (
+                Some((
                     ret,
                     SSAValue {
                         val: id,
                         ty: Some(ret_type),
                     },
-                )
+                ))
             }
+            TIR::CallLocalFunction(id, name, params, _, ret_type) => {
+                let func_body = if let Some(f) = self.main_module.get_function(&name) {
+                    f
+                } else {
+                    let mut compiled_types: Vec<BasicMetadataTypeEnum> = vec![];
+                    for p in &params {
+                        let t = p.ty.as_ref().expect("Param type should be known");
+                        compiled_types.push(self._tir_to_llvm_type(t.clone()).into());
+                    }
+
+                    let fn_type = match ret_type {
+                        TirType::I64 => self.ctx.i64_type().fn_type(&compiled_types, false),
+                        TirType::F64 => self.ctx.f64_type().fn_type(&compiled_types, false),
+                        TirType::I1 => self.ctx.bool_type().fn_type(&compiled_types, false),
+                        TirType::I8PTR => self.ctx.ptr_type(AddressSpace::default()).fn_type(&compiled_types, false),
+                        TirType::Void => self.ctx.void_type().fn_type(&compiled_types, false),
+                        _ => todo!("Chase you have not implemented this return type yet"),
+                    };
+                    
+                    self.main_module.add_function(&*name, fn_type, Some(Linkage::External))
+                };
+                let param_types = func_body.get_type().get_param_types();
+                let llvm_params: Vec<BasicMetadataValueEnum> = params
+                    .iter()
+                    .zip(param_types.iter())
+                    .map(|(p, expected_type)| {
+                        let v = self
+                            .tir_to_val
+                            .get(&(curr_func_name.clone(), p.clone()))
+                            .unwrap();
+
+                        if expected_type.is_int_type() && v.is_float_value() {
+                            builder
+                                .build_bit_cast(
+                                    v.into_float_value(),
+                                    self.ctx.i64_type(),
+                                    "double_to_i64_bitcast",
+                                )
+                                .unwrap()
+                                .into()
+                        } else {
+                            match p.ty.clone().unwrap() {
+                                TirType::I1 => builder
+                                    .build_int_z_extend(
+                                        v.into_int_value(),
+                                        self.ctx.i64_type(),
+                                        "bool_to_i64",
+                                    )
+                                    .unwrap()
+                                    .into(),
+                                _ => v.to_owned().into(),
+                            }
+                        }
+                    })
+                    .collect();
+
+                let call_ins = builder.build_call(func_body, llvm_params.as_slice(), &*name)?;
+                let ret = if ret_type != TirType::Void {
+                    match call_ins.try_as_basic_value() {
+                        ValueKind::Basic(v) => v,
+                        _ => panic!("void"),
+                    }
+                } else {
+                    self.ctx.i64_type().const_int(0 as u64, true).into() //TIR-Gen will make sure this is never called
+                };
+                Some((
+                    ret,
+                    SSAValue {
+                        val: id,
+                        ty: Some(ret_type),
+                    },
+                ))
+            }
+
             TIR::Ret(id, v) => {
                 //there might be a bug here with not adding the return val on the else branch to the tir_to_val
                 if v.ty.is_none() {
                     builder.build_return(None)?;
-                    (
+                    Some((
                         self.ctx.i64_type().const_int(0 as u64, true).into(),
                         SSAValue { val: id, ty: None },
-                    )
+                    ))
                 } else {
                     let val = self
                         .tir_to_val
                         .get(&(curr_func_name.clone(), v.clone()))
                         .unwrap();
                     builder.build_return(Some(val))?;
-                    (val.to_owned(), v)
+                    Some((val.to_owned(), v))
                 }
             }
             TIR::NumericInfix(id, l, r, op) => {
@@ -222,13 +307,13 @@ impl<'a> LlvmGenerator<'a> {
                         ),
                         val.into(),
                     );
-                    (
+                    Some((
                         val.into(),
                         SSAValue {
                             val: id,
                             ty: Some(TirType::F64),
                         },
-                    )
+                    ))
                 } else {
                     let val = match op {
                         NumericInfixOp::Plus => builder.build_int_add(
@@ -267,13 +352,13 @@ impl<'a> LlvmGenerator<'a> {
                         ),
                         val.into(),
                     );
-                    (
+                    Some((
                         val.into(),
                         SSAValue {
                             val: id,
                             ty: Some(TirType::I64),
                         },
-                    )
+                    ))
                 }
             }
             TIR::BoolInfix(id, l, r, op) => {
@@ -386,13 +471,13 @@ impl<'a> LlvmGenerator<'a> {
                     ),
                     res.into(),
                 );
-                (
+                Some((
                     res.into(),
                     SSAValue {
                         val: id,
                         ty: Some(TirType::I1),
                     },
-                )
+                ))
             }
             TIR::Not(id, v) => {
                 let val = self
@@ -405,36 +490,97 @@ impl<'a> LlvmGenerator<'a> {
 
                 let res = builder.build_xor(val, one, "not_res")?;
 
-                (
+                Some((
                     res.into(),
                     SSAValue {
                         val: id,
                         ty: Some(TirType::I1),
                     },
-                )
+                ))
             }
+            TIR::JumpCond(_, cond, if_true, if_false) => {
+                let compiled_cond = self.tir_to_val.get(&(curr_func_name.clone(), cond)).unwrap().into_int_value();
+                let true_block = self.block_id_to_block.get(&if_true).unwrap();
+                let false_block = self.block_id_to_block.get(&if_false).unwrap();
+                builder.build_conditional_branch(compiled_cond, *true_block, *false_block)?;
+                None
+            }
+            TIR::JumpBlockUnCond(_, block_id) => {
+                let block = self.block_id_to_block.get(&block_id).unwrap();
+                builder.build_unconditional_branch(*block)?;
+                None
+            }
+            TIR::Phi(id, block_ids, vals) => {
+                let first_val_ssa = &vals[0];
+                let mut ty = None;
+                for val in &vals {
+                    if let Some(v) = self
+                        .tir_to_val
+                        .get(&(curr_func_name.clone(), val.clone()))
+                    {
+                        ty = Some(v.get_type());
+                        break;
+                    }
+                }
 
+                if ty.is_none() {
+                    if let Some(t) = &first_val_ssa.ty {
+                        ty = Some(self._tir_to_llvm_type(t.clone()));
+                    }
+                }
+
+                let ty = ty.expect("Could not determine type for Phi node");
+
+                let phi = builder.build_phi(ty, "phi")?;
+
+                for (block_id, ssa_val) in block_ids.iter().zip(vals.iter()) {
+                    let block = self.block_id_to_block.get(block_id).unwrap();
+                    if let Some(val) = self
+                        .tir_to_val
+                        .get(&(curr_func_name.clone(), ssa_val.clone()))
+                    {
+                        phi.add_incoming(&[(&*val, *block)]);
+                    } else {
+                        self.phi_fixups.push((
+                            phi,
+                            curr_func_name.clone(),
+                            *block_id,
+                            ssa_val.clone(),
+                        ));
+                    }
+                }
+
+                Some((
+                    phi.as_basic_value(),
+                    SSAValue {
+                        val: id,
+                        ty: first_val_ssa.ty.clone(),
+                    },
+                ))
+            }
             _ => todo!("Chase you have not implemented {:?} ins yet", inst),
         };
-        self.tir_to_val.insert((curr_func_name, val), llvm_ir);
+        if let Some((llvm_ir, val)) = res {
+            self.tir_to_val.insert((curr_func_name, val), llvm_ir);
+        }
         return Ok(());
     }
     fn compile_tir_block(
         &mut self,
         tir_block: Block,
         builder: &Builder<'a>,
-        func: FunctionValue<'a>,
+        llvm_block: BasicBlock<'a>,
         name: String,
-    ) -> Result<BasicBlock<'a>, ToyError> {
-        let llvm_block = self.ctx.append_basic_block(func, &name);
+    ) -> Result<(), ToyError> {
         builder.position_at_end(llvm_block);
         for ins in tir_block.ins {
             self.compile_instruction(ins, builder, name.clone())?;
         }
 
-        return Ok(llvm_block);
+        return Ok(());
     }
     fn compile_tir_function(&mut self, func: Function) -> Result<(), ToyError> {
+        self.curr_tir_func = Some(func.clone());
         //<Boiler plate to setup function>
         let builder = self.ctx.create_builder();
         let mut llvm_params: Vec<BasicMetadataTypeEnum> = vec![];
@@ -461,25 +607,44 @@ impl<'a> LlvmGenerator<'a> {
             _ => todo!("Chase you have not implemented this return type yet"),
         };
 
-        let llvm_func = self.main_module.add_function(
-            &*func.name.clone(),
-            fn_type,
-            Some(if &*func.name == "user_main" {
-                Linkage::External
-            } else {
-                Linkage::Internal
-            }),
-        );
+        let llvm_func = if let Some(f) = self.main_module.get_function(&func.name) {
+            if &*func.name != "user_main" {
+                f.set_linkage(Linkage::Internal);
+            }
+            f
+        } else {
+            self.main_module.add_function(
+                &*func.name.clone(),
+                fn_type,
+                Some(if &*func.name == "user_main" {
+                    Linkage::External
+                } else {
+                    Linkage::Internal
+                }),
+            )
+        };
+        self.curr_func = Some(llvm_func);
         //</Boiler plate to setup function>
         for (n, p) in func.params.iter().enumerate() {
             let p_val = llvm_func.get_nth_param(n as u32).unwrap(); //is probably safe, maybe will cause bugs :D
             self.tir_to_val
-                .insert((*func.name.clone(), p.clone()), p_val);
+                .insert((*self.curr_tir_func.as_ref().unwrap().name.clone(), p.clone()), p_val);
         }
-        for b in func.body {
-            let llvm_block =
-                self.compile_tir_block(b.clone(), &builder, llvm_func, *func.name.clone())?; //safety: Clone is the main one, only id is used after
-            self.block_id_to_block.insert(b.id, llvm_block);
+        
+        for b in &func.body {
+             let llvm_block = self.ctx.append_basic_block(llvm_func, &format!("block_{}", b.id));
+             self.block_id_to_block.insert(b.id, llvm_block);
+        }
+
+        for b in &func.body {
+            let llvm_block = self.block_id_to_block.get(&b.id).unwrap();
+            self.compile_tir_block(b.clone(), &builder, *llvm_block, *func.name.clone())?;
+        }
+
+        for (phi, func_name, block_id, ssa_val) in self.phi_fixups.drain(..) {
+            let block = self.block_id_to_block.get(&block_id).unwrap();
+            let val = self.tir_to_val.get(&(func_name, ssa_val)).unwrap();
+            phi.add_incoming(&[(&*val, *block)]);
         }
 
         return Ok(());
