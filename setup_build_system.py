@@ -215,6 +215,9 @@ elif os_name == "Linux":
     )
     subprocess.run(["sudo",  "apt", "update"])
     subprocess.run(["sudo", "apt", "install", "clang-21", "llvm-21", "llvm-21-dev", "lld-21", "libpolly-21-dev"])
+    subprocess.run(["sudo", "apt", "install", "-y", "libffi-dev"], check=True)
+    os.environ["LLVM_SYS_211_PREFIX"] = "/opt/llvm-21"
+    os.environ["LLVM_SYS_211_LINK_POLLY"] = "0"
     subprocess.run(["sudo", "mkdir", "-p", "/opt/llvm-21/bin"])
     subprocess.run(["sudo",  "ln", "-s", "/usr/bin/llvm-config-21", "/opt/llvm-21/bin/llvm-config"])
     bashrc_path = os.path.expanduser("~/.bashrc")
