@@ -198,7 +198,8 @@ elif os_name == "Linux":
         "cmake",
         "ninja-build",
         "pkg-config",
-        "git-lfs"
+        "git-lfs",
+        "libpolly-21-dev"
     ])
 
     # Rustup
