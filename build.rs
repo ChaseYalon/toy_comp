@@ -45,8 +45,11 @@ fn main() {
     println!("cargo:rustc-link-search=native={}", out_dir.display());
 
     println!("cargo:rustc-link-arg=-lcore");
-    println!("cargo:rustc-link-search=native=C:/msys64/mingw64/lib");
-    println!("cargo:rustc-link-search=native=C:/msys64/mingw64/bin");
+    if cfg!(target_os = "windows"){
+
+        println!("cargo:rustc-link-search=native=C:/msys64/mingw64/lib");
+        println!("cargo:rustc-link-search=native=C:/msys64/mingw64/bin");
+    }
     println!("cargo:rustc-link-lib=dylib=ffi-8");
     println!("cargo:rustc-link-lib=dylib=LLVM-21");
     println!("cargo:rustc-link-arg=-Wl,--allow-multiple-definition");

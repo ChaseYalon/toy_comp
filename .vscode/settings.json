@@ -84,6 +84,6 @@
         "Yalon"
     ],
     "python.REPL.enableREPLSmartSend": false,
-    "cmake.sourceDirectory": "C:/Users/chase_qlo04cr/sideProjects/toy_compiler/toy_comp/src/c",
+    "cmake.sourceDirectory": "/root/comp/toy_comp/src/c",
     "mesonbuild.configureOnOpen": true
 }

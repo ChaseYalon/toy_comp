@@ -206,7 +206,7 @@ elif os_name == "Linux":
     subprocess.run(["sudo", "wget", "-qO", "/etc/apt/trusted.gpg.d/apt.llvm.org.asc https://apt.llvm.org/llvm-snapshot.gpg.key"])
     subprocess.run(["echo",  '"deb http://apt.llvm.org/$(lsb_release -sc)', 'llvm-toolchain-$(lsb_release -sc)-21 main"', "|", "sudo",  "tee", "/etc/apt/sources.list.d/llvm.list"])
     subprocess.run(["sudo",  "apt", "update"])
-    subprocess.run(["sudo", "apt", "install", "clang-21", "llvm-21", "llvm-21-dev", "lld-21", "libpolly-21-dev"])
+    subprocess.run(["sudo", "apt", "install", "clang-21", "llvm-21", "llvm-21-dev", "lld-21", "libpolly-21-dev", "libffi-dev", "libzstd-dev"])
     subprocess.run(["sudo", "mkdir", "-p", "/opt/llvm-21/bin"])
     subprocess.run(["sudo",  "ln", "-s", "/usr/bin/llvm-config-21", "/opt/llvm-21/bin/llvm-config"])
     with open("/root/.bashrc", "a") as f:
