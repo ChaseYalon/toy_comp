@@ -160,21 +160,6 @@ if os_name == "Windows":
             subprocess.run(["winget", "install", winget_id, "-e", "--silent"], check=True)
 
 elif os_name == "Linux":
-    def is_git_lfs_installed():
-        try:
-            # Run `git lfs version`
-            result = subprocess.run(
-                ["git", "lfs", "version"],
-                capture_output=True,
-                text=True,
-                check=True
-            )
-            print("Git LFS version:", result.stdout.strip())
-            return True
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            # CalledProcessError: git lfs returns non-zero exit code
-            # FileNotFoundError: git command not found
-            return False
 
     print("Linux detected, only Debian-based systems fully supported by this script")
     if shutil.which("clang") is None:
@@ -198,10 +183,7 @@ elif os_name == "Linux":
             shell=True,
             check=True
         )
-    if not is_git_lfs_installed():
-        subprocess.run(["sudo", "apt", "install", "-y", "git-lfs"])
-        subprocess.run(["git", "lfs", "install"])
-        subprocess.run(["git", "lfs", "pull"])
+
     #custom llvm
     subprocess.run(["sudo", "wget", "-qO", "/etc/apt/trusted.gpg.d/apt.llvm.org.asc https://apt.llvm.org/llvm-snapshot.gpg.key"])
     subprocess.run(["echo",  '"deb http://apt.llvm.org/$(lsb_release -sc)', 'llvm-toolchain-$(lsb_release -sc)-21 main"', "|", "sudo",  "tee", "/etc/apt/sources.list.d/llvm.list"])
