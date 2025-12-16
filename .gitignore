@@ -23,3 +23,7 @@ config.toml
 
 #llvm ir
 *.ll
+
+#lib stuff
+*.gz
+lib

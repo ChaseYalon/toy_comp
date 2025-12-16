@@ -7,6 +7,8 @@ import urllib.request
 import ssl
 import ctypes
 import time
+import glob
+from pathlib import Path
 
 ssl._create_default_https_context = ssl._create_unverified_context # type: ignore
 
@@ -29,6 +31,8 @@ if cpu_type not in ("x86_64", "AMD64"):
 if os_name != "Windows" and os_name != "Linux":
     print(f"[ERROR] Only windows and linux are supported, {os_name} was detected")
     sys.exit(1)
+os.mkdir("lib")
+
 if os_name == "Windows":
     os.makedirs(".cargo", exist_ok=True)
     with open(".cargo/config.toml", "w") as file:
@@ -130,7 +134,9 @@ if os_name == "Windows":
     install_msys2()
     install_mingw_packages()
     add_mingw_to_user_path()
-
+    os.chdir("lib")
+    subprocess.run(["wget", "https://downloads.sourceforge.net/project/toy-comp-lib-download/x86_64-pc-windows-gnu.tar.gz"])
+    subprocess.run(["tar", "-xzvf", "x86_64-unknown-linux-gnu.tar.gz"])
     if not detect_mingw_clang():
         print("[WARNING] Clang not detected after install — retrying...")
         install_mingw_packages()
@@ -158,45 +164,90 @@ if os_name == "Windows":
         if shutil.which(name) is None:
             print(f"Installing {name} via winget...")
             subprocess.run(["winget", "install", winget_id, "-e", "--silent"], check=True)
-
 elif os_name == "Linux":
+    def apt_install(*pkgs):
+        subprocess.run(["sudo", "apt", "update"], check=True)
+        subprocess.run(["sudo", "apt", "install", "-y", *pkgs], check=True)
 
-    print("Linux detected, only Debian-based systems fully supported by this script")
     if shutil.which("clang") is None:
-        subprocess.run(["sudo", "apt", "update"], check=True)
-        subprocess.run(
-            ["sudo", "apt", "install", "-y", "clang"],
-            check=True
-        )
-    if shutil.which("cmake") is None:
-        subprocess.run(["sudo", "apt", "update"], check=True)
-        subprocess.run(["sudo", "apt", "install", "-y", "cmake"],  check=True)
-    
-    if shutil.which("ninja") is None:
-        subprocess.run(["sudo", "apt", "update"], check=True)
-        subprocess.run(["sudo", "apt", "install", "-y", "ninja-build"], check=True)
+        apt_install("clang")
 
+    if shutil.which("cmake") is None:
+        apt_install("cmake")
+
+    if shutil.which("ninja") is None:
+        apt_install("ninja-build")
+    if shutil.which("tar") is None:
+        apt_install("tar")
+    os.chdir("lib")
+    subprocess.run(["wget", "https://downloads.sourceforge.net/project/toy-comp-lib-download/x86_64-unknown-linux-gnu.tar.gz"])
+    subprocess.run(["tar", "-xzvf", "x86_64-unknown-linux-gnu.tar.gz"])
     if shutil.which("rustup") is None:
-        print("Installing Rustup...")
         subprocess.run(
             "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y",
             shell=True,
-            check=True
+            check=True,
         )
 
-    #custom llvm
-    subprocess.run(["sudo", "wget", "-qO", "/etc/apt/trusted.gpg.d/apt.llvm.org.asc https://apt.llvm.org/llvm-snapshot.gpg.key"])
-    subprocess.run(["echo",  '"deb http://apt.llvm.org/$(lsb_release -sc)', 'llvm-toolchain-$(lsb_release -sc)-21 main"', "|", "sudo",  "tee", "/etc/apt/sources.list.d/llvm.list"])
-    subprocess.run(["sudo",  "apt", "update"])
-    subprocess.run(["sudo", "apt", "install", "clang-21", "llvm-21", "llvm-21-dev", "lld-21", "libpolly-21-dev", "libffi-dev", "libzstd-dev"])
-    subprocess.run(["sudo", "mkdir", "-p", "/opt/llvm-21/bin"])
-    subprocess.run(["sudo",  "ln", "-s", "/usr/bin/llvm-config-21", "/opt/llvm-21/bin/llvm-config"])
-    with open("/root/.bashrc", "a") as f:
-        f.write('export LLVM_SYS_211_PREFIX=/opt/llvm-21\n')
-        f.write('export LLVM_SYS_211_LINK_POLLY=0')
-    subprocess.run(["source", "~/.bashrc"], shell=True)
-    #rust
-    subprocess.run(["rustup", "target", "add", "x86_64-pc-windows-gnu", "--toolchain", "nightly"], check=True)
+    subprocess.run(
+        "sudo wget -qO /etc/apt/trusted.gpg.d/apt.llvm.org.asc "
+        "https://apt.llvm.org/llvm-snapshot.gpg.key",
+        shell=True,
+        check=True,
+    )
+
+    subprocess.run(
+        'echo "deb http://apt.llvm.org/$(lsb_release -sc) '
+        'llvm-toolchain-$(lsb_release -sc)-21 main" | '
+        "sudo tee /etc/apt/sources.list.d/llvm.list",
+        shell=True,
+        check=True,
+    )
+
+    subprocess.run(["sudo", "apt", "update"], check=True)
+
+    subprocess.run(
+        [
+            "sudo",
+            "apt",
+            "install",
+            "-y",
+            "clang-21",
+            "llvm-21",
+            "llvm-21-dev",
+            "lld-21",
+            "libpolly-21-dev",
+            "libffi-dev",
+            "libzstd-dev",
+        ],
+        check=True,
+    )
+
+    subprocess.run(["sudo", "mkdir", "-p", "/opt/llvm-21/bin"], check=True)
+    subprocess.run(
+        [
+            "sudo",
+            "ln",
+            "-sf",
+            "/usr/bin/llvm-config-21",
+            "/opt/llvm-21/bin/llvm-config",
+        ],
+        check=True,
+    )
+
+    bashrc = os.path.expanduser("~/.bashrc")
+    with open(bashrc, "a") as f:
+        f.write("\nexport LLVM_SYS_211_PREFIX=/opt/llvm-21\n")
+        f.write("export LLVM_SYS_211_LINK_POLLY=0\n")
+
+    subprocess.run(
+        ["rustup", "target", "add", "x86_64-pc-windows-gnu", "--toolchain", "nightly"],
+        check=True,
+    )
+lib_dir = Path("lib")
+for gz_file in lib_dir.glob("*.gz"):
+    gz_file.unlink()
+
 print("Build system installation complete!")
 print("Please restart your shell for path changes to take effect")
 print("\n\n")
