@@ -136,7 +136,7 @@ if os_name == "Windows":
     add_mingw_to_user_path()
     os.chdir("lib")
     subprocess.run(["wget", "https://downloads.sourceforge.net/project/toy-comp-lib-download/x86_64-pc-windows-gnu.tar.gz"])
-    subprocess.run(["tar", "-xzvf", "x86_64-unknown-linux-gnu.tar.gz"])
+    subprocess.run(["tar", "-xzvf", "x86_64-pc-windows-gnu.tar.gz"])
     if not detect_mingw_clang():
         print("[WARNING] Clang not detected after install — retrying...")
         install_mingw_packages()
@@ -244,8 +244,9 @@ elif os_name == "Linux":
         ["rustup", "target", "add", "x86_64-pc-windows-gnu", "--toolchain", "nightly"],
         check=True,
     )
+os.chdir("..")
 lib_dir = Path("lib")
-for gz_file in lib_dir.glob("*.gz"):
+for gz_file in lib_dir.rglob("*.gz"):
     gz_file.unlink()
 
 print("Build system installation complete!")
