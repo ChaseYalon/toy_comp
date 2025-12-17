@@ -180,8 +180,9 @@ elif os_name == "Linux":
     if shutil.which("tar") is None:
         apt_install("tar")
     os.chdir("lib")
-    subprocess.run(["wget", "https://downloads.sourceforge.net/project/toy-comp-lib-download/x86_64-unknown-linux-gnu.tar.gz"])
-    subprocess.run(["tar", "-xzvf", "x86_64-unknown-linux-gnu.tar.gz"])
+    url = "https://downloads.sourceforge.net/project/toy-comp-lib-download/x86_64-pc-windows-gnu.tar.gz"
+    out_path = Path("lib") / "x86_64-pc-windows-gnu.tar.gz"
+    urllib.request.urlretrieve(url, out_path)
     if shutil.which("rustup") is None:
         subprocess.run(
             "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y",
