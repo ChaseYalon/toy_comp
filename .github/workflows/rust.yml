@@ -21,10 +21,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - name: Install Git LFS
-        run: |
-          git lfs install
-          git lfs pull
       # Ensure Python is available on both Windows and Linux
       - name: Set up Python
         uses: actions/setup-python@v5
