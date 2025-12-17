@@ -87,7 +87,7 @@ if os_name == "Windows":
             subprocess.run(["winget", "install", "-e", "--id", "MSYS2.MSYS2"], check=True)
 
     def msys(cmd: str):
-        return subprocess.run([BASH_EXE, "-lc", cmd], check=True)
+        return subprocess.run([BASH_EXE, "-lc", cmd])
 
     def first_msys_update():
         """Initial MSYS2 update that may kill bash.exe (expected)."""
