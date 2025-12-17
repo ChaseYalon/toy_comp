@@ -903,6 +903,7 @@ impl<'a> LlvmGenerator<'a> {
         let rstatus = Command::new(lib_path.join("ld.lld"))
             .args(args.clone())
             .status();
+        println!("RSTATUS: {:#?}, args {:#?}", rstatus, args);
         let status = match rstatus {
             Ok(f) => f,
             Err(_) => return Err(ToyError::new(ToyErrorType::InternalLinkerFailure)),

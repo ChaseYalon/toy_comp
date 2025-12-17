@@ -241,11 +241,9 @@ elif os_name == "Linux":
     with open(bashrc, "a") as f:
         f.write("\nexport LLVM_SYS_211_PREFIX=/opt/llvm-21\n")
         f.write("export LLVM_SYS_211_LINK_POLLY=0\n")
-
-    subprocess.run(
-        ["rustup", "target", "add", "x86_64-pc-windows-gnu", "--toolchain", "nightly"],
-        check=True,
-    )
+        f.write("export RUST_BACKTRACE=1")
+    subprocess.run(["chmod +x ./x86_64-unknown-linux-gnu/ld.lld"], shell=True)
+os.rename("x86_64-unkown-linux-gnu", "x86_64-unknown-linux-gnu")
 os.chdir("..")
 lib_dir = Path("lib")
 for gz_file in lib_dir.rglob("*.gz"):
