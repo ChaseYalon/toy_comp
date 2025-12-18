@@ -3,6 +3,7 @@ use std::fs;
 use std::path::PathBuf;
 
 fn main() {
+    println!("LLVM_SYS_211_PREFIX: {:?}", env::var("LLVM_SYS_211_PREFIX").unwrap_or("LLVM_SYS_211_NOT_FOUND".to_string()));
     let target = env::var("TARGET").unwrap();
     let profile = env::var("PROFILE").unwrap();
     if profile == "test"{
