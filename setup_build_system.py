@@ -36,6 +36,37 @@ if os_name not in ("Windows", "Linux"):
 os.makedirs("lib", exist_ok=True)
 
 if os_name == "Windows":
+    import winreg
+
+    def set_user_env_var(name: str, value: str):
+
+        key = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Environment",
+            0,
+            winreg.KEY_SET_VALUE,
+        )
+
+        winreg.SetValueEx(
+            key,
+            name,
+            0,
+            winreg.REG_EXPAND_SZ,
+            value,
+        )
+
+        winreg.CloseKey(key)
+
+        ctypes.windll.user32.SendMessageTimeoutW(
+            0xFFFF,
+            0x001A,
+            0,
+            "Environment",
+            0x0002,
+            5000,
+            None,
+        )
+
     os.makedirs(".cargo", exist_ok=True)
     with open(".cargo/config.toml", "w") as file:
         file.write('[build]\ntarget = "x86_64-pc-windows-gnu"\n')
@@ -129,7 +160,7 @@ if os_name == "Windows":
 
     env = os.environ.copy()
     env["PATH"] = ";".join([MINGW64_BIN, CARGO_BIN, env.get("PATH", "")])
-    env["LLVM_SYS_211_PREFIX"] = MINGW64_PREFIX
+    set_user_env_var("LLVM_SYS_211_PREFIX", MINGW64_PREFIX)
     env["LIBCLANG_PATH"] = MINGW64_BIN
 
     subprocess.run(
