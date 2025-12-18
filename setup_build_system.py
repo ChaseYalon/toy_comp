@@ -42,7 +42,8 @@ if os_name == "Windows":
 
     MSYS2_DIR = r"C:\msys64"
     BASH_EXE = os.path.join(MSYS2_DIR, "usr", "bin", "bash.exe")
-    MINGW64_BIN = os.path.join(MSYS2_DIR, "mingw64", "bin")
+    MINGW64_PREFIX = os.path.join(MSYS2_DIR, "mingw64")
+    MINGW64_BIN = os.path.join(MINGW64_PREFIX, "bin")
     CARGO_BIN = os.path.expandvars(r"%USERPROFILE%\.cargo\bin")
     RUSTUP_EXE = os.path.join(CARGO_BIN, "rustup.exe")
 
@@ -53,7 +54,6 @@ if os_name == "Windows":
     def add_mingw_to_user_path():
         import winreg
 
-        target = MINGW64_BIN
         key = winreg.OpenKey(
             winreg.HKEY_CURRENT_USER,
             r"Environment",
@@ -66,21 +66,18 @@ if os_name == "Windows":
             value, value_type = "", winreg.REG_EXPAND_SZ
 
         paths = value.split(";") if value else []
-        if not any(p.lower() == target.lower() for p in paths):
-            new_value = value + ";" + target if value else target
-            winreg.SetValueEx(key, "Path", 0, value_type, new_value)
+        if not any(p.lower() == MINGW64_BIN.lower() for p in paths):
+            value = value + ";" + MINGW64_BIN if value else MINGW64_BIN
+            winreg.SetValueEx(key, "Path", 0, value_type, value)
 
         winreg.CloseKey(key)
 
-        HWND_BROADCAST = 0xFFFF
-        WM_SETTINGCHANGE = 0x001A
-        SMTO_ABORTIFHUNG = 0x0002
         ctypes.windll.user32.SendMessageTimeoutW(
-            HWND_BROADCAST,
-            WM_SETTINGCHANGE,
+            0xFFFF,
+            0x001A,
             0,
             "Environment",
-            SMTO_ABORTIFHUNG,
+            0x0002,
             5000,
             None,
         )
@@ -95,19 +92,9 @@ if os_name == "Windows":
     def msys(cmd: str):
         return subprocess.run([BASH_EXE, "-lc", cmd], check=True)
 
-    def first_msys_update():
-        try:
-            msys("pacman -Syu --noconfirm")
-        except subprocess.CalledProcessError:
-            pass
-        time.sleep(2)
-
-    def second_msys_update():
-        msys("pacman -Syu --noconfirm")
-
     def install_mingw_packages():
-        first_msys_update()
-        second_msys_update()
+        msys("pacman -Syu --noconfirm || true")
+        msys("pacman -Syu --noconfirm")
         msys(
             "pacman -S --needed --noconfirm "
             "mingw-w64-x86_64-toolchain "
@@ -141,7 +128,9 @@ if os_name == "Windows":
         subprocess.run(["rustup-init.exe", "-y"], check=True)
 
     env = os.environ.copy()
-    env["PATH"] = CARGO_BIN + ";" + env.get("PATH", "")
+    env["PATH"] = ";".join([MINGW64_BIN, CARGO_BIN, env.get("PATH", "")])
+    env["LLVM_SYS_211_PREFIX"] = MINGW64_PREFIX
+    env["LIBCLANG_PATH"] = MINGW64_BIN
 
     subprocess.run(
         [
