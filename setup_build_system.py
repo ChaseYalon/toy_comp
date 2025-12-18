@@ -166,7 +166,7 @@ if os_name == "Windows":
         ["ls", "-la", MINGW64_BIN],
         check=True
     )
-    subprocess.run(f"#./{MINGW64_BIN}/llvm-config.exe", shell=True)
+    subprocess.run(f"./{MINGW64_BIN}/llvm-config.exe", shell=True)
     env["LIBCLANG_PATH"] = MINGW64_BIN
 
     subprocess.run(
