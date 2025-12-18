@@ -154,7 +154,7 @@ if os_name == "Windows":
                 ["winget", "install", winget_id, "-e", "--silent"],
                 check=True,
             )
-
+    print(os.environ["LLVM_SYS_211_PREFIX"])
 elif os_name == "Linux":
     def apt_install(*pkgs):
         subprocess.run(["sudo", "apt", "update"], check=True)
