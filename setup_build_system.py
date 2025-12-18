@@ -253,7 +253,7 @@ elif os_name == "Linux":
         f.write("export RUST_BACKTRACE=1\n")
 
     subprocess.run(
-        ["chmod", "+x", "./x86_64-unknown-linux-gnu/ld.lld"],
+        ["chmod", "+x", "./x86_64-unkown-linux-gnu/ld.lld"],
         check=True,
     )
 
