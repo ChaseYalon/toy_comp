@@ -161,6 +161,7 @@ if os_name == "Windows":
     env = os.environ.copy()
     env["PATH"] = ";".join([MINGW64_BIN, CARGO_BIN, env.get("PATH", "")])
     set_user_env_var("LLVM_SYS_211_PREFIX", MINGW64_PREFIX)
+    print(MINGW64_PREFIX)
     env["LIBCLANG_PATH"] = MINGW64_BIN
 
     subprocess.run(
