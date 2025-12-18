@@ -136,7 +136,7 @@ if os_name == "Windows":
     add_mingw_to_user_path()
     os.chdir("lib")
     url = "https://downloads.sourceforge.net/project/toy-comp-lib-download/x86_64-pc-windows-gnu.tar.gz"
-    out_path = Path("lib") / "x86_64-pc-windows-gnu.tar.gz"
+    out_path = Path("lib")
     urllib.request.urlretrieve(url, out_path)
 
     if not detect_mingw_clang():
