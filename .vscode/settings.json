@@ -85,5 +85,6 @@
     ],
     "python.REPL.enableREPLSmartSend": false,
     "cmake.sourceDirectory": "/root/toy_comp/src/c",
-    "mesonbuild.configureOnOpen": true
+    "rust-analyzer.cachePriming.enable": true,
+    "rust-analyzer.server.path": "/usr/local/bin/rust-analyzer"
 }

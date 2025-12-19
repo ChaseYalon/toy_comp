@@ -207,7 +207,8 @@ elif os_name == "Linux":
         apt_install("ninja-build")
     if shutil.which("tar") is None:
         apt_install("tar")
-
+    if shutil.which("gdb") is None:
+        apt_install("gdb")
     os.chdir("lib")
     subprocess.run(
         [
@@ -284,7 +285,6 @@ elif os_name == "Linux":
         ["chmod", "+x", "./x86_64-unkown-linux-gnu/ld.lld"],
         check=True,
     )
-
 try:
     os.rename("x86_64-unkown-linux-gnu", "x86_64-unknown-linux-gnu")
 except OSError:

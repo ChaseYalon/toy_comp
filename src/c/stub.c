@@ -11,13 +11,13 @@ void _SetDebug_env() {
     #ifdef _WIN32
         _putenv_s("TOY_DEBUG", "TRUE");
     #endif
-    #ifdef __LINUX__
+    #ifdef __linux__
         setenv("TOY_DEBUG", "TRUE", 1);
     #endif
 }
 
 int main(){
-    //_SetDebug_env();
+    _SetDebug_env();
     int res = (int) user_main();
     //if it is greater then 0 there is a memory leak, if it is less then 0 it is a double free, still need to detect 
     //use after free
