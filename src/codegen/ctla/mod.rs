@@ -1,5 +1,5 @@
 use crate::{
-    codegen::{Function, tir::ir::TirBuilder},
+    codegen::{Function, tir::ir::{TirBuilder, HeapAllocation}},
     errors::ToyError,
 };
 
@@ -18,7 +18,8 @@ enum CtlaGraphNode {
     ///represents the heap allocation coming into program scope (actual allocation is handled by stdlib) under the hood
     ///Contains a struct representing (FunctionName, BlockId, InsId) the box is the next node in the graph
     ///Alloc can have ONE AND ONLY ONE child node
-    Alloc(InsRef, Box<CtlaGraphNode>),
+    ///Also stores the HeapAllocation itself that this whole graph is for
+    Alloc(InsRef, HeapAllocation, Box<CtlaGraphNode>),
     ///A reference to a given allocation, extending its lifetime through the execution of that instruction
     ///Ref can have ONE AND ONLY ONE child node
     Ref(InsRef, Box<CtlaGraphNode>),
@@ -27,8 +28,15 @@ enum CtlaGraphNode {
     PassToFunc(InsRef, Box<String>, Box<CtlaGraphNode>),
     ///Branch represents a split in the CtlaGraph where there is any conditional jump node, regardless of if the heap allocation being tracked is
     ///in that branch, if it is the Ref or other type of node should be a child, if not then the node should just point to the next ref
-    Branch(InsRef, Box<CtlaGraphNode>, Box<CtlaGraphNode>)
-
+    Branch(InsRef, Box<CtlaGraphNode>, Box<CtlaGraphNode>),
+    ///Represents a value being returned from a function transferring ownership to the function returned To
+    ///Contains the return ins, and the name of the function being RETURNED TO
+    Return(InsRef, Box<String>)
+}
+impl InsRef{
+    pub fn new(name: Box<String>, block: BlockId, ins: u64) -> InsRef {
+        return InsRef { func: name, block, ins };
+    }
 }
 impl CTLA {
     pub fn new() -> CTLA {
@@ -38,6 +46,10 @@ impl CTLA {
     }
     pub fn analyze(&mut self, builder: TirBuilder) -> Result<Vec<Function>, ToyError> {
         self.builder = builder;
+        let allocations = self.builder.detect_heap_allocations();
+        for allocation in allocations {
+            
+        }
         return Ok(self.builder.funcs.clone());
     }
 }
