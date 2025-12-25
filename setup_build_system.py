@@ -176,7 +176,7 @@ if os_name == "Windows":
         check=True,
         env=env,
     )
-    set_user_env_var("LLVM_SYS_211_PREFIX", "\"C:\\msys64\\mingw64\"")
+    set_user_env_var("LLVM_SYS_211_PREFIX", "C:\\msys64\\mingw64")
     for winget_id, name in [
         ("Kitware.CMake", "cmake"),
         ("Ninja-build.Ninja", "ninja"),

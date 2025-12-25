@@ -106,12 +106,18 @@ char* _toy_format(int64_t input, int64_t datatype, int64_t degree) {
 
 
 void toy_print(int64_t input, int64_t datatype, int64_t degree) {
+    if (datatype == 0) { // string type - check for use-after-free
+        _CheckUseAfterFree((void*)input);
+    }
     char* buff = (char*) _toy_format(input, datatype, degree);
     printf("%s", buff);
     free(buff);
 }
 
 void toy_println(int64_t input, int64_t datatype, int64_t degree) {
+    if (datatype == 0) { // string type - check for use-after-free
+        _CheckUseAfterFree((void*)input);
+    }
     char* buff = (char*) _toy_format(input, datatype, degree);
     printf("%s\n", buff);
     free(buff);
@@ -143,6 +149,8 @@ int64_t toy_concat(int64_t sp1, int64_t sp2) {
         fprintf(stderr, "[ERROR] Toy concat received a null pointer\n");
         abort();
     }
+    _CheckUseAfterFree((void*)sp1);
+    _CheckUseAfterFree((void*)sp2);
     char* str1 = (char *) sp1;
     char* str2 = (char *) sp2;
     
@@ -162,6 +170,8 @@ int64_t toy_concat(int64_t sp1, int64_t sp2) {
 }
 
 int64_t toy_strequal(int64_t sp1, int64_t sp2) {
+    _CheckUseAfterFree((void*)sp1);
+    _CheckUseAfterFree((void*)sp2);
     char* str1 = (char*) sp1;
     char* str2 = (char*) sp2;
     
@@ -177,6 +187,7 @@ int64_t toy_strlen(int64_t sp1) {
         fprintf(stderr, "[ERROR] toy_strlen received a null pointer\n");
         abort();
     }
+    _CheckUseAfterFree((void*)sp1);
     char* str1 = (char*) sp1;
     return strlen(str1);
 }

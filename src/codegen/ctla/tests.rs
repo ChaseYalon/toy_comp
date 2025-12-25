@@ -59,3 +59,13 @@ fn test_ctla_str_multi_block() {
     );
     assert!(!output.contains("FAIL_TEST"));
 }
+
+#[test]
+fn test_ctla_multi_return() {
+    compile_code_aot!(
+        output,
+        r#"let x = "hello"; if x == "hi" {println(x); return 5} else {return 9}"#,
+        "ctla_str_multi_return"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+}

@@ -3,6 +3,9 @@ use std::fs;
 use std::path::PathBuf;
 
 fn main() {
+    if env::var("CARGO_CFG_RUST_ANALYZER").is_ok() {
+        return;
+    }
     println!(
         "LLVM_SYS_211_PREFIX: {:?}",
         env::var("LLVM_SYS_211_PREFIX").unwrap_or("LLVM_SYS_211_NOT_FOUND".to_string())
@@ -63,7 +66,6 @@ fn main() {
 
     println!("cargo:rerun-if-changed=src/c/builtins.h");
     println!("cargo:rerun-if-changed=src/c/hashmap.h");
-    println!("cargo:rerun-if-changed=src/c/stub.h");
 
     let bindings = bindgen::Builder::default()
         .header("src/c/builtins.h")

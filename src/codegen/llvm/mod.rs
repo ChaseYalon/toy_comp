@@ -939,8 +939,8 @@ impl<'a> LlvmGenerator<'a> {
             let mut prgm = Command::new(format!("{}{}", "./", output_name.as_str()));
             let _ = prgm.spawn().unwrap().wait().unwrap();
 
-            fs::remove_file(output_name.as_str()).unwrap();
             if !p_args.contains(&"--save-temps".to_string()) {
+                fs::remove_file(output_name.as_str()).unwrap();
                 fs::remove_file(format!("{}.o", prgm_name)).unwrap();
                 fs::remove_file(format!("{}.ll", prgm_name)).unwrap();
             }

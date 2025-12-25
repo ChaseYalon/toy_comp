@@ -131,7 +131,8 @@ pub struct HeapAllocation {
     ///unique id
     pub allocation_id: AllocationId,
     ///a vec representing every ssa value that references the allocation
-    pub refs: Vec<SSAValue>,
+    ///The string is the function name where the ref occurs, BlockId is self explanatory, ValueId is the id of the instruction where the ref occurs
+    pub refs: Vec<(Box<String>, BlockId, ValueId)>,
 }
 #[derive(Clone, PartialEq, Debug)]
 pub struct Function {
@@ -377,12 +378,14 @@ impl TirBuilder {
     pub fn ret(&mut self, val: SSAValue) -> Result<SSAValue, ToyError> {
         let id = self._next_value_id();
         let ins = TIR::Ret(id, val.clone());
+        let curr_func_name = self.funcs[self.curr_func.unwrap()].name.clone();
+        let curr_block = self.curr_block.unwrap();
         self.funcs.iter_mut().for_each(|f| {
             f.heap_allocations
                 .iter_mut()
                 .for_each(|alloc: &mut HeapAllocation| {
                     if alloc.alloc_ins == val {
-                        alloc.refs.push(val.clone());
+                        alloc.refs.push((curr_func_name.clone(), curr_block, id));
                     }
                 })
         });
@@ -403,13 +406,16 @@ impl TirBuilder {
         params: Vec<SSAValue>,
         is_allocator: bool,
     ) -> Result<SSAValue, ToyError> {
+        let curr_func_name = self.funcs[self.curr_func.unwrap()].name.clone();
+        let curr_block = self.curr_block.unwrap();
+        let id = self._next_value_id();
         self.funcs.iter_mut().for_each(|f| {
             f.heap_allocations
                 .iter_mut()
                 .for_each(|alloc: &mut HeapAllocation| {
                     params.iter().for_each(|p| {
                         if p == &alloc.alloc_ins {
-                            alloc.refs.push(p.clone());
+                            alloc.refs.push((curr_func_name.clone(), curr_block, p.val));
                         }
                     })
                 })
@@ -421,7 +427,6 @@ impl TirBuilder {
             .map(|f| f.ret_type.clone())
             .ok_or_else(|| ToyError::new(ToyErrorType::UndefinedFunction))?;
 
-        let id = self._next_value_id();
         let ins = TIR::CallLocalFunction(
             id,
             Box::new(name),
@@ -442,7 +447,7 @@ impl TirBuilder {
                 .iter_mut()
                 .for_each(|alloc: &mut HeapAllocation| {
                     if ret_ins == alloc.alloc_ins {
-                        alloc.refs.push(ret_ins.clone());
+                        alloc.refs.push((curr_func_name.clone(), curr_block, id));
                     }
                 })
         });
@@ -462,13 +467,15 @@ impl TirBuilder {
             .get(&name)
             .cloned()
             .ok_or_else(|| ToyError::new(ToyErrorType::UndefinedFunction))?;
+        let curr_func_name = self.funcs[self.curr_func.unwrap()].name.clone();
+        let curr_block = self.curr_block.unwrap();
         self.funcs.iter_mut().for_each(|f| {
             f.heap_allocations
                 .iter_mut()
                 .for_each(|alloc: &mut HeapAllocation| {
                     params.iter().for_each(|p| {
                         if p == &alloc.alloc_ins {
-                            alloc.refs.push(p.clone());
+                            alloc.refs.push((curr_func_name.clone(), curr_block, p.val));
                         }
                     })
                 })
@@ -500,7 +507,7 @@ impl TirBuilder {
                 .iter_mut()
                 .for_each(|alloc: &mut HeapAllocation| {
                     if val == alloc.alloc_ins {
-                        alloc.refs.push(val.clone());
+                        alloc.refs.push((curr_func_name.clone(), curr_block, val.val));
                     }
                 })
         });
@@ -568,17 +575,19 @@ impl TirBuilder {
             val: id,
             ty: Some(ty),
         };
+        let curr_func_name = self.funcs[self.curr_func.unwrap()].name.clone();
+        let curr_block = self.curr_block.unwrap();
         self.funcs.iter_mut().for_each(|f| {
             f.heap_allocations
                 .iter_mut()
                 .for_each(|alloc: &mut HeapAllocation| {
                     vals.iter().for_each(|v| {
                         if v == &alloc.alloc_ins {
-                            alloc.refs.push(v.clone());
+                            alloc.refs.push((curr_func_name.clone(), curr_block, v.val));
                         }
                     });
                     if alloc.alloc_ins == ret_ins {
-                        alloc.refs.push(ret_ins.clone());
+                        alloc.refs.push((curr_func_name.clone(), curr_block, id));
                     }
                 })
         });
@@ -592,12 +601,14 @@ impl TirBuilder {
     ) -> Result<SSAValue, ToyError> {
         let id = self._next_value_id();
         let struct_val_clone = struct_val.clone();
+        let curr_func_name = self.funcs[self.curr_func.unwrap()].name.clone();
+        let curr_block = self.curr_block.unwrap();
         self.funcs.iter_mut().for_each(|f| {
             f.heap_allocations
                 .iter_mut()
                 .for_each(|alloc: &mut HeapAllocation| {
                     if alloc.alloc_ins == struct_val_clone {
-                        alloc.refs.push(struct_val_clone.clone());
+                        alloc.refs.push((curr_func_name.clone(), curr_block, struct_val_clone.val));
                     }
                 })
         });
@@ -620,15 +631,17 @@ impl TirBuilder {
         let id = self._next_value_id();
         let struct_val_clone = struct_val.clone();
         let new_val_clone = new_val.clone();
+        let curr_func_name = self.funcs[self.curr_func.unwrap()].name.clone();
+        let curr_block = self.curr_block.unwrap();
         self.funcs.iter_mut().for_each(|f| {
             f.heap_allocations
                 .iter_mut()
                 .for_each(|alloc: &mut HeapAllocation| {
                     if alloc.alloc_ins == struct_val_clone {
-                        alloc.refs.push(struct_val_clone.clone());
+                        alloc.refs.push((curr_func_name.clone(), curr_block, struct_val_clone.val));
                     }
                     if alloc.alloc_ins == new_val_clone {
-                        alloc.refs.push(new_val_clone.clone());
+                        alloc.refs.push((curr_func_name.clone(), curr_block, new_val_clone.val));
                     }
                 })
         });
@@ -690,6 +703,8 @@ impl TirBuilder {
             val: id,
             ty: values[0].ty.clone(),
         };
+        let curr_func_name = self.funcs[self.curr_func.unwrap()].name.clone();
+        let curr_block = self.curr_block.unwrap();
         self.funcs.iter_mut().for_each(|f| {
             f.heap_allocations
                 .iter_mut()
@@ -697,12 +712,12 @@ impl TirBuilder {
                     let mut matched = false;
                     values.iter().for_each(|v| {
                         if v == &alloc.alloc_ins {
-                            alloc.refs.push(v.clone());
+                            alloc.refs.push((curr_func_name.clone(), curr_block, v.val));
                             matched = true;
                         }
                     });
                     if matched {
-                        alloc.refs.push(ret_val.clone());
+                        alloc.refs.push((curr_func_name.clone(), curr_block, id));
                     }
                 })
         });
