@@ -52,5 +52,10 @@ fn test_ctla_str() {
 
 #[test]
 fn test_ctla_str_multi_block() {
-    compile_code_aot!(output, r#"let x = "hi"; if x == "hello" {println("goodbye")} else {println("bye")}"#, "ctla_str_multi_branch")
+    compile_code_aot!(
+        output,
+        r#"let x = "hi"; if x == "hello" {println("goodbye")} else {println("bye")}"#,
+        "ctla_str_multi_branch"
+    );
+    assert!(!output.contains("FAIL_TEST"));
 }

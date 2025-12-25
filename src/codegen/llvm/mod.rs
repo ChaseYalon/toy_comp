@@ -824,9 +824,9 @@ impl<'a> LlvmGenerator<'a> {
             TirType::I64,
         );
         self.declare_individual_function(
-            "toy_free", 
-            vec![TirType::I64],//?
-            TirType::Void
+            "toy_free",
+            vec![TirType::I64], //?
+            TirType::Void,
         );
         return Ok(());
     }
@@ -940,7 +940,7 @@ impl<'a> LlvmGenerator<'a> {
             let _ = prgm.spawn().unwrap().wait().unwrap();
 
             fs::remove_file(output_name.as_str()).unwrap();
-            if !p_args.contains(&"--save-temps".to_string()){
+            if !p_args.contains(&"--save-temps".to_string()) {
                 fs::remove_file(format!("{}.o", prgm_name)).unwrap();
                 fs::remove_file(format!("{}.ll", prgm_name)).unwrap();
             }

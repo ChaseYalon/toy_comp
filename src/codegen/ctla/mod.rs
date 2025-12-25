@@ -129,17 +129,7 @@ impl CTLA {
             }
         }
     }
-    fn process_allocation(&mut self, alloc: HeapAllocation) -> Result<(), ToyError> {
-        //only use user_main for now
-        let func = self
-            .builder
-            .funcs
-            .iter()
-            .find(|f| *f.name == "user_main")
-            .unwrap(); //SAFETY: Will always be in the array
-        let cfg_graph = self.build_cfg_graph("user_main".to_string(), 0);
-        let alloc_block_id = alloc.block;
-        let alloc_node = self.find_cfg_node(cfg_graph, alloc_block_id).unwrap(); //SAFETY: Should always be found
+    fn follow_cfg_graph(&mut self, alloc_node: CfgNode, func: &Function, alloc: HeapAllocation  ) -> Option<()> {
         match alloc_node {
             CfgNode::Return(return_block_id) => {
                 //NOTE: For now I am freeing at the end of the block, in the future it should be right after the ast reference
@@ -149,9 +139,33 @@ impl CTLA {
                     func.body[return_block_id].ins.len() - 1,
                     alloc.alloc_ins,
                 );
+                return Some(())
             } //for now return is the end of a graph and allocations can not be passed up the call chain
-            _ => todo!(),
+            CfgNode::ConditionalJump(_, true_box, false_box) => {
+                let followed_true = self.follow_cfg_graph(*true_box, func, alloc.clone());
+                if followed_true.is_some(){
+                    return Some(())
+                }
+                return self.follow_cfg_graph(*false_box, func, alloc);
+            }
+            CfgNode::UnconditionalJump(_, next) => {
+                return self.follow_cfg_graph(*next, func, alloc);
+            }
         }
+    }
+    fn process_allocation(&mut self, alloc: HeapAllocation) -> Result<(), ToyError> {
+        //only use user_main for now
+        let func = self
+            .builder
+            .funcs
+            .clone()//SAFETY: Just extracting the name, not editing the code of the clone
+            .into_iter()
+            .find(|f| *f.name == "user_main")
+            .unwrap(); //SAFETY: Will always be in the array
+        let cfg_graph = self.build_cfg_graph("user_main".to_string(), 0);
+        let alloc_block_id = alloc.block;
+        let alloc_node = self.find_cfg_node(cfg_graph, alloc_block_id).unwrap(); //SAFETY: Should always be found
+        self.follow_cfg_graph(alloc_node, &func, alloc);
         return Ok(());
     }
     pub fn analyze(&mut self, builder: TirBuilder) -> Result<Vec<Function>, ToyError> {
