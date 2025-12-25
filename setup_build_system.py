@@ -6,7 +6,6 @@ import os
 import urllib.request
 import ssl
 import ctypes
-import time
 from pathlib import Path
 
 ssl._create_default_https_context = ssl._create_unverified_context  # type: ignore
@@ -96,7 +95,7 @@ if os_name == "Windows":
         except FileNotFoundError:
             value, value_type = "", winreg.REG_EXPAND_SZ
 
-        paths = value.split(";") if value else []
+        paths: list[str] = value.split(";") if value else []
         if not any(p.lower() == MINGW64_BIN.lower() for p in paths):
             value = value + ";" + MINGW64_BIN if value else MINGW64_BIN
             winreg.SetValueEx(key, "Path", 0, value_type, value)
@@ -143,11 +142,12 @@ if os_name == "Windows":
 
     os.chdir("lib")
     tar_name = "x86_64-pc-windows-gnu.tar.gz"
-    urllib.request.urlretrieve(
-        "https://downloads.sourceforge.net/project/toy-comp-lib-download/"
-        "x86_64-pc-windows-gnu.tar.gz",
-        tar_name,
-    )
+    subprocess.run([
+        "curl.exe", "-L", "-o", "x86_64-pc-windows-gnu.tar.gz", "https://downloads.sourceforge.net/project/toy-comp-lib-download/x86_64-pc-windows-gnu.tar.gz"
+    ])
+    subprocess.run([
+        "tar", "-xzvf", "x86_64-pc-windows-gnu.tar.gz"
+    ])
 
     if not detect_mingw_clang():
         install_mingw_packages()
@@ -162,14 +162,6 @@ if os_name == "Windows":
     env["PATH"] = ";".join([MINGW64_BIN, CARGO_BIN, env.get("PATH", "")])
     set_user_env_var("LLVM_SYS_211_PREFIX", MINGW64_BIN)
     print(MINGW64_BIN)
-    subprocess.run(
-        ["ls", "-la", MINGW64_BIN],
-        check=True
-    )
-    subprocess.run(
-        [os.path.join(MINGW64_BIN, "llvm-config.exe")],
-        check=True,
-    )
     env["LIBCLANG_PATH"] = MINGW64_BIN
 
     subprocess.run(
@@ -184,7 +176,7 @@ if os_name == "Windows":
         check=True,
         env=env,
     )
-
+    set_user_env_var("LLVM_SYS_211_PREFIX", "\"C:\\msys64\\mingw64\"")
     for winget_id, name in [
         ("Kitware.CMake", "cmake"),
         ("Ninja-build.Ninja", "ninja"),
@@ -194,8 +186,9 @@ if os_name == "Windows":
                 ["winget", "install", winget_id, "-e", "--silent"],
                 check=True,
             )
+        
 elif os_name == "Linux":
-    def apt_install(*pkgs):
+    def apt_install(*pkgs:...):
         subprocess.run(["sudo", "apt", "update"], check=True)
         subprocess.run(["sudo", "apt", "install", "-y", *pkgs], check=True)
 

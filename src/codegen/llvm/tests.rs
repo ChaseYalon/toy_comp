@@ -77,25 +77,41 @@ fn test_llvm_codegen_nested_expr() {
 
 #[test]
 fn test_llvm_codegen_float_stuff() {
-    compile_code_aot!(output, "let x = 9.3 * 3; let y = x / 6; println(y + 2.2);", "floats");
+    compile_code_aot!(
+        output,
+        "let x = 9.3 * 3; let y = x / 6; println(y + 2.2);",
+        "floats"
+    );
     assert!(output.contains("6.85"));
 }
 
 #[test]
 fn test_llvm_codegen_if_else() {
-    compile_code_aot!(output,"if !false {print(5)} else {println(6)} print(7);", "if_else");
+    compile_code_aot!(
+        output,
+        "if !false {print(5)} else {println(6)} print(7);",
+        "if_else"
+    );
     assert!(output.contains("57"));
 }
 
 #[test]
 fn test_llvm_codegen_if_no_else() {
-    compile_code_aot!(output, "if true || false {print(3)} print(9);", "if_no_else");
+    compile_code_aot!(
+        output,
+        "if true || false {print(3)} print(9);",
+        "if_no_else"
+    );
     assert!(output.contains("39"));
 }
 
 #[test]
 fn test_llvm_codegen_while_loop() {
-    compile_code_aot!(output, "let x = 0; while x < 10 {print(x); x++}", "while_loop");
+    compile_code_aot!(
+        output,
+        "let x = 0; while x < 10 {print(x); x++}",
+        "while_loop"
+    );
     assert!(output.contains("123456789"))
 }
 

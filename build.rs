@@ -3,10 +3,13 @@ use std::fs;
 use std::path::PathBuf;
 
 fn main() {
-    println!("LLVM_SYS_211_PREFIX: {:?}", env::var("LLVM_SYS_211_PREFIX").unwrap_or("LLVM_SYS_211_NOT_FOUND".to_string()));
+    println!(
+        "LLVM_SYS_211_PREFIX: {:?}",
+        env::var("LLVM_SYS_211_PREFIX").unwrap_or("LLVM_SYS_211_NOT_FOUND".to_string())
+    );
     let target = env::var("TARGET").unwrap();
     let profile = env::var("PROFILE").unwrap();
-    if profile == "test"{
+    if profile == "test" {
         unsafe {
             env::set_var("TOY_DEBUG", "TRUE");
         }
@@ -46,15 +49,17 @@ fn main() {
     println!("cargo:rustc-link-search=native={}", out_dir.display());
 
     println!("cargo:rustc-link-arg=-lcore");
-    if cfg!(target_os = "windows"){
-
+    if cfg!(target_os = "windows") {
         println!("cargo:rustc-link-search=native=C:/msys64/mingw64/lib");
         println!("cargo:rustc-link-search=native=C:/msys64/mingw64/bin");
     } else {
         println!("cargo:rustc-link-search=native=/usr/lib/x86_64-linux-gnu");
     }
-    println!("cargo:rustc-link-lib=dylib=LLVM-21");
+    //println!("cargo:rustc-link-lib=dylib=LLVM-21");
     println!("cargo:rustc-link-arg=-Wl,--allow-multiple-definition");
+    if cfg!(target_os = "windows") {
+        println!("cargo:rustc-link-arg=-lffi");
+    }
 
     println!("cargo:rerun-if-changed=src/c/builtins.h");
     println!("cargo:rerun-if-changed=src/c/hashmap.h");

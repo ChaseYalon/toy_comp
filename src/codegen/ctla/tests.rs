@@ -3,10 +3,10 @@ use crate::Parser;
 use crate::codegen::Generator;
 use inkwell::context::Context;
 use inkwell::module::Module;
-use std::time::Duration;
-use std::thread;
-use std::process::{Command, Stdio};
 use std::path::PathBuf;
+use std::process::{Command, Stdio};
+use std::thread;
+use std::time::Duration;
 fn capture_program_output(program: String) -> String {
     thread::sleep(Duration::from_millis(100));
     let output = Command::new(program)
@@ -48,4 +48,9 @@ macro_rules! compile_code_aot {
 fn test_ctla_str() {
     compile_code_aot!(output, r#"let x = "hi"; println(x);"#, "ctla_str");
     assert!(!output.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_str_multi_block() {
+    compile_code_aot!(output, r#"let x = "hi"; if x == "hello" {println("goodbye")} else {println("bye")}"#, "ctla_str_multi_branch")
 }

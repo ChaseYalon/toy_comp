@@ -123,15 +123,15 @@ pub struct Block {
 }
 #[derive(PartialEq, Clone, Debug)]
 pub struct HeapAllocation {
-    block: BlockId,
+    pub block: BlockId,
     ///functions are detected by name
-    function: Box<String>,
+    pub function: Box<String>,
     ///instruction that creates the heap allocation
-    alloc_ins: SSAValue,
+    pub alloc_ins: SSAValue,
     ///unique id
-    allocation_id: AllocationId,
+    pub allocation_id: AllocationId,
     ///a vec representing every ssa value that references the allocation
-    refs: Vec<SSAValue>,
+    pub refs: Vec<SSAValue>,
 }
 #[derive(Clone, PartialEq, Debug)]
 pub struct Function {
@@ -422,7 +422,13 @@ impl TirBuilder {
             .ok_or_else(|| ToyError::new(ToyErrorType::UndefinedFunction))?;
 
         let id = self._next_value_id();
-        let ins = TIR::CallLocalFunction(id, Box::new(name), params.clone(), is_allocator, ret_type.clone());
+        let ins = TIR::CallLocalFunction(
+            id,
+            Box::new(name),
+            params.clone(),
+            is_allocator,
+            ret_type.clone(),
+        );
         self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()]
             .ins
             .push(ins);
@@ -830,5 +836,30 @@ impl TirBuilder {
             allocs.extend(func.heap_allocations);
         }
         return allocs;
+    }
+    ///Will add a manually created TIR instruction before the specified instruction
+    ///Will NOT move the cursor
+    pub fn splice_free_before(
+        &mut self,
+        func_name: String,
+        block_id: BlockId,
+        before_ins: usize,
+        to_free_val: SSAValue,
+    ) {
+        let ins = TIR::CallExternFunction(
+            self._next_value_id(),
+            Box::new("toy_free".to_string()),
+            vec![to_free_val],
+            false,
+            TirType::Void,
+        );
+
+        self.funcs
+            .iter_mut()
+            .find(|f| *f.name == func_name)
+            .unwrap()
+            .body[block_id]
+            .ins
+            .insert(before_ins, ins); //that .unwrap worries me
     }
 }
