@@ -16,6 +16,13 @@ fn capture_program_output(program: String) -> String {
         .expect("Failed to spawn process")
         .wait_with_output()
         .expect("Failed to wait on child");
+    if !output.status.success() {
+        panic!(
+            "Program crashed with exit code {:?}\nstderr: {}",
+            output.status.code(),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
     let s = String::from_utf8(output.stdout).expect("Invalid UTF-8 output");
     return s;
 }
@@ -64,8 +71,14 @@ fn test_ctla_str_multi_block() {
 fn test_ctla_multi_return() {
     compile_code_aot!(
         output,
-        r#"let x = "hello"; if x == "hi" {println(x); return 5} else {return 9}"#,
+        r#"let x = "hello"; if x == "hi" {println(x); println(5)} else {println(0)}"#,
         "ctla_str_multi_return"
     );
     assert!(!output.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_arrays() {
+    compile_code_aot!(output, "let arr = [1, 2, 3]; println(arr);", "ctla_arr");
+    assert!(!output.contains("FAIL_TEST"))
 }

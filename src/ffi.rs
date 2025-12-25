@@ -73,6 +73,9 @@ unsafe extern "C" {
 unsafe extern "C" {
     pub fn toy_input(i_prompt: i64) -> i64;
 }
+unsafe extern "C" {
+    pub fn toy_free_arr(arr_ptr_int: i64);
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct _Entry {

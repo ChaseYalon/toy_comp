@@ -507,7 +507,9 @@ impl TirBuilder {
                 .iter_mut()
                 .for_each(|alloc: &mut HeapAllocation| {
                     if val == alloc.alloc_ins {
-                        alloc.refs.push((curr_func_name.clone(), curr_block, val.val));
+                        alloc
+                            .refs
+                            .push((curr_func_name.clone(), curr_block, val.val));
                     }
                 })
         });
@@ -608,7 +610,9 @@ impl TirBuilder {
                 .iter_mut()
                 .for_each(|alloc: &mut HeapAllocation| {
                     if alloc.alloc_ins == struct_val_clone {
-                        alloc.refs.push((curr_func_name.clone(), curr_block, struct_val_clone.val));
+                        alloc
+                            .refs
+                            .push((curr_func_name.clone(), curr_block, struct_val_clone.val));
                     }
                 })
         });
@@ -638,10 +642,14 @@ impl TirBuilder {
                 .iter_mut()
                 .for_each(|alloc: &mut HeapAllocation| {
                     if alloc.alloc_ins == struct_val_clone {
-                        alloc.refs.push((curr_func_name.clone(), curr_block, struct_val_clone.val));
+                        alloc
+                            .refs
+                            .push((curr_func_name.clone(), curr_block, struct_val_clone.val));
                     }
                     if alloc.alloc_ins == new_val_clone {
-                        alloc.refs.push((curr_func_name.clone(), curr_block, new_val_clone.val));
+                        alloc
+                            .refs
+                            .push((curr_func_name.clone(), curr_block, new_val_clone.val));
                     }
                 })
         });
@@ -796,6 +804,16 @@ impl TirBuilder {
         };
         let mut val2 = self.call_extern("toy_malloc".to_string(), vec![val])?;
         val2.ty = Some(TirType::I8PTR);
+        //we need to update the type of the allocation instruction in the heap allocation list
+        //otherwise the CTLA will not be able to find the allocation
+        self.funcs[self.curr_func.unwrap()]
+            .heap_allocations
+            .iter_mut()
+            .for_each(|alloc| {
+                if alloc.alloc_ins.val == val2.val {
+                    alloc.alloc_ins.ty = Some(TirType::I8PTR);
+                }
+            });
         return Ok(val2);
     }
     pub fn inject_type_param(
@@ -860,10 +878,11 @@ impl TirBuilder {
         block_id: BlockId,
         before_ins: usize,
         to_free_val: SSAValue,
+        free_func_name: String,
     ) {
         let ins = TIR::CallExternFunction(
             self._next_value_id(),
-            Box::new("toy_free".to_string()),
+            Box::new(free_func_name),
             vec![to_free_val],
             false,
             TirType::Void,

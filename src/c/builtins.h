@@ -39,3 +39,4 @@ void toy_write_to_arr(int64_t arr_in_ptr, int64_t value, int64_t idx, int64_t ty
 int64_t toy_read_from_arr(int64_t arr_in_ptr, int64_t idx);
 int64_t toy_arrlen(int64_t arr_in_ptr);
 int64_t toy_input(int64_t i_prompt);
+void toy_free_arr(int64_t arr_ptr_int);

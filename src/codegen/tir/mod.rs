@@ -702,6 +702,8 @@ impl AstToIrConverter {
             .register_extern("toy_input".to_string(), true, TypeTok::Int);
         self.builder
             .register_extern("toy_free".to_string(), false, TypeTok::Void); //ctla/ctla.c
+        self.builder
+            .register_extern("toy_free_arr".to_string(), false, TypeTok::Void);
     }
     pub fn convert(&mut self, ast: Vec<Ast>) -> Result<Vec<Function>, ToyError> {
         self.register_extern_funcs();

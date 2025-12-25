@@ -828,6 +828,11 @@ impl<'a> LlvmGenerator<'a> {
             vec![TirType::I64], //?
             TirType::Void,
         );
+        self.declare_individual_function(
+            "toy_free_arr",
+            vec![TirType::I64],
+            TirType::Void,
+        );
         return Ok(());
     }
     fn generate_internal(&mut self, funcs: Vec<Function>) -> Result<(), ToyError> {

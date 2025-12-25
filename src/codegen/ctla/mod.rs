@@ -34,15 +34,20 @@ impl CTLA {
             .find(|f| *f.name == func)
             .unwrap()
             .body[idx];
-        
+
         // Find the first terminator instruction (Ret, JumpCond, or JumpBlockUnCond)
         // This handles cases where a return is followed by unreachable code
         let terminator = block
             .ins
             .iter()
-            .find(|ins| matches!(ins, TIR::Ret(_, _) | TIR::JumpCond(_, _, _, _) | TIR::JumpBlockUnCond(_, _)))
+            .find(|ins| {
+                matches!(
+                    ins,
+                    TIR::Ret(_, _) | TIR::JumpCond(_, _, _, _) | TIR::JumpBlockUnCond(_, _)
+                )
+            })
             .unwrap(); //SAFETY: Every block must have at least one terminator
-        
+
         return match terminator {
             TIR::JumpCond(_, _, true_b_idx, false_b_idx) => CfgNode::ConditionalJump(
                 idx,
@@ -94,67 +99,140 @@ impl CTLA {
             CfgNode::UnconditionalJump(id, _) => *id,
             CfgNode::Return(id) => *id,
         };
-        
+
         // Check if this node's block references the allocation
-        let block_has_ref = alloc.refs.iter().any(|(_, ref_block, _)| *ref_block == block_id);
-        
+        let block_has_ref = alloc
+            .refs
+            .iter()
+            .any(|(_, ref_block, _)| *ref_block == block_id);
+
         if block_has_ref {
             return true;
         }
-        
+
         // Recursively check children
         match node {
             CfgNode::ConditionalJump(_, true_box, false_box) => {
-                self.node_references_allocation(true_box, alloc) || 
-                self.node_references_allocation(false_box, alloc)
+                self.node_references_allocation(true_box, alloc)
+                    || self.node_references_allocation(false_box, alloc)
             }
-            CfgNode::UnconditionalJump(_, next) => {
-                self.node_references_allocation(next, alloc)
-            }
+            CfgNode::UnconditionalJump(_, next) => self.node_references_allocation(next, alloc),
             CfgNode::Return(_) => false,
         }
     }
-    
-    fn follow_cfg_graph(&mut self, alloc_node: CfgNode, func: &Function, alloc: HeapAllocation  ) -> Option<()> {
+
+    fn get_insertion_index(&self, func: &Function, block_id: BlockId) -> usize {
+        let block = &func.body[block_id];
+        // Find the first terminator
+        let idx = block.ins.iter().position(|ins| {
+            matches!(
+                ins,
+                TIR::Ret(_, _) | TIR::JumpCond(_, _, _, _) | TIR::JumpBlockUnCond(_, _)
+            )
+        });
+        match idx {
+            Some(i) => i,
+            None => block.ins.len(), // Should not happen if block is well-formed
+        }
+    }
+    fn alloc_type_to_free_func(&self, alloc: &HeapAllocation) -> String {
+        let func = self
+            .builder
+            .funcs
+            .iter()
+            .find(|f| *f.name == *alloc.function)
+            .unwrap();
+        let block = &func.body[alloc.block];
+        // Find the instruction by its ID, not by using the ID as an array index
+        let alloc_ins = block
+            .ins
+            .iter()
+            .find(|ins| ins.get_id() == alloc.alloc_ins.val)
+            .expect("Allocation instruction not found in block");
+        match alloc_ins {
+            TIR::CallExternFunction(_, f_box, _, _, _) => {
+                if *f_box.to_owned() == "toy_malloc_arr".to_string() {
+                    return "toy_free_arr".to_string();
+                }
+                return "toy_free".to_string();
+            },
+            _ => unreachable!()
+        };
+    }
+    fn follow_cfg_graph(
+        &mut self,
+        alloc_node: CfgNode,
+        func: &Function,
+        alloc: HeapAllocation,
+    ) -> Option<()> {
         match alloc_node {
             CfgNode::Return(return_block_id) => {
-                //NOTE: For now I am freeing at the end of the block, in the future it should be right after the ast reference
+                let idx = self.get_insertion_index(func, return_block_id);
                 self.builder.splice_free_before(
                     "user_main".to_string(),
                     return_block_id,
-                    func.body[return_block_id].ins.len() - 1,
-                    alloc.alloc_ins,
+                    idx,
+                    alloc.clone().alloc_ins,
+                    self.alloc_type_to_free_func(&alloc),
                 );
-                return Some(())
+                return Some(());
             } //for now return is the end of a graph and allocations can not be passed up the call chain
             CfgNode::ConditionalJump(block_id, true_box, false_box) => {
                 // Check if either branch references the allocation
                 let true_branch_refs = self.node_references_allocation(&true_box, &alloc);
                 let false_branch_refs = self.node_references_allocation(&false_box, &alloc);
-                
+
                 if !true_branch_refs && !false_branch_refs {
                     // Neither branch references it, free it at the end of this block
+                    let idx = self.get_insertion_index(func, block_id);
                     self.builder.splice_free_before(
                         "user_main".to_string(),
                         block_id,
-                        func.body[block_id].ins.len() - 1,
-                        alloc.alloc_ins,
+                        idx,
+                        alloc.clone().alloc_ins,
+                        self.alloc_type_to_free_func(&alloc)
                     );
                     return Some(());
                 }
-                
+
                 // If only one branch references it, follow only that branch
                 // If both branches reference it, we need to free in both paths
                 if true_branch_refs && !false_branch_refs {
-                    self.follow_cfg_graph(*true_box, func, alloc);
+                    self.follow_cfg_graph(*true_box, func, alloc.clone());
+                    // Free in false branch
+                    let false_block_id = match *false_box {
+                        CfgNode::ConditionalJump(id, _, _) => id,
+                        CfgNode::UnconditionalJump(id, _) => id,
+                        CfgNode::Return(id) => id,
+                    };
+                    self.builder.splice_free_before(
+                        "user_main".to_string(),
+                        false_block_id,
+                        0, // Insert at start of block
+                        alloc.clone().alloc_ins,
+                        self.alloc_type_to_free_func(&alloc)
+                    );
                     return Some(());
                 }
-                
+
                 if false_branch_refs && !true_branch_refs {
-                    self.follow_cfg_graph(*false_box, func, alloc);
+                    self.follow_cfg_graph(*false_box, func, alloc.clone());
+                    // Free in true branch
+                    let true_block_id = match *true_box {
+                        CfgNode::ConditionalJump(id, _, _) => id,
+                        CfgNode::UnconditionalJump(id, _) => id,
+                        CfgNode::Return(id) => id,
+                    };
+                    self.builder.splice_free_before(
+                        "user_main".to_string(),
+                        true_block_id,
+                        0, // Insert at start of block
+                        alloc.clone().alloc_ins,
+                        self.alloc_type_to_free_func(&alloc)
+                    );
                     return Some(());
                 }
-                
+
                 // Both branches reference it - follow both
                 self.follow_cfg_graph(*true_box, func, alloc.clone());
                 self.follow_cfg_graph(*false_box, func, alloc);
@@ -163,18 +241,20 @@ impl CTLA {
             CfgNode::UnconditionalJump(block_id, next) => {
                 // Check if the next node references the allocation
                 let next_refs = self.node_references_allocation(&next, &alloc);
-                
+
                 if !next_refs {
                     // Next node doesn't reference it, free it at the end of this block
+                    let idx = self.get_insertion_index(func, block_id);
                     self.builder.splice_free_before(
                         "user_main".to_string(),
                         block_id,
-                        func.body[block_id].ins.len() - 1,
-                        alloc.alloc_ins,
+                        idx,
+                        alloc.clone().alloc_ins,
+                        self.alloc_type_to_free_func(&alloc)
                     );
                     return Some(());
                 }
-                
+
                 // Continue following if it's still referenced
                 return self.follow_cfg_graph(*next, func, alloc);
             }
@@ -185,7 +265,7 @@ impl CTLA {
         let func = self
             .builder
             .funcs
-            .clone()//SAFETY: Just extracting the name, not editing the code of the clone
+            .clone() //SAFETY: Just extracting the name, not editing the code of the clone
             .into_iter()
             .find(|f| *f.name == "user_main")
             .unwrap(); //SAFETY: Will always be in the array

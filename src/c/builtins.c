@@ -70,9 +70,15 @@ char* _toy_format(int64_t input, int64_t datatype, int64_t degree) {
             char** element_strs = malloc(sizeof(char*) * array->length);
 
             for (int64_t i = 0; i < array->length; i++) {
-                element_strs[i] = _toy_format(array->arr[i].value, array->arr[i].type, degree - 1);
-                total_len += strlen(element_strs[i]);
-                if (i != array->length - 1) total_len += 2; // ", "
+                if (degree == 1){
+                    element_strs[i] = _toy_format(array->arr[i].value, array->arr[i].type - 4, degree - 1);
+                    total_len += strlen(element_strs[i]);
+                    if (i != array->length - 1) total_len += 2; // ", "
+                } else {
+                    element_strs[i] = _toy_format(array->arr[i].value, array->arr[i].type, degree - 1);
+                    total_len += strlen(element_strs[i]);
+                    if (i != array->length - 1) total_len += 2; // ", "
+                }
             }
 
             // allocate final buffer
@@ -508,4 +514,17 @@ int64_t toy_input(int64_t i_prompt){
     printf("%s", prompt);
     char* u_in = _read_line();
     return (int64_t) u_in;
+}
+
+void toy_free_arr(int64_t arr_ptr_int) {
+    ToyArr* arr = (ToyArr*)arr_ptr_int;
+    if (arr == NULL) return;
+    
+    // Free the inner buffer
+    if (arr->arr) {
+        toy_free(arr->arr); 
+    }
+    
+    // Free the struct
+    toy_free(arr);
 }
