@@ -1710,3 +1710,167 @@ fn test_tirgen_print_arr_lit() {
         }],
     );
 }
+
+#[test]
+fn test_tirgen_if_no_else_return() {
+    setup_tir!(ir,  r#"fn isEven(n: int): str {if n % 2 == 0 {return "it is";} return "it is not";} println(isEven(5));"#);
+    compare_tir(
+        ir,
+        vec![
+            Function {
+                params: vec![],
+                name: Box::new("user_main".to_string()),
+                body: vec![Block {
+                    id: 0,
+                    ins: vec![
+                        TIR::IConst(1, 5, TirType::I64),
+                        TIR::CallLocalFunction(
+                            2,
+                            Box::new("isEven".to_string()),
+                            vec![SSAValue {
+                                val: 1,
+                                ty: Some(TirType::I64),
+                            }],
+                            false,
+                            TirType::I8PTR,
+                        ),
+                        TIR::IConst(3, 2, TirType::I64),
+                        TIR::IConst(4, 0, TirType::I64),
+                        TIR::CallExternFunction(
+                            5,
+                            Box::new("toy_println".to_string()),
+                            vec![
+                                SSAValue {
+                                    val: 2,
+                                    ty: Some(TirType::I8PTR),
+                                },
+                                SSAValue {
+                                    val: 3,
+                                    ty: Some(TirType::I64),
+                                },
+                                SSAValue {
+                                    val: 4,
+                                    ty: Some(TirType::I64),
+                                },
+                            ],
+                            false,
+                            TirType::Void,
+                        ),
+                        TIR::IConst(6, 0, TirType::I64),
+                        TIR::Ret(
+                            7,
+                            SSAValue {
+                                val: 6,
+                                ty: Some(TirType::I64),
+                            },
+                        ),
+                    ],
+                }],
+                ret_type: TirType::I64,
+                ins_counter: 8,
+                heap_allocations: vec![],
+                heap_counter: 0,
+            },
+            Function {
+                params: vec![SSAValue {
+                    val: 0,
+                    ty: Some(TirType::I64),
+                }],
+                name: Box::new("isEven".to_string()),
+                body: vec![
+                    Block {
+                        id: 1,
+                        ins: vec![
+                            TIR::IConst(1, 2, TirType::I64),
+                            TIR::NumericInfix(
+                                2,
+                                SSAValue {
+                                    val: 0,
+                                    ty: Some(TirType::I64),
+                                },
+                                SSAValue {
+                                    val: 1,
+                                    ty: Some(TirType::I64),
+                                },
+                                NumericInfixOp::Modulo,
+                            ),
+                            TIR::IConst(3, 0, TirType::I64),
+                            TIR::BoolInfix(
+                                4,
+                                SSAValue {
+                                    val: 2,
+                                    ty: Some(TirType::I64),
+                                },
+                                SSAValue {
+                                    val: 3,
+                                    ty: Some(TirType::I64),
+                                },
+                                BoolInfixOp::Equals,
+                            ),
+                            TIR::JumpCond(
+                                5,
+                                SSAValue {
+                                    val: 4,
+                                    ty: Some(TirType::I1),
+                                },
+                                2,
+                                3,
+                            ),
+                        ],
+                    },
+                    Block {
+                        id: 2,
+                        ins: vec![
+                            TIR::GlobalString(6, Box::new("it is".to_string())),
+                            TIR::CallExternFunction(
+                                7,
+                                Box::new("toy_malloc".to_string()),
+                                vec![SSAValue {
+                                    val: 6,
+                                    ty: Some(TirType::I8PTR),
+                                }],
+                                true,
+                                TirType::I64,
+                            ),
+                            TIR::Ret(
+                                8,
+                                SSAValue {
+                                    val: 7,
+                                    ty: Some(TirType::I8PTR),
+                                },
+                            ),
+                            TIR::JumpBlockUnCond(9, 3),
+                        ],
+                    },
+                    Block {
+                        id: 3,
+                        ins: vec![
+                            TIR::GlobalString(10, Box::new("it is not".to_string())),
+                            TIR::CallExternFunction(
+                                11,
+                                Box::new("toy_malloc".to_string()),
+                                vec![SSAValue {
+                                    val: 10,
+                                    ty: Some(TirType::I8PTR),
+                                }],
+                                true,
+                                TirType::I64,
+                            ),
+                            TIR::Ret(
+                                12,
+                                SSAValue {
+                                    val: 11,
+                                    ty: Some(TirType::I8PTR),
+                                },
+                            ),
+                        ],
+                    },
+                ],
+                ret_type: TirType::I8PTR,
+                ins_counter: 13,
+                heap_allocations: vec![],
+                heap_counter: 0,
+            },
+        ],
+    );
+}

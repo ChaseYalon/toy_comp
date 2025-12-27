@@ -1,6 +1,5 @@
 #pragma once
 #include <stdint.h>
-#include <stdlib.h>
 #include "ctla/ctla.h"
 
 extern DebugHeap* DEBUG_HEAP;

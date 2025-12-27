@@ -491,8 +491,9 @@ impl TirBuilder {
             ty: Some(ret_type),
         };
         if is_allocator {
+            let curr_block_id = self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()].id;
             let alloc = HeapAllocation {
-                block: self.curr_block.unwrap(),
+                block: curr_block_id,
                 allocation_id: self._next_alloc_id(),
                 function: self.funcs[self.curr_func.unwrap()].name.clone(),
                 refs: vec![],
@@ -888,12 +889,14 @@ impl TirBuilder {
             TirType::Void,
         );
 
-        self.funcs
+        let func = self.funcs
             .iter_mut()
             .find(|f| *f.name == func_name)
-            .unwrap()
-            .body[block_id]
-            .ins
-            .insert(before_ins, ins); //that .unwrap worries me
+            .unwrap();
+        let block = func.body
+            .iter_mut()
+            .find(|b| b.id == block_id)
+            .unwrap();
+        block.ins.insert(before_ins, ins);
     }
 }

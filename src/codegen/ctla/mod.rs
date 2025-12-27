@@ -27,13 +27,20 @@ impl CTLA {
         };
     }
     fn build_cfg_graph(&self, func: String, idx: BlockId) -> CfgNode {
-        let block = &self
+        println!(
+            "\n\nBLOCKS\n\n{:#?}",
+            &self.builder.funcs.iter().find(|f| *f.name == func).unwrap().body
+        );
+        let block = self
             .builder
             .funcs
             .iter()
             .find(|f| *f.name == func)
             .unwrap()
-            .body[idx];
+            .body
+            .iter()
+            .find(|b| b.id == idx)
+            .unwrap();
 
         // Find the first terminator instruction (Ret, JumpCond, or JumpBlockUnCond)
         // This handles cases where a return is followed by unreachable code
@@ -76,7 +83,7 @@ impl CTLA {
                 if f_result.is_some() {
                     return f_result;
                 }
-                unreachable!() //best I can tell ths is unreachable
+                return None;
             }
             CfgNode::UnconditionalJump(id, node) => {
                 if *id == target_id {
@@ -122,7 +129,7 @@ impl CTLA {
     }
 
     fn get_insertion_index(&self, func: &Function, block_id: BlockId) -> usize {
-        let block = &func.body[block_id];
+        let block = func.body.iter().find(|b| b.id == block_id).unwrap();
         // Find the first terminator
         let idx = block.ins.iter().position(|ins| {
             matches!(
@@ -142,7 +149,7 @@ impl CTLA {
             .iter()
             .find(|f| *f.name == *alloc.function)
             .unwrap();
-        let block = &func.body[alloc.block];
+        let block = func.body.iter().find(|b| b.id == alloc.block).unwrap();
         // Find the instruction by its ID, not by using the ID as an array index
         let alloc_ins = block
             .ins
@@ -155,8 +162,8 @@ impl CTLA {
                     return "toy_free_arr".to_string();
                 }
                 return "toy_free".to_string();
-            },
-            _ => unreachable!()
+            }
+            _ => unreachable!(),
         };
     }
     fn follow_cfg_graph(
@@ -169,7 +176,7 @@ impl CTLA {
             CfgNode::Return(return_block_id) => {
                 let idx = self.get_insertion_index(func, return_block_id);
                 self.builder.splice_free_before(
-                    "user_main".to_string(),
+                    *func.name.clone(),
                     return_block_id,
                     idx,
                     alloc.clone().alloc_ins,
@@ -186,11 +193,11 @@ impl CTLA {
                     // Neither branch references it, free it at the end of this block
                     let idx = self.get_insertion_index(func, block_id);
                     self.builder.splice_free_before(
-                        "user_main".to_string(),
+                        *func.name.clone(),
                         block_id,
                         idx,
                         alloc.clone().alloc_ins,
-                        self.alloc_type_to_free_func(&alloc)
+                        self.alloc_type_to_free_func(&alloc),
                     );
                     return Some(());
                 }
@@ -206,11 +213,11 @@ impl CTLA {
                         CfgNode::Return(id) => id,
                     };
                     self.builder.splice_free_before(
-                        "user_main".to_string(),
+                        *func.name.clone(),
                         false_block_id,
                         0, // Insert at start of block
                         alloc.clone().alloc_ins,
-                        self.alloc_type_to_free_func(&alloc)
+                        self.alloc_type_to_free_func(&alloc),
                     );
                     return Some(());
                 }
@@ -224,11 +231,11 @@ impl CTLA {
                         CfgNode::Return(id) => id,
                     };
                     self.builder.splice_free_before(
-                        "user_main".to_string(),
+                        *func.name.clone(),
                         true_block_id,
                         0, // Insert at start of block
                         alloc.clone().alloc_ins,
-                        self.alloc_type_to_free_func(&alloc)
+                        self.alloc_type_to_free_func(&alloc),
                     );
                     return Some(());
                 }
@@ -246,11 +253,11 @@ impl CTLA {
                     // Next node doesn't reference it, free it at the end of this block
                     let idx = self.get_insertion_index(func, block_id);
                     self.builder.splice_free_before(
-                        "user_main".to_string(),
+                        *func.name.clone(),
                         block_id,
                         idx,
                         alloc.clone().alloc_ins,
-                        self.alloc_type_to_free_func(&alloc)
+                        self.alloc_type_to_free_func(&alloc),
                     );
                     return Some(());
                 }
@@ -261,15 +268,16 @@ impl CTLA {
         }
     }
     fn process_allocation(&mut self, alloc: HeapAllocation) -> Result<(), ToyError> {
-        //only use user_main for now
+        let func_name = *alloc.function.clone();
         let func = self
             .builder
             .funcs
             .clone() //SAFETY: Just extracting the name, not editing the code of the clone
             .into_iter()
-            .find(|f| *f.name == "user_main")
+            .find(|f| *f.name == func_name)
             .unwrap(); //SAFETY: Will always be in the array
-        let cfg_graph = self.build_cfg_graph("user_main".to_string(), 0);
+        let first_block_id = func.body.first().map(|b| b.id).unwrap_or(0);
+        let cfg_graph = self.build_cfg_graph(func_name, first_block_id);
         let alloc_block_id = alloc.block;
         let alloc_node = self.find_cfg_node(cfg_graph, alloc_block_id).unwrap(); //SAFETY: Should always be found
         self.follow_cfg_graph(alloc_node, &func, alloc);

@@ -82,3 +82,33 @@ fn test_ctla_arrays() {
     compile_code_aot!(output, "let arr = [1, 2, 3]; println(arr);", "ctla_arr");
     assert!(!output.contains("FAIL_TEST"))
 }
+
+#[test]
+fn test_ctla_multi_func() {
+    compile_code_aot!(
+        output,
+        r#"fn custom_concat(a: str, b: str): str {return a + b;} let x = custom_concat("hello", "world");"#,
+        "ctla_func"
+    );
+    assert!(!output.contains("FAIL_TEST"))
+}
+
+#[test]
+fn test_ctla_string_arrays() {
+    compile_code_aot!(
+        output,
+        r#"let arr: str[][] = [["hi", "bye"], ["hello", "world"]]; arr[1][0] = "hallo"; println(arr);"#,
+        "ctla_str_arr"
+    );
+    assert!(!output.contains("FAIL_TEST"))
+}
+
+#[test]
+fn test_ctla_multi_alloc_return() {
+    compile_code_aot!(
+        output,
+        r#"fn isEven(n: int): str {if n % 2 == 0 {return "it is";} return "it is not";} println(isEven(5));"#,
+        "ctla_multi_alloc_return"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+}
