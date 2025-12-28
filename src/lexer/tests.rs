@@ -848,7 +848,9 @@ fn test_lexer_struct_literal_and_ref() {
             Token::Semicolon,
             Token::VarRef(Box::new("println".to_string())),
             Token::LParen,
-            Token::StructRef(Box::new("a".to_string()), vec!["b".to_string()]),
+            Token::VarRef(Box::new("a".to_string())),
+            Token::Dot,
+            Token::VarRef(Box::new("b".to_string())),
             Token::RParen,
             Token::Semicolon
         ]
@@ -892,7 +894,9 @@ fn test_lexer_problematic_struct_dec() {
             Token::Semicolon,
             Token::VarRef(Box::new("println".to_string())),
             Token::LParen,
-            Token::StructRef(Box::new("a".to_string()), vec!["x".to_string()]),
+            Token::VarRef(Box::new("a".to_string())),
+            Token::Dot,
+            Token::VarRef(Box::new("x".to_string())),
             Token::RParen,
             Token::Semicolon
         ]
@@ -983,10 +987,11 @@ fn test_lexer_nested_struct_ref() {
             Token::Semicolon,
             Token::VarRef(Box::new("println".to_string())),
             Token::LParen,
-            Token::StructRef(
-                Box::new("a".to_string()),
-                vec!["fii".to_string(), "bar".to_string()]
-            ),
+            Token::VarRef(Box::new("a".to_string())),
+            Token::Dot,
+            Token::VarRef(Box::new("fii".to_string())),
+            Token::Dot,
+            Token::VarRef(Box::new("bar".to_string())),
             Token::RParen,
             Token::Semicolon
         ]
@@ -1017,7 +1022,9 @@ fn test_lexer_struct_reassign() {
             Token::IntLit(9),
             Token::RBrace,
             Token::Semicolon,
-            Token::StructRef(Box::new("b".to_string()), vec!["a".to_string()]),
+            Token::VarRef(Box::new("b".to_string())),
+            Token::Dot,
+            Token::VarRef(Box::new("a".to_string())),
             Token::Assign,
             Token::IntLit(4),
             Token::Semicolon
@@ -1073,7 +1080,9 @@ fn test_lexer_nd_struct_reassign_variable() {
             Token::IntLit(2),
             Token::RBrace,
             Token::Semicolon,
-            Token::StructRef(Box::new("a".to_string()), vec!["bar".to_string()]),
+            Token::VarRef(Box::new("a".to_string())),
+            Token::Dot,
+            Token::VarRef(Box::new("bar".to_string())),
             Token::Assign,
             Token::VarRef(Box::new("fee".to_string())),
             Token::Semicolon,
@@ -1129,4 +1138,75 @@ fn test_lexer_stupid_bug() {
     let mut l = Lexer::new();
     let toks = l.lex("true".to_string()).unwrap();
     assert_eq!(toks, vec![Token::BoolLit(true)])
+}
+
+#[test]
+fn test_lexer_for_block() {
+    let mut l = Lexer::new();
+    let toks = l
+        .lex(
+            "
+    struct Point{
+        x: int, 
+        y: int
+    }
+    for Point {
+        fn print_point() {println(this.x)}
+    }
+    let origin = Point{x: 0, y: 0};
+    point.print_point();"
+                .to_string(),
+        )
+        .unwrap();
+    assert_eq!(
+        toks,
+        vec![
+            Token::Struct(Box::new("Point".to_string())),
+            Token::LBrace,
+            Token::VarRef(Box::new("x".to_string())),
+            Token::Colon,
+            Token::Type(TypeTok::Int),
+            Token::Comma,
+            Token::VarRef(Box::new("y".to_string())),
+            Token::Colon,
+            Token::Type(TypeTok::Int),
+            Token::RBrace,
+            Token::For,
+            Token::VarRef(Box::new("Point".to_string())),
+            Token::LBrace,
+            Token::Func,
+            Token::VarName(Box::new("print_point".to_string())),
+            Token::LParen,
+            Token::RParen,
+            Token::LBrace,
+            Token::VarRef(Box::new("println".to_string())),
+            Token::LParen,
+            Token::VarRef(Box::new("this".to_string())),
+            Token::Dot,
+            Token::VarRef(Box::new("x".to_string())),
+            Token::RParen,
+            Token::RBrace,
+            Token::RBrace,
+            Token::Let,
+            Token::VarName(Box::new("origin".to_string())),
+            Token::Assign,
+            Token::VarRef(Box::new("Point".to_string())),
+            Token::LBrace,
+            Token::VarRef(Box::new("x".to_string())),
+            Token::Colon,
+            Token::IntLit(0),
+            Token::Comma,
+            Token::VarRef(Box::new("y".to_string())),
+            Token::Colon,
+            Token::IntLit(0),
+            Token::RBrace,
+            Token::Semicolon,
+            Token::VarRef(Box::new("point".to_string())),
+            Token::Dot,
+            Token::VarRef(Box::new("print_point".to_string())),
+            Token::LParen,
+            Token::RParen,
+            Token::Semicolon,
+        ]
+    )
 }

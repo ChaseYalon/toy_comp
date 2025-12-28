@@ -19,29 +19,36 @@ impl Boxer {
     }
     fn pre_process(&self, input: &Vec<Token>) -> Vec<Token> {
         let mut toks: Vec<Token> = Vec::new();
-        for (i, t) in input.iter().enumerate() {
+        let mut i = 0usize;
+        while i < input.len() {
+            let t = input[i].clone();
+            // compound ops
             if t.tok_type() == "CompoundPlus" {
                 toks.push(Token::Assign);
                 toks.push(input[i - 1].clone());
                 toks.push(Token::Plus);
+                i += 1;
                 continue;
             }
             if t.tok_type() == "CompoundMinus" {
                 toks.push(Token::Assign);
                 toks.push(input[i - 1].clone());
                 toks.push(Token::Minus);
+                i += 1;
                 continue;
             }
             if t.tok_type() == "CompoundMultiply" {
                 toks.push(Token::Assign);
                 toks.push(input[i - 1].clone());
                 toks.push(Token::Multiply);
+                i += 1;
                 continue;
             }
             if t.tok_type() == "CompoundDivide" {
                 toks.push(Token::Assign);
                 toks.push(input[i - 1].clone());
                 toks.push(Token::Divide);
+                i += 1;
                 continue;
             }
             if t.tok_type() == "PlusPlus" {
@@ -49,6 +56,7 @@ impl Boxer {
                 toks.push(input[i - 1].clone());
                 toks.push(Token::Plus);
                 toks.push(Token::IntLit(1));
+                i += 1;
                 continue;
             }
             if t.tok_type() == "CompoundMinus" {
@@ -56,9 +64,36 @@ impl Boxer {
                 toks.push(input[i - 1].clone());
                 toks.push(Token::Minus);
                 toks.push(Token::IntLit(1));
+                i += 1;
                 continue;
             }
-            toks.push(t.clone());
+
+            // collapse dotted field access sequences into StructRef tokens
+            if i + 2 < input.len()
+                && input[i].tok_type() == "VarRef"
+                && input[i + 1].tok_type() == "Dot"
+                && input[i + 2].tok_type() == "VarRef"
+            {
+                if let Token::VarRef(name) = input[i].clone() {
+                    let s_name = *name;
+                    let mut keys: Vec<String> = Vec::new();
+                    i += 1; // move to the dot
+                    while i + 1 < input.len()
+                        && input[i].tok_type() == "Dot"
+                        && input[i + 1].tok_type() == "VarRef"
+                    {
+                        if let Token::VarRef(k) = input[i + 1].clone() {
+                            keys.push(*k);
+                        }
+                        i += 2;
+                    }
+                    toks.push(Token::StructRef(Box::new(s_name), keys));
+                    continue;
+                }
+            }
+
+            toks.push(t);
+            i += 1;
         }
         return toks;
     }

@@ -352,6 +352,7 @@ dependencies = [
  "bindgen",
  "cmake",
  "inkwell",
+ "llvm-sys",
  "ordered-float",
  "thiserror",
 ]

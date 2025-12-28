@@ -1713,7 +1713,10 @@ fn test_tirgen_print_arr_lit() {
 
 #[test]
 fn test_tirgen_if_no_else_return() {
-    setup_tir!(ir,  r#"fn isEven(n: int): str {if n % 2 == 0 {return "it is";} return "it is not";} println(isEven(5));"#);
+    setup_tir!(
+        ir,
+        r#"fn isEven(n: int): str {if n % 2 == 0 {return "it is";} return "it is not";} println(isEven(5));"#
+    );
     compare_tir(
         ir,
         vec![

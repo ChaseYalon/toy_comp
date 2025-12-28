@@ -182,7 +182,9 @@ impl Lexer {
             if self.lex_keyword("struct", Token::Struct(Box::new("".to_string()))) {
                 continue;
             }
-
+            if self.lex_keyword("for", Token::For) {
+                continue;
+            }
             if c.is_ascii_digit() || (c == '.' && self.num_buf.len() > 0) {
                 debug!(targets: ["lexer_verbose"], "In ascii print");
                 self.num_buf.push(c);
@@ -191,39 +193,40 @@ impl Lexer {
             }
             if c == '.' {
                 self.flush();
-                if let Some(Token::VarName(name)) | Some(Token::VarRef(name)) = self.toks.pop() {
-                    let mut field_names = Vec::new();
+                if self.toks.len() == 0 {
+                    return Err(ToyError::new(ToyErrorType::MalformedFieldName));
+                }
+                match self.toks.last().unwrap() {
+                    Token::VarName(_) | Token::VarRef(_) => {}
+                    _ => return Err(ToyError::new(ToyErrorType::MalformedFieldName)),
+                }
+                let len = self.chars.len();
+                loop {
+                    self.cp += 1;
+                    let mut field_name = String::new();
 
-                    //keep consuming as long as we can so foo.fee.bar works
-                    loop {
+                    while self.cp < self.chars.len()
+                        && (self.chars[self.cp].is_alphanumeric() || self.chars[self.cp] == '_')
+                    {
+                        field_name.push(self.chars[self.cp]);
                         self.cp += 1;
-                        let mut field_name = String::new();
-
-                        while self.cp < self.chars.len()
-                            && (self.chars[self.cp].is_alphanumeric() || self.chars[self.cp] == '_')
-                        {
-                            field_name.push(self.chars[self.cp]);
-                            self.cp += 1;
-                        }
-
-                        if field_name.is_empty() {
-                            return Err(ToyError::new(ToyErrorType::MalformedFieldName)); //is this a good error
-                        }
-
-                        field_names.push(field_name);
-
-                        if self.cp < self.chars.len() && self.chars[self.cp] == '.' {
-                            continue;
-                        } else {
-                            break;
-                        }
                     }
 
-                    self.toks.push(Token::StructRef(name, field_names));
-                    continue;
-                } else {
-                    return Err(ToyError::new(ToyErrorType::MalformedFieldName)); // is this a good error
+                    if field_name.is_empty() {
+                        return Err(ToyError::new(ToyErrorType::MalformedFieldName));
+                    }
+
+                    self.toks.push(Token::Dot);
+                    self.toks.push(Token::VarRef(Box::new(field_name)));
+
+                    if self.cp < len && self.chars[self.cp] == '.' {
+                        continue;
+                    } else {
+                        break;
+                    }
                 }
+
+                continue;
             }
 
             if c == '+' {
@@ -471,18 +474,6 @@ impl Lexer {
             let proto_output: String = self.str_buf.clone().into_iter().collect();
             let len = self.toks.clone().len();
             self.toks[len - 1] = Token::Struct(Box::new(proto_output));
-            self.str_buf = Vec::new();
-            return;
-        }
-        if !(self.toks.len() == 0) && self.toks.last().unwrap().is_struct_ref() {
-            let proto_output: String = self.str_buf.clone().into_iter().collect();
-            let len = self.toks.clone().len();
-            let last = self.toks.last().unwrap();
-            let (name, _) = match last {
-                Token::StructRef(n, k) => (*n.clone(), k[0].clone()),
-                _ => unreachable!(),
-            };
-            self.toks[len - 1] = Token::StructRef(Box::new(name), vec![proto_output]);
             self.str_buf = Vec::new();
             return;
         }

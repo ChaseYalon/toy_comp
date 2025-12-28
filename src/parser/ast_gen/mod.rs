@@ -32,6 +32,10 @@ impl AstGenerator {
 
         map.insert(Token::StringLit(Box::new("".to_string())).tok_type(), 100);
         map.insert(Token::VarRef(Box::new("".to_string())).tok_type(), 100);
+        map.insert(
+            Token::StructRef(Box::new("".to_string()), Vec::new()).tok_type(),
+            100,
+        );
         map.insert(Token::IntLit(0).tok_type(), 100);
         map.insert(Token::BoolLit(true).tok_type(), 100);
         map.insert(Token::StringLit(Box::new("".to_string())).tok_type(), 100);
