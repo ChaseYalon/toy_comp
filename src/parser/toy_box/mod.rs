@@ -39,7 +39,7 @@ impl fmt::Display for TBox {
             f,
             "{}",
             match self {
-                TBox::Expr(v, s) => format!("TBox_expr: {:?}, Litera({})", v, s),
+                TBox::Expr(v, s) => format!("TBox_expr: {:?}, Literal({})", v, s),
                 TBox::VarDec(name, t, val, s) => format!(
                     "TBox_VAR_DEC: Name({}), Val({:?}), Type({:?}) Literal({})",
                     *name, val, t, s
