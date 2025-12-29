@@ -823,3 +823,65 @@ fn test_boxer_struct_func_param() {
         ]
     )
 }
+
+#[test]
+fn test_boxer_struct_method_conversion() {
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let toks = l.lex(
+        "struct Point{x: int, y: int}; for Point { fn print_point() { println(this.x) } } let me = Point{x: 0, y: 0}; me.print_point();"
+            .to_string(),
+    );
+    let boxes = b.box_toks(toks.unwrap());
+    assert_eq!(
+        boxes.unwrap(),
+        vec![
+            TBox::StructInterface(
+                Box::new("Point".to_string()),
+                Box::new(BTreeMap::from([
+                    ("x".to_string(), TypeTok::Int),
+                    ("y".to_string(), TypeTok::Int),
+                ]))
+            ),
+            TBox::FuncDec(
+                Token::VarName(Box::new("Point:::print_point".to_string())),
+                vec![TBox::FuncParam(
+                    Token::VarRef(Box::new("this".to_string())),
+                    TypeTok::Struct(BTreeMap::from([
+                        ("x".to_string(), Box::new(TypeTok::Int)),
+                        ("y".to_string(), Box::new(TypeTok::Int)),
+                    ]))
+                )],
+                TypeTok::Void,
+                vec![TBox::Expr(vec![
+                    Token::VarRef(Box::new("println".to_string())),
+                    Token::LParen,
+                    Token::StructRef(Box::new("this".to_string()), vec!["x".to_string()]),
+                    Token::RParen,
+                ])]
+            ),
+            TBox::VarDec(
+                Token::VarName(Box::new("me".to_string())),
+                None,
+                vec![
+                    Token::VarRef(Box::new("Point".to_string())),
+                    Token::LBrace,
+                    Token::VarRef(Box::new("x".to_string())),
+                    Token::Colon,
+                    Token::IntLit(0),
+                    Token::Comma,
+                    Token::VarRef(Box::new("y".to_string())),
+                    Token::Colon,
+                    Token::IntLit(0),
+                    Token::RBrace,
+                ]
+            ),
+            TBox::Expr(vec![
+                Token::VarRef(Box::new("print_point".to_string())),
+                Token::LParen,
+                Token::VarRef(Box::new("me".to_string())),
+                Token::RParen
+            ])
+        ]
+    )
+}

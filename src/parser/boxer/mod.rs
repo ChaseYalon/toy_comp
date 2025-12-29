@@ -250,6 +250,44 @@ impl Boxer {
                 i = while_end;
                 continue;
             }
+            if ty == "For" && brace_depth == 0 && paren_depth == 0 {
+                if !curr.is_empty() {
+                    boxes.push(self.box_statement(curr.clone())?);
+                    curr.clear();
+                }
+
+                let mut for_end = i + 1;
+
+                while for_end < input.len() && input[for_end].tok_type() != "LBrace" {
+                    for_end += 1;
+                }
+
+                if for_end >= input.len() {
+                    return Err(ToyError::new(ToyErrorType::MalformedStructInterface));
+                }
+
+                let mut depth = 1;
+                for_end += 1; // Move past the opening brace
+
+                while for_end < input.len() && depth > 0 {
+                    if input[for_end].tok_type() == "LBrace" {
+                        depth += 1;
+                    } else if input[for_end].tok_type() == "RBrace" {
+                        depth -= 1;
+                    }
+                    for_end += 1;
+                }
+
+                if depth != 0 {
+                    return Err(ToyError::new(ToyErrorType::UnclosedDelimiter));
+                }
+
+                let for_slice = input[i..for_end].to_vec();
+                let mut new_boxes = self.box_for_block(&for_slice)?;
+                boxes.append(&mut new_boxes);
+                i = for_end;
+                continue;
+            }
             if ty == "Func" && brace_depth == 0 && paren_depth == 0 {
                 if !curr.is_empty() {
                     boxes.push(self.box_statement(curr.clone())?);
@@ -359,25 +397,32 @@ impl Boxer {
         }
         let boxed_params: Vec<TBox> = self.box_params(unboxed_params)?;
 
-        if input[return_type_begin + 1].tok_type() != "Colon" {
-            return Err(ToyError::new(ToyErrorType::MalformedFunctionDeclaration));
-        }
-        if input[return_type_begin + 2].tok_type() != "Type" {
-            return Err(ToyError::new(ToyErrorType::MalformedFunctionDeclaration));
-        }
-        if input[return_type_begin + 3].tok_type() != "LBrace" {
-            return Err(ToyError::new(ToyErrorType::MalformedFunctionDeclaration));
-        }
-        let body_toks = &input[return_type_begin + 4..input.len() - 1];
+        let (return_type, body_start_idx) = if input[return_type_begin + 1].tok_type() == "LBrace" {
+            (TypeTok::Void, return_type_begin + 2)
+        } else {
+            if input[return_type_begin + 1].tok_type() != "Colon" {
+                return Err(ToyError::new(ToyErrorType::MalformedFunctionDeclaration));
+            }
+            if input[return_type_begin + 2].tok_type() != "Type" {
+                return Err(ToyError::new(ToyErrorType::MalformedFunctionDeclaration));
+            }
+            if input[return_type_begin + 3].tok_type() != "LBrace" {
+                return Err(ToyError::new(ToyErrorType::MalformedFunctionDeclaration));
+            }
+            let t = match input[return_type_begin + 2].clone() {
+                Token::Type(t) => t,
+                _ => return Err(ToyError::new(ToyErrorType::MalformedFunctionDeclaration)),
+            };
+            (t, return_type_begin + 4)
+        };
+
+        let body_toks = &input[body_start_idx..input.len() - 1];
 
         if input.last().unwrap().tok_type() != "RBrace" {
             return Err(ToyError::new(ToyErrorType::UnclosedDelimiter));
         }
         let body_boxes: Vec<TBox> = self.box_group(body_toks.to_vec())?;
-        let return_type = match input[return_type_begin + 2].clone() {
-            Token::Type(t) => t,
-            _ => return Err(ToyError::new(ToyErrorType::MalformedFunctionDeclaration)),
-        };
+
         return Ok(TBox::FuncDec(
             func_name,
             boxed_params,
@@ -425,6 +470,56 @@ impl Boxer {
 
         return Ok(TBox::StructInterface(Box::new(name), Box::new(params)));
     }
+
+    fn box_for_block(&mut self, input: &Vec<Token>) -> Result<Vec<TBox>, ToyError> {
+        if input.len() < 4 {
+            return Err(ToyError::new(ToyErrorType::MalformedStructInterface));
+        }
+
+        let struct_name = match &input[1] {
+            Token::VarRef(n) => *n.clone(),
+            _ => return Err(ToyError::new(ToyErrorType::MalformedStructInterface)),
+        };
+
+        let struct_fields = match self.interfaces.get(&struct_name) {
+            Some(fields) => fields.clone(),
+            None => return Err(ToyError::new(ToyErrorType::UndefinedStruct)),
+        };
+
+        let boxed_fields: BTreeMap<String, Box<TypeTok>> = struct_fields
+            .into_iter()
+            .map(|(k, v)| (k, Box::new(v)))
+            .collect();
+
+        let this_type = TypeTok::Struct(boxed_fields);
+
+        let body_toks = input[3..input.len() - 1].to_vec();
+        let boxed_body = self.box_group(body_toks)?;
+
+        let mut modified_boxes = Vec::new();
+
+        for b in boxed_body {
+            match b {
+                TBox::FuncDec(mut name, mut params, ret_type, body) => {
+                    let literal_name = match name {
+                        Token::VarName(n) => *n,
+                        _ => unreachable!(),
+                    };
+                    name = Token::VarName(Box::new(struct_name.clone() + ":::" + &literal_name));
+                    let this_param = TBox::FuncParam(
+                        Token::VarRef(Box::new("this".to_string())),
+                        this_type.clone(),
+                    );
+                    params.insert(0, this_param);
+                    modified_boxes.push(TBox::FuncDec(name, params, ret_type, body));
+                }
+                _ => modified_boxes.push(b),
+            }
+        }
+
+        Ok(modified_boxes)
+    }
+
     fn box_statement(&mut self, toks: Vec<Token>) -> Result<TBox, ToyError> {
         let first = toks[0].tok_type();
 
@@ -499,6 +594,38 @@ impl Boxer {
                 field_names,
                 to_reassign_toks,
             ));
+        }
+
+        if toks.len() > 1 && first == "StructRef" && toks[1].tok_type() == "LParen" {
+            let (struct_name, field_names) = match toks[0].clone() {
+                Token::StructRef(sn, fen) => (*sn, fen),
+                _ => unreachable!(),
+            };
+
+            if !field_names.is_empty() {
+                let method_name = field_names.last().unwrap().clone();
+                let object_tok = if field_names.len() == 1 {
+                    Token::VarRef(Box::new(struct_name))
+                } else {
+                    Token::StructRef(
+                        Box::new(struct_name),
+                        field_names[0..field_names.len() - 1].to_vec(),
+                    )
+                };
+
+                let mut new_toks = Vec::new();
+                new_toks.push(Token::VarRef(Box::new(method_name)));
+                new_toks.push(Token::LParen);
+                new_toks.push(object_tok);
+
+                if toks[2].tok_type() != "RParen" {
+                    new_toks.push(Token::Comma);
+                }
+
+                new_toks.extend_from_slice(&toks[2..]);
+
+                return Ok(TBox::Expr(new_toks));
+            }
         }
 
         return Ok(TBox::Expr(toks));

@@ -108,6 +108,55 @@ impl AstToIrConverter {
             }
             Ast::StructLit(_, _) => Ok(TypeTok::Int),
             Ast::Not(_) => Ok(TypeTok::Bool),
+            Ast::StructRef(s, fields) => {
+                let mut current_ty = scope
+                    .as_ref()
+                    .borrow()
+                    .get_var(s)?
+                    .ty
+                    .clone()
+                    .ok_or_else(|| ToyError::new(ToyErrorType::VariableNotAStruct))?;
+
+                for field_name in fields {
+                    let field_types = match &current_ty {
+                        TirType::StructInterface(types) => types.clone(),
+                        _ => return Err(ToyError::new(ToyErrorType::VariableNotAStruct)),
+                    };
+
+                    let mut field_idx: Option<usize> = None;
+                    let mut field_tir_ty: Option<TirType> = None;
+
+                    for (_, (field_map, iface_type)) in &self.interfaces {
+                        if let TirType::StructInterface(iface_fields) = iface_type {
+                            if iface_fields == &field_types {
+                                if let Some(&idx) =
+                                    (field_map as &HashMap<String, usize>).get(field_name)
+                                {
+                                    field_idx = Some(idx);
+                                    field_tir_ty = Some(field_types[idx].clone());
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    let _idx =
+                        field_idx.ok_or_else(|| ToyError::new(ToyErrorType::KeyNotOnStruct))?;
+                    current_ty =
+                        field_tir_ty.ok_or_else(|| ToyError::new(ToyErrorType::KeyNotOnStruct))?;
+                }
+
+                // Convert final TirType -> TypeTok
+                match current_ty {
+                    TirType::I64 => Ok(TypeTok::Int),
+                    TirType::I1 => Ok(TypeTok::Bool),
+                    TirType::F64 => Ok(TypeTok::Float),
+                    TirType::I8PTR => Ok(TypeTok::Str),
+                    // If the final access is still a struct, there's no explicit TypeTok here yet.
+                    TirType::StructInterface(_) => Ok(TypeTok::Int),
+                    TirType::Void => Ok(TypeTok::Void),
+                }
+            }
             _ => Err(ToyError::new(ToyErrorType::TypeIdNotAssigned)),
         }
     }
@@ -498,9 +547,14 @@ impl AstToIrConverter {
                 .set_var(name, ssa_v.clone(), param_type);
             ssa_params.push(ssa_v);
         }
-        self.builder.new_func(Box::new(name), ssa_params, ret_type);
+        self.builder
+            .new_func(Box::new(name), ssa_params, ret_type.clone());
         for stmt in body {
             self.compile_stmt(stmt, &func_scope)?;
+        }
+        // Add implicit void return for void functions
+        if ret_type == TypeTok::Void {
+            self.builder.ret(SSAValue { val: 0, ty: None });
         }
         // Switch back to user_main after compiling the function
         self.builder.switch_fn("user_main".to_string())?;

@@ -7,10 +7,10 @@ use inkwell::{
     context::Context,
     module::{Linkage, Module},
     targets::{TargetMachineOptions, TargetTriple},
-    types::{BasicMetadataTypeEnum, BasicTypeEnum, FunctionType},
+    types::{BasicMetadataTypeEnum, BasicTypeEnum, FunctionType, StructType},
     values::{
         BasicMetadataValueEnum, BasicValue, BasicValueEnum, FloatValue, FunctionValue, PhiValue,
-        ValueKind,
+        PointerValue, ValueKind,
     },
 };
 use inkwell::{FloatPredicate, IntPredicate};
@@ -45,6 +45,8 @@ pub struct LlvmGenerator<'a> {
     curr_func: Option<FunctionValue<'a>>,
     curr_tir_func: Option<Function>,
     phi_fixups: Vec<(PhiValue<'a>, String, BlockId, SSAValue)>,
+    ///Maps TirType Interface -> (LLVM Struct Type, INTERFACE name)
+    struct_interfaces: HashMap<TirType, (StructType<'a>, String)>,
 }
 impl<'a> LlvmGenerator<'a> {
     pub fn new(ctx: &'a Context, main_module: Module<'a>) -> LlvmGenerator<'a> {
@@ -57,6 +59,7 @@ impl<'a> LlvmGenerator<'a> {
             curr_func: None,
             curr_tir_func: None,
             phi_fixups: vec![],
+            struct_interfaces: HashMap::new(),
         };
     }
     fn get_ssa_val(&self, func_name: &str, ssa: SSAValue) -> BasicValueEnum<'a> {
@@ -605,7 +608,159 @@ impl<'a> LlvmGenerator<'a> {
                     },
                 ))
             }
-            _ => todo!("Chase you have not implemented {:?} ins yet", inst),
+            TIR::CreateStructInterface(_, boxed_name, ty) => {
+                let types = match ty.clone() {
+                    TirType::StructInterface(typ) => typ,
+                    _ => unreachable!(),
+                };
+
+                let custom_struct = self.ctx.opaque_struct_type(&*boxed_name);
+                let mut llvm_types = vec![];
+                for ty in types {
+                    llvm_types.push(self._tir_to_llvm_type(ty));
+                }
+                custom_struct.set_body(&llvm_types, false);
+                self.struct_interfaces
+                    .insert(ty, (custom_struct, *boxed_name));
+
+                None
+            }
+            TIR::CreateStructLiteral(id, ty, vals) => {
+                let (struct_type, interface_name) = self
+                    .struct_interfaces
+                    .get(&ty)
+                    .ok_or_else(|| ToyError::new(ToyErrorType::MissingInstruction))?;
+
+                let allocated_struct = builder.build_alloca(*struct_type, interface_name)?;
+
+                let zero = self.ctx.i32_type().const_int(0, false);
+
+                for (i, val) in vals.iter().enumerate() {
+                    let idx = self.ctx.i32_type().const_int(i as u64, false);
+
+                    let field_ptr = unsafe {
+                        builder.build_gep(
+                            *struct_type,
+                            allocated_struct,
+                            &[zero, idx],
+                            &format!("field_{i}_ptr"),
+                        )?
+                    };
+
+                    builder.build_store(
+                        field_ptr,
+                        self.get_ssa_val(&curr_func_name, val.to_owned()),
+                    )?;
+                }
+                let val_ptr: BasicValueEnum<'_> = allocated_struct.into();
+                self.tir_to_val.insert(
+                    (
+                        curr_func_name.clone(),
+                        SSAValue {
+                            val: id,
+                            ty: Some(ty.clone()),
+                        },
+                    ),
+                    val_ptr,
+                );
+
+                Some((
+                    val_ptr,
+                    SSAValue {
+                        val: id,
+                        ty: Some(ty),
+                    },
+                ))
+            }
+            TIR::ReadStructLiteral(id, struct_ptr, idx) => {
+                let struct_tir_type = struct_ptr
+                    .clone()
+                    .ty
+                    .ok_or_else(|| return ToyError::new(ToyErrorType::UndefinedStruct))?;
+                let field_type = if let TirType::StructInterface(field_types) = &struct_tir_type {
+                    field_types
+                        .get(idx as usize)
+                        .cloned()
+                        .ok_or_else(|| ToyError::new(ToyErrorType::UndefinedStruct))?
+                } else {
+                    return Err(ToyError::new(ToyErrorType::UndefinedStruct));
+                };
+                let (struct_type, _interface_name) =
+                    self.struct_interfaces
+                        .get(&struct_tir_type)
+                        .ok_or_else(|| return ToyError::new(ToyErrorType::UndefinedStruct))?;
+                let struct_literal = self.get_ssa_val(&curr_func_name, struct_ptr.clone());
+                let zero = self.ctx.i32_type().const_int(0u64, false);
+                let compiled_idx = self.ctx.i32_type().const_int(idx, false);
+                let struct_literal_as_struct: PointerValue = match struct_literal {
+                    BasicValueEnum::PointerValue(p) => p,
+                    _ => panic!("Got {:?}", struct_literal.get_type()),
+                };
+                let field_ptr = unsafe {
+                    builder.build_gep(
+                        *struct_type,
+                        struct_literal_as_struct,
+                        &[zero, compiled_idx],
+                        &format!("field_{idx}_ptr"),
+                    )?
+                };
+                let field_val = builder.build_load(
+                    struct_type
+                        .get_field_type_at_index(idx as u32)
+                        .ok_or_else(|| ToyError::new(ToyErrorType::UndefinedStruct))?,
+                    field_ptr,
+                    &format!("field_{idx}_val"),
+                )?;
+                Some((
+                    field_val,
+                    SSAValue {
+                        val: id,
+                        ty: Some(field_type),
+                    },
+                ))
+            }
+            TIR::WriteStructLiteral(id, struct_ptr, field_idx, new_val) => {
+                let struct_tir_type = struct_ptr
+                    .clone()
+                    .ty
+                    .ok_or_else(|| return ToyError::new(ToyErrorType::UndefinedStruct))?;
+                let field_type = if let TirType::StructInterface(field_types) = &struct_tir_type {
+                    field_types
+                        .get(field_idx as usize)
+                        .cloned()
+                        .ok_or_else(|| ToyError::new(ToyErrorType::UndefinedStruct))?
+                } else {
+                    return Err(ToyError::new(ToyErrorType::UndefinedStruct));
+                };
+                let (struct_type, _interface_name) =
+                    self.struct_interfaces
+                        .get(&struct_tir_type)
+                        .ok_or_else(|| return ToyError::new(ToyErrorType::UndefinedStruct))?;
+                let struct_literal = self.get_ssa_val(&curr_func_name, struct_ptr.clone());
+                let value_to_store = self.get_ssa_val(&curr_func_name, new_val.clone());
+                let zero = self.ctx.i32_type().const_int(0u64, false);
+                let compiled_idx = self.ctx.i32_type().const_int(field_idx, false);
+                let struct_literal_as_struct: PointerValue = match struct_literal {
+                    BasicValueEnum::PointerValue(p) => p,
+                    _ => unreachable!(),
+                };
+                let field_ptr = unsafe {
+                    builder.build_gep(
+                        *struct_type,
+                        struct_literal_as_struct,
+                        &[zero, compiled_idx],
+                        &format!("field_{field_idx}_ptr"),
+                    )?
+                };
+                builder.build_store(field_ptr, value_to_store)?;
+                Some((
+                    value_to_store,
+                    SSAValue {
+                        val: id,
+                        ty: Some(field_type),
+                    },
+                ))
+            }
         };
         if let Some((llvm_ir, val)) = res {
             self.tir_to_val.insert((curr_func_name, val), llvm_ir);
@@ -638,7 +793,11 @@ impl<'a> LlvmGenerator<'a> {
                     TirType::F64 => self.ctx.f64_type().into(),
                     TirType::I1 => self.ctx.bool_type().into(),
                     TirType::I8PTR => self.ctx.ptr_type(AddressSpace::default()).into(),
-                    _ => todo!("Chase you have not implemented this param type yet"),
+                    TirType::StructInterface(_) => {
+                        // Structs are passed as pointers for consistency with CreateStructLiteral
+                        self.ctx.ptr_type(AddressSpace::default()).into()
+                    }
+                    _ => todo!("Chase you have not implemented {t:?} param type yet"),
                 },
                 None => unreachable!(), //SAFETY: Guaranteed by ast-gen
             })
@@ -651,7 +810,13 @@ impl<'a> LlvmGenerator<'a> {
                 .ctx
                 .ptr_type(AddressSpace::default())
                 .fn_type(llvm_params.as_slice(), false),
-            _ => todo!("Chase you have not implemented this return type yet"),
+            TirType::StructInterface(_) => {
+                // Structs are returned as pointers for consistency
+                self.ctx
+                    .ptr_type(AddressSpace::default())
+                    .fn_type(llvm_params.as_slice(), false)
+            }
+            TirType::Void => self.ctx.void_type().fn_type(llvm_params.as_slice(), false),
         };
 
         let llvm_func = if let Some(f) = self.main_module.get_function(&func.name) {
@@ -710,7 +875,11 @@ impl<'a> LlvmGenerator<'a> {
             TirType::F64 => self.ctx.f64_type().into(),
             TirType::I1 => self.ctx.bool_type().into(),
             TirType::I8PTR => self.ctx.ptr_type(AddressSpace::default()).into(),
-            _ => todo!("Chase you have not implemented this param type yet"),
+            TirType::StructInterface(_) => {
+                // Structs are passed as pointers for consistency
+                self.ctx.ptr_type(AddressSpace::default()).into()
+            }
+            _ => todo!("Chase you have not implemented {t:?} param type yet"),
         };
     }
     fn declare_individual_function(&mut self, name: &str, types: Vec<TirType>, ret_type: TirType) {

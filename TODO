@@ -1,3 +1,3 @@
-Make it so the user does not need to install llvm
-Nested Arrays
 nested function calls like println(add(5, 3)) fail for some reason
+Boxer will modify expressions like foo.bar() into bar(foo) which it should not
+Lexer does some parsing shit around structs

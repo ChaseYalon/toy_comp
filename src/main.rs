@@ -33,7 +33,7 @@ fn run_repl() {
             .expect("Failed to read line");
 
         let input = input.trim();
-        if input == "exit" {
+        if input.to_lowercase() == "exit" || input.to_lowercase() == "quit" {
             println!("Exiting");
             return;
         }

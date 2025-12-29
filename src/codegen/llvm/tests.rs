@@ -144,3 +144,13 @@ fn test_llvm_arrays() {
     );
     assert!(output.contains("95"));
 }
+
+#[test]
+fn test_llvm_structs() {
+    compile_code_aot!(
+        output,
+        "struct Point{x: int, y: int}; for Point { fn print_point() { println(this.x) } } let pt = Point{x: 9384, y: 0}; pt.print_point();",
+        "structs"
+    );
+    assert!(output.contains("9384"));
+}

@@ -855,8 +855,14 @@ impl TirBuilder {
             | TypeTok::IntArr(_)
             | TypeTok::FloatArr(_)
             | TypeTok::AnyArr(_) => TirType::I8PTR,
-
-            _ => todo!("Chase, you have not implemented this yt"),
+            TypeTok::Struct(i) => {
+                let mut types: Vec<TirType> = vec![];
+                for (_, ty) in i.iter() {
+                    types.push(self.type_tok_to_tir_type(*ty.to_owned()));
+                }
+                TirType::StructInterface(types)
+            }
+            _ => todo!("Chase you have not done the TypeTok -> TirType conversion for {t:?}"),
         };
     }
     ///will erase all functions saved in the builder and set current func to the indicated

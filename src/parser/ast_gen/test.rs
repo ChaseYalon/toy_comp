@@ -1174,3 +1174,96 @@ fn test_ast_gen_arr_ref_bug() {
         ]
     )
 }
+
+#[test]
+fn test_ast_gen_nested_func_call_bug() {
+    setup_ast!(
+        "fn add(a: int, b: int): int {return a + b } println(add(5, 4));",
+        ast
+    );
+    assert_eq!(
+        ast,
+        vec![
+            Ast::FuncDec(
+                Box::new("add".to_string()),
+                vec![
+                    Ast::FuncParam(Box::new("a".to_string()), TypeTok::Int),
+                    Ast::FuncParam(Box::new("b".to_string()), TypeTok::Int)
+                ],
+                TypeTok::Int,
+                vec![Ast::Return(Box::new(Ast::InfixExpr(
+                    Box::new(Ast::VarRef(Box::new("a".to_string()))),
+                    Box::new(Ast::VarRef(Box::new("b".to_string()))),
+                    InfixOp::Plus
+                )))]
+            ),
+            Ast::FuncCall(
+                Box::new("println".to_string()),
+                vec![Ast::FuncCall(
+                    Box::new("add".to_string()),
+                    vec![Ast::IntLit(5), Ast::IntLit(4)]
+                )]
+            )
+        ]
+    )
+}
+
+#[test]
+fn test_ast_gen_struct_func_call() {
+    setup_ast!(
+        r#"struct Human{name: str, age: int} for Human {fn set_age(n: int) {this.age = n }} let me = Human{name: "Chase", age: 16}; me.set_age(17);"#,
+        ast
+    );
+    assert_eq!(
+        ast,
+        vec![
+            Ast::StructInterface(
+                Box::new("Human".to_string()),
+                Box::new(BTreeMap::from([
+                    ("name".to_string(), TypeTok::Str),
+                    ("age".to_string(), TypeTok::Int),
+                ])),
+            ),
+            Ast::FuncDec(
+                Box::new("Human:::set_age".to_string()),
+                vec![
+                    Ast::FuncParam(
+                        Box::new("this".to_string()),
+                        TypeTok::Struct(BTreeMap::from([
+                            ("name".to_string(), Box::new(TypeTok::Str)),
+                            ("age".to_string(), Box::new(TypeTok::Int)),
+                        ])),
+                    ),
+                    Ast::FuncParam(Box::new("n".to_string()), TypeTok::Int),
+                ],
+                TypeTok::Void,
+                vec![Ast::StructReassign(
+                    Box::new("this".to_string()),
+                    vec!["age".to_string()],
+                    Box::new(Ast::VarRef(Box::new("n".to_string()))),
+                )],
+            ),
+            Ast::VarDec(
+                Box::new("me".to_string()),
+                TypeTok::Struct(BTreeMap::from([
+                    ("name".to_string(), Box::new(TypeTok::Str)),
+                    ("age".to_string(), Box::new(TypeTok::Int)),
+                ])),
+                Box::new(Ast::StructLit(
+                    Box::new("Human".to_string()),
+                    Box::new(BTreeMap::from([
+                        (
+                            "name".to_string(),
+                            (Ast::StringLit(Box::new("Chase".to_string())), TypeTok::Str,),
+                        ),
+                        ("age".to_string(), (Ast::IntLit(16), TypeTok::Int)),
+                    ])),
+                )),
+            ),
+            Ast::FuncCall(
+                Box::new("Human:::set_age".to_string()),
+                vec![Ast::VarRef(Box::new("me".to_string())), Ast::IntLit(17)],
+            ),
+        ]
+    )
+}

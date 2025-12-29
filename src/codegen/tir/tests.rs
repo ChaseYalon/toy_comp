@@ -1877,3 +1877,121 @@ fn test_tirgen_if_no_else_return() {
         ],
     );
 }
+
+#[test]
+fn test_tirgen_struct_funcs() {
+    setup_tir!(
+        ir,
+        "struct Point{x: int, y: int}; for Point { fn print_point() { println(this.x) } } let me = Point{x: 0, y: 0}; me.print_point();"
+    );
+    compare_tir(
+        ir,
+        vec![
+            Function {
+                params: vec![],
+                name: Box::new("user_main".to_string()),
+                body: vec![Block {
+                    id: 0,
+                    ins: vec![
+                        TIR::CreateStructInterface(
+                            0,
+                            Box::new("Point".to_string()),
+                            TirType::StructInterface(vec![TirType::I64, TirType::I64]),
+                        ),
+                        TIR::IConst(2, 0, TirType::I64),
+                        TIR::IConst(3, 0, TirType::I64),
+                        TIR::CreateStructLiteral(
+                            4,
+                            TirType::StructInterface(vec![TirType::I64, TirType::I64]),
+                            vec![
+                                SSAValue {
+                                    val: 2,
+                                    ty: Some(TirType::I64),
+                                },
+                                SSAValue {
+                                    val: 3,
+                                    ty: Some(TirType::I64),
+                                },
+                            ],
+                        ),
+                        TIR::CallLocalFunction(
+                            5,
+                            Box::new("Point:::print_point".to_string()),
+                            vec![SSAValue {
+                                val: 4,
+                                ty: Some(TirType::StructInterface(vec![
+                                    TirType::I64,
+                                    TirType::I64,
+                                ])),
+                            }],
+                            false,
+                            TirType::Void,
+                        ),
+                        TIR::IConst(6, 0, TirType::I64),
+                        TIR::Ret(
+                            7,
+                            SSAValue {
+                                val: 6,
+                                ty: Some(TirType::I64),
+                            },
+                        ),
+                    ],
+                }],
+                ins_counter: 8,
+                ret_type: TirType::I64,
+                heap_allocations: vec![],
+                heap_counter: 0,
+            },
+            Function {
+                params: vec![SSAValue {
+                    val: 1,
+                    ty: Some(TirType::StructInterface(vec![TirType::I64, TirType::I64])),
+                }],
+                name: Box::new("Point:::print_point".to_string()),
+                body: vec![Block {
+                    id: 1,
+                    ins: vec![
+                        TIR::ReadStructLiteral(
+                            1,
+                            SSAValue {
+                                val: 1,
+                                ty: Some(TirType::StructInterface(vec![
+                                    TirType::I64,
+                                    TirType::I64,
+                                ])),
+                            },
+                            0,
+                        ),
+                        TIR::IConst(2, 2, TirType::I64),
+                        TIR::IConst(3, 0, TirType::I64),
+                        TIR::CallExternFunction(
+                            4,
+                            Box::new("toy_println".to_string()),
+                            vec![
+                                SSAValue {
+                                    val: 1,
+                                    ty: Some(TirType::I64),
+                                },
+                                SSAValue {
+                                    val: 2,
+                                    ty: Some(TirType::I64),
+                                },
+                                SSAValue {
+                                    val: 3,
+                                    ty: Some(TirType::I64),
+                                },
+                            ],
+                            false,
+                            TirType::Void,
+                        ),
+                        TIR::Ret(5, SSAValue { val: 0, ty: None }),
+                    ],
+                }],
+                ins_counter: 6,
+                ret_type: TirType::Void,
+                heap_allocations: vec![],
+                heap_counter: 0,
+            },
+        ],
+    );
+}
