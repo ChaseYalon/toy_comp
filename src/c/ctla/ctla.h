@@ -12,3 +12,4 @@ void DebugHeap_free(DebugHeap*d);
 void* ToyMallocDebug(size_t size, DebugHeap* d);
 void toy_free(void* buff);
 void _PrintDebug_heap(DebugHeap* d);
+void _CheckUseAfterFree(void* buff);

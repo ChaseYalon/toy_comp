@@ -44,7 +44,7 @@ pub enum Token {
     Continue,
     While,
     Struct(Box<String>),
-
+    For, //in the context of binding functions to structs
     //Names
     VarName(Box<String>),
     VarRef(Box<String>),
@@ -200,6 +200,7 @@ impl Token {
             Self::StructRef(_, _) => "StructRef".to_string(),
             Self::Dot => "Dot".to_string(),
             Self::Not => "Not".to_string(),
+            Self::For => "For".to_string(),
         };
     }
     ///Is used to get value out of an int literal
@@ -277,6 +278,7 @@ impl fmt::Display for Token {
                 Token::StructRef(s, k) => format!("STRUCT_REF STRUCT({}), KEY({:?})", *s, k),
                 Token::Dot => String::from("DOT"),
                 Token::Not => String::from("NOT"),
+                Token::For => String::from("FOR"),
             }
         )
     }

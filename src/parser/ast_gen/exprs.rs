@@ -293,6 +293,48 @@ impl AstGenerator {
             }
             return Ok((Ast::Not(Box::new(to_be_negated_val)), TypeTok::Bool));
         }
+        if toks.len() >= 3 {
+            let mut i = 0usize;
+            let mut new_toks: Vec<Token> = Vec::new();
+            let mut found = false;
+            while i < toks.len() {
+                if i + 2 < toks.len()
+                    && toks[i].tok_type() == "VarRef"
+                    && toks[i + 1].tok_type() == "Dot"
+                    && toks[i + 2].tok_type() == "VarRef"
+                {
+                    // collect keys
+                    if let Token::VarRef(name) = toks[i].clone() {
+                        let s_name = *name;
+                        let mut keys: Vec<String> = Vec::new();
+                        i += 1; // move to dot
+                        while i + 1 < toks.len()
+                            && toks[i].tok_type() == "Dot"
+                            && toks[i + 1].tok_type() == "VarRef"
+                        {
+                            if let Token::VarRef(k) = toks[i + 1].clone() {
+                                keys.push(*k);
+                            }
+                            i += 2;
+                        }
+                        new_toks.push(Token::StructRef(Box::new(s_name), keys));
+                        found = true;
+                        continue;
+                    } else {
+                        // should be unreachable
+                        new_toks.push(toks[i].clone());
+                        i += 1;
+                        continue;
+                    }
+                }
+                new_toks.push(toks[i].clone());
+                i += 1;
+            }
+            if found {
+                return self.parse_expr(&new_toks);
+            }
+        }
+
         //guard clause for single tokens
         if toks.len() == 1 {
             //struct ref (a.x or a.x.y)
@@ -578,7 +620,9 @@ impl AstGenerator {
                 };
                 return Ok(res);
             }
-            Token::Minus | Token::Divide | Token::Multiply | Token::Modulo => self.parse_num_expr(toks),
+            Token::Minus | Token::Divide | Token::Multiply | Token::Modulo => {
+                self.parse_num_expr(toks)
+            }
             Token::BoolLit(_)
             | Token::LessThan
             | Token::LessThanEqt

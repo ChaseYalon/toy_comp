@@ -2,10 +2,12 @@
     "cSpell.words": [
         "ABORTIFHUNG",
         "advapi",
+        "alloca",
         "arrlen",
         "arrs",
         "bindgen",
         "bitcast",
+        "brack",
         "brif",
         "bxor",
         "clif",
@@ -81,9 +83,20 @@
         "uextend",
         "winget",
         "worldfalse",
+        "xzvf",
         "Yalon"
     ],
     "python.REPL.enableREPLSmartSend": false,
-    "cmake.sourceDirectory": "/root/toy_comp/src/c",
-    "mesonbuild.configureOnOpen": true
+    //"cmake.sourceDirectory": "C:/Users/chase_qlo04cr/sideProjects/toy_comp/toy_comp/src/c",
+    "rust-analyzer.cachePriming.enable": true,
+    "rust-analyzer.check.command": "check",
+    "rust-analyzer.check.allTargets": true,
+    "rust-analyzer.check.features": "all",
+    "rust-analyzer.cargo.buildScripts.enable": true,
+    "rust-analyzer.rustc.source": "discover",
+    "rust-analyzer.diagnostics.disabled": [],
+    "rust-analyzer.diagnostics.enableExperimental": true,
+    "rust-analyzer.cargo.buildScripts.invocationStrategy": "once",
+
+
 }

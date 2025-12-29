@@ -347,11 +347,12 @@ dependencies = [
 
 [[package]]
 name = "toy_comp"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bindgen",
  "cmake",
  "inkwell",
+ "llvm-sys",
  "ordered-float",
  "thiserror",
 ]

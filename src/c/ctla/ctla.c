@@ -47,3 +47,19 @@ void _PrintDebug_heap(DebugHeap* d) {
     printf("Total Live entries remaining: %lld\n", d->TotalLiveAllocations);
 
 }
+
+void _CheckUseAfterFree(void* buff) {
+    if (!buff) {
+        return; // NULL pointers are handled separately
+    }
+    if (getenv("TOY_DEBUG") != NULL && strcmp(getenv("TOY_DEBUG"), "TRUE") == 0) {
+        int64_t value;
+        if (DebugMap_get(DEBUG_HEAP->Map, buff, &value) && value == -1) {
+            fprintf(stderr, "[ERROR] Use-after-free detected! Pointer %p was already freed\n", buff);
+            printf("\nFAIL_TEST\n");
+            fflush(stdout);
+            fflush(stderr);
+            abort();
+        }
+    }
+}

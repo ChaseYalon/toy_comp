@@ -18,6 +18,8 @@ pub struct AstGenerator {
     var_type_scopes: Vec<HashMap<String, TypeTok>>,
     func_param_type_map: HashMap<String, Vec<TypeTok>>,
     func_return_type_map: HashMap<String, TypeTok>,
+    // Maps struct field signature to struct name for method resolution
+    struct_type_to_name: HashMap<BTreeMap<String, Box<TypeTok>>, String>,
 }
 
 impl AstGenerator {
@@ -32,6 +34,10 @@ impl AstGenerator {
 
         map.insert(Token::StringLit(Box::new("".to_string())).tok_type(), 100);
         map.insert(Token::VarRef(Box::new("".to_string())).tok_type(), 100);
+        map.insert(
+            Token::StructRef(Box::new("".to_string()), Vec::new()).tok_type(),
+            100,
+        );
         map.insert(Token::IntLit(0).tok_type(), 100);
         map.insert(Token::BoolLit(true).tok_type(), 100);
         map.insert(Token::StringLit(Box::new("".to_string())).tok_type(), 100);
@@ -86,6 +92,7 @@ impl AstGenerator {
             var_type_scopes,
             func_param_type_map: fptm,
             func_return_type_map: frtm,
+            struct_type_to_name: HashMap::new(),
         };
     }
 
@@ -180,19 +187,60 @@ impl AstGenerator {
             _ => unreachable!(),
         };
 
-        let unprocessed_params: Vec<&[Token]> = toks[2..toks.len() - 1]
-            .split(|t| *t == Token::Comma)
-            .collect();
+        let param_toks = &toks[2..toks.len() - 1];
+        let mut unprocessed_params: Vec<Vec<Token>> = Vec::new();
+
+        if !param_toks.is_empty() {
+            let mut current_param: Vec<Token> = Vec::new();
+            let mut paren_depth = 0;
+            let mut brace_depth = 0;
+            let mut brack_depth = 0;
+
+            for t in param_toks {
+                match t {
+                    Token::LParen => paren_depth += 1,
+                    Token::RParen => paren_depth -= 1,
+                    Token::LBrace => brace_depth += 1,
+                    Token::RBrace => brace_depth -= 1,
+                    Token::LBrack => brack_depth += 1,
+                    Token::RBrack => brack_depth -= 1,
+                    Token::Comma if paren_depth == 0 && brace_depth == 0 && brack_depth == 0 => {
+                        unprocessed_params.push(current_param);
+                        current_param = Vec::new();
+                        continue;
+                    }
+                    _ => {}
+                }
+                current_param.push(t.clone());
+            }
+            unprocessed_params.push(current_param);
+        }
+
         let mut processed_params: Vec<(Ast, TypeTok)> = Vec::new();
         for p in unprocessed_params {
-            processed_params.push(self.parse_expr(&p.to_vec())?);
+            processed_params.push(self.parse_expr(&p)?);
         }
-        let types = self.func_param_type_map.get(&name);
-        if types.is_none() {
+
+        let mut resolved_name = name.clone();
+        let mut types_opt = self.func_param_type_map.get(&name);
+
+        if types_opt.is_none() && !processed_params.is_empty() {
+            if let (_, TypeTok::Struct(fields)) = &processed_params[0] {
+                if let Some(struct_name) = self.struct_type_to_name.get(fields) {
+                    let method_name = format!("{}:::{}", struct_name, name);
+                    if self.func_param_type_map.contains_key(&method_name) {
+                        resolved_name = method_name;
+                        types_opt = self.func_param_type_map.get(&resolved_name);
+                    }
+                }
+            }
+        }
+
+        if types_opt.is_none() {
             return Err(ToyError::new(ToyErrorType::UndefinedFunction));
         }
 
-        let types = types.unwrap();
+        let types = types_opt.unwrap();
         for (i, (_, type_tok)) in processed_params.iter().enumerate() {
             if type_tok != &types[i] && types[i] != TypeTok::Any {
                 return Err(ToyError::new(ToyErrorType::TypeMismatch));
@@ -206,9 +254,9 @@ impl AstGenerator {
             })
             .collect();
         return Ok((
-            Ast::FuncCall(Box::new(name.clone()), vals),
+            Ast::FuncCall(Box::new(resolved_name.clone()), vals),
             self.func_return_type_map
-                .get(&name.clone())
+                .get(&resolved_name.clone())
                 .unwrap()
                 .clone(),
         ));
@@ -431,7 +479,9 @@ impl AstGenerator {
                     .into_iter()
                     .map(|(k, v)| (k, Box::new(v)))
                     .collect();
-                self.insert_var_type((*name).clone(), TypeTok::Struct(boxed));
+                self.insert_var_type((*name).clone(), TypeTok::Struct(boxed.clone()));
+                // Store mapping from struct type signature to struct name for method resolution
+                self.struct_type_to_name.insert(boxed, (*name).clone());
 
                 Ast::StructInterface(name, types)
             }
