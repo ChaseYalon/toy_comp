@@ -273,11 +273,11 @@ impl Token {
                 Token::RBrack => String::from("]"),
                 Token::Struct(n) => *n.clone(),
                 Token::StructRef(s, k) => {
-                    let mut s = *s.clone();
+                    let mut result = (*s).clone();
                     for f in k {
-                        s = s + f;
+                        result.push_str(f);
                     }
-                    s
+                    result
                 }
                 Token::Dot => String::from("."),
                 Token::Not => String::from("!"),
