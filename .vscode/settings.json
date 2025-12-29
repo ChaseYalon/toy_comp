@@ -78,9 +78,11 @@
         "SMTO",
         "srem",
         "strequal",
+        "tbox",
         "tirgen",
         "TOLOWER",
         "uextend",
+        "vecs",
         "winget",
         "worldfalse",
         "xzvf",
@@ -97,6 +99,7 @@
     "rust-analyzer.diagnostics.disabled": [],
     "rust-analyzer.diagnostics.enableExperimental": true,
     "rust-analyzer.cargo.buildScripts.invocationStrategy": "once",
+    "cmake.sourceDirectory": "C:/Users/chase_qlo04cr/sideProjects/toy_comp/toy_comp/src/c",
 
 
 }

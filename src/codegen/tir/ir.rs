@@ -255,7 +255,7 @@ impl TirBuilder {
                     InfixOp::Multiply => NumericInfixOp::Multiply,
                     InfixOp::Divide => NumericInfixOp::Divide,
                     InfixOp::Modulo => NumericInfixOp::Modulo,
-                    _ => return Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType)),
+                    _ => unreachable!(), // parser validated
                 };
                 let id = self._next_value_id();
                 let ins = TIR::NumericInfix(id, left, right, n_op);
@@ -272,7 +272,7 @@ impl TirBuilder {
                 });
             }
         }
-        return Err(ToyError::new(ToyErrorType::ExpressionNotNumeric));
+        unreachable!(); // parser validated
     }
     pub fn boolean_infix(
         &mut self,
@@ -299,15 +299,15 @@ impl TirBuilder {
             if is_comparison {
                 // Comparison operators: both operands must be the same type (I64)
                 if left_t != right_t || left_t != TirType::I64 {
-                    return Err(ToyError::new(ToyErrorType::ExpressionNotNumeric));
+                    unreachable!(); // parser validated
                 }
             } else if is_logical {
                 // Logical operators: both operands must be I1
                 if left_t != TirType::I1 || right_t != TirType::I1 {
-                    return Err(ToyError::new(ToyErrorType::ExpressionNotBoolean));
+                    unreachable!(); // parser validated
                 }
             } else {
-                return Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType));
+                unreachable!(); // parser validated
             }
 
             let n_op = match op {
@@ -319,7 +319,7 @@ impl TirBuilder {
                 InfixOp::LessThan => BoolInfixOp::LessThan,
                 InfixOp::LessThanEqt => BoolInfixOp::LessThenEqt,
                 InfixOp::NotEquals => BoolInfixOp::NotEquals,
-                _ => return Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType)),
+                _ => unreachable!(), // parser validated
             };
             let id = self._next_value_id();
             let ins = TIR::BoolInfix(id, left, right, n_op);
@@ -331,7 +331,7 @@ impl TirBuilder {
                 ty: Some(TirType::I1),
             });
         } else {
-            return Err(ToyError::new(ToyErrorType::ExpressionNotBoolean));
+            unreachable!(); // parser validated
         }
     }
     ///first block returned is true block, second block is false block, does not switch blocks
@@ -372,7 +372,7 @@ impl TirBuilder {
                 return Ok(());
             }
         }
-        return Err(ToyError::new(ToyErrorType::UndefinedFunction));
+        unreachable!(); // parser validated
     }
     //I am leaving the Result because I am sure there will be some error later and I would rather not break the API
     pub fn ret(&mut self, val: SSAValue) -> Result<SSAValue, ToyError> {
@@ -425,7 +425,7 @@ impl TirBuilder {
             .iter()
             .find(|f| *f.name == name)
             .map(|f| f.ret_type.clone())
-            .ok_or_else(|| ToyError::new(ToyErrorType::UndefinedFunction))?;
+            .unwrap(); // parser validated
 
         let ins = TIR::CallLocalFunction(
             id,
@@ -462,11 +462,7 @@ impl TirBuilder {
         name: String,
         params: Vec<SSAValue>,
     ) -> Result<SSAValue, ToyError> {
-        let (is_allocator, ret_type) = self
-            .extern_funcs
-            .get(&name)
-            .cloned()
-            .ok_or_else(|| ToyError::new(ToyErrorType::UndefinedFunction))?;
+        let (is_allocator, ret_type) = self.extern_funcs.get(&name).cloned().unwrap(); // parser validated
         let curr_func_name = self.funcs[self.curr_func.unwrap()].name.clone();
         let curr_block = self.curr_block.unwrap();
         self.funcs.iter_mut().for_each(|f| {
@@ -531,7 +527,7 @@ impl TirBuilder {
             return self.call_extern(name, params);
         }
 
-        Err(ToyError::new(ToyErrorType::UndefinedFunction))
+        unreachable!(); // parser validated
     }
     //I dont like ths, it should be in the call_extern
     /// Calls an externally defined function that returns void.
@@ -542,11 +538,7 @@ impl TirBuilder {
         params: Vec<SSAValue>,
     ) -> Result<(), ToyError> {
         //params should never be freed, so no need to track refs
-        let (is_allocator, ret_type) = self
-            .extern_funcs
-            .get(&name)
-            .cloned()
-            .ok_or_else(|| ToyError::new(ToyErrorType::UndefinedFunction))?;
+        let (is_allocator, ret_type) = self.extern_funcs.get(&name).cloned().unwrap(); // parser validated
 
         let id = self._next_value_id();
         let ins = TIR::CallExternFunction(id, Box::new(name), params, is_allocator, ret_type);
@@ -679,11 +671,11 @@ impl TirBuilder {
                         ty: Some(TirType::I1),
                     });
                 }
-                _ => Err(ToyError::new(ToyErrorType::ExpressionNotBoolean)),
+                _ => unreachable!(), // parser validated
             };
         }
         //this should be unreachable
-        return Err(ToyError::new(ToyErrorType::ExpressionNotBoolean));
+        unreachable!(); // parser validated
     }
     pub fn jump_block_un_cond(&mut self, block_id: BlockId) -> Result<SSAValue, ToyError> {
         let id = self._next_value_id();
@@ -702,7 +694,7 @@ impl TirBuilder {
         values: Vec<SSAValue>,
     ) -> Result<SSAValue, ToyError> {
         if block_ids.is_empty() || values.is_empty() || block_ids.len() != values.len() {
-            return Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType));
+            unreachable!(); // parser validated
         }
         let id = self._next_value_id();
         let ins = TIR::Phi(id, block_ids, values.clone());
@@ -755,7 +747,7 @@ impl TirBuilder {
                 return Ok(());
             }
         }
-        Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType))
+        unreachable!(); // parser validated
     }
     /// Get the number of instructions currently in a block
     pub fn get_block_ins_count(&self, block_id: BlockId) -> Result<usize, ToyError> {
@@ -764,7 +756,7 @@ impl TirBuilder {
                 return Ok(block.ins.len());
             }
         }
-        Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType))
+        unreachable!(); // parser validated
     }
     /// Get the next value ID without emitting an instruction
     pub fn peek_next_value_id(&self) -> ValueId {
@@ -784,11 +776,12 @@ impl TirBuilder {
         };
     }
     pub fn get_func_ret_type(&self, name: String) -> Result<TirType, ToyError> {
-        self.funcs
+        Ok(self
+            .funcs
             .iter()
             .find(|f| *f.name == name)
             .map(|f| f.clone().ret_type)
-            .ok_or(ToyError::new(ToyErrorType::UndefinedFunction))
+            .unwrap()) // parser validated
     }
     pub fn register_extern(&mut self, name: String, is_allocator: bool, ret_type: TypeTok) {
         self.extern_funcs
@@ -833,7 +826,7 @@ impl TirBuilder {
             &TypeTok::BoolArr(n) => (5, n),
             &TypeTok::IntArr(n) => (6, n),
             &TypeTok::FloatArr(n) => (7, n),
-            _ => return Err(ToyError::new(ToyErrorType::TypeIdNotAssigned)),
+            _ => unreachable!(), // parser validated
         };
         let v = self.iconst(n, TypeTok::Int)?;
         param_values.push(v);

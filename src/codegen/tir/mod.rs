@@ -31,7 +31,7 @@ impl Scope {
         if self.parent.is_some() {
             return self.parent.as_ref().unwrap().borrow().get_var(name);
         }
-        return Err(ToyError::new(ToyErrorType::UndefinedVariable));
+        return unreachable!();
     }
     pub fn get_var_type(&self, name: &str) -> Result<TypeTok, ToyError> {
         if self.vars.contains_key(name) {
@@ -40,7 +40,7 @@ impl Scope {
         if self.parent.is_some() {
             return self.parent.as_ref().unwrap().borrow().get_var_type(name);
         }
-        return Err(ToyError::new(ToyErrorType::UndefinedVariable));
+        return unreachable!();
     }
     pub fn set_var(&mut self, name: String, val: SSAValue, ty: TypeTok) {
         self.vars.insert(name, (val, ty));
@@ -70,10 +70,10 @@ impl AstToIrConverter {
         match node {
             Ast::IntLit(_) => Ok(TypeTok::Int),
             Ast::BoolLit(_) => Ok(TypeTok::Bool),
-            Ast::StringLit(_) => Ok(TypeTok::Str),
+            Ast::StringLit(_, _) => Ok(TypeTok::Str),
             Ast::FloatLit(_) => Ok(TypeTok::Float),
-            Ast::VarRef(n) => scope.as_ref().borrow().get_var_type(n),
-            Ast::InfixExpr(l, r, op) => match op {
+            Ast::VarRef(n, _) => scope.as_ref().borrow().get_var_type(n),
+            Ast::InfixExpr(l, r, op, _) => match op {
                 InfixOp::Equals
                 | InfixOp::NotEquals
                 | InfixOp::LessThan
@@ -84,8 +84,8 @@ impl AstToIrConverter {
                 | InfixOp::Or => Ok(TypeTok::Bool),
                 _ => self.get_expr_type(l, scope),
             },
-            Ast::EmptyExpr(e) => self.get_expr_type(e, scope),
-            Ast::FuncCall(n, _) => match n.as_str() {
+            Ast::EmptyExpr(e, _) => self.get_expr_type(e, scope),
+            Ast::FuncCall(n, _, _) => match n.as_str() {
                 "print" | "println" | "toy_write_to_arr" => Ok(TypeTok::Void),
                 "len" | "toy_strlen" | "toy_arrlen" | "toy_type_to_int" | "toy_type_to_bool"
                 | "toy_type_to_float" | "toy_malloc_arr" | "toy_input" => Ok(TypeTok::Int),
@@ -95,32 +95,26 @@ impl AstToIrConverter {
                 "bool" => Ok(TypeTok::Bool),
                 _ => Ok(TypeTok::Int),
             },
-            Ast::ArrLit(ty, _) => Ok(ty.clone()),
-            Ast::ArrRef(n, _) => {
+            Ast::ArrLit(ty, _, _) => Ok(ty.clone()),
+            Ast::ArrRef(n, _, _) => {
                 let arr_ty = scope.as_ref().borrow().get_var_type(n)?;
                 match arr_ty {
                     TypeTok::IntArr(_) => Ok(TypeTok::Int),
                     TypeTok::BoolArr(_) => Ok(TypeTok::Bool),
                     TypeTok::FloatArr(_) => Ok(TypeTok::Float),
                     TypeTok::StrArr(_) => Ok(TypeTok::Str),
-                    _ => Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType)),
+                    _ => unreachable!(),
                 }
             }
-            Ast::StructLit(_, _) => Ok(TypeTok::Int),
+            Ast::StructLit(_, _, _) => Ok(TypeTok::Int),
             Ast::Not(_) => Ok(TypeTok::Bool),
-            Ast::StructRef(s, fields) => {
-                let mut current_ty = scope
-                    .as_ref()
-                    .borrow()
-                    .get_var(s)?
-                    .ty
-                    .clone()
-                    .ok_or_else(|| ToyError::new(ToyErrorType::VariableNotAStruct))?;
+            Ast::StructRef(s, fields, _) => {
+                let mut current_ty = scope.as_ref().borrow().get_var(s)?.ty.clone().unwrap(); // parser validated
 
                 for field_name in fields {
                     let field_types = match &current_ty {
                         TirType::StructInterface(types) => types.clone(),
-                        _ => return Err(ToyError::new(ToyErrorType::VariableNotAStruct)),
+                        _ => unreachable!(),
                     };
 
                     let mut field_idx: Option<usize> = None;
@@ -140,10 +134,8 @@ impl AstToIrConverter {
                         }
                     }
 
-                    let _idx =
-                        field_idx.ok_or_else(|| ToyError::new(ToyErrorType::KeyNotOnStruct))?;
-                    current_ty =
-                        field_tir_ty.ok_or_else(|| ToyError::new(ToyErrorType::KeyNotOnStruct))?;
+                    let _idx = field_idx.unwrap(); // parser validated
+                    current_ty = field_tir_ty.unwrap(); // parser validated
                 }
 
                 // Convert final TirType -> TypeTok
@@ -157,7 +149,10 @@ impl AstToIrConverter {
                     TirType::Void => Ok(TypeTok::Void),
                 }
             }
-            _ => Err(ToyError::new(ToyErrorType::TypeIdNotAssigned)),
+            _ => Err(ToyError::new(
+                ToyErrorType::TypeIdNotAssigned,
+                Some(format!("{}", node)),
+            )),
         }
     }
 
@@ -170,7 +165,7 @@ impl AstToIrConverter {
             Ast::IntLit(v) => self.builder.iconst(v, TypeTok::Int),
             Ast::BoolLit(b) => self.builder.iconst(if b { 1 } else { 0 }, TypeTok::Bool),
             Ast::FloatLit(f) => self.builder.fconst(f.into()),
-            Ast::InfixExpr(left_i, right_i, op) => {
+            Ast::InfixExpr(left_i, right_i, op, _) => {
                 let mut left = self.compile_expr(*left_i, scope)?;
                 let mut right = self.compile_expr(*right_i, scope)?;
 
@@ -220,12 +215,12 @@ impl AstToIrConverter {
                             .builder
                             .call_extern("toy_concat".to_string(), vec![left, right]);
                     }
-                    return Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType)); //should be impossible
+                    unreachable!()
                 };
             }
-            Ast::EmptyExpr(c) => self.compile_expr(*c, scope),
-            Ast::VarRef(n) => scope.as_ref().borrow().get_var(&*n),
-            Ast::FuncCall(n, p) => {
+            Ast::EmptyExpr(c, _) => self.compile_expr(*c, scope),
+            Ast::VarRef(n, _) => scope.as_ref().borrow().get_var(&*n),
+            Ast::FuncCall(n, p, _) => {
                 let mut ssa_params: Vec<SSAValue> = Vec::new();
                 for param in p.clone() {
                     let compiled_param = self.compile_expr(param, scope)?;
@@ -254,7 +249,7 @@ impl AstToIrConverter {
                 let mut final_params = Vec::new();
                 if vec!["toy_print", "toy_println"].contains(&name) {
                     if p.len() != 1 {
-                        return Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType));
+                        return unreachable!();
                     }
                     final_params.push(ssa_params[0].clone());
                     let ty = self.get_expr_type(&p[0], scope)?;
@@ -269,7 +264,7 @@ impl AstToIrConverter {
                 .contains(&name)
                 {
                     if p.len() != 1 {
-                        return Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType));
+                        return unreachable!();
                     }
                     final_params.push(ssa_params[0].clone());
                     let ty = self.get_expr_type(&p[0], scope)?;
@@ -281,11 +276,11 @@ impl AstToIrConverter {
 
                 self.builder.call(name.to_string(), final_params)
             }
-            Ast::StringLit(s) => {
+            Ast::StringLit(s, _) => {
                 let st = *s;
                 self.builder.global_string(st)
             }
-            Ast::ArrLit(ty, vals) => {
+            Ast::ArrLit(ty, vals, _) => {
                 let mut ssa_vals: Vec<SSAValue> = Vec::new();
                 for val in vals.clone() {
                     let compiled_val = self.compile_expr(val, scope)?;
@@ -307,9 +302,9 @@ impl AstToIrConverter {
 
                 return Ok(arr);
             }
-            Ast::ArrRef(n, idxs) => {
+            Ast::ArrRef(n, idxs, _) => {
                 if idxs.is_empty() {
-                    return Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType));
+                    unreachable!();
                 }
 
                 let mut current_arr = scope.as_ref().borrow().get_var(&*n)?;
@@ -323,7 +318,7 @@ impl AstToIrConverter {
 
                 return Ok(current_arr);
             }
-            Ast::StructLit(interface_name, kv) => {
+            Ast::StructLit(interface_name, kv, _) => {
                 let mut compiled_map: BTreeMap<String, SSAValue> = BTreeMap::new();
                 for (key, (val, _)) in *kv {
                     compiled_map.insert(key, self.compile_expr(val, scope)?);
@@ -336,18 +331,15 @@ impl AstToIrConverter {
                 }
                 self.builder.create_struct_literal(val_vec, ty)
             }
-            Ast::StructRef(var_name, fields) => {
+            Ast::StructRef(var_name, fields, _) => {
                 let mut current_val = scope.as_ref().borrow().get_var(&*var_name)?;
 
                 for field_name in fields {
-                    let struct_type = current_val
-                        .ty
-                        .clone()
-                        .ok_or_else(|| ToyError::new(ToyErrorType::VariableNotAStruct))?;
+                    let struct_type = current_val.ty.clone().unwrap(); // parser validated
 
                     let field_types = match &struct_type {
                         TirType::StructInterface(types) => types.clone(),
-                        _ => return Err(ToyError::new(ToyErrorType::VariableNotAStruct)),
+                        _ => return unreachable!(),
                     };
 
                     let mut field_idx: Option<usize> = None;
@@ -366,10 +358,8 @@ impl AstToIrConverter {
                             }
                         }
                     }
-                    let idx =
-                        field_idx.ok_or_else(|| ToyError::new(ToyErrorType::KeyNotOnStruct))?;
-                    let ty =
-                        field_type.ok_or_else(|| ToyError::new(ToyErrorType::KeyNotOnStruct))?;
+                    let idx = field_idx.unwrap(); // parser validated
+                    let ty = field_type.unwrap(); // parser validated
                     current_val = self
                         .builder
                         .read_struct_literal(current_val, idx as u64, ty)?;
@@ -415,7 +405,7 @@ impl AstToIrConverter {
     }
     fn compile_if_stmt(&mut self, node: Ast, scope: &Rc<RefCell<Scope>>) -> Result<(), ToyError> {
         let (cond, body, alt) = match node {
-            Ast::IfStmt(c, b, a) => (*c, b, a),
+            Ast::IfStmt(c, b, a, _) => (*c, b, a),
             _ => unreachable!(),
         };
         let compiled_cond = self.compile_expr(cond, scope)?;
@@ -451,7 +441,7 @@ impl AstToIrConverter {
         scope: &Rc<RefCell<Scope>>,
     ) -> Result<(), ToyError> {
         let (cond, body) = match node {
-            Ast::WhileStmt(c, b) => (*c, b),
+            Ast::WhileStmt(c, b, _) => (*c, b),
             _ => unreachable!(),
         };
 
@@ -530,14 +520,14 @@ impl AstToIrConverter {
     }
     fn compile_func_dec(&mut self, node: Ast, scope: &Rc<RefCell<Scope>>) -> Result<(), ToyError> {
         let (name, params, ret_type, body) = match node {
-            Ast::FuncDec(n, p, r, b) => (*n, p, r, b),
+            Ast::FuncDec(n, p, r, b, _) => (*n, p, r, b),
             _ => unreachable!(),
         };
         let func_scope = Scope::new_child(scope);
         let mut ssa_params: Vec<SSAValue> = Vec::new();
         for p in params {
             let (name, param_type) = match p {
-                Ast::FuncParam(n, t) => (*n, t),
+                Ast::FuncParam(n, t, _) => (*n, t),
                 _ => unreachable!(),
             };
             let ssa_v = self.builder.generic_ssa(param_type.clone());
@@ -564,34 +554,34 @@ impl AstToIrConverter {
         match node {
             Ast::IntLit(_)
             | Ast::BoolLit(_)
-            | Ast::InfixExpr(_, _, _)
-            | Ast::EmptyExpr(_)
-            | Ast::FuncCall(_, _)
-            | Ast::VarRef(_)
-            | Ast::StringLit(_)
-            | Ast::ArrLit(_, _)
-            | Ast::ArrRef(_, _)
-            | Ast::StructLit(_, _)
+            | Ast::InfixExpr(_, _, _, _)
+            | Ast::EmptyExpr(_, _)
+            | Ast::FuncCall(_, _, _)
+            | Ast::VarRef(_, _)
+            | Ast::StringLit(_, _)
+            | Ast::ArrLit(_, _, _)
+            | Ast::ArrRef(_, _, _)
+            | Ast::StructLit(_, _, _)
             | Ast::Not(_) => {
                 let _ = self.compile_expr(node, scope)?;
             }
-            Ast::VarDec(box_name, ty, box_val) => {
+            Ast::VarDec(box_name, ty, box_val, _) => {
                 let _ = self.compile_var_dec(*box_name, *box_val, ty, scope)?;
             }
-            Ast::VarReassign(boxed_name, boxed_val) => {
+            Ast::VarReassign(boxed_name, boxed_val, _) => {
                 let _ = self.compile_var_reassign(*boxed_name, *boxed_val, scope)?;
             }
-            Ast::IfStmt(_, _, _) => self.compile_if_stmt(node, scope)?,
-            Ast::WhileStmt(_, _) => self.compile_while_stmt(node, scope)?,
-            Ast::FuncDec(_, _, _, _) => self.compile_func_dec(node, scope)?,
-            Ast::Return(v) => {
+            Ast::IfStmt(_, _, _, _) => self.compile_if_stmt(node, scope)?,
+            Ast::WhileStmt(_, _, _) => self.compile_while_stmt(node, scope)?,
+            Ast::FuncDec(_, _, _, _, _) => self.compile_func_dec(node, scope)?,
+            Ast::Return(v, _) => {
                 let ast_val = *v;
                 let compiled_val = self.compile_expr(ast_val, scope)?;
                 self.builder.ret(compiled_val);
             }
-            Ast::ArrReassign(name, idxs, val) => {
+            Ast::ArrReassign(name, idxs, val, _) => {
                 if idxs.is_empty() {
-                    return Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType));
+                    unreachable!(); //ast type checker should prevent this
                 }
                 let mut current_arr = scope.as_ref().borrow().get_var(&*name)?;
 
@@ -618,7 +608,7 @@ impl AstToIrConverter {
                 self.builder
                     .call("toy_write_to_arr".to_string(), write_params)?;
             }
-            Ast::StructInterface(n, t) => {
+            Ast::StructInterface(n, t, _) => {
                 let mut tir_proto: Vec<TirType> = Vec::new();
                 let mut key_to_idx: HashMap<String, usize> = HashMap::new();
                 let mut count: usize = 0;
@@ -631,21 +621,18 @@ impl AstToIrConverter {
                 let tir = self.builder.create_struct_interface(*n.clone(), tir_proto);
                 self.interfaces.insert(*n, (key_to_idx, tir));
             }
-            Ast::StructReassign(var_name, fields, new_val) => {
+            Ast::StructReassign(var_name, fields, new_val, _) => {
                 if fields.is_empty() {
-                    return Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType));
+                    unreachable!(); //ast type checker should prevent this
                 }
                 let mut current_val = scope.as_ref().borrow().get_var(&*var_name)?;
                 for i in 0..(fields.len() - 1) {
                     let field_name = &fields[i];
-                    let struct_type = current_val
-                        .ty
-                        .clone()
-                        .ok_or_else(|| ToyError::new(ToyErrorType::VariableNotAStruct))?;
+                    let struct_type = current_val.ty.clone().unwrap(); // parser validated
 
                     let field_types = match &struct_type {
                         TirType::StructInterface(types) => types.clone(),
-                        _ => return Err(ToyError::new(ToyErrorType::VariableNotAStruct)),
+                        _ => unreachable!(), //ast type checker should prevent this
                     };
 
                     let mut field_idx: Option<usize> = None;
@@ -665,24 +652,19 @@ impl AstToIrConverter {
                         }
                     }
 
-                    let idx =
-                        field_idx.ok_or_else(|| ToyError::new(ToyErrorType::KeyNotOnStruct))?;
-                    let ty =
-                        field_type.ok_or_else(|| ToyError::new(ToyErrorType::KeyNotOnStruct))?;
+                    let idx = field_idx.unwrap(); // parser validated
+                    let ty = field_type.unwrap(); // parser validated
                     current_val = self
                         .builder
                         .read_struct_literal(current_val, idx as u64, ty)?;
                 }
 
                 let last_field = &fields[fields.len() - 1];
-                let struct_type = current_val
-                    .ty
-                    .clone()
-                    .ok_or_else(|| ToyError::new(ToyErrorType::VariableNotAStruct))?;
+                let struct_type = current_val.ty.clone().unwrap(); // parser validated
 
                 let field_types = match &struct_type {
                     TirType::StructInterface(types) => types.clone(),
-                    _ => return Err(ToyError::new(ToyErrorType::VariableNotAStruct)),
+                    _ => unreachable!(), //ast type checker should prevent this
                 };
 
                 let mut field_idx: Option<usize> = None;
@@ -702,8 +684,8 @@ impl AstToIrConverter {
                     }
                 }
 
-                let idx = field_idx.ok_or_else(|| ToyError::new(ToyErrorType::KeyNotOnStruct))?;
-                let ty = field_type.ok_or_else(|| ToyError::new(ToyErrorType::KeyNotOnStruct))?;
+                let idx = field_idx.unwrap(); // parser validated
+                let ty = field_type.unwrap(); // parser validated
 
                 let compiled_val = self.compile_expr(*new_val, scope)?;
                 self.builder

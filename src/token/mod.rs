@@ -223,63 +223,71 @@ impl Token {
             _ => false,
         };
     }
+    pub fn to_string(&self) -> String {
+        return format!(
+            "{}",
+            match self {
+                Token::IntLit(n) => format!("{}", n),
+                Token::Plus => String::from("+"),
+                Token::Minus => String::from("-"),
+                Token::Multiply => String::from("*"),
+                Token::Divide => String::from("/"),
+                Token::Semicolon => String::from(";"),
+                Token::Let => String::from("let"),
+                Token::Assign => String::from("="),
+                Token::VarName(name) => *name.to_owned(),
+                Token::VarRef(name) => *name.to_owned(),
+                Token::Colon => String::from(":"),
+                Token::BoolLit(b) => b.to_string(),
+                Token::Type(t) => t.type_str(),
+                Token::LessThan => String::from("<"),
+                Token::GreaterThan => String::from(">"),
+                Token::LessThanEqt => String::from("<="),
+                Token::GreaterThanEqt => String::from(">="),
+                Token::Equals => String::from("=="),
+                Token::NotEquals => String::from("!="),
+                Token::Modulo => String::from("%"),
+                Token::And => String::from("&&"),
+                Token::Or => String::from("||"),
+                Token::If => String::from("if"),
+                Token::LBrace => String::from("{"),
+                Token::RBrace => String::from("}"),
+                Token::Else => String::from("else"),
+                Token::LParen => String::from("("),
+                Token::RParen => String::from(")"),
+                Token::Func => String::from("fn"),
+                Token::Return => String::from("return"),
+                Token::Comma => String::from(","),
+                Token::StringLit(s) => *s.to_owned(),
+                Token::While => String::from("while"),
+                Token::Continue => String::from("continue"),
+                Token::Break => String::from("break"),
+                Token::CompoundPlus => String::from("+="),
+                Token::CompoundMinus => String::from("-="),
+                Token::CompoundDivide => String::from("/="),
+                Token::CompoundMultiply => String::from("*="),
+                Token::PlusPlus => String::from("++"),
+                Token::MinusMinus => String::from("--"),
+                Token::FloatLit(f) => format!("{}", *f),
+                Token::LBrack => String::from("["),
+                Token::RBrack => String::from("]"),
+                Token::Struct(n) => *n.clone(),
+                Token::StructRef(s, k) => {
+                    let mut result = (*s).clone();
+                    for f in k {
+                        result.push_str(f);
+                    }
+                    result
+                }
+                Token::Dot => String::from("."),
+                Token::Not => String::from("!"),
+                Token::For => String::from("for"),
+            }
+        );
+    }
 }
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                Token::IntLit(n) => format!("INT({})", n),
-                Token::Plus => String::from("PLUS"),
-                Token::Minus => String::from("MINUS"),
-                Token::Multiply => String::from("MULTIPLY"),
-                Token::Divide => String::from("DIVIDE"),
-                Token::Semicolon => String::from("SEMICOLON"),
-                Token::Let => String::from("LET"),
-                Token::Assign => String::from("ASSIGN"),
-                Token::VarName(name) => format!("VarName({})", *name),
-                Token::VarRef(name) => format!("VarRef({})", *name),
-                Token::Colon => String::from("COLON"),
-                Token::BoolLit(b) => format!("BoolLit({})", b),
-                Token::Type(t) => format!("Type({:?})", t),
-                Token::LessThan => String::from("LESS_THAN"),
-                Token::GreaterThan => String::from("GREATER_THAN"),
-                Token::LessThanEqt => String::from("LESS_THAN_EQT"),
-                Token::GreaterThanEqt => String::from("GREATER_THAN_EQT"),
-                Token::Equals => String::from("EQUALS"),
-                Token::NotEquals => String::from("NOT_EQUALS"),
-                Token::Modulo => String::from("MODULO"),
-                Token::And => String::from("AND"),
-                Token::Or => String::from("OR"),
-                Token::If => String::from("IF"),
-                Token::LBrace => String::from("LBRACE"),
-                Token::RBrace => String::from("RBRACE"),
-                Token::Else => String::from("ELSE"),
-                Token::LParen => String::from("LPAREN"),
-                Token::RParen => String::from("RPAREN"),
-                Token::Func => String::from("FUNC"),
-                Token::Return => String::from("RETURN"),
-                Token::Comma => String::from("COMMA"),
-                Token::StringLit(s) => format!("STRING_LIT({})", s),
-                Token::While => String::from("WHILE"),
-                Token::Continue => String::from("CONTINUE"),
-                Token::Break => String::from("BREAK"),
-                Token::CompoundPlus => String::from("COMPOUND_PLUS"),
-                Token::CompoundMinus => String::from("COMPOUND_MINUS"),
-                Token::CompoundDivide => String::from("COMPOUND_DIVIDE"),
-                Token::CompoundMultiply => String::from("COMPOUND_MULTIPLY"),
-                Token::PlusPlus => String::from("PLUS_PLUS"),
-                Token::MinusMinus => String::from("MINUS_MINUS"),
-                Token::FloatLit(f) => format!("Float({})", *f),
-                Token::LBrack => String::from("LBRACK"),
-                Token::RBrack => String::from("RBRACK"),
-                Token::Struct(n) => format!("STRUCT({})", *n),
-                Token::StructRef(s, k) => format!("STRUCT_REF STRUCT({}), KEY({:?})", *s, k),
-                Token::Dot => String::from("DOT"),
-                Token::Not => String::from("NOT"),
-                Token::For => String::from("FOR"),
-            }
-        )
+        write!(f, "{}", self.to_string())
     }
 }
