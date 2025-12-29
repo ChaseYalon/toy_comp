@@ -9,6 +9,7 @@ ordered-float = "5.1.0"
 thiserror = "2.0.17"
 inkwell = { version = "0.7.0", features = ["llvm21-1"] }
 llvm-sys = {version = "211.0", features = ["prefer-static"]}
+colored = "3.0.0"
 [build-dependencies]
 cmake = "0.1.54"
 bindgen = "0.70"

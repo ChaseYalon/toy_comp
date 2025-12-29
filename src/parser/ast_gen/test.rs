@@ -6,6 +6,116 @@ use crate::{
 };
 use ordered_float::OrderedFloat;
 use std::collections::BTreeMap;
+
+fn eq_ast_ignoring_src(x: &Ast, y: &Ast) -> bool {
+    match (x, y) {
+        (Ast::IntLit(xi), Ast::IntLit(yi)) => xi == yi,
+        (Ast::BoolLit(xb), Ast::BoolLit(yb)) => xb == yb,
+        (Ast::FloatLit(xf), Ast::FloatLit(yf)) => xf == yf,
+        (Ast::Break, Ast::Break) => true,
+        (Ast::Continue, Ast::Continue) => true,
+
+        (Ast::InfixExpr(xl, xr, xo, _), Ast::InfixExpr(yl, yr, yo, _)) => {
+            xo == yo && eq_ast_ignoring_src(xl, yl) && eq_ast_ignoring_src(xr, yr)
+        }
+
+        (Ast::EmptyExpr(xc, _), Ast::EmptyExpr(yc, _)) => eq_ast_ignoring_src(xc, yc),
+
+        (Ast::VarDec(xn, xt, xv, _), Ast::VarDec(yn, yt, yv, _)) => {
+            xn == yn && xt == yt && eq_ast_ignoring_src(xv, yv)
+        }
+
+        (Ast::VarRef(xn, _), Ast::VarRef(yn, _)) => xn == yn,
+
+        (Ast::VarReassign(xn, xv, _), Ast::VarReassign(yn, yv, _)) => {
+            xn == yn && eq_ast_ignoring_src(xv, yv)
+        }
+
+        (Ast::IfStmt(xc, xb, xa, _), Ast::IfStmt(yc, yb, ya, _)) => {
+            eq_ast_ignoring_src(xc, yc)
+                && compare_ast_vecs(xb.clone(), yb.clone())
+                && match (xa, ya) {
+                    (None, None) => true,
+                    (Some(xav), Some(yav)) => compare_ast_vecs(xav.clone(), yav.clone()),
+                    _ => false,
+                }
+        }
+
+        (Ast::FuncParam(xn, xt, _), Ast::FuncParam(yn, yt, _)) => xn == yn && xt == yt,
+
+        (Ast::FuncDec(xn, xp, xr, xb, _), Ast::FuncDec(yn, yp, yr, yb, _)) => {
+            xn == yn
+                && xr == yr
+                && compare_ast_vecs(xp.clone(), yp.clone())
+                && compare_ast_vecs(xb.clone(), yb.clone())
+        }
+
+        (Ast::FuncCall(xn, xp, _), Ast::FuncCall(yn, yp, _)) => {
+            xn == yn && compare_ast_vecs(xp.clone(), yp.clone())
+        }
+
+        (Ast::Return(xv, _), Ast::Return(yv, _)) => eq_ast_ignoring_src(xv, yv),
+
+        (Ast::StringLit(xs, _), Ast::StringLit(ys, _)) => xs == ys,
+
+        (Ast::WhileStmt(xc, xb, _), Ast::WhileStmt(yc, yb, _)) => {
+            eq_ast_ignoring_src(xc, yc) && compare_ast_vecs(xb.clone(), yb.clone())
+        }
+
+        (Ast::ArrLit(xt, xv, _), Ast::ArrLit(yt, yv, _)) => {
+            xt == yt && compare_ast_vecs(xv.clone(), yv.clone())
+        }
+
+        (Ast::ArrRef(xa, xi, _), Ast::ArrRef(ya, yi, _)) => {
+            xa == ya && compare_ast_vecs(xi.clone(), yi.clone())
+        }
+
+        (Ast::ArrReassign(xa, xi, xv, _), Ast::ArrReassign(ya, yi, yv, _)) => {
+            xa == ya && compare_ast_vecs(xi.clone(), yi.clone()) && eq_ast_ignoring_src(xv, yv)
+        }
+
+        (Ast::StructInterface(xn, xkv, _), Ast::StructInterface(yn, ykv, _)) => {
+            xn == yn && xkv == ykv
+        }
+
+        (Ast::StructLit(xn, xkv, _), Ast::StructLit(yn, ykv, _)) => {
+            if xn != yn {
+                return false;
+            }
+            if xkv.len() != ykv.len() {
+                return false;
+            }
+            xkv.iter().all(|(k, (xast, xt))| {
+                if let Some((yast, yt)) = ykv.get(k) {
+                    xt == yt && eq_ast_ignoring_src(xast, yast)
+                } else {
+                    false
+                }
+            })
+        }
+
+        (Ast::StructRef(xn, xk, _), Ast::StructRef(yn, yk, _)) => xn == yn && xk == yk,
+
+        (Ast::StructReassign(xn, xf, xv, _), Ast::StructReassign(yn, yf, yv, _)) => {
+            xn == yn && xf == yf && eq_ast_ignoring_src(xv, yv)
+        }
+
+        (Ast::Not(xn), Ast::Not(yn)) => eq_ast_ignoring_src(xn, yn),
+
+        _ => todo!("Chase you have not implemented {} node yet", x.node_type()),
+    }
+}
+
+fn compare_ast_vecs(a: Vec<Ast>, b: Vec<Ast>) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+
+    a.iter()
+        .zip(b.iter())
+        .all(|(x, y)| eq_ast_ignoring_src(x, y))
+}
+
 macro_rules! setup_ast {
     ($i: expr, $ast: ident) => {
         let input = $i.to_string();
@@ -22,91 +132,102 @@ macro_rules! setup_ast {
 #[test]
 fn test_ast_gen_int_literal() {
     setup_ast!("64", ast);
-    assert_eq!(ast, vec![Ast::IntLit(64)])
+    assert!(compare_ast_vecs(ast, vec![Ast::IntLit(64)]))
 }
 
 #[test]
 fn test_ast_gen_infix_exprs() {
     setup_ast!("18 - 3", ast);
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![Ast::InfixExpr(
             Box::new(Ast::IntLit(18)),
             Box::new(Ast::IntLit(3)),
-            InfixOp::Minus
+            InfixOp::Minus,
+            "".to_string()
         )]
-    )
+    ))
 }
 
 #[test]
 fn test_ast_gen_order_ops() {
     setup_ast!("18 - 3 * 5", ast);
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![Ast::InfixExpr(
             Box::new(Ast::IntLit(18)),
             Box::new(Ast::InfixExpr(
                 Box::new(Ast::IntLit(3)),
                 Box::new(Ast::IntLit(5)),
-                InfixOp::Multiply
+                InfixOp::Multiply,
+                "".to_string()
             )),
-            InfixOp::Minus
+            InfixOp::Minus,
+            "".to_string()
         )]
-    )
+    ))
 }
 
 #[test]
 fn test_ast_gen_var_dec() {
     setup_ast!("let x = 9;", ast);
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![Ast::VarDec(
             Box::new("x".to_string()),
             TypeTok::Int,
             Box::new(Ast::IntLit(9)),
+            "".to_string()
         )]
-    )
+    ))
 }
 
 #[test]
 fn test_ast_gen_var_reassign() {
     setup_ast!("let x = 9; x = 5;", ast);
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![
             Ast::VarDec(
                 Box::new("x".to_string()),
                 TypeTok::Int,
                 Box::new(Ast::IntLit(9)),
+                "".to_string()
             ),
-            Ast::VarReassign(Box::new("x".to_string()), Box::new(Ast::IntLit(5),))
+            Ast::VarReassign(
+                Box::new("x".to_string()),
+                Box::new(Ast::IntLit(5)),
+                "".to_string()
+            )
         ]
-    )
+    ))
 }
 
 #[test]
 fn test_ast_gen_static_type() {
     setup_ast!("let x: int = 9;", ast);
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![Ast::VarDec(
             Box::new("x".to_string()),
             TypeTok::Int,
-            Box::new(Ast::IntLit(9))
+            Box::new(Ast::IntLit(9)),
+            "".to_string()
         )]
-    )
+    ))
 }
 #[test]
 fn test_ast_gen_bool_lit() {
     setup_ast!("let x: bool = false;", ast);
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![Ast::VarDec(
             Box::new("x".to_string()),
             TypeTok::Bool,
-            Box::new(Ast::BoolLit(false))
+            Box::new(Ast::BoolLit(false)),
+            "".to_string()
         )]
-    )
+    ))
 }
 
 #[test]
@@ -116,7 +237,7 @@ fn test_ast_gen_bool_infix() {
         ast
     );
 
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![
             Ast::VarDec(
@@ -127,33 +248,39 @@ fn test_ast_gen_bool_infix() {
                         Box::new(Ast::IntLit(8)),
                         Box::new(Ast::IntLit(4)),
                         InfixOp::GreaterThan,
+                        "".to_string()
                     )),
                     Box::new(Ast::BoolLit(false)),
                     InfixOp::Or,
-                ))
+                    "".to_string()
+                )),
+                "".to_string()
             ),
             Ast::VarDec(
                 Box::new("x".to_string()),
                 TypeTok::Int,
-                Box::new(Ast::IntLit(9))
+                Box::new(Ast::IntLit(9)),
+                "".to_string()
             ),
             Ast::VarDec(
                 Box::new("bar".to_string()),
                 TypeTok::Bool,
                 Box::new(Ast::InfixExpr(
                     Box::new(Ast::IntLit(9)),
-                    Box::new(Ast::VarRef(Box::new("x".to_string()))),
-                    InfixOp::Equals
-                ))
+                    Box::new(Ast::VarRef(Box::new("x".to_string()), "".to_string())),
+                    InfixOp::Equals,
+                    "".to_string()
+                )),
+                "".to_string()
             )
         ]
-    )
+    ))
 }
 
 #[test]
 fn test_ast_gen_mixed_bool_int() {
     setup_ast!("let x = 4 + 3 < 6;", ast);
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![Ast::VarDec(
             Box::new("x".to_string()),
@@ -162,172 +289,209 @@ fn test_ast_gen_mixed_bool_int() {
                 Box::new(Ast::InfixExpr(
                     Box::new(Ast::IntLit(4)),
                     Box::new(Ast::IntLit(3)),
-                    InfixOp::Plus
+                    InfixOp::Plus,
+                    "".to_string()
                 )),
                 Box::new(Ast::IntLit(6)),
-                InfixOp::LessThan
-            ))
+                InfixOp::LessThan,
+                "".to_string()
+            )),
+            "".to_string()
         )]
-    )
+    ))
 }
 #[test]
 fn test_asg_gen_modulo() {
     setup_ast!("5 % 3;", ast);
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![Ast::InfixExpr(
             Box::new(Ast::IntLit(5)),
             Box::new(Ast::IntLit(3)),
-            InfixOp::Modulo
+            InfixOp::Modulo,
+            "".to_string()
         )]
-    )
+    ))
 }
 
 #[test]
 fn test_ast_gen_return_bool() {
     setup_ast!("let x: bool = true; x || false;", ast);
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![
             Ast::VarDec(
                 Box::new("x".to_string()),
                 TypeTok::Bool,
                 Box::new(Ast::BoolLit(true)),
+                "".to_string()
             ),
             Ast::InfixExpr(
-                Box::new(Ast::VarRef(Box::new("x".to_string()))),
+                Box::new(Ast::VarRef(Box::new("x".to_string()), "".to_string())),
                 Box::new(Ast::BoolLit(false)),
-                InfixOp::Or
+                InfixOp::Or,
+                "".to_string()
             )
         ]
-    )
+    ))
 }
 
 #[test]
 fn test_ast_gen_if_stmt() {
     setup_ast!("let x = false; if x || true {x = true;}", ast);
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![
             Ast::VarDec(
                 Box::new("x".to_string()),
                 TypeTok::Bool,
-                Box::new(Ast::BoolLit(false))
+                Box::new(Ast::BoolLit(false)),
+                "".to_string()
             ),
             Ast::IfStmt(
                 Box::new(Ast::InfixExpr(
-                    Box::new(Ast::VarRef(Box::new("x".to_string()))),
+                    Box::new(Ast::VarRef(Box::new("x".to_string()), "".to_string())),
                     Box::new(Ast::BoolLit(true)),
                     InfixOp::Or,
+                    "".to_string()
                 )),
                 vec![Ast::VarReassign(
                     Box::new("x".to_string()),
-                    Box::new(Ast::BoolLit(true))
+                    Box::new(Ast::BoolLit(true)),
+                    "".to_string()
                 )],
                 None,
+                "".to_string()
             )
         ]
-    )
+    ))
 }
 
 #[test]
 fn test_ast_gen_if_stmt_complex() {
     setup_ast!("let x:int = 8; if true {x = 4}; x;", ast);
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![
             Ast::VarDec(
                 Box::new("x".to_string()),
                 TypeTok::Int,
                 Box::new(Ast::IntLit(8)),
+                "".to_string()
             ),
             Ast::IfStmt(
                 Box::new(Ast::BoolLit(true)),
                 vec![Ast::VarReassign(
                     Box::new("x".to_string()),
-                    Box::new(Ast::IntLit(4))
+                    Box::new(Ast::IntLit(4)),
+                    "".to_string()
                 )],
-                None
+                None,
+                "".to_string()
             ),
-            Ast::VarRef(Box::new("x".to_string())),
+            Ast::VarRef(Box::new("x".to_string()), "".to_string()),
         ]
-    )
+    ))
 }
 
 #[test]
 fn test_ast_gen_if_else() {
     setup_ast!("if true && false {let x = 7;} else {let x = 8;}", ast);
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![Ast::IfStmt(
             Box::new(Ast::InfixExpr(
                 Box::new(Ast::BoolLit(true)),
                 Box::new(Ast::BoolLit(false)),
                 InfixOp::And,
+                "".to_string()
             )),
             vec![Ast::VarDec(
                 Box::new("x".to_string()),
                 TypeTok::Int,
-                Box::new(Ast::IntLit(7))
+                Box::new(Ast::IntLit(7)),
+                "".to_string()
             )],
             Some(vec![Ast::VarDec(
                 Box::new("x".to_string()),
                 TypeTok::Int,
-                Box::new(Ast::IntLit(8))
-            )])
+                Box::new(Ast::IntLit(8)),
+                "".to_string()
+            )]),
+            "".to_string()
         )]
-    )
+    ))
 }
 
 #[test]
 fn test_ast_gen_nested_parens() {
     setup_ast!("let x = (5 * (3 + 4)) / 7;", ast);
     //This nesting is a crime against humanity
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![Ast::VarDec(
             Box::new("x".to_string()),
             TypeTok::Int,
             Box::new(Ast::InfixExpr(
-                Box::new(Ast::EmptyExpr(Box::new(Ast::InfixExpr(
-                    Box::new(Ast::IntLit(5)),
-                    Box::new(Ast::EmptyExpr(Box::new(Ast::InfixExpr(
-                        Box::new(Ast::IntLit(3)),
-                        Box::new(Ast::IntLit(4)),
-                        InfixOp::Plus
-                    )))),
-                    InfixOp::Multiply
-                )))),
+                Box::new(Ast::EmptyExpr(
+                    Box::new(Ast::InfixExpr(
+                        Box::new(Ast::IntLit(5)),
+                        Box::new(Ast::EmptyExpr(
+                            Box::new(Ast::InfixExpr(
+                                Box::new(Ast::IntLit(3)),
+                                Box::new(Ast::IntLit(4)),
+                                InfixOp::Plus,
+                                "".to_string()
+                            )),
+                            "".to_string()
+                        )),
+                        InfixOp::Multiply,
+                        "".to_string()
+                    )),
+                    "".to_string()
+                )),
                 Box::new(Ast::IntLit(7)),
-                InfixOp::Divide
-            ))
+                InfixOp::Divide,
+                "".to_string()
+            )),
+            "".to_string()
         )]
-    )
+    ))
 }
 
 #[test]
 fn test_ast_gen_consecutive_parens() {
     setup_ast!("let x = (5 + 2) + (3 + 1);", ast);
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![Ast::VarDec(
             Box::new("x".to_string()),
             TypeTok::Int,
             Box::new(Ast::InfixExpr(
-                Box::new(Ast::EmptyExpr(Box::new(Ast::InfixExpr(
-                    Box::new(Ast::IntLit(5)),
-                    Box::new(Ast::IntLit(2)),
-                    InfixOp::Plus,
-                )))),
-                Box::new(Ast::EmptyExpr(Box::new(Ast::InfixExpr(
-                    Box::new(Ast::IntLit(3)),
-                    Box::new(Ast::IntLit(1)),
-                    InfixOp::Plus
-                )))),
-                InfixOp::Plus
-            ))
+                Box::new(Ast::EmptyExpr(
+                    Box::new(Ast::InfixExpr(
+                        Box::new(Ast::IntLit(5)),
+                        Box::new(Ast::IntLit(2)),
+                        InfixOp::Plus,
+                        "".to_string()
+                    )),
+                    "".to_string()
+                )),
+                Box::new(Ast::EmptyExpr(
+                    Box::new(Ast::InfixExpr(
+                        Box::new(Ast::IntLit(3)),
+                        Box::new(Ast::IntLit(1)),
+                        InfixOp::Plus,
+                        "".to_string()
+                    )),
+                    "".to_string()
+                )),
+                InfixOp::Plus,
+                "".to_string()
+            )),
+            "".to_string()
         )]
-    )
+    ))
 }
 
 #[test]
@@ -337,32 +501,39 @@ fn test_ast_gen_func_dec_call() {
         ast
     );
 
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![
             Ast::FuncDec(
                 Box::new("add".to_string()),
                 vec![
-                    Ast::FuncParam(Box::new("a".to_string()), TypeTok::Int),
-                    Ast::FuncParam(Box::new("b".to_string()), TypeTok::Int)
+                    Ast::FuncParam(Box::new("a".to_string()), TypeTok::Int, "".to_string()),
+                    Ast::FuncParam(Box::new("b".to_string()), TypeTok::Int, "".to_string())
                 ],
                 TypeTok::Int,
-                vec![Ast::Return(Box::new(Ast::InfixExpr(
-                    Box::new(Ast::VarRef(Box::new("a".to_string()))),
-                    Box::new(Ast::VarRef(Box::new("b".to_string()))),
-                    InfixOp::Plus
-                )))]
+                vec![Ast::Return(
+                    Box::new(Ast::InfixExpr(
+                        Box::new(Ast::VarRef(Box::new("a".to_string()), "".to_string())),
+                        Box::new(Ast::VarRef(Box::new("b".to_string()), "".to_string())),
+                        InfixOp::Plus,
+                        "".to_string()
+                    )),
+                    "".to_string()
+                )],
+                "".to_string()
             ),
             Ast::VarDec(
                 Box::new("x".to_string()),
                 TypeTok::Int,
                 Box::new(Ast::FuncCall(
                     Box::new("add".to_string()),
-                    vec![Ast::IntLit(2), Ast::IntLit(3),]
-                ))
+                    vec![Ast::IntLit(2), Ast::IntLit(3),],
+                    "".to_string()
+                )),
+                "".to_string()
             )
         ]
-    )
+    ))
 }
 
 #[test]
@@ -371,43 +542,61 @@ fn test_ast_gen_str_lit_and_concatenation() {
         r#"let x: str = "hello "; let y = "world"; let z = x + y;"#,
         ast
     );
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![
             Ast::VarDec(
                 Box::new("x".to_string()),
                 TypeTok::Str,
-                Box::new(Ast::StringLit(Box::new("hello ".to_string())))
+                Box::new(Ast::StringLit(
+                    Box::new("hello ".to_string()),
+                    "".to_string()
+                )),
+                "".to_string()
             ),
             Ast::VarDec(
                 Box::new("y".to_string()),
                 TypeTok::Str,
-                Box::new(Ast::StringLit(Box::new("world".to_string())))
+                Box::new(Ast::StringLit(
+                    Box::new("world".to_string()),
+                    "".to_string()
+                )),
+                "".to_string()
             ),
             Ast::VarDec(
                 Box::new("z".to_string()),
                 TypeTok::Str,
                 Box::new(Ast::InfixExpr(
-                    Box::new(Ast::VarRef(Box::new("x".to_string()))),
-                    Box::new(Ast::VarRef(Box::new("y".to_string()))),
-                    InfixOp::Plus
-                ))
+                    Box::new(Ast::VarRef(Box::new("x".to_string()), "".to_string())),
+                    Box::new(Ast::VarRef(Box::new("y".to_string()), "".to_string())),
+                    InfixOp::Plus,
+                    "".to_string()
+                )),
+                "".to_string()
             )
         ]
-    )
+    ))
 }
 
 #[test]
 fn test_ast_gen_print_int_bool() {
     setup_ast!("println(true); println(1);", ast);
 
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![
-            Ast::FuncCall(Box::new("println".to_string()), vec![Ast::BoolLit(true)]),
-            Ast::FuncCall(Box::new("println".to_string()), vec![Ast::IntLit(1),])
+            Ast::FuncCall(
+                Box::new("println".to_string()),
+                vec![Ast::BoolLit(true)],
+                "".to_string()
+            ),
+            Ast::FuncCall(
+                Box::new("println".to_string()),
+                vec![Ast::IntLit(1),],
+                "".to_string()
+            )
         ]
-    )
+    ))
 }
 
 #[test]
@@ -427,62 +616,87 @@ fn test_ast_gen_fibonacci() {
     "#,
         ast
     );
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![
             Ast::FuncDec(
                 Box::new("fib".to_string()),
-                vec![Ast::FuncParam(Box::new("n".to_string()), TypeTok::Int)],
+                vec![Ast::FuncParam(
+                    Box::new("n".to_string()),
+                    TypeTok::Int,
+                    "".to_string()
+                )],
                 TypeTok::Int,
                 vec![
                     Ast::IfStmt(
                         Box::new(Ast::InfixExpr(
-                            Box::new(Ast::VarRef(Box::new("n".to_string()))),
+                            Box::new(Ast::VarRef(Box::new("n".to_string()), "".to_string())),
                             Box::new(Ast::IntLit(0)),
-                            InfixOp::Equals
+                            InfixOp::Equals,
+                            "".to_string()
                         )),
-                        vec![Ast::Return(Box::new(Ast::IntLit(0)))],
-                        None
+                        vec![Ast::Return(Box::new(Ast::IntLit(0)), "".to_string())],
+                        None,
+                        "".to_string()
                     ),
                     Ast::IfStmt(
                         Box::new(Ast::InfixExpr(
-                            Box::new(Ast::VarRef(Box::new("n".to_string()))),
+                            Box::new(Ast::VarRef(Box::new("n".to_string()), "".to_string())),
                             Box::new(Ast::IntLit(1)),
-                            InfixOp::Equals
+                            InfixOp::Equals,
+                            "".to_string()
                         )),
-                        vec![Ast::Return(Box::new(Ast::IntLit(1)))],
-                        None
+                        vec![Ast::Return(Box::new(Ast::IntLit(1)), "".to_string())],
+                        None,
+                        "".to_string()
                     ),
-                    Ast::Return(Box::new(Ast::InfixExpr(
-                        Box::new(Ast::FuncCall(
-                            Box::new("fib".to_string()),
-                            vec![Ast::InfixExpr(
-                                Box::new(Ast::VarRef(Box::new("n".to_string()))),
-                                Box::new(Ast::IntLit(1)),
-                                InfixOp::Minus,
-                            )]
+                    Ast::Return(
+                        Box::new(Ast::InfixExpr(
+                            Box::new(Ast::FuncCall(
+                                Box::new("fib".to_string()),
+                                vec![Ast::InfixExpr(
+                                    Box::new(Ast::VarRef(
+                                        Box::new("n".to_string()),
+                                        "".to_string()
+                                    )),
+                                    Box::new(Ast::IntLit(1)),
+                                    InfixOp::Minus,
+                                    "".to_string()
+                                )],
+                                "".to_string()
+                            )),
+                            Box::new(Ast::FuncCall(
+                                Box::new("fib".to_string()),
+                                vec![Ast::InfixExpr(
+                                    Box::new(Ast::VarRef(
+                                        Box::new("n".to_string()),
+                                        "".to_string()
+                                    )),
+                                    Box::new(Ast::IntLit(2)),
+                                    InfixOp::Minus,
+                                    "".to_string()
+                                )],
+                                "".to_string()
+                            )),
+                            InfixOp::Plus,
+                            "".to_string()
                         )),
-                        Box::new(Ast::FuncCall(
-                            Box::new("fib".to_string()),
-                            vec![Ast::InfixExpr(
-                                Box::new(Ast::VarRef(Box::new("n".to_string()))),
-                                Box::new(Ast::IntLit(2)),
-                                InfixOp::Minus,
-                            )]
-                        )),
-                        InfixOp::Plus
-                    )))
-                ]
+                        "".to_string()
+                    )
+                ],
+                "".to_string()
             ),
             Ast::FuncCall(
                 Box::new("println".to_string()),
                 vec![Ast::FuncCall(
                     Box::new("fib".to_string()),
-                    vec![Ast::IntLit(5)]
-                )]
+                    vec![Ast::IntLit(5)],
+                    "".to_string()
+                )],
+                "".to_string()
             )
         ]
-    )
+    ))
 }
 
 #[test]
@@ -491,64 +705,74 @@ fn test_ast_gen_while() {
         "let x = 0; while x < 10 { if x == 0{continue;} if x == 7{break;} x++;} x;",
         ast
     );
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![
             Ast::VarDec(
                 Box::new("x".to_string()),
                 TypeTok::Int,
-                Box::new(Ast::IntLit(0))
+                Box::new(Ast::IntLit(0)),
+                "".to_string()
             ),
             Ast::WhileStmt(
                 Box::new(Ast::InfixExpr(
-                    Box::new(Ast::VarRef(Box::new("x".to_string()))),
+                    Box::new(Ast::VarRef(Box::new("x".to_string()), "".to_string())),
                     Box::new(Ast::IntLit(10)),
-                    InfixOp::LessThan
+                    InfixOp::LessThan,
+                    "".to_string()
                 )),
                 vec![
                     Ast::IfStmt(
                         Box::new(Ast::InfixExpr(
-                            Box::new(Ast::VarRef(Box::new("x".to_string()))),
+                            Box::new(Ast::VarRef(Box::new("x".to_string()), "".to_string())),
                             Box::new(Ast::IntLit(0)),
-                            InfixOp::Equals
+                            InfixOp::Equals,
+                            "".to_string()
                         )),
                         vec![Ast::Continue],
-                        None
+                        None,
+                        "".to_string()
                     ),
                     Ast::IfStmt(
                         Box::new(Ast::InfixExpr(
-                            Box::new(Ast::VarRef(Box::new("x".to_string()))),
+                            Box::new(Ast::VarRef(Box::new("x".to_string()), "".to_string())),
                             Box::new(Ast::IntLit(7)),
-                            InfixOp::Equals
+                            InfixOp::Equals,
+                            "".to_string()
                         )),
                         vec![Ast::Break],
-                        None
+                        None,
+                        "".to_string()
                     ),
                     Ast::VarReassign(
                         Box::new("x".to_string()),
                         Box::new(Ast::InfixExpr(
-                            Box::new(Ast::VarRef(Box::new("x".to_string()))),
+                            Box::new(Ast::VarRef(Box::new("x".to_string()), "".to_string())),
                             Box::new(Ast::IntLit(1)),
-                            InfixOp::Plus
-                        ))
+                            InfixOp::Plus,
+                            "".to_string()
+                        )),
+                        "".to_string()
                     ),
-                ]
+                ],
+                "".to_string()
             ),
-            Ast::VarRef(Box::new("x".to_string()))
+            Ast::VarRef(Box::new("x".to_string()), "".to_string())
         ]
-    )
+    ))
 }
 
 #[test]
 fn test_ast_gen_str_concat() {
     setup_ast!(r#"let x = "1"; let y = str(x) + "1"; println(y);"#, ast);
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![
             Ast::VarDec(
                 Box::new("x".to_string()),
                 TypeTok::Str,
-                Box::new(Ast::StringLit(Box::new("1".to_string())))
+                Box::new(Ast::StringLit(Box::new("1".to_string()), "".to_string())),
+                "".to_string()
             ),
             Ast::VarDec(
                 Box::new("y".to_string()),
@@ -556,24 +780,28 @@ fn test_ast_gen_str_concat() {
                 Box::new(Ast::InfixExpr(
                     Box::new(Ast::FuncCall(
                         Box::new("str".to_string()),
-                        vec![Ast::VarRef(Box::new("x".to_string()))]
+                        vec![Ast::VarRef(Box::new("x".to_string()), "".to_string())],
+                        "".to_string()
                     )),
-                    Box::new(Ast::StringLit(Box::new("1".to_string()))),
-                    InfixOp::Plus
-                ))
+                    Box::new(Ast::StringLit(Box::new("1".to_string()), "".to_string())),
+                    InfixOp::Plus,
+                    "".to_string()
+                )),
+                "".to_string()
             ),
             Ast::FuncCall(
                 Box::new("println".to_string()),
-                vec![Ast::VarRef(Box::new("y".to_string()))]
+                vec![Ast::VarRef(Box::new("y".to_string()), "".to_string())],
+                "".to_string()
             )
         ]
-    )
+    ))
 }
 
 #[test]
 fn test_ast_gen_float_infix() {
     setup_ast!("let pi = 3 + 0.1415; let e: float = 2.7 + 0.08;", ast);
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![
             Ast::VarDec(
@@ -582,8 +810,10 @@ fn test_ast_gen_float_infix() {
                 Box::new(Ast::InfixExpr(
                     Box::new(Ast::IntLit(3)),
                     Box::new(Ast::FloatLit(OrderedFloat(0.1415))),
-                    InfixOp::Plus
-                ))
+                    InfixOp::Plus,
+                    "".to_string()
+                )),
+                "".to_string()
             ),
             Ast::VarDec(
                 Box::new("e".to_string()),
@@ -591,17 +821,19 @@ fn test_ast_gen_float_infix() {
                 Box::new(Ast::InfixExpr(
                     Box::new(Ast::FloatLit(OrderedFloat(2.7))),
                     Box::new(Ast::FloatLit(OrderedFloat(0.08))),
-                    InfixOp::Plus
-                ))
+                    InfixOp::Plus,
+                    "".to_string()
+                )),
+                "".to_string()
             )
         ]
-    )
+    ))
 }
 #[test]
 fn test_ast_gen_arr_lit() {
     setup_ast!("let arr: int[] = [1, 2 - 1, int(3.0)];", ast);
 
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![Ast::VarDec(
             Box::new("arr".to_string()),
@@ -613,22 +845,26 @@ fn test_ast_gen_arr_lit() {
                     Ast::InfixExpr(
                         Box::new(Ast::IntLit(2)),
                         Box::new(Ast::IntLit(1)),
-                        InfixOp::Minus
+                        InfixOp::Minus,
+                        "".to_string()
                     ),
                     Ast::FuncCall(
                         Box::new("int".to_string()),
-                        vec![Ast::FloatLit(OrderedFloat(3.0))]
+                        vec![Ast::FloatLit(OrderedFloat(3.0))],
+                        "".to_string()
                     )
-                ]
-            ))
+                ],
+                "".to_string()
+            )),
+            "".to_string()
         )]
-    )
+    ))
 }
 
 #[test]
 fn test_ast_gen_arr_reassign() {
     setup_ast!("let ao: bool[] = [true, false]; ao = [false];", ast);
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![
             Ast::VarDec(
@@ -636,22 +872,29 @@ fn test_ast_gen_arr_reassign() {
                 TypeTok::BoolArr(1),
                 Box::new(Ast::ArrLit(
                     TypeTok::BoolArr(1),
-                    vec![Ast::BoolLit(true), Ast::BoolLit(false)]
-                ))
+                    vec![Ast::BoolLit(true), Ast::BoolLit(false)],
+                    "".to_string()
+                )),
+                "".to_string()
             ),
             Ast::VarReassign(
                 Box::new("ao".to_string()),
-                Box::new(Ast::ArrLit(TypeTok::BoolArr(1), vec![Ast::BoolLit(false)]))
+                Box::new(Ast::ArrLit(
+                    TypeTok::BoolArr(1),
+                    vec![Ast::BoolLit(false)],
+                    "".to_string()
+                )),
+                "".to_string()
             )
         ]
-    )
+    ))
 }
 
 #[test]
 fn test_ast_gen_arr_idx_ref() {
     setup_ast!("let a: int[] = [1, 2, 3, 4]; let b = a[0];", ast);
 
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![
             Ast::VarDec(
@@ -664,22 +907,29 @@ fn test_ast_gen_arr_idx_ref() {
                         Ast::IntLit(2),
                         Ast::IntLit(3),
                         Ast::IntLit(4)
-                    ]
-                ))
+                    ],
+                    "".to_string()
+                )),
+                "".to_string()
             ),
             Ast::VarDec(
                 Box::new("b".to_string()),
                 TypeTok::Int,
-                Box::new(Ast::ArrRef(Box::new("a".to_string()), vec![Ast::IntLit(0)]))
+                Box::new(Ast::ArrRef(
+                    Box::new("a".to_string()),
+                    vec![Ast::IntLit(0)],
+                    "".to_string()
+                )),
+                "".to_string()
             )
         ]
-    )
+    ))
 }
 
 #[test]
 fn test_ast_gen_arr_idx_reassign() {
     setup_ast!("let arr = [1.0, 1.1, 1.2, 1.3]; arr[1] = 1.7;", ast);
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![
             Ast::VarDec(
@@ -692,16 +942,19 @@ fn test_ast_gen_arr_idx_reassign() {
                         Ast::FloatLit(OrderedFloat(1.1)),
                         Ast::FloatLit(OrderedFloat(1.2)),
                         Ast::FloatLit(OrderedFloat(1.3))
-                    ]
-                ))
+                    ],
+                    "".to_string()
+                )),
+                "".to_string()
             ),
             Ast::ArrReassign(
                 Box::new("arr".to_string()),
                 vec![Ast::IntLit(1)],
-                Box::new(Ast::FloatLit(OrderedFloat(1.7)))
+                Box::new(Ast::FloatLit(OrderedFloat(1.7))),
+                "".to_string()
             )
         ]
-    )
+    ))
 }
 
 #[test]
@@ -711,7 +964,7 @@ fn test_ast_gen_n_dimensional_arr_dec_and_reassign() {
         ast
     );
 
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![
             Ast::VarDec(
@@ -723,24 +976,35 @@ fn test_ast_gen_n_dimensional_arr_dec_and_reassign() {
                         Ast::ArrLit(
                             TypeTok::StrArr(1),
                             vec![
-                                Ast::StringLit(Box::new("hi".to_string())),
-                                Ast::StringLit(Box::new("bye".to_string()))
-                            ]
+                                Ast::StringLit(Box::new("hi".to_string()), "".to_string()),
+                                Ast::StringLit(Box::new("bye".to_string()), "".to_string())
+                            ],
+                            "".to_string()
                         ),
                         Ast::ArrLit(
                             TypeTok::StrArr(1),
-                            vec![Ast::StringLit(Box::new("goodbye".to_string()))]
+                            vec![Ast::StringLit(
+                                Box::new("goodbye".to_string()),
+                                "".to_string()
+                            )],
+                            "".to_string()
                         )
-                    ]
-                ))
+                    ],
+                    "".to_string()
+                )),
+                "".to_string()
             ),
             Ast::ArrReassign(
                 Box::new("arr".to_string()),
                 vec![Ast::IntLit(0), Ast::IntLit(1)],
-                Box::new(Ast::StringLit(Box::new("bye bye".to_string())))
+                Box::new(Ast::StringLit(
+                    Box::new("bye bye".to_string()),
+                    "".to_string()
+                )),
+                "".to_string()
             )
         ]
-    )
+    ))
 }
 
 #[test]
@@ -749,7 +1013,7 @@ fn test_ast_gen_nd_arr_ref() {
         "let arr = [[2.3, 4.3], [0.2, 9.5]]; let x = arr[1][0];",
         ast
     );
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![
             Ast::VarDec(
@@ -763,28 +1027,34 @@ fn test_ast_gen_nd_arr_ref() {
                             vec![
                                 Ast::FloatLit(OrderedFloat(2.3)),
                                 Ast::FloatLit(OrderedFloat(4.3))
-                            ]
+                            ],
+                            "".to_string()
                         ),
                         Ast::ArrLit(
                             TypeTok::FloatArr(1),
                             vec![
                                 Ast::FloatLit(OrderedFloat(0.2)),
                                 Ast::FloatLit(OrderedFloat(9.5))
-                            ]
+                            ],
+                            "".to_string()
                         )
-                    ]
-                ))
+                    ],
+                    "".to_string()
+                )),
+                "".to_string()
             ),
             Ast::VarDec(
                 Box::new("x".to_string()),
                 TypeTok::Float,
                 Box::new(Ast::ArrRef(
                     Box::new("arr".to_string()),
-                    vec![Ast::IntLit(1), Ast::IntLit(0)]
-                ))
+                    vec![Ast::IntLit(1), Ast::IntLit(0)],
+                    "".to_string()
+                )),
+                "".to_string()
             )
         ]
-    )
+    ))
 }
 
 #[test]
@@ -793,7 +1063,7 @@ fn test_ast_gen_struct_def_and_ref() {
         r#"struct Name{first: str, last: str}; let me = Name{first: "Chase", last: "Yalon"}; println(me.first);"#,
         ast
     );
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![
             Ast::StructInterface(
@@ -801,7 +1071,8 @@ fn test_ast_gen_struct_def_and_ref() {
                 Box::new(BTreeMap::from([
                     ("first".to_string(), TypeTok::Str),
                     ("last".to_string(), TypeTok::Str)
-                ]))
+                ])),
+                "".to_string()
             ),
             Ast::VarDec(
                 Box::new("me".to_string()),
@@ -814,24 +1085,34 @@ fn test_ast_gen_struct_def_and_ref() {
                     Box::new(BTreeMap::from([
                         (
                             "first".to_string(),
-                            (Ast::StringLit(Box::new("Chase".to_string())), TypeTok::Str)
+                            (
+                                Ast::StringLit(Box::new("Chase".to_string()), "".to_string()),
+                                TypeTok::Str
+                            )
                         ),
                         (
                             "last".to_string(),
-                            (Ast::StringLit(Box::new("Yalon".to_string())), TypeTok::Str)
+                            (
+                                Ast::StringLit(Box::new("Yalon".to_string()), "".to_string()),
+                                TypeTok::Str
+                            )
                         )
-                    ]))
-                ))
+                    ])),
+                    "".to_string()
+                )),
+                "".to_string()
             ),
             Ast::FuncCall(
                 Box::new("println".to_string()),
                 vec![Ast::StructRef(
                     Box::new("me".to_string()),
-                    vec!["first".to_string()]
-                )]
+                    vec!["first".to_string()],
+                    "".to_string()
+                )],
+                "".to_string()
             )
         ]
-    )
+    ))
 }
 
 #[test]
@@ -840,7 +1121,7 @@ fn test_ast_gen_struct_buggy() {
         r#"struct Foo{fee: int, baz: bool}; let x = Foo{fee: 2, baz: false}; println(x.fee);"#,
         ast
     );
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![
             Ast::StructInterface(
@@ -848,7 +1129,8 @@ fn test_ast_gen_struct_buggy() {
                 Box::new(BTreeMap::from([
                     ("fee".to_string(), TypeTok::Int),
                     ("baz".to_string(), TypeTok::Bool)
-                ]))
+                ])),
+                "".to_string()
             ),
             Ast::VarDec(
                 Box::new("x".to_string()),
@@ -861,24 +1143,28 @@ fn test_ast_gen_struct_buggy() {
                     Box::new(BTreeMap::from([
                         ("fee".to_string(), (Ast::IntLit(2), TypeTok::Int)),
                         ("baz".to_string(), (Ast::BoolLit(false), TypeTok::Bool))
-                    ]))
-                ))
+                    ])),
+                    "".to_string()
+                )),
+                "".to_string()
             ),
             Ast::FuncCall(
                 Box::new("println".to_string()),
                 vec![Ast::StructRef(
                     Box::new("x".to_string()),
-                    vec!["fee".to_string()]
-                )]
+                    vec!["fee".to_string()],
+                    "".to_string()
+                )],
+                "".to_string()
             )
         ]
-    )
+    ))
 }
 
 #[test]
 fn test_ast_gen_nested_struct() {
     setup_ast!(r#"struct Name{first: str, last: str}; struct Person{name: Name, age: int}; let me = Person{name: Name{first: "Chase", last: "Yalon"}, age: 15}; println(me.name.last);"#.to_string(), ast);
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![
             Ast::StructInterface(
@@ -886,7 +1172,8 @@ fn test_ast_gen_nested_struct() {
                 Box::new(BTreeMap::from([
                     ("first".to_string(), TypeTok::Str),
                     ("last".to_string(), TypeTok::Str)
-                ]))
+                ])),
+                "".to_string()
             ),
             Ast::StructInterface(
                 Box::new("Person".to_string()),
@@ -899,7 +1186,8 @@ fn test_ast_gen_nested_struct() {
                         ]))
                     ),
                     ("age".to_string(), TypeTok::Int)
-                ]))
+                ])),
+                "".to_string()
             ),
             Ast::VarDec(
                 Box::new("me".to_string()),
@@ -925,18 +1213,25 @@ fn test_ast_gen_nested_struct() {
                                         (
                                             "first".to_string(),
                                             (
-                                                Ast::StringLit(Box::new("Chase".to_string())),
+                                                Ast::StringLit(
+                                                    Box::new("Chase".to_string()),
+                                                    "".to_string()
+                                                ),
                                                 TypeTok::Str
                                             )
                                         ),
                                         (
                                             "last".to_string(),
                                             (
-                                                Ast::StringLit(Box::new("Yalon".to_string())),
+                                                Ast::StringLit(
+                                                    Box::new("Yalon".to_string()),
+                                                    "".to_string()
+                                                ),
                                                 TypeTok::Str
                                             )
                                         )
-                                    ]))
+                                    ])),
+                                    "".to_string()
                                 ),
                                 TypeTok::Struct(BTreeMap::from([
                                     ("first".to_string(), Box::new(TypeTok::Str)),
@@ -945,18 +1240,22 @@ fn test_ast_gen_nested_struct() {
                             )
                         ),
                         ("age".to_string(), (Ast::IntLit(15), TypeTok::Int))
-                    ]))
-                ))
+                    ])),
+                    "".to_string()
+                )),
+                "".to_string()
             ),
             Ast::FuncCall(
                 Box::new("println".to_string()),
                 vec![Ast::StructRef(
                     Box::new("me".to_string()),
-                    vec!["name".to_string(), "last".to_string()]
-                )]
+                    vec!["name".to_string(), "last".to_string()],
+                    "".to_string()
+                )],
+                "".to_string()
             )
         ]
-    )
+    ))
 }
 
 #[test]
@@ -972,12 +1271,13 @@ fn test_ast_gen_struct_reassign() {
         ast
     );
 
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![
             Ast::StructInterface(
                 Box::new("Foo".to_string()),
-                Box::new(BTreeMap::from([("bar".to_string(), TypeTok::Int)]))
+                Box::new(BTreeMap::from([("bar".to_string(), TypeTok::Int)])),
+                "".to_string()
             ),
             Ast::StructInterface(
                 Box::new("Baz".to_string()),
@@ -987,7 +1287,8 @@ fn test_ast_gen_struct_reassign() {
                         "bar".to_string(),
                         Box::new(TypeTok::Int)
                     )]))
-                )]))
+                )])),
+                "".to_string()
             ),
             Ast::StructInterface(
                 Box::new("Qux".to_string()),
@@ -1000,7 +1301,8 @@ fn test_ast_gen_struct_reassign() {
                             Box::new(TypeTok::Int)
                         )])))
                     )]))
-                )]))
+                )])),
+                "".to_string()
             ),
             Ast::VarDec(
                 Box::new("a".to_string()),
@@ -1029,14 +1331,16 @@ fn test_ast_gen_struct_reassign() {
                                             Box::new(BTreeMap::from([(
                                                 "bar".to_string(),
                                                 (Ast::IntLit(1), TypeTok::Int)
-                                            )]))
+                                            )])),
+                                            "".to_string()
                                         ),
                                         TypeTok::Struct(BTreeMap::from([(
                                             "bar".to_string(),
                                             Box::new(TypeTok::Int)
                                         )]))
                                     )
-                                )]))
+                                )])),
+                                "".to_string()
                             ),
                             TypeTok::Struct(BTreeMap::from([(
                                 "foo".to_string(),
@@ -1046,8 +1350,10 @@ fn test_ast_gen_struct_reassign() {
                                 )])))
                             )]))
                         )
-                    )]))
-                ))
+                    )])),
+                    "".to_string()
+                )),
+                "".to_string()
             ),
             Ast::StructReassign(
                 Box::new("a".to_string()),
@@ -1057,11 +1363,13 @@ fn test_ast_gen_struct_reassign() {
                     Box::new(BTreeMap::from([(
                         "bar".to_string(),
                         (Ast::IntLit(2), TypeTok::Int)
-                    )]))
-                ))
+                    )])),
+                    "".to_string()
+                )),
+                "".to_string()
             )
         ]
-    )
+    ))
 }
 
 #[test]
@@ -1071,24 +1379,31 @@ fn test_ast_gen_struct_func_param() {
         ast
     );
 
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![
             Ast::StructInterface(
                 Box::new("Foo".to_string()),
-                Box::new(BTreeMap::from([("a".to_string(), TypeTok::Int)]))
+                Box::new(BTreeMap::from([("a".to_string(), TypeTok::Int)])),
+                "".to_string()
             ),
             Ast::FuncDec(
                 Box::new("bar".to_string()),
                 vec![Ast::FuncParam(
                     Box::new("f".to_string()),
-                    TypeTok::Struct(BTreeMap::from([("a".to_string(), Box::new(TypeTok::Int))]))
+                    TypeTok::Struct(BTreeMap::from([("a".to_string(), Box::new(TypeTok::Int))])),
+                    "".to_string()
                 )],
                 TypeTok::Int,
-                vec![Ast::Return(Box::new(Ast::StructRef(
-                    Box::new("f".to_string()),
-                    vec!["a".to_string()]
-                )))]
+                vec![Ast::Return(
+                    Box::new(Ast::StructRef(
+                        Box::new("f".to_string()),
+                        vec!["a".to_string()],
+                        "".to_string()
+                    )),
+                    "".to_string()
+                )],
+                "".to_string()
             ),
             Ast::FuncCall(
                 Box::new("bar".to_string()),
@@ -1097,11 +1412,13 @@ fn test_ast_gen_struct_func_param() {
                     Box::new(BTreeMap::from([(
                         "a".to_string(),
                         (Ast::IntLit(1), TypeTok::Int)
-                    )]))
-                )]
+                    )])),
+                    "".to_string()
+                )],
+                "".to_string()
             )
         ]
-    )
+    ))
 }
 
 #[test]
@@ -1110,7 +1427,7 @@ fn test_ast_gen_not() {
         r#"let x = false || false; if !x{println("duh")} else {println("something has gone wrong")}"#,
         ast
     );
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![
             Ast::VarDec(
@@ -1119,31 +1436,40 @@ fn test_ast_gen_not() {
                 Box::new(Ast::InfixExpr(
                     Box::new(Ast::BoolLit(false)),
                     Box::new(Ast::BoolLit(false)),
-                    InfixOp::Or
-                ))
+                    InfixOp::Or,
+                    "".to_string()
+                )),
+                "".to_string()
             ),
             Ast::IfStmt(
-                Box::new(Ast::Not(Box::new(Ast::VarRef(Box::new("x".to_string()))))),
+                Box::new(Ast::Not(Box::new(Ast::VarRef(
+                    Box::new("x".to_string()),
+                    "".to_string()
+                )))),
                 vec![Ast::FuncCall(
                     Box::new("println".to_string()),
-                    vec![Ast::StringLit(Box::new("duh".to_string()))]
+                    vec![Ast::StringLit(Box::new("duh".to_string()), "".to_string())],
+                    "".to_string()
                 )],
                 Some(vec![Ast::FuncCall(
                     Box::new("println".to_string()),
-                    vec![Ast::StringLit(Box::new(
-                        "something has gone wrong".to_string()
-                    ))]
-                )])
+                    vec![Ast::StringLit(
+                        Box::new("something has gone wrong".to_string()),
+                        "".to_string()
+                    )],
+                    "".to_string()
+                )]),
+                "".to_string()
             )
         ]
-    )
+    ))
 }
 
 #[test]
 fn test_ast_gen_arr_ref_bug() {
     setup_ast!("let arr = [1, 2, 3]; arr[2] = 9; let x = arr[1] + 3;", ast);
 
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![
             Ast::VarDec(
@@ -1151,13 +1477,16 @@ fn test_ast_gen_arr_ref_bug() {
                 TypeTok::IntArr(1),
                 Box::new(Ast::ArrLit(
                     TypeTok::IntArr(1),
-                    vec![Ast::IntLit(1), Ast::IntLit(2), Ast::IntLit(3)]
-                ))
+                    vec![Ast::IntLit(1), Ast::IntLit(2), Ast::IntLit(3)],
+                    "".to_string()
+                )),
+                "".to_string()
             ),
             Ast::ArrReassign(
                 Box::new("arr".to_string()),
                 vec![Ast::IntLit(2)],
-                Box::new(Ast::IntLit(9))
+                Box::new(Ast::IntLit(9)),
+                "".to_string()
             ),
             Ast::VarDec(
                 Box::new("x".to_string()),
@@ -1165,14 +1494,17 @@ fn test_ast_gen_arr_ref_bug() {
                 Box::new(Ast::InfixExpr(
                     Box::new(Ast::ArrRef(
                         Box::new("arr".to_string()),
-                        vec![Ast::IntLit(1)]
+                        vec![Ast::IntLit(1)],
+                        "".to_string()
                     )),
                     Box::new(Ast::IntLit(3)),
-                    InfixOp::Plus
-                ))
+                    InfixOp::Plus,
+                    "".to_string()
+                )),
+                "".to_string()
             )
         ]
-    )
+    ))
 }
 
 #[test]
@@ -1181,31 +1513,38 @@ fn test_ast_gen_nested_func_call_bug() {
         "fn add(a: int, b: int): int {return a + b } println(add(5, 4));",
         ast
     );
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![
             Ast::FuncDec(
                 Box::new("add".to_string()),
                 vec![
-                    Ast::FuncParam(Box::new("a".to_string()), TypeTok::Int),
-                    Ast::FuncParam(Box::new("b".to_string()), TypeTok::Int)
+                    Ast::FuncParam(Box::new("a".to_string()), TypeTok::Int, "".to_string()),
+                    Ast::FuncParam(Box::new("b".to_string()), TypeTok::Int, "".to_string())
                 ],
                 TypeTok::Int,
-                vec![Ast::Return(Box::new(Ast::InfixExpr(
-                    Box::new(Ast::VarRef(Box::new("a".to_string()))),
-                    Box::new(Ast::VarRef(Box::new("b".to_string()))),
-                    InfixOp::Plus
-                )))]
+                vec![Ast::Return(
+                    Box::new(Ast::InfixExpr(
+                        Box::new(Ast::VarRef(Box::new("a".to_string()), "".to_string())),
+                        Box::new(Ast::VarRef(Box::new("b".to_string()), "".to_string())),
+                        InfixOp::Plus,
+                        "".to_string()
+                    )),
+                    "".to_string()
+                )],
+                "".to_string()
             ),
             Ast::FuncCall(
                 Box::new("println".to_string()),
                 vec![Ast::FuncCall(
                     Box::new("add".to_string()),
-                    vec![Ast::IntLit(5), Ast::IntLit(4)]
-                )]
+                    vec![Ast::IntLit(5), Ast::IntLit(4)],
+                    "".to_string()
+                )],
+                "".to_string()
             )
         ]
-    )
+    ))
 }
 
 #[test]
@@ -1214,7 +1553,7 @@ fn test_ast_gen_struct_func_call() {
         r#"struct Human{name: str, age: int} for Human {fn set_age(n: int) {this.age = n }} let me = Human{name: "Chase", age: 16}; me.set_age(17);"#,
         ast
     );
-    assert_eq!(
+    assert!(compare_ast_vecs(
         ast,
         vec![
             Ast::StructInterface(
@@ -1223,6 +1562,7 @@ fn test_ast_gen_struct_func_call() {
                     ("name".to_string(), TypeTok::Str),
                     ("age".to_string(), TypeTok::Int),
                 ])),
+                "".to_string()
             ),
             Ast::FuncDec(
                 Box::new("Human:::set_age".to_string()),
@@ -1233,15 +1573,18 @@ fn test_ast_gen_struct_func_call() {
                             ("name".to_string(), Box::new(TypeTok::Str)),
                             ("age".to_string(), Box::new(TypeTok::Int)),
                         ])),
+                        "".to_string()
                     ),
-                    Ast::FuncParam(Box::new("n".to_string()), TypeTok::Int),
+                    Ast::FuncParam(Box::new("n".to_string()), TypeTok::Int, "".to_string()),
                 ],
                 TypeTok::Void,
                 vec![Ast::StructReassign(
                     Box::new("this".to_string()),
                     vec!["age".to_string()],
-                    Box::new(Ast::VarRef(Box::new("n".to_string()))),
+                    Box::new(Ast::VarRef(Box::new("n".to_string()), "".to_string())),
+                    "".to_string()
                 )],
+                "".to_string()
             ),
             Ast::VarDec(
                 Box::new("me".to_string()),
@@ -1254,16 +1597,25 @@ fn test_ast_gen_struct_func_call() {
                     Box::new(BTreeMap::from([
                         (
                             "name".to_string(),
-                            (Ast::StringLit(Box::new("Chase".to_string())), TypeTok::Str,),
+                            (
+                                Ast::StringLit(Box::new("Chase".to_string()), "".to_string()),
+                                TypeTok::Str,
+                            ),
                         ),
                         ("age".to_string(), (Ast::IntLit(16), TypeTok::Int)),
                     ])),
+                    "".to_string()
                 )),
+                "".to_string()
             ),
             Ast::FuncCall(
                 Box::new("Human:::set_age".to_string()),
-                vec![Ast::VarRef(Box::new("me".to_string())), Ast::IntLit(17)],
+                vec![
+                    Ast::VarRef(Box::new("me".to_string()), "".to_string()),
+                    Ast::IntLit(17)
+                ],
+                "".to_string()
             ),
         ]
-    )
+    ))
 }

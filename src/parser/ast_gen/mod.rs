@@ -104,7 +104,7 @@ impl AstGenerator {
         if self.var_type_scopes.len() > 1 {
             self.var_type_scopes.pop();
         } else {
-            return Err(ToyError::new(ToyErrorType::InternalParserFailure));
+            return Err(ToyError::new(ToyErrorType::InternalParserFailure, None));
         }
         return Ok(());
     }
@@ -131,6 +131,11 @@ impl AstGenerator {
         let mut best_tok: Token = Token::IntLit(0);
 
         let mut depth = 0;
+        let raw_text = toks
+            .iter()
+            .map(|t| t.to_string())
+            .collect::<Vec<String>>()
+            .join(" ");
 
         for (i, t) in toks.iter().enumerate() {
             match t.tok_type().as_str() {
@@ -140,7 +145,10 @@ impl AstGenerator {
                 }
                 "RParen" => {
                     if depth == 0 {
-                        return Err(ToyError::new(ToyErrorType::UnclosedDelimiter));
+                        return Err(ToyError::new(
+                            ToyErrorType::UnclosedDelimiter,
+                            Some(raw_text.clone()),
+                        ));
                     }
                     depth -= 1;
                     continue;
@@ -154,7 +162,10 @@ impl AstGenerator {
 
             let maybe_val = self.p_table.get(&t.tok_type());
             if maybe_val.is_none() {
-                return Err(ToyError::new(ToyErrorType::UnknownSymbol(t.clone())));
+                return Err(ToyError::new(
+                    ToyErrorType::UnknownSymbol(t.clone()),
+                    Some(raw_text.clone()),
+                ));
             }
 
             let val = *maybe_val.unwrap();
@@ -166,21 +177,38 @@ impl AstGenerator {
         }
 
         if depth != 0 {
-            return Err(ToyError::new(ToyErrorType::UnclosedDelimiter));
+            return Err(ToyError::new(
+                ToyErrorType::UnclosedDelimiter,
+                Some(raw_text.clone()),
+            ));
         }
 
         return Ok((best_idx, best_val, best_tok));
     }
 
     fn parse_func_call(&self, toks: &Vec<Token>) -> Result<(Ast, TypeTok), ToyError> {
+        let raw_text = toks
+            .iter()
+            .map(|t| t.to_string())
+            .collect::<Vec<String>>()
+            .join(" ");
         if toks[0].tok_type() != "VarRef" {
-            return Err(ToyError::new(ToyErrorType::MalformedFuncCall));
+            return Err(ToyError::new(
+                ToyErrorType::MalformedFuncCall,
+                Some(raw_text.clone()),
+            ));
         }
         if toks[1].tok_type() != "LParen" {
-            return Err(ToyError::new(ToyErrorType::MalformedFuncCall));
+            return Err(ToyError::new(
+                ToyErrorType::MalformedFuncCall,
+                Some(raw_text.clone()),
+            ));
         }
         if toks.last().unwrap().tok_type() != "RParen" {
-            return Err(ToyError::new(ToyErrorType::MalformedFuncCall));
+            return Err(ToyError::new(
+                ToyErrorType::MalformedFuncCall,
+                Some(raw_text.clone()),
+            ));
         }
         let name = match toks[0].clone() {
             Token::VarRef(n) => *n,
@@ -237,13 +265,19 @@ impl AstGenerator {
         }
 
         if types_opt.is_none() {
-            return Err(ToyError::new(ToyErrorType::UndefinedFunction));
+            return Err(ToyError::new(
+                ToyErrorType::UndefinedFunction,
+                Some(raw_text.clone()),
+            ));
         }
 
         let types = types_opt.unwrap();
         for (i, (_, type_tok)) in processed_params.iter().enumerate() {
             if type_tok != &types[i] && types[i] != TypeTok::Any {
-                return Err(ToyError::new(ToyErrorType::TypeMismatch));
+                return Err(ToyError::new(
+                    ToyErrorType::TypeMismatch,
+                    Some(raw_text.clone()),
+                ));
             }
         }
         let vals: Vec<Ast> = processed_params
@@ -254,7 +288,7 @@ impl AstGenerator {
             })
             .collect();
         return Ok((
-            Ast::FuncCall(Box::new(resolved_name.clone()), vals),
+            Ast::FuncCall(Box::new(resolved_name.clone()), vals, raw_text),
             self.func_return_type_map
                 .get(&resolved_name.clone())
                 .unwrap()
@@ -275,15 +309,22 @@ impl AstGenerator {
         let name_str = *name.get_var_name().unwrap();
         let (val_ast, val_type) = self.parse_expr(val)?;
         let ret_var_type: TypeTok;
+
         if var_type.is_some() {
             ret_var_type = var_type.unwrap();
         } else {
             ret_var_type = val_type;
         }
+        let raw_text = val
+            .iter()
+            .map(|t| t.to_string())
+            .collect::<Vec<String>>()
+            .join(" ");
         let node = Ast::VarDec(
             Box::new(name_str.clone()),
             ret_var_type.clone(),
             Box::new(val_ast),
+            raw_text,
         );
         self.insert_var_type(name_str.clone(), ret_var_type.clone());
         return Ok(node);
@@ -295,18 +336,21 @@ impl AstGenerator {
             Token::VarRef(box_str) => name_s = *box_str.clone(),
             _ => unreachable!(),
         }
-        return Ok(Ast::VarRef(Box::new(name_s)));
+        return Ok(Ast::VarRef(Box::new(name_s.clone()), name_s));
     }
 
     fn parse_if_stmt(&mut self, stmt: TBox, should_eat: bool) -> Result<Ast, ToyError> {
-        let (cond, body, alt) = match stmt {
-            TBox::IfStmt(c, b, a) => (c, b, a),
+        let (cond, body, alt, raw_text) = match stmt {
+            TBox::IfStmt(c, b, a, rt) => (c, b, a, rt),
             _ => unreachable!(),
         };
 
         let (b_cond, b_type) = self.parse_expr(&cond)?;
         if b_type != TypeTok::Bool {
-            return Err(ToyError::new(ToyErrorType::ExpressionNotBoolean));
+            return Err(ToyError::new(
+                ToyErrorType::ExpressionNotBoolean,
+                Some(raw_text.clone()),
+            ));
         }
 
         self.push_scope();
@@ -327,7 +371,7 @@ impl AstGenerator {
             self.pop_scope()?;
             else_val = Some(else_vec);
         }
-        let if_stmt = Ast::IfStmt(Box::new(b_cond), stmt_vec, else_val);
+        let if_stmt = Ast::IfStmt(Box::new(b_cond), stmt_vec, else_val, raw_text);
 
         if should_eat {
             self.eat();
@@ -337,8 +381,8 @@ impl AstGenerator {
     }
 
     fn parse_func_dec(&mut self, stmt: TBox, should_eat: bool) -> Result<Ast, ToyError> {
-        let (name_tok, params, return_type, box_boxy) = match stmt {
-            TBox::FuncDec(n, p, r, b) => (n, p, r, b),
+        let (name_tok, params, return_type, box_boxy, raw_text) = match stmt {
+            TBox::FuncDec(n, p, r, b, rt) => (n, p, r, b, rt),
             _ => unreachable!(),
         };
         let name = match name_tok {
@@ -350,13 +394,13 @@ impl AstGenerator {
         let mut param_types: Vec<TypeTok> = Vec::new();
 
         for param in params {
-            let (param_name, param_type) = match param {
-                TBox::FuncParam(name, type_tok) => {
+            let (param_name, param_type, param_raw_text) = match param {
+                TBox::FuncParam(name, type_tok, rt) => {
                     let n = match name {
                         Token::VarRef(var) => *var,
                         _ => unreachable!(),
                     };
-                    (n, type_tok)
+                    (n, type_tok, rt)
                 }
                 _ => unreachable!(),
             };
@@ -364,6 +408,7 @@ impl AstGenerator {
             ast_params.push(Ast::FuncParam(
                 Box::new(param_name.clone()),
                 param_type.clone(),
+                param_raw_text,
             ));
             param_types.push(param_type.clone());
         }
@@ -374,7 +419,7 @@ impl AstGenerator {
 
         self.push_scope();
         for param_ast in &ast_params {
-            if let Ast::FuncParam(param_name, param_type) = param_ast {
+            if let Ast::FuncParam(param_name, param_type, _) = param_ast {
                 self.insert_var_type((**param_name).clone(), param_type.clone());
             }
         }
@@ -390,50 +435,57 @@ impl AstGenerator {
             self.eat();
         }
 
-        return Ok(Ast::FuncDec(Box::new(name), ast_params, return_type, body));
+        return Ok(Ast::FuncDec(
+            Box::new(name),
+            ast_params,
+            return_type,
+            body,
+            raw_text,
+        ));
     }
 
     fn parse_stmt(&mut self, val: TBox, should_eat: bool) -> Result<Ast, ToyError> {
         debug!(targets: ["parser_verbose"], val);
 
         let node = match val {
-            TBox::Expr(i) => {
+            TBox::Expr(i, _) => {
                 let (node, _) = self.parse_expr(&i)?;
                 node
             }
-            TBox::VarDec(name, var_type, v_val) => {
+            TBox::VarDec(name, var_type, v_val, _) => {
                 self.parse_var_dec(&name, &v_val, var_type.clone())?
             }
             TBox::VarRef(name) => {
                 debug!(targets: ["parser_verbose"], name);
                 self.parse_var_ref(&name)?
             }
-            TBox::VarReassign(var, val) => {
+            TBox::VarReassign(var, val, raw_text) => {
                 let var_node = self.parse_var_ref(&var)?;
                 let (val_node, _) = self.parse_expr(&val)?;
                 Ast::VarReassign(
                     Box::new(match var_node {
-                        Ast::VarRef(i) => i.to_string(),
+                        Ast::VarRef(i, _) => i.to_string(),
                         _ => "".to_string(),
                     }),
                     Box::new(val_node),
+                    raw_text,
                 )
             }
-            TBox::IfStmt(_, _, _) => {
+            TBox::IfStmt(_, _, _, _) => {
                 return self.parse_if_stmt(val, should_eat);
             }
-            TBox::FuncDec(_, _, _, _) => return self.parse_func_dec(val, should_eat),
-            TBox::Return(val) => {
+            TBox::FuncDec(_, _, _, _, _) => return self.parse_func_dec(val, should_eat),
+            TBox::Return(val, raw_text) => {
                 let expr = match *val {
-                    TBox::Expr(ref v) => v,
-                    _ => return Err(ToyError::new(ToyErrorType::ExpectedExpression)),
+                    TBox::Expr(ref v, _) => v,
+                    _ => return Err(ToyError::new(ToyErrorType::ExpectedExpression, None)),
                 };
 
                 let (res, _) = self.parse_expr(expr)?;
-                return Ok(Ast::Return(Box::new(res)));
+                return Ok(Ast::Return(Box::new(res), raw_text));
             }
 
-            TBox::While(expr, body) => {
+            TBox::While(expr, body, raw_text) => {
                 let parsed_expr = self.parse_bool_expr(&expr);
                 let mut parsed_body: Vec<Ast> = Vec::new();
                 for stmt in body {
@@ -442,11 +494,15 @@ impl AstGenerator {
                 if should_eat {
                     self.eat();
                 }
-                return Ok(Ast::WhileStmt(Box::new(parsed_expr?), parsed_body));
+                return Ok(Ast::WhileStmt(
+                    Box::new(parsed_expr?),
+                    parsed_body,
+                    raw_text,
+                ));
             }
             TBox::Continue => Ast::Continue,
             TBox::Break => Ast::Break,
-            TBox::ArrReassign(a, i, v) => {
+            TBox::ArrReassign(a, i, v, raw_text) => {
                 let arr_name = match a {
                     Token::VarRef(a) => *a,
                     _ => unreachable!(),
@@ -463,17 +519,20 @@ impl AstGenerator {
                 if !arr_type.type_str().contains(&v_type.type_str())
                     && arr_type != TypeTok::AnyArr(1)
                 {
-                    return Err(ToyError::new(ToyErrorType::ArrayElementsMustMatchArrayType));
+                    return Err(ToyError::new(
+                        ToyErrorType::ArrayElementsMustMatchArrayType,
+                        Some(raw_text.clone()),
+                    ));
                 }
-                Ast::ArrReassign(Box::new(arr_name), idx, Box::new(value))
+                Ast::ArrReassign(Box::new(arr_name), idx, Box::new(value), raw_text)
             }
-            TBox::StructReassign(n, fields, value_toks) => {
+            TBox::StructReassign(n, fields, value_toks, raw_text) => {
                 let name = *n;
                 let (value, _) = self.parse_expr(&value_toks)?;
                 //static type checking is done at codegen/compile time so type unsafety is fine here, will not compile unsafe code
-                Ast::StructReassign(Box::new(name), fields, Box::new(value))
+                Ast::StructReassign(Box::new(name), fields, Box::new(value), raw_text)
             }
-            TBox::StructInterface(name, types) => {
+            TBox::StructInterface(name, types, raw_text) => {
                 let boxed: BTreeMap<String, Box<TypeTok>> = (*types)
                     .clone()
                     .into_iter()
@@ -483,7 +542,7 @@ impl AstGenerator {
                 // Store mapping from struct type signature to struct name for method resolution
                 self.struct_type_to_name.insert(boxed, (*name).clone());
 
-                Ast::StructInterface(name, types)
+                Ast::StructInterface(name, types, raw_text)
             }
 
             _ => todo!("Unimplemented statement {}", val),

@@ -1,8 +1,10 @@
 use crate::token::Token;
+use colored::*;
 use inkwell::builder::BuilderError;
 use inkwell::support::LLVMString;
 use std::backtrace::Backtrace;
 use std::fmt;
+use std::fmt::*;
 use thiserror::Error;
 #[derive(Debug)]
 pub enum ToyErrorType {
@@ -53,35 +55,35 @@ pub enum ToyErrorType {
 pub struct ToyError {
     error_type: ToyErrorType,
     backtrace: Backtrace,
+    offending_code: String,
 }
 
-impl fmt::Display for ToyError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "Error: {}", self.error_type)?;
-        writeln!(f, "Stack trace:")?;
-
-        let backtrace_str = format!("{}", self.backtrace);
-
-        // Filter out noise and format cleanly
-        for (i, line) in backtrace_str.lines().enumerate() {
-            let line = line.trim();
-            if !line.is_empty() && !line.starts_with("Backtrace") {
-                writeln!(f, "  {}: {}", i, line)?;
-            }
-        }
-
-        Ok(())
-    }
-}
 impl ToyError {
-    pub fn new(i_error_type: ToyErrorType) -> ToyError {
+    pub fn new(i_error_type: ToyErrorType, offending_code: Option<String>) -> ToyError {
         return ToyError {
             error_type: i_error_type,
             backtrace: Backtrace::capture(),
+            offending_code: if offending_code.is_some() {
+                offending_code.unwrap()
+            } else {
+                "code segment unknown".to_string()
+            },
         };
     }
 }
 
+impl fmt::Display for ToyError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "\n{}\nType: {}\nProblematic Code: {}\nBacktrace:\n{}",
+            "[ERROR]".red().bold(),
+            self.error_type.to_string().blue().bold(),
+            self.offending_code.magenta(),
+            self.backtrace.to_string()
+        )
+    }
+}
 impl fmt::Display for ToyErrorType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -121,11 +123,11 @@ impl fmt::Display for ToyErrorType {
 
 impl From<BuilderError> for ToyError {
     fn from(err: BuilderError) -> Self {
-        return ToyError::new(ToyErrorType::LlvmError(err.to_string()));
+        return ToyError::new(ToyErrorType::LlvmError(err.to_string()), None);
     }
 }
 impl From<LLVMString> for ToyError {
     fn from(err: LLVMString) -> Self {
-        return ToyError::new(ToyErrorType::LlvmError(err.to_string()));
+        return ToyError::new(ToyErrorType::LlvmError(err.to_string()), None);
     }
 }

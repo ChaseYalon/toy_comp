@@ -626,10 +626,7 @@ impl<'a> LlvmGenerator<'a> {
                 None
             }
             TIR::CreateStructLiteral(id, ty, vals) => {
-                let (struct_type, interface_name) = self
-                    .struct_interfaces
-                    .get(&ty)
-                    .ok_or_else(|| ToyError::new(ToyErrorType::MissingInstruction))?;
+                let (struct_type, interface_name) = self.struct_interfaces.get(&ty).unwrap(); // parser validated
 
                 let allocated_struct = builder.build_alloca(*struct_type, interface_name)?;
 
@@ -673,22 +670,14 @@ impl<'a> LlvmGenerator<'a> {
                 ))
             }
             TIR::ReadStructLiteral(id, struct_ptr, idx) => {
-                let struct_tir_type = struct_ptr
-                    .clone()
-                    .ty
-                    .ok_or_else(|| return ToyError::new(ToyErrorType::UndefinedStruct))?;
+                let struct_tir_type = struct_ptr.clone().ty.unwrap(); // parser validated
                 let field_type = if let TirType::StructInterface(field_types) = &struct_tir_type {
-                    field_types
-                        .get(idx as usize)
-                        .cloned()
-                        .ok_or_else(|| ToyError::new(ToyErrorType::UndefinedStruct))?
+                    field_types.get(idx as usize).cloned().unwrap() // parser validated
                 } else {
-                    return Err(ToyError::new(ToyErrorType::UndefinedStruct));
+                    unreachable!(); // parser validated
                 };
                 let (struct_type, _interface_name) =
-                    self.struct_interfaces
-                        .get(&struct_tir_type)
-                        .ok_or_else(|| return ToyError::new(ToyErrorType::UndefinedStruct))?;
+                    self.struct_interfaces.get(&struct_tir_type).unwrap(); // parser validated
                 let struct_literal = self.get_ssa_val(&curr_func_name, struct_ptr.clone());
                 let zero = self.ctx.i32_type().const_int(0u64, false);
                 let compiled_idx = self.ctx.i32_type().const_int(idx, false);
@@ -705,9 +694,7 @@ impl<'a> LlvmGenerator<'a> {
                     )?
                 };
                 let field_val = builder.build_load(
-                    struct_type
-                        .get_field_type_at_index(idx as u32)
-                        .ok_or_else(|| ToyError::new(ToyErrorType::UndefinedStruct))?,
+                    struct_type.get_field_type_at_index(idx as u32).unwrap(), // parser validated
                     field_ptr,
                     &format!("field_{idx}_val"),
                 )?;
@@ -720,22 +707,14 @@ impl<'a> LlvmGenerator<'a> {
                 ))
             }
             TIR::WriteStructLiteral(id, struct_ptr, field_idx, new_val) => {
-                let struct_tir_type = struct_ptr
-                    .clone()
-                    .ty
-                    .ok_or_else(|| return ToyError::new(ToyErrorType::UndefinedStruct))?;
+                let struct_tir_type = struct_ptr.clone().ty.unwrap(); // parser validated
                 let field_type = if let TirType::StructInterface(field_types) = &struct_tir_type {
-                    field_types
-                        .get(field_idx as usize)
-                        .cloned()
-                        .ok_or_else(|| ToyError::new(ToyErrorType::UndefinedStruct))?
+                    field_types.get(field_idx as usize).cloned().unwrap() // parser validated
                 } else {
-                    return Err(ToyError::new(ToyErrorType::UndefinedStruct));
+                    unreachable!(); // parser validated
                 };
                 let (struct_type, _interface_name) =
-                    self.struct_interfaces
-                        .get(&struct_tir_type)
-                        .ok_or_else(|| return ToyError::new(ToyErrorType::UndefinedStruct))?;
+                    self.struct_interfaces.get(&struct_tir_type).unwrap(); // parser validated
                 let struct_literal = self.get_ssa_val(&curr_func_name, struct_ptr.clone());
                 let value_to_store = self.get_ssa_val(&curr_func_name, new_val.clone());
                 let zero = self.ctx.i32_type().const_int(0u64, false);
@@ -1097,10 +1076,10 @@ impl<'a> LlvmGenerator<'a> {
             .status();
         let status = match rstatus {
             Ok(f) => f,
-            Err(_) => return Err(ToyError::new(ToyErrorType::InternalLinkerFailure)),
+            Err(_) => return Err(ToyError::new(ToyErrorType::InternalLinkerFailure, None)),
         };
         if !status.success() {
-            return Err(ToyError::new(ToyErrorType::InternalLinkerFailure));
+            return Err(ToyError::new(ToyErrorType::InternalLinkerFailure, None));
         }
         let p_args: Vec<String> = env::args().collect();
         if p_args.clone().contains(&"--repl".to_owned())

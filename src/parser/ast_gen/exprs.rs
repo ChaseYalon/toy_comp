@@ -16,9 +16,14 @@ impl AstGenerator {
                     Token::VarRef(n) => n,
                     _ => unreachable!(),
                 };
-                let ty = self
-                    .lookup_var_type(name)
-                    .ok_or_else(|| ToyError::new(ToyErrorType::TypeHintNeeded))?;
+                let raw_text = toks
+                    .iter()
+                    .map(|t| t.to_string())
+                    .collect::<Vec<String>>()
+                    .join(" ");
+                let ty = self.lookup_var_type(name).ok_or_else(|| {
+                    ToyError::new(ToyErrorType::TypeHintNeeded, Some(raw_text.clone()))
+                })?;
                 return Ok((self.parse_var_ref(&toks[0])?, ty));
             }
             if toks[0].tok_type() == "FloatLit" {
@@ -30,8 +35,13 @@ impl AstGenerator {
             }
         }
         if toks.len() == 0 {
-            return Err(ToyError::new(ToyErrorType::ExpectedExpression));
+            return Err(ToyError::new(ToyErrorType::ExpectedExpression, None));
         }
+        let raw_text = toks
+            .iter()
+            .map(|t| t.to_string())
+            .collect::<Vec<String>>()
+            .join(" ");
         let (best_idx, _, best_tok) = self.find_top_val(toks)?;
         let left = &toks[0..best_idx];
         let right = &toks[best_idx + 1..toks.len()];
@@ -55,8 +65,14 @@ impl AstGenerator {
                     Token::Multiply => InfixOp::Multiply,
                     Token::Divide => InfixOp::Divide,
                     Token::Modulo => InfixOp::Modulo,
-                    _ => return Err(ToyError::new(ToyErrorType::InvalidInfixOperation)),
+                    _ => {
+                        return Err(ToyError::new(
+                            ToyErrorType::InvalidInfixOperation,
+                            Some(raw_text.clone()),
+                        ));
+                    }
                 },
+                raw_text,
             ),
             res_type,
         ));
@@ -74,6 +90,11 @@ impl AstGenerator {
                 return self.parse_var_ref(&toks[0]);
             }
         }
+        let raw_text = toks
+            .iter()
+            .map(|t| t.to_string())
+            .collect::<Vec<String>>()
+            .join(" ");
         let (best_idx, _, best_tok) = self.find_top_val(toks)?;
         let left = &toks[0..best_idx];
         let right = &toks[best_idx + 1..toks.len()];
@@ -92,17 +113,31 @@ impl AstGenerator {
                 Token::Or => InfixOp::Or,
                 Token::Equals => InfixOp::Equals,
                 Token::NotEquals => InfixOp::NotEquals,
-                _ => return Err(ToyError::new(ToyErrorType::InvalidInfixOperation)),
+                _ => {
+                    return Err(ToyError::new(
+                        ToyErrorType::InvalidInfixOperation,
+                        Some(raw_text.clone()),
+                    ));
+                }
             },
+            raw_text,
         ));
     }
     pub fn parse_str_expr(&self, toks: &Vec<Token>) -> Result<Ast, ToyError> {
+        let raw_text = toks
+            .iter()
+            .map(|t| t.to_string())
+            .collect::<Vec<String>>()
+            .join(" ");
         if toks.len() == 1 {
             if toks[0].tok_type() == "StringLit" {
-                return Ok(Ast::StringLit(match toks[0].clone() {
-                    Token::StringLit(b) => b,
-                    _ => unreachable!(),
-                }));
+                return Ok(Ast::StringLit(
+                    match toks[0].clone() {
+                        Token::StringLit(b) => b,
+                        _ => unreachable!(),
+                    },
+                    raw_text,
+                ));
             }
             if toks[0].tok_type() == "VarRef" {
                 return self.parse_var_ref(&toks[0]);
@@ -122,15 +157,24 @@ impl AstGenerator {
                 Token::Plus => InfixOp::Plus,
                 _ => unreachable!(),
             },
+            raw_text,
         ));
     }
     pub fn parse_empty_expr(&self, toks: &Vec<Token>) -> Result<(Ast, TypeTok), ToyError> {
+        let raw_text = toks
+            .iter()
+            .map(|t| t.to_string())
+            .collect::<Vec<String>>()
+            .join(" ");
         if toks.is_empty() {
-            return Err(ToyError::new(ToyErrorType::ExpectedExpression));
+            return Err(ToyError::new(ToyErrorType::ExpectedExpression, None));
         }
 
         if toks[0].tok_type() != "LParen" {
-            return Err(ToyError::new(ToyErrorType::UnclosedDelimiter));
+            return Err(ToyError::new(
+                ToyErrorType::UnclosedDelimiter,
+                Some(raw_text.clone()),
+            ));
         }
 
         let mut depth = 0;
@@ -152,13 +196,18 @@ impl AstGenerator {
 
         let end_idx = match end_idx.clone() {
             Some(i) => i,
-            None => return Err(ToyError::new(ToyErrorType::UnclosedDelimiter)),
+            None => {
+                return Err(ToyError::new(
+                    ToyErrorType::UnclosedDelimiter,
+                    Some(raw_text.clone()),
+                ));
+            }
         };
 
         let inner_toks = &toks[1..end_idx];
         let (inner_node, tok) = self.parse_expr(&inner_toks.to_vec())?;
 
-        Ok((Ast::EmptyExpr(Box::new(inner_node)), tok))
+        Ok((Ast::EmptyExpr(Box::new(inner_node), raw_text), tok))
     }
     pub fn parse_arr_lit(&self, toks: &Vec<Token>) -> Result<(Ast, TypeTok), ToyError> {
         let mut arr_toks: Vec<Token> = Vec::new();
@@ -224,7 +273,12 @@ impl AstGenerator {
             };
         }
 
-        Ok((Ast::ArrLit(arr_type.clone(), arr_vals), arr_type))
+        let raw_text = toks
+            .iter()
+            .map(|t| t.to_string())
+            .collect::<Vec<String>>()
+            .join(" ");
+        Ok((Ast::ArrLit(arr_type.clone(), arr_vals, raw_text), arr_type))
     }
     pub fn parse_struct_def(
         &self,
@@ -256,40 +310,77 @@ impl AstGenerator {
 
         let mut processed_kv: BTreeMap<String, (Ast, TypeTok)> = BTreeMap::new();
         for kv in unprocessed_kv {
+            let raw_text = toks
+                .iter()
+                .map(|t| t.to_string())
+                .collect::<Vec<String>>()
+                .join(" ");
             if kv.len() < 3 {
-                return Err(ToyError::new(ToyErrorType::MalformedStructField));
+                return Err(ToyError::new(
+                    ToyErrorType::MalformedStructField,
+                    Some(raw_text.clone()),
+                ));
             }
             if kv[1].tok_type() != "Colon" {
-                return Err(ToyError::new(ToyErrorType::MalformedStructField));
+                return Err(ToyError::new(
+                    ToyErrorType::MalformedStructField,
+                    Some(raw_text.clone()),
+                ));
             }
             let key = match kv[0].clone() {
                 Token::VarRef(v) => *v,
-                _ => return Err(ToyError::new(ToyErrorType::MalformedStructField)),
+                _ => {
+                    return Err(ToyError::new(
+                        ToyErrorType::MalformedStructField,
+                        Some(raw_text.clone()),
+                    ));
+                }
             };
             // kv[2..] are the tokens for the value (may be nested)
             let (value, value_type) = self.parse_expr(&kv[2..kv.len()].to_vec())?;
             let correct_type = match self.lookup_var_type(&name).unwrap().clone() {
                 TypeTok::Struct(f) => *(f.get(&key).unwrap()).clone(),
-                _ => return Err(ToyError::new(ToyErrorType::VariableNotAStruct)),
+                _ => {
+                    return Err(ToyError::new(
+                        ToyErrorType::VariableNotAStruct,
+                        Some(raw_text.clone()),
+                    ));
+                }
             };
             if value_type != correct_type {
-                return Err(ToyError::new(ToyErrorType::TypeMismatch));
+                return Err(ToyError::new(
+                    ToyErrorType::TypeMismatch,
+                    Some(raw_text.clone()),
+                ));
             }
             processed_kv.insert(key, (value, value_type));
         }
+        let raw_text = toks
+            .iter()
+            .map(|t| t.to_string())
+            .collect::<Vec<String>>()
+            .join(" ");
         Ok((
-            Ast::StructLit(Box::new(name.clone()), Box::new(processed_kv)),
+            Ast::StructLit(Box::new(name.clone()), Box::new(processed_kv), raw_text),
             self.lookup_var_type(&name).unwrap(),
         ))
     }
 
     pub fn parse_expr(&self, toks: &Vec<Token>) -> Result<(Ast, TypeTok), ToyError> {
+        let raw_text = toks
+            .iter()
+            .map(|t| t.to_string())
+            .collect::<Vec<String>>()
+            .join(" ");
         //guard clause for not expressions - seems hacky but works
         if toks[0].tok_type() == "Not" {
             let (to_be_negated_val, to_be_negated_type) =
                 self.parse_expr(&toks[1..toks.len()].to_vec())?;
             if to_be_negated_type != TypeTok::Bool {
-                return Err(ToyError::new(ToyErrorType::ExpressionNotBoolean));
+                return Err(ToyError::new(
+                    ToyErrorType::ExpressionNotBoolean,
+                    Some(raw_text.clone()),
+                ));
             }
             return Ok((Ast::Not(Box::new(to_be_negated_val)), TypeTok::Bool));
         }
@@ -352,14 +443,25 @@ impl AstGenerator {
                             current_type = if m.get(key).is_some() {
                                 *m.get(key).unwrap().clone()
                             } else {
-                                return Err(ToyError::new(ToyErrorType::KeyNotOnStruct));
+                                return Err(ToyError::new(
+                                    ToyErrorType::KeyNotOnStruct,
+                                    Some(raw_text.clone()),
+                                ));
                             };
                         }
-                        _ => return Err(ToyError::new(ToyErrorType::VariableNotAStruct)),
+                        _ => {
+                            return Err(ToyError::new(
+                                ToyErrorType::VariableNotAStruct,
+                                Some(raw_text.clone()),
+                            ));
+                        }
                     }
                 }
 
-                return Ok((Ast::StructRef(Box::new(s_name), keys), current_type));
+                return Ok((
+                    Ast::StructRef(Box::new(s_name), keys, raw_text.clone()),
+                    current_type,
+                ));
             }
             if toks[0].tok_type() == "IntLit" {
                 return Ok((Ast::IntLit(toks[0].get_val().unwrap()), TypeTok::Int));
@@ -376,7 +478,7 @@ impl AstGenerator {
                     Token::StringLit(s) => s,
                     _ => unreachable!(),
                 };
-                return Ok((Ast::StringLit(val), TypeTok::Str));
+                return Ok((Ast::StringLit(val, raw_text.clone()), TypeTok::Str));
             }
             if toks[0].tok_type() == "BoolLit" {
                 let val = match toks[0].clone() {
@@ -393,7 +495,10 @@ impl AstGenerator {
                 };
                 let var_ref_type = self.lookup_var_type(&s);
                 if var_ref_type.is_none() {
-                    return Err(ToyError::new(ToyErrorType::TypeHintNeeded));
+                    return Err(ToyError::new(
+                        ToyErrorType::TypeHintNeeded,
+                        Some(raw_text.clone()),
+                    ));
                 }
                 return Ok((self.parse_var_ref(&toks[0])?, var_ref_type.unwrap().clone()));
             }
@@ -446,7 +551,7 @@ impl AstGenerator {
 
             if first_paren_closes_at == Some(toks.len() - 1) {
                 let (inner, inner_type) = self.parse_expr(&toks[1..toks.len() - 1].to_vec())?;
-                let to_ret_ast = Ast::EmptyExpr(Box::new(inner));
+                let to_ret_ast = Ast::EmptyExpr(Box::new(inner), raw_text.clone());
                 return Ok((to_ret_ast, inner_type));
             }
         }
@@ -475,7 +580,10 @@ impl AstGenerator {
                 }
 
                 if bracket_depth != 0 {
-                    return Err(ToyError::new(ToyErrorType::UnclosedDelimiter));
+                    return Err(ToyError::new(
+                        ToyErrorType::UnclosedDelimiter,
+                        Some(raw_text.clone()),
+                    ));
                 }
 
                 let inner_toks = &toks[i..j - 1];
@@ -492,7 +600,12 @@ impl AstGenerator {
 
             let arr_type = match self.lookup_var_type(&name) {
                 Some(t) => t,
-                None => return Err(ToyError::new(ToyErrorType::UndefinedVariable)),
+                None => {
+                    return Err(ToyError::new(
+                        ToyErrorType::UndefinedVariable,
+                        Some(raw_text.clone()),
+                    ));
+                }
             };
 
             let mut item_type = arr_type.clone();
@@ -508,11 +621,16 @@ impl AstGenerator {
                     TypeTok::BoolArr(n) => TypeTok::BoolArr(n - 1),
                     TypeTok::FloatArr(n) => TypeTok::FloatArr(n - 1),
                     TypeTok::AnyArr(n) => TypeTok::AnyArr(n - 1),
-                    _ => return Err(ToyError::new(ToyErrorType::ArrayTypeInvalid)), //if this error is triggered, something has gone very wrong
+                    _ => {
+                        return Err(ToyError::new(
+                            ToyErrorType::ArrayTypeInvalid,
+                            Some(raw_text.clone()),
+                        ));
+                    } //if this error is triggered, something has gone very wrong
                 };
             }
 
-            let arr_ref_ast = Ast::ArrRef(Box::new(name), idx_exprs);
+            let arr_ref_ast = Ast::ArrRef(Box::new(name), idx_exprs, raw_text.clone());
 
             if arr_ref_end < toks.len() {
                 let remaining_toks = &toks[arr_ref_end..];
@@ -535,7 +653,12 @@ impl AstGenerator {
                         Token::NotEquals => InfixOp::NotEquals,
                         Token::And => InfixOp::And,
                         Token::Or => InfixOp::Or,
-                        _ => return Err(ToyError::new(ToyErrorType::InvalidInfixOperation)),
+                        _ => {
+                            return Err(ToyError::new(
+                                ToyErrorType::InvalidInfixOperation,
+                                Some(raw_text.clone()),
+                            ));
+                        }
                     };
 
                     let result_type = match op {
@@ -556,7 +679,12 @@ impl AstGenerator {
                     };
 
                     return Ok((
-                        Ast::InfixExpr(Box::new(arr_ref_ast), Box::new(right_ast), op),
+                        Ast::InfixExpr(
+                            Box::new(arr_ref_ast),
+                            Box::new(right_ast),
+                            op,
+                            raw_text.clone(),
+                        ),
                         result_type,
                     ));
                 }
@@ -590,7 +718,10 @@ impl AstGenerator {
                     j += 1;
                 }
                 if bracket_depth != 0 {
-                    return Err(ToyError::new(ToyErrorType::UnclosedDelimiter));
+                    return Err(ToyError::new(
+                        ToyErrorType::UnclosedDelimiter,
+                        Some(raw_text.clone()),
+                    ));
                 }
                 let inner_toks = &toks[i - 2..j];
                 let (inner_expr, t) = self.parse_struct_def(&inner_toks.to_vec(), name.clone())?;
@@ -616,7 +747,12 @@ impl AstGenerator {
                     TypeTok::Str => (self.parse_str_expr(toks)?, TypeTok::Str),
                     TypeTok::Int | TypeTok::Float => self.parse_num_expr(toks)?,
                     TypeTok::Bool => (self.parse_bool_expr(toks)?, TypeTok::Bool),
-                    _ => return Err(ToyError::new(ToyErrorType::InvalidOperationOnGivenType)), //like the second of three times I check this
+                    _ => {
+                        return Err(ToyError::new(
+                            ToyErrorType::InvalidOperationOnGivenType,
+                            Some(raw_text.clone()),
+                        ));
+                    } //like the second of three times I check this
                 };
                 return Ok(res);
             }
@@ -634,7 +770,12 @@ impl AstGenerator {
             | Token::Or => Ok((self.parse_bool_expr(toks)?, TypeTok::Bool)),
             Token::StringLit(_) => Ok((self.parse_str_expr(toks)?, TypeTok::Str)),
             Token::LParen | Token::RBrace => self.parse_empty_expr(toks),
-            _ => return Err(ToyError::new(ToyErrorType::ExpectedExpression)),
+            _ => {
+                return Err(ToyError::new(
+                    ToyErrorType::ExpectedExpression,
+                    Some(raw_text.clone()),
+                ));
+            }
         };
     }
 }

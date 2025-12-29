@@ -39,7 +39,7 @@ fn run_repl() {
         }
 
         if let Err(e) = compile_and_print(input.to_string()) {
-            eprintln!("Error: {}", e);
+            eprintln!("{}", e);
         }
     }
 }

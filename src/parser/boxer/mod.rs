@@ -2,7 +2,6 @@ use crate::errors::{ToyError, ToyErrorType};
 use crate::parser::toy_box::TBox;
 use crate::token::{Token, TypeTok};
 use std::collections::BTreeMap;
-
 pub struct Boxer {
     toks: Vec<Token>,
     tp: usize, // token pointer
@@ -98,14 +97,36 @@ impl Boxer {
         return toks;
     }
     fn box_var_dec(&self, input: &Vec<Token>) -> Result<TBox, ToyError> {
+        let raw_text = if input[2].tok_type() == "Colon" {
+            let mut s = "".to_string();
+            for item in input[5..].to_vec() {
+                s = s + &item.to_string();
+            }
+            format!("let {}: {} = {}", input[1], input[2], s)
+        } else {
+            let mut s = "".to_string();
+            for item in input[3..].to_vec() {
+                s = s + &item.to_string();
+            }
+            format!("let {} = {}", input[1], s)
+        };
         if input[0].tok_type() != "Let" {
-            return Err(ToyError::new(ToyErrorType::MalformedLetStatement));
+            return Err(ToyError::new(
+                ToyErrorType::MalformedLetStatement,
+                Some(raw_text),
+            ));
         }
         if input[1].tok_type() != "VarName" {
-            return Err(ToyError::new(ToyErrorType::MalformedLetStatement));
+            return Err(ToyError::new(
+                ToyErrorType::MalformedLetStatement,
+                Some(raw_text),
+            ));
         }
         if input[2].tok_type() != "Assign" && input[2].tok_type() != "Colon" {
-            return Err(ToyError::new(ToyErrorType::MalformedLetStatement));
+            return Err(ToyError::new(
+                ToyErrorType::MalformedLetStatement,
+                Some(raw_text),
+            ));
         }
         if input[2].tok_type() == "Colon" {
             let ty = match input[3].clone() {
@@ -119,29 +140,66 @@ impl Boxer {
                         .collect();
                     TypeTok::Struct(boxed)
                 } //assume it is a nested struct
-                _ => return Err(ToyError::new(ToyErrorType::VariableNotAStruct)), //is this the right bug
+                _ => {
+                    return Err(ToyError::new(
+                        ToyErrorType::VariableNotAStruct,
+                        Some(raw_text),
+                    ));
+                } //is this the right bug
             };
             return Ok(TBox::VarDec(
                 input[1].clone(),
                 Some(ty),
                 input[5..].to_vec(),
+                raw_text,
             ));
         }
-        return Ok(TBox::VarDec(input[1].clone(), None, input[3..].to_vec()));
+        return Ok(TBox::VarDec(
+            input[1].clone(),
+            None,
+            input[3..].to_vec(),
+            raw_text,
+        ));
     }
 
     fn box_var_ref(&self, input: &Vec<Token>) -> Result<TBox, ToyError> {
+        let raw_text = format!(
+            "{} = {}",
+            input[0],
+            input[2..].iter().map(|x| x.to_string()).collect::<String>()
+        );
         if input[0].tok_type() != "VarRef" {
-            return Err(ToyError::new(ToyErrorType::MalformedVariableReassign));
+            return Err(ToyError::new(
+                ToyErrorType::MalformedVariableReassign,
+                Some(raw_text),
+            ));
         }
         if input[1].tok_type() != "Assign" {
-            return Err(ToyError::new(ToyErrorType::MalformedVariableReassign));
+            return Err(ToyError::new(
+                ToyErrorType::MalformedVariableReassign,
+                Some(raw_text),
+            ));
         }
-        Ok(TBox::VarReassign(input[0].clone(), input[2..].to_vec()))
+        Ok(TBox::VarReassign(
+            input[0].clone(),
+            input[2..].to_vec(),
+            raw_text,
+        ))
     }
     fn box_while_stmt(&mut self, input: &Vec<Token>) -> Result<TBox, ToyError> {
+        let raw_text = format!(
+            "while {} {{",
+            input[1..]
+                .iter()
+                .take_while(|t| t.tok_type() != "LBrace")
+                .map(|t| t.to_string())
+                .collect::<String>()
+        );
         if input[0].tok_type() != "While" {
-            return Err(ToyError::new(ToyErrorType::MalformedWhileStatement));
+            return Err(ToyError::new(
+                ToyErrorType::MalformedWhileStatement,
+                Some(raw_text),
+            ));
         }
 
         let mut cond: Vec<Token> = Vec::new();
@@ -157,17 +215,25 @@ impl Boxer {
 
         let brace_start_idx = match brace_start_idx.clone() {
             Some(i) => i,
-            None => return Err(ToyError::new(ToyErrorType::UnclosedDelimiter)),
+            None => {
+                return Err(ToyError::new(
+                    ToyErrorType::UnclosedDelimiter,
+                    Some(raw_text.clone()),
+                ));
+            }
         };
 
         if input.last().unwrap().tok_type() != "RBrace" {
-            return Err(ToyError::new(ToyErrorType::UnclosedDelimiter));
+            return Err(ToyError::new(
+                ToyErrorType::UnclosedDelimiter,
+                Some(raw_text),
+            ));
         }
 
         let body_toks = input[brace_start_idx + 1..input.len() - 1].to_vec();
         let boxed_body = self.box_group(body_toks);
 
-        Ok(TBox::While(cond, boxed_body?))
+        Ok(TBox::While(cond, boxed_body?, raw_text))
     }
 
     fn box_group(&mut self, input: Vec<Token>) -> Result<Vec<TBox>, ToyError> {
@@ -226,7 +292,18 @@ impl Boxer {
                 }
 
                 if while_end >= input.len() {
-                    return Err(ToyError::new(ToyErrorType::MalformedWhileStatement));
+                    let raw_text = format!(
+                        "while {}",
+                        input[i..]
+                            .iter()
+                            .take(5)
+                            .map(|t| t.to_string())
+                            .collect::<String>()
+                    );
+                    return Err(ToyError::new(
+                        ToyErrorType::MalformedWhileStatement,
+                        Some(raw_text),
+                    ));
                 }
 
                 let mut depth = 1;
@@ -242,7 +319,17 @@ impl Boxer {
                 }
 
                 if depth != 0 {
-                    return Err(ToyError::new(ToyErrorType::UnclosedDelimiter));
+                    let raw_text = format!(
+                        "while {}",
+                        input[i..while_end.min(i + 10)]
+                            .iter()
+                            .map(|t| t.to_string())
+                            .collect::<String>()
+                    );
+                    return Err(ToyError::new(
+                        ToyErrorType::UnclosedDelimiter,
+                        Some(raw_text),
+                    ));
                 }
 
                 let while_slice = input[i..while_end].to_vec();
@@ -263,7 +350,18 @@ impl Boxer {
                 }
 
                 if for_end >= input.len() {
-                    return Err(ToyError::new(ToyErrorType::MalformedStructInterface));
+                    let raw_text = format!(
+                        "for {} {{",
+                        input[i..]
+                            .iter()
+                            .take(5)
+                            .map(|t| t.to_string())
+                            .collect::<String>()
+                    );
+                    return Err(ToyError::new(
+                        ToyErrorType::MalformedStructInterface,
+                        Some(raw_text),
+                    ));
                 }
 
                 let mut depth = 1;
@@ -279,7 +377,17 @@ impl Boxer {
                 }
 
                 if depth != 0 {
-                    return Err(ToyError::new(ToyErrorType::UnclosedDelimiter));
+                    let raw_text = format!(
+                        "for {}",
+                        input[i..for_end.min(i + 10)]
+                            .iter()
+                            .map(|t| t.to_string())
+                            .collect::<String>()
+                    );
+                    return Err(ToyError::new(
+                        ToyErrorType::UnclosedDelimiter,
+                        Some(raw_text),
+                    ));
                 }
 
                 let for_slice = input[i..for_end].to_vec();
@@ -308,7 +416,17 @@ impl Boxer {
                 }
 
                 if !found_body {
-                    return Err(ToyError::new(ToyErrorType::MalformedFunctionDeclaration));
+                    let raw_text = format!(
+                        "func {}",
+                        input[i..i + 5.min(input.len() - i)]
+                            .iter()
+                            .map(|t| t.to_string())
+                            .collect::<String>()
+                    );
+                    return Err(ToyError::new(
+                        ToyErrorType::MalformedFunctionDeclaration,
+                        Some(raw_text),
+                    ));
                 }
 
                 while func_end < input.len() && depth > 0 {
@@ -348,14 +466,35 @@ impl Boxer {
         let mut func_params: Vec<TBox> = Vec::new();
         for triple in triplets {
             if triple[0].tok_type() != "VarRef" {
-                return Err(ToyError::new(ToyErrorType::MalformedFunctionDeclaration));
+                let raw_text = format!(
+                    "param: {}",
+                    triple.iter().map(|t| t.to_string()).collect::<String>()
+                );
+                return Err(ToyError::new(
+                    ToyErrorType::MalformedFunctionDeclaration,
+                    Some(raw_text),
+                ));
             }
             if triple[1].tok_type() != "Colon" {
-                return Err(ToyError::new(ToyErrorType::MalformedFunctionDeclaration));
+                let raw_text = format!(
+                    "param: {}",
+                    triple.iter().map(|t| t.to_string()).collect::<String>()
+                );
+                return Err(ToyError::new(
+                    ToyErrorType::MalformedFunctionDeclaration,
+                    Some(raw_text),
+                ));
             }
 
             if triple[2].tok_type() != "Type" && triple[2].tok_type() != "VarRef" {
-                return Err(ToyError::new(ToyErrorType::MalformedFunctionDeclaration));
+                let raw_text = format!(
+                    "param: {}",
+                    triple.iter().map(|t| t.to_string()).collect::<String>()
+                );
+                return Err(ToyError::new(
+                    ToyErrorType::MalformedFunctionDeclaration,
+                    Some(raw_text),
+                ));
             }
             let param = TBox::FuncParam(
                 triple[0].clone(),
@@ -372,6 +511,7 @@ impl Boxer {
                     }
                     _ => unreachable!(),
                 },
+                format!("{}: {}", triple[0], triple[2]),
             );
             func_params.push(param);
         }
@@ -379,12 +519,26 @@ impl Boxer {
     }
 
     fn box_fn_stmt(&mut self, input: Vec<Token>) -> Result<TBox, ToyError> {
+        let raw_text = format!(
+            "func {}",
+            input
+                .iter()
+                .take(10)
+                .map(|t| t.to_string())
+                .collect::<String>()
+        );
         if input[0].tok_type() != "Func" {
-            return Err(ToyError::new(ToyErrorType::MalformedFunctionDeclaration));
+            return Err(ToyError::new(
+                ToyErrorType::MalformedFunctionDeclaration,
+                Some(raw_text.clone()),
+            ));
         }
         let func_name = input[1].clone();
         if input[2].tok_type() != "LParen" {
-            return Err(ToyError::new(ToyErrorType::MalformedFunctionDeclaration));
+            return Err(ToyError::new(
+                ToyErrorType::MalformedFunctionDeclaration,
+                Some(raw_text),
+            ));
         }
         let mut unboxed_params: Vec<Token> = Vec::new();
         let mut return_type_begin: usize = 0;
@@ -401,17 +555,31 @@ impl Boxer {
             (TypeTok::Void, return_type_begin + 2)
         } else {
             if input[return_type_begin + 1].tok_type() != "Colon" {
-                return Err(ToyError::new(ToyErrorType::MalformedFunctionDeclaration));
+                return Err(ToyError::new(
+                    ToyErrorType::MalformedFunctionDeclaration,
+                    Some(raw_text.clone()),
+                ));
             }
             if input[return_type_begin + 2].tok_type() != "Type" {
-                return Err(ToyError::new(ToyErrorType::MalformedFunctionDeclaration));
+                return Err(ToyError::new(
+                    ToyErrorType::MalformedFunctionDeclaration,
+                    Some(raw_text.clone()),
+                ));
             }
             if input[return_type_begin + 3].tok_type() != "LBrace" {
-                return Err(ToyError::new(ToyErrorType::MalformedFunctionDeclaration));
+                return Err(ToyError::new(
+                    ToyErrorType::MalformedFunctionDeclaration,
+                    Some(raw_text.clone()),
+                ));
             }
             let t = match input[return_type_begin + 2].clone() {
                 Token::Type(t) => t,
-                _ => return Err(ToyError::new(ToyErrorType::MalformedFunctionDeclaration)),
+                _ => {
+                    return Err(ToyError::new(
+                        ToyErrorType::MalformedFunctionDeclaration,
+                        Some(raw_text.clone()),
+                    ));
+                }
             };
             (t, return_type_begin + 4)
         };
@@ -419,7 +587,10 @@ impl Boxer {
         let body_toks = &input[body_start_idx..input.len() - 1];
 
         if input.last().unwrap().tok_type() != "RBrace" {
-            return Err(ToyError::new(ToyErrorType::UnclosedDelimiter));
+            return Err(ToyError::new(
+                ToyErrorType::UnclosedDelimiter,
+                Some(raw_text),
+            ));
         }
         let body_boxes: Vec<TBox> = self.box_group(body_toks.to_vec())?;
 
@@ -428,6 +599,7 @@ impl Boxer {
             boxed_params,
             return_type,
             body_boxes,
+            raw_text,
         ));
     }
     fn box_struct_interface_dec(&mut self, toks: &Vec<Token>) -> Result<TBox, ToyError> {
@@ -435,8 +607,12 @@ impl Boxer {
             Token::Struct(n) => *n,
             _ => unreachable!(),
         };
+        let raw_text = format!("struct {} {{", name);
         if toks[1].tok_type() != "LBrace" {
-            return Err(ToyError::new(ToyErrorType::MalformedStructInterface));
+            return Err(ToyError::new(
+                ToyErrorType::MalformedStructInterface,
+                Some(raw_text),
+            ));
         }
         let item_groups: Vec<&[Token]> = toks[2..toks.len() - 1]
             .split(|item| item == &Token::Comma)
@@ -445,7 +621,14 @@ impl Boxer {
 
         for group in item_groups {
             if group[1] != Token::Colon {
-                return Err(ToyError::new(ToyErrorType::MalformedStructInterface));
+                let field_text = format!(
+                    "field: {}",
+                    group.iter().map(|t| t.to_string()).collect::<String>()
+                );
+                return Err(ToyError::new(
+                    ToyErrorType::MalformedStructInterface,
+                    Some(field_text),
+                ));
             }
             let key: String = match group[0].clone() {
                 Token::VarRef(v) => *v,
@@ -462,28 +645,62 @@ impl Boxer {
                         .collect();
                     TypeTok::Struct(boxed)
                 } //assume it is a nested struct
-                _ => return Err(ToyError::new(ToyErrorType::MalformedStructInterface)),
+                _ => {
+                    let field_text = format!(
+                        "field: {}",
+                        group.iter().map(|t| t.to_string()).collect::<String>()
+                    );
+                    return Err(ToyError::new(
+                        ToyErrorType::MalformedStructInterface,
+                        Some(field_text),
+                    ));
+                }
             };
             params.insert(key, value);
         }
         self.interfaces.insert(name.clone(), params.clone());
 
-        return Ok(TBox::StructInterface(Box::new(name), Box::new(params)));
+        return Ok(TBox::StructInterface(
+            Box::new(name),
+            Box::new(params),
+            raw_text,
+        ));
     }
 
     fn box_for_block(&mut self, input: &Vec<Token>) -> Result<Vec<TBox>, ToyError> {
+        let raw_text = format!(
+            "for {}",
+            input
+                .iter()
+                .take(5)
+                .map(|t| t.to_string())
+                .collect::<String>()
+        );
         if input.len() < 4 {
-            return Err(ToyError::new(ToyErrorType::MalformedStructInterface));
+            return Err(ToyError::new(
+                ToyErrorType::MalformedStructInterface,
+                Some(raw_text.clone()),
+            ));
         }
 
         let struct_name = match &input[1] {
             Token::VarRef(n) => *n.clone(),
-            _ => return Err(ToyError::new(ToyErrorType::MalformedStructInterface)),
+            _ => {
+                return Err(ToyError::new(
+                    ToyErrorType::MalformedStructInterface,
+                    Some(raw_text.clone()),
+                ));
+            }
         };
 
         let struct_fields = match self.interfaces.get(&struct_name) {
             Some(fields) => fields.clone(),
-            None => return Err(ToyError::new(ToyErrorType::UndefinedStruct)),
+            None => {
+                return Err(ToyError::new(
+                    ToyErrorType::UndefinedStruct,
+                    Some(format!("for {} (undefined struct)", struct_name)),
+                ));
+            }
         };
 
         let boxed_fields: BTreeMap<String, Box<TypeTok>> = struct_fields
@@ -500,7 +717,7 @@ impl Boxer {
 
         for b in boxed_body {
             match b {
-                TBox::FuncDec(mut name, mut params, ret_type, body) => {
+                TBox::FuncDec(mut name, mut params, ret_type, body, func_raw_text) => {
                     let literal_name = match name {
                         Token::VarName(n) => *n,
                         _ => unreachable!(),
@@ -509,9 +726,10 @@ impl Boxer {
                     let this_param = TBox::FuncParam(
                         Token::VarRef(Box::new("this".to_string())),
                         this_type.clone(),
+                        "this".to_string(),
                     );
                     params.insert(0, this_param);
-                    modified_boxes.push(TBox::FuncDec(name, params, ret_type, body));
+                    modified_boxes.push(TBox::FuncDec(name, params, ret_type, body, func_raw_text));
                 }
                 _ => modified_boxes.push(b),
             }
@@ -534,9 +752,14 @@ impl Boxer {
             return Ok(stmt);
         }
         if first == "Return" {
-            return Ok(TBox::Return(Box::new(TBox::Expr(
-                toks[1..toks.len()].to_vec(),
-            ))));
+            let expr_text = toks[1..toks.len()]
+                .iter()
+                .map(|t| t.to_string())
+                .collect::<String>();
+            return Ok(TBox::Return(
+                Box::new(TBox::Expr(toks[1..toks.len()].to_vec(), expr_text.clone())),
+                format!("return {}", expr_text),
+            ));
         }
         if first == "Break" {
             return Ok(TBox::Break);
@@ -561,7 +784,11 @@ impl Boxer {
                 }
 
                 if i >= len {
-                    return Err(ToyError::new(ToyErrorType::UnclosedDelimiter));
+                    let raw_text = format!("{}[...", toks[0]);
+                    return Err(ToyError::new(
+                        ToyErrorType::UnclosedDelimiter,
+                        Some(raw_text),
+                    ));
                 }
 
                 idx_groups.push(idx_toks);
@@ -576,11 +803,25 @@ impl Boxer {
             }
 
             if i >= len || toks[i].tok_type() != "Assign" {
-                return Err(ToyError::new(ToyErrorType::MalformedVariableReassign)); //this might be wrong
+                let raw_text = format!("{}[...]", toks[0]);
+                return Err(ToyError::new(
+                    ToyErrorType::MalformedVariableReassign,
+                    Some(raw_text),
+                )); //this might be wrong
             }
             let val_toks = toks[i + 1..].to_vec();
+            let raw_text = format!(
+                "{}[...] = {}",
+                toks[0],
+                val_toks.iter().map(|t| t.to_string()).collect::<String>()
+            );
 
-            return Ok(TBox::ArrReassign(toks[0].clone(), idx_groups, val_toks));
+            return Ok(TBox::ArrReassign(
+                toks[0].clone(),
+                idx_groups,
+                val_toks,
+                raw_text,
+            ));
         }
         if toks.len() > 1 && first == "StructRef" && toks[1].tok_type() == "Assign" {
             //struct reassign like a.x = 0;
@@ -589,10 +830,20 @@ impl Boxer {
                 _ => unreachable!(),
             };
             let to_reassign_toks = toks[2..toks.len()].to_vec();
+            let raw_text = format!(
+                "{}.{} = {}",
+                struct_name,
+                field_names.join("."),
+                to_reassign_toks
+                    .iter()
+                    .map(|t| t.to_string())
+                    .collect::<String>()
+            );
             return Ok(TBox::StructReassign(
                 Box::new(struct_name),
                 field_names,
                 to_reassign_toks,
+                raw_text,
             ));
         }
 
@@ -623,12 +874,14 @@ impl Boxer {
                 }
 
                 new_toks.extend_from_slice(&toks[2..]);
+                let raw_text = toks.iter().map(|t| t.to_string()).collect::<String>();
 
-                return Ok(TBox::Expr(new_toks));
+                return Ok(TBox::Expr(new_toks, raw_text));
             }
         }
+        let raw_text = toks.iter().map(|t| t.to_string()).collect::<String>();
 
-        return Ok(TBox::Expr(toks));
+        return Ok(TBox::Expr(toks, raw_text));
     }
 
     /// Parse an if statement from a token slice, returning the TBox and number of tokens consumed
@@ -642,7 +895,14 @@ impl Boxer {
         }
 
         if i >= input.len() {
-            return Err(ToyError::new(ToyErrorType::UnclosedDelimiter));
+            let raw_text = format!(
+                "if {}",
+                cond.iter().map(|t| t.to_string()).collect::<String>()
+            );
+            return Err(ToyError::new(
+                ToyErrorType::UnclosedDelimiter,
+                Some(raw_text),
+            ));
         }
 
         i += 1; // skip '{'
@@ -664,7 +924,14 @@ impl Boxer {
         }
 
         if depth != 0 {
-            return Err(ToyError::new(ToyErrorType::UnclosedDelimiter));
+            let raw_text = format!(
+                "if {} {{",
+                cond.iter().map(|t| t.to_string()).collect::<String>()
+            );
+            return Err(ToyError::new(
+                ToyErrorType::UnclosedDelimiter,
+                Some(raw_text),
+            ));
         }
 
         let body_boxes = self.box_group(body_toks);
@@ -674,7 +941,14 @@ impl Boxer {
             i += 1; // skip 'Else'
 
             if i >= input.len() || input[i].tok_type() != "LBrace" {
-                return Err(ToyError::new(ToyErrorType::UnclosedDelimiter));
+                let raw_text = format!(
+                    "if {} {{ ... }} else",
+                    cond.iter().map(|t| t.to_string()).collect::<String>()
+                );
+                return Err(ToyError::new(
+                    ToyErrorType::UnclosedDelimiter,
+                    Some(raw_text),
+                ));
             }
             i += 1; // skip '{'
 
@@ -695,13 +969,27 @@ impl Boxer {
             }
 
             if depth != 0 {
-                return Err(ToyError::new(ToyErrorType::UnclosedDelimiter));
+                let raw_text = format!(
+                    "if {} {{ ... }} else {{",
+                    cond.iter().map(|t| t.to_string()).collect::<String>()
+                );
+                return Err(ToyError::new(
+                    ToyErrorType::UnclosedDelimiter,
+                    Some(raw_text),
+                ));
             }
 
             else_body_boxes = Some(self.box_group(else_toks)?);
         }
+        let raw_text = format!(
+            "if {} {{ ... }}",
+            cond.iter().map(|t| t.to_string()).collect::<String>()
+        );
 
-        Ok((TBox::IfStmt(cond, body_boxes?, else_body_boxes), i))
+        Ok((
+            TBox::IfStmt(cond, body_boxes?, else_body_boxes, raw_text),
+            i,
+        ))
     }
 
     /// Recursively box tokens into structured TBoxes (proto-AST)

@@ -7,88 +7,123 @@ use std::collections::BTreeMap;
 pub enum Ast {
     IntLit(i64),
     BoolLit(bool),
-    InfixExpr(Box<Ast>, Box<Ast>, InfixOp),
-    ///Used for Parens
-    EmptyExpr(Box<Ast>),
+    ///lhs, rhs, op, raw text
+    InfixExpr(Box<Ast>, Box<Ast>, InfixOp, String),
+    ///Used for Parens, raw text
+    EmptyExpr(Box<Ast>, String),
 
-    ///Variable name, type, value
-    VarDec(Box<String>, TypeTok, Box<Ast>),
-    VarRef(Box<String>),
-    ///Variable name and expression to assign it to
-    VarReassign(Box<String>, Box<Ast>),
+    ///Variable name, type, value, raw text
+    VarDec(Box<String>, TypeTok, Box<Ast>, String),
+    ///var name, raw text
+    VarRef(Box<String>, String),
+    ///Variable name and expression to assign it to, raw text
+    VarReassign(Box<String>, Box<Ast>, String),
 
-    ///Condition, body, alt
-    IfStmt(Box<Ast>, Vec<Ast>, Option<Vec<Ast>>),
+    ///Condition, body, alt, raw text
+    IfStmt(Box<Ast>, Vec<Ast>, Option<Vec<Ast>>, String),
 
-    ///Name, type
-    FuncParam(Box<String>, TypeTok),
+    ///Name, type, raw text
+    FuncParam(Box<String>, TypeTok, String),
 
-    ///Name, Params, ReturnType, Body,
-    FuncDec(Box<String>, Vec<Ast>, TypeTok, Vec<Ast>),
+    ///Name, Params, ReturnType, Body, raw text
+    FuncDec(Box<String>, Vec<Ast>, TypeTok, Vec<Ast>, String),
 
-    ///Name, params as exprs
-    FuncCall(Box<String>, Vec<Ast>),
+    ///Name, params as exprs, raw text
+    FuncCall(Box<String>, Vec<Ast>, String),
 
-    ///Val
-    Return(Box<Ast>),
+    ///Val, raw text
+    Return(Box<Ast>, String),
+    ///String value, raw text
+    StringLit(Box<String>, String),
 
-    StringLit(Box<String>),
-
-    ///Condition, Body
-    WhileStmt(Box<Ast>, Vec<Ast>),
+    ///Condition, Body, raw text
+    WhileStmt(Box<Ast>, Vec<Ast>, String),
 
     Break,
     Continue,
+    ///Float value
     FloatLit(OrderedFloat<f64>),
 
-    ///Type, elements
-    ArrLit(TypeTok, Vec<Ast>),
-    ///Arr, idx
-    ArrRef(Box<String>, Vec<Ast>),
-    ///Arr, idx, val
-    ArrReassign(Box<String>, Vec<Ast>, Box<Ast>),
+    ///Type, elements, raw text
+    ArrLit(TypeTok, Vec<Ast>, String),
+    ///Arr, idx, raw text
+    ArrRef(Box<String>, Vec<Ast>, String),
+    ///Arr, idx, val, raw text
+    ArrReassign(Box<String>, Vec<Ast>, Box<Ast>, String),
 
-    ///Name, types
-    StructInterface(Box<String>, Box<BTreeMap<String, TypeTok>>),
+    ///Name, types, raw text
+    StructInterface(Box<String>, Box<BTreeMap<String, TypeTok>>, String),
 
-    ///Interface name, key, value (types MUST match)
-    StructLit(Box<String>, Box<BTreeMap<String, (Ast, TypeTok)>>),
+    ///Interface name, key, value (types MUST match), raw text
+    StructLit(Box<String>, Box<BTreeMap<String, (Ast, TypeTok)>>, String),
 
-    ///Struct name (the variable the struct is assigned to NOT the interface), key (key validity and type is checked) key list so me.foo.bar is Box::new("me"), vec!["foo, "bar"]
-    StructRef(Box<String>, Vec<String>),
-    ///struct name, parameters, value
-    StructReassign(Box<String>, Vec<String>, Box<Ast>),
+    ///Struct name (the variable the struct is assigned to NOT the interface), key
+    ///(key validity and type is checked) key list so me.foo.bar is Box::new("me"), vec!["foo, "bar"]
+    ///final parameter is raw text
+    StructRef(Box<String>, Vec<String>, String),
+    ///struct name, parameters, value, raw text
+    StructReassign(Box<String>, Vec<String>, Box<Ast>, String),
     Not(Box<Ast>),
 }
 impl Ast {
     pub fn node_type(&self) -> String {
         return match self {
             Ast::IntLit(_) => "IntLit".to_string(),
-            Ast::InfixExpr(_, _, _) => "InfixExpr".to_string(),
-            Ast::VarDec(_, _, _) => "VarDec".to_string(),
-            Ast::VarRef(_) => "VarRef".to_string(),
-            Ast::VarReassign(_, _) => "VarReassign".to_string(),
+            Ast::InfixExpr(_, _, _, _) => "InfixExpr".to_string(),
+            Ast::VarDec(_, _, _, _) => "VarDec".to_string(),
+            Ast::VarRef(_, _) => "VarRef".to_string(),
+            Ast::VarReassign(_, _, _) => "VarReassign".to_string(),
             Ast::BoolLit(_) => "BoolLit".to_string(),
-            Ast::IfStmt(_, _, _) => "IfStmt".to_string(),
-            Ast::EmptyExpr(_) => "EmptyExpr".to_string(),
-            Ast::FuncParam(_, _) => "FuncParam".to_string(),
-            Ast::FuncDec(_, _, _, _) => "FuncDec".to_string(),
-            Ast::FuncCall(_, _) => "FuncCall".to_string(),
-            Ast::Return(_) => "Return".to_string(),
-            Ast::StringLit(_) => "StringLit".to_string(),
-            Ast::WhileStmt(_, _) => "WhileStmt".to_string(),
+            Ast::IfStmt(_, _, _, _) => "IfStmt".to_string(),
+            Ast::EmptyExpr(_, _) => "EmptyExpr".to_string(),
+            Ast::FuncParam(_, _, _) => "FuncParam".to_string(),
+            Ast::FuncDec(_, _, _, _, _) => "FuncDec".to_string(),
+            Ast::FuncCall(_, _, _) => "FuncCall".to_string(),
+            Ast::Return(_, _) => "Return".to_string(),
+            Ast::StringLit(_, _) => "StringLit".to_string(),
+            Ast::WhileStmt(_, _, _) => "WhileStmt".to_string(),
             Ast::Continue => "Continue".to_string(),
             Ast::Break => "Break".to_string(),
             Ast::FloatLit(_) => "FloatLit".to_string(),
-            Ast::ArrLit(_, _) => "ArrLit".to_string(),
-            Ast::ArrRef(_, _) => "ArrRef".to_string(),
-            Ast::ArrReassign(_, _, _) => "ArrReassign".to_string(),
-            Ast::StructInterface(_, _) => "StructInterface".to_string(),
-            Ast::StructLit(_, _) => "StructLit".to_string(),
-            Ast::StructRef(_, _) => "StructRef".to_string(),
-            Ast::StructReassign(_, _, _) => "StructReassign".to_string(),
+            Ast::ArrLit(_, _, _) => "ArrLit".to_string(),
+            Ast::ArrRef(_, _, _) => "ArrRef".to_string(),
+            Ast::ArrReassign(_, _, _, _) => "ArrReassign".to_string(),
+            Ast::StructInterface(_, _, _) => "StructInterface".to_string(),
+            Ast::StructLit(_, _, _) => "StructLit".to_string(),
+            Ast::StructRef(_, _, _) => "StructRef".to_string(),
+            Ast::StructReassign(_, _, _, _) => "StructReassign".to_string(),
             Ast::Not(_) => "Not".to_string(),
         };
+    }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            Ast::InfixExpr(_, _, _, s) => s.clone(),
+            Ast::IntLit(i) => i.to_string(),
+            Ast::VarDec(_, _, _, s) => s.clone(),
+            Ast::VarRef(_, s) => s.clone(),
+            Ast::VarReassign(_, _, s) => s.clone(),
+            Ast::BoolLit(b) => b.to_string(),
+            Ast::IfStmt(_, _, _, s) => s.clone(),
+            Ast::EmptyExpr(_, s) => s.clone(),
+            Ast::FuncParam(_, _, s) => s.clone(),
+            Ast::FuncDec(_, _, _, _, s) => s.clone(),
+            Ast::FuncCall(_, _, s) => s.clone(),
+            Ast::Return(_, s) => s.clone(),
+            Ast::StringLit(_, s) => s.clone(),
+            Ast::WhileStmt(_, _, s) => s.clone(),
+            Ast::Break => "break".to_string(),
+            Ast::Continue => "continue".to_string(),
+            Ast::FloatLit(f) => f.to_string(),
+            Ast::ArrLit(_, _, s) => s.clone(),
+            Ast::ArrRef(_, _, s) => s.clone(),
+            Ast::ArrReassign(_, _, _, s) => s.clone(),
+            Ast::StructInterface(_, _, s) => s.clone(),
+            Ast::StructLit(_, _, s) => s.clone(),
+            Ast::StructRef(_, _, s) => s.clone(),
+            Ast::StructReassign(_, _, _, s) => s.clone(),
+            Ast::Not(n) => format!("!{}", n.to_string()),
+        }
     }
 }
 #[derive(Clone, Debug, PartialEq)]
@@ -113,43 +148,64 @@ impl fmt::Display for Ast {
             f,
             "{}",
             match self {
-                Ast::InfixExpr(a, b, c) =>
-                    format!("INFIX_EXPR left({}), Right({}), Opp({})", *a, *b, c),
-                Ast::IntLit(i) => format!("INT({:.2})", i),
-                Ast::VarDec(name, var_type, value) =>
-                    format!("Name({}), Value({}), Type({:?})", *name, value, var_type),
-                Ast::VarRef(var) => format!("Var({})", *var),
-                Ast::VarReassign(var, val) => format!("Var({}) = Val({:?})", *var, *val),
-                Ast::BoolLit(b) => format!("BoolLit({})", b),
-                Ast::IfStmt(cond, body, alt) =>
-                    format!("IfStmt Cond({}), Body({:?}), Alt({:?})", cond, body, alt),
-                Ast::EmptyExpr(child) => format!("EmptyExpr({})", child),
-                Ast::FuncParam(name, type_tok) =>
-                    format!("FuncParam Name({}), Type({:?})", *name, type_tok),
-                Ast::FuncDec(name, params, return_type, body) => format!(
-                    "FuncDec Name({}), Params({:?}), ReturnType({:?}), Body({:?})",
-                    *name, params, return_type, body
+                Ast::InfixExpr(a, b, c, s) => format!(
+                    "INFIX_EXPR left({}), Right({}), Opp({}), Literal({})",
+                    *a, *b, c, s
                 ),
-                Ast::FuncCall(name, params) =>
-                    format!("FuncCall, Name({}), Params({:?})", *name, params),
-                Ast::Return(val) => format!("Return Val({})", *val),
-                Ast::StringLit(s) => format!("StringLit Val({})", *s),
-                Ast::WhileStmt(cond, body) =>
-                    format!("WhileStmt Cond({}), Body({:?})", *cond, body),
+                Ast::IntLit(i) => format!("INT({:.2})", i),
+                Ast::VarDec(name, var_type, value, s) => format!(
+                    "Name({}), Value({}), Type({:?}), Literal({})",
+                    *name, value, var_type, s
+                ),
+                Ast::VarRef(var, s) => format!("Var({}), Literal({})", *var, s),
+                Ast::VarReassign(var, val, s) =>
+                    format!("Var({}) = Val({:?}), Literal({})", *var, *val, s),
+                Ast::BoolLit(b) => format!("BoolLit({})", b),
+                Ast::IfStmt(cond, body, alt, s) => format!(
+                    "IfStmt Cond({}), Body({:?}), Alt({:?}), Literal({})",
+                    cond, body, alt, s
+                ),
+                Ast::EmptyExpr(child, s) => format!("EmptyExpr({}), Literal({})", child, s),
+                Ast::FuncParam(name, type_tok, s) => format!(
+                    "FuncParam Name({}), Type({:?}), Literal({})",
+                    *name, type_tok, s
+                ),
+                Ast::FuncDec(name, params, return_type, body, s) => format!(
+                    "FuncDec Name({}), Params({:?}), ReturnType({:?}), Body({:?}), Literal({})",
+                    *name, params, return_type, body, s
+                ),
+                Ast::FuncCall(name, params, s) => format!(
+                    "FuncCall, Name({}), Params({:?}), Literal({})",
+                    *name, params, s
+                ),
+                Ast::Return(val, s) => format!("Return Val({}), Literal({})", *val, s),
+                Ast::StringLit(st, s) => format!("StringLit Val({}), Literal({})", *st, s),
+                Ast::WhileStmt(cond, body, s) => format!(
+                    "WhileStmt Cond({}), Body({:?}), Literal({})",
+                    *cond, body, s
+                ),
                 Ast::Break => "Break".to_string(),
                 Ast::Continue => "Continue".to_string(),
-                Ast::FloatLit(f) => format!("FloatLit({})", *f),
-                Ast::ArrLit(t, v) => format!("ArrLit Type({:?}), Val({:?})", t, v),
-                Ast::ArrRef(a, i) => format!("ArrRef Arr({:?}), Index({:?})", a, i),
-                Ast::ArrReassign(a, i, v) =>
-                    format!("ArrReassign Arr({}), Index({:?}), Value({})", *a, i, *v),
-                Ast::StructInterface(n, kv) =>
-                    format!("StructInterface Name({}), Types({:?})", *n, *kv),
-                Ast::StructLit(n, kv) => format!("StructLit Name({}), Types({:?})", *n, *kv),
-                Ast::StructRef(n, k) => format!("StructRef Name({}), Key({:?})", n, k),
-                Ast::StructReassign(s, f, v) => format!(
-                    "StructReassign Name({}), fields({:?}), Value({})",
-                    *s, f, *v
+                Ast::FloatLit(fl) => format!("FloatLit({})", *fl),
+                Ast::ArrLit(t, v, s) =>
+                    format!("ArrLit Type({:?}), Val({:?}), Literal({})", t, v, s),
+                Ast::ArrRef(a, i, s) =>
+                    format!("ArrRef Arr({:?}), Index({:?}), Literal({})", a, i, s),
+                Ast::ArrReassign(a, i, v, s) => format!(
+                    "ArrReassign Arr({}), Index({:?}), Value({}), Literal({})",
+                    *a, i, *v, s
+                ),
+                Ast::StructInterface(n, kv, s) => format!(
+                    "StructInterface Name({}), Types({:?}), Literal({})",
+                    *n, *kv, s
+                ),
+                Ast::StructLit(n, kv, s) =>
+                    format!("StructLit Name({}), Types({:?}), Literal({})", *n, *kv, s),
+                Ast::StructRef(n, k, s) =>
+                    format!("StructRef Name({}), Key({:?}), Literal({})", n, k, s),
+                Ast::StructReassign(st, fi, v, s) => format!(
+                    "StructReassign Name({}), fields({:?}), Value({}), Literal({})",
+                    *st, fi, *v, s
                 ),
                 Ast::Not(n) => format!("Not({})", *n),
             }

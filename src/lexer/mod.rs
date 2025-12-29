@@ -88,7 +88,7 @@ impl Lexer {
             TypeTok::Str => TypeTok::StrArr(arr_count),
             TypeTok::Float => TypeTok::FloatArr(arr_count),
             TypeTok::Any => TypeTok::AnyArr(arr_count),
-            _ => return Err(ToyError::new(ToyErrorType::ArrayTypeInvalid)),
+            _ => return Err(ToyError::new(ToyErrorType::ArrayTypeInvalid, None)),
         };
 
         self.toks.push(Token::Type(arr_type));
@@ -194,11 +194,11 @@ impl Lexer {
             if c == '.' {
                 self.flush();
                 if self.toks.len() == 0 {
-                    return Err(ToyError::new(ToyErrorType::MalformedFieldName));
+                    return Err(ToyError::new(ToyErrorType::MalformedFieldName, None)); //I hate that none but dont want to fix it
                 }
                 match self.toks.last().unwrap() {
                     Token::VarName(_) | Token::VarRef(_) => {}
-                    _ => return Err(ToyError::new(ToyErrorType::MalformedFieldName)),
+                    _ => return Err(ToyError::new(ToyErrorType::MalformedFieldName, None)),
                 }
                 let len = self.chars.len();
                 loop {
@@ -213,7 +213,7 @@ impl Lexer {
                     }
 
                     if field_name.is_empty() {
-                        return Err(ToyError::new(ToyErrorType::MalformedFieldName));
+                        return Err(ToyError::new(ToyErrorType::MalformedFieldName, None));
                     }
 
                     self.toks.push(Token::Dot);
@@ -423,7 +423,7 @@ impl Lexer {
                 continue;
             }
 
-            return Err(ToyError::new(ToyErrorType::UnknownCharacter(c)));
+            return Err(ToyError::new(ToyErrorType::UnknownCharacter(c), None));
         }
         debug!(targets: ["lexer_verbose"], self.toks.clone());
 
