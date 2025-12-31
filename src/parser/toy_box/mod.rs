@@ -9,10 +9,8 @@ pub enum TBox {
     Expr(Vec<Token>, String),
     ///Var name, Var type, Var val, source code for that expression
     VarDec(Token, Option<TypeTok>, Vec<Token>, String),
-    #[allow(unused)] //Makes a yellow line go away, it is very much used
-    VarRef(Token),
-    ///var token, new val, original code
-    VarReassign(Token, Vec<Token>, String),
+    ///represents a reassignment of the tokens LHS to the value RHS
+    Assign(Vec<Token>, Vec<Token>, String),
     ///Cond, body, Optional else, original code
     IfStmt(Vec<Token>, Vec<TBox>, Option<Vec<TBox>>, String),
     ///Name, type, source code
@@ -25,12 +23,8 @@ pub enum TBox {
     While(Vec<Token>, Vec<TBox>, String),
     Break,
     Continue,
-    ///Array, idx's, new val, Source code
-    ArrReassign(Token, Vec<Vec<Token>>, Vec<Token>, String),
     ///Name, types, Source code
     StructInterface(Box<String>, Box<BTreeMap<String, TypeTok>>, String),
-    ///First token is struct name, then values, then the new value, Source code
-    StructReassign(Box<String>, Vec<String>, Vec<Token>, String),
 }
 
 impl fmt::Display for TBox {
@@ -44,11 +38,9 @@ impl fmt::Display for TBox {
                     "TBox_VAR_DEC: Name({}), Val({:?}), Type({:?}) Literal({})",
                     *name, val, t, s
                 ),
-                TBox::VarRef(name) => format!("TBox_VAR_REF: Name({})", *name),
-                TBox::VarReassign(var, new_val, s) => format!(
-                    "TBox_VAR_REASSIGN Var({}), NewVal({:?}) Literal({})",
-                    var, new_val, s
-                ),
+                TBox::Assign(lhs, rhs, s) => {
+                    format!("TBox_Assign LHS({:?}), RHS({:?}), Literal({})", lhs, rhs, s)
+                }
                 TBox::IfStmt(cond, body, alt, s) => format!(
                     "TBox_If_Stmt Cond({:?}), Body({:?}), Alt({:?}), Literal({})",
                     cond, body, alt, s
@@ -68,17 +60,9 @@ impl fmt::Display for TBox {
                 ),
                 TBox::Break => "TBox_break".to_string(),
                 TBox::Continue => "TBox_continue".to_string(),
-                TBox::ArrReassign(a, i, n, s) => format!(
-                    "TBox_Arr_Reassign Arr({:?}), Index({:?}), NewVal({:?}), Literal({})",
-                    a, i, n, s
-                ),
                 TBox::StructInterface(n, kv, s) => format!(
                     "TBox_Struct_Interface Name({}), KV({:?}), Literal({})",
                     *n, *kv, s
-                ),
-                TBox::StructReassign(n, f, v, s) => format!(
-                    "TBox_Struct_Reassign  Name({}), Fields({:?}), Value({:?}), Literal({})",
-                    *n, f, v, s
                 ),
             }
         )

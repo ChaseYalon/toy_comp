@@ -16,94 +16,6 @@ impl Boxer {
             interfaces: BTreeMap::new(),
         }
     }
-    fn pre_process(&self, input: &Vec<Token>) -> Vec<Token> {
-        // First pass: collapse dotted field access sequences into StructRef tokens
-        let mut first_pass: Vec<Token> = Vec::new();
-        let mut i = 0usize;
-        while i < input.len() {
-            // collapse dotted field access sequences into StructRef tokens
-            if i + 2 < input.len()
-                && input[i].tok_type() == "VarRef"
-                && input[i + 1].tok_type() == "Dot"
-                && input[i + 2].tok_type() == "VarRef"
-            {
-                if let Token::VarRef(name) = input[i].clone() {
-                    let s_name = *name;
-                    let mut keys: Vec<String> = Vec::new();
-                    i += 1; // move to the dot
-                    while i + 1 < input.len()
-                        && input[i].tok_type() == "Dot"
-                        && input[i + 1].tok_type() == "VarRef"
-                    {
-                        if let Token::VarRef(k) = input[i + 1].clone() {
-                            keys.push(*k);
-                        }
-                        i += 2;
-                    }
-                    first_pass.push(Token::StructRef(Box::new(s_name), keys));
-                    continue;
-                }
-            }
-            first_pass.push(input[i].clone());
-            i += 1;
-        }
-
-        // Second pass: handle compound ops (now StructRefs are already collapsed)
-        let mut toks: Vec<Token> = Vec::new();
-        i = 0;
-        while i < first_pass.len() {
-            let t = first_pass[i].clone();
-            // compound ops
-            if t.tok_type() == "CompoundPlus" {
-                toks.push(Token::Assign);
-                toks.push(first_pass[i - 1].clone());
-                toks.push(Token::Plus);
-                i += 1;
-                continue;
-            }
-            if t.tok_type() == "CompoundMinus" {
-                toks.push(Token::Assign);
-                toks.push(first_pass[i - 1].clone());
-                toks.push(Token::Minus);
-                i += 1;
-                continue;
-            }
-            if t.tok_type() == "CompoundMultiply" {
-                toks.push(Token::Assign);
-                toks.push(first_pass[i - 1].clone());
-                toks.push(Token::Multiply);
-                i += 1;
-                continue;
-            }
-            if t.tok_type() == "CompoundDivide" {
-                toks.push(Token::Assign);
-                toks.push(first_pass[i - 1].clone());
-                toks.push(Token::Divide);
-                i += 1;
-                continue;
-            }
-            if t.tok_type() == "PlusPlus" {
-                toks.push(Token::Assign);
-                toks.push(first_pass[i - 1].clone());
-                toks.push(Token::Plus);
-                toks.push(Token::IntLit(1));
-                i += 1;
-                continue;
-            }
-            if t.tok_type() == "MinusMinus" {
-                toks.push(Token::Assign);
-                toks.push(first_pass[i - 1].clone());
-                toks.push(Token::Minus);
-                toks.push(Token::IntLit(1));
-                i += 1;
-                continue;
-            }
-
-            toks.push(t);
-            i += 1;
-        }
-        return toks;
-    }
     fn box_var_dec(&self, input: &Vec<Token>) -> Result<TBox, ToyError> {
         let raw_text = if input[2].tok_type() == "Colon" {
             let mut s = "".to_string();
@@ -170,30 +82,6 @@ impl Boxer {
         ));
     }
 
-    fn box_var_ref(&self, input: &Vec<Token>) -> Result<TBox, ToyError> {
-        let raw_text = format!(
-            "{} = {}",
-            input[0],
-            input[2..].iter().map(|x| x.to_string()).collect::<String>()
-        );
-        if input[0].tok_type() != "VarRef" {
-            return Err(ToyError::new(
-                ToyErrorType::MalformedVariableReassign,
-                Some(raw_text),
-            ));
-        }
-        if input[1].tok_type() != "Assign" {
-            return Err(ToyError::new(
-                ToyErrorType::MalformedVariableReassign,
-                Some(raw_text),
-            ));
-        }
-        Ok(TBox::VarReassign(
-            input[0].clone(),
-            input[2..].to_vec(),
-            raw_text,
-        ))
-    }
     fn box_while_stmt(&mut self, input: &Vec<Token>) -> Result<TBox, ToyError> {
         let raw_text = format!(
             "while {} {{",
@@ -778,124 +666,79 @@ impl Boxer {
         if first == "Continue" {
             return Ok(TBox::Continue);
         }
-        if toks.len() > 2 && toks[0].tok_type() == "VarRef" && toks[1].tok_type() == "Assign" {
-            return self.box_var_ref(&toks);
-        }
-        if toks.len() > 2 && toks[0].tok_type() == "VarRef" && toks[1].tok_type() == "LBrack" {
-            let mut idx_groups: Vec<Vec<Token>> = Vec::new();
-            let mut i = 2;
-            let len = toks.len();
 
-            while i < len {
-                let mut idx_toks: Vec<Token> = Vec::new();
+        // Check for Assignment (=) or Compound Assignment (+=, -=, *=, /=)
+        let mut assign_idx = None;
+        let mut compound_op = None;
 
-                while i < len && toks[i].tok_type() != "RBrack" {
-                    idx_toks.push(toks[i].clone());
-                    i += 1;
-                }
-
-                if i >= len {
-                    let raw_text = format!("{}[...", toks[0]);
-                    return Err(ToyError::new(
-                        ToyErrorType::UnclosedDelimiter,
-                        Some(raw_text),
-                    ));
-                }
-
-                idx_groups.push(idx_toks);
-                i += 1;
-
-                if i < len && toks[i].tok_type() == "LBrack" {
-                    i += 1;
-                    continue;
-                } else {
+        for (i, t) in toks.iter().enumerate() {
+            match t.tok_type().as_str() {
+                "Assign" => {
+                    assign_idx = Some(i);
                     break;
                 }
+                "CompoundPlus" => {
+                    assign_idx = Some(i);
+                    compound_op = Some(Token::Plus);
+                    break;
+                }
+                "CompoundMinus" => {
+                    assign_idx = Some(i);
+                    compound_op = Some(Token::Minus);
+                    break;
+                }
+                "CompoundMultiply" => {
+                    assign_idx = Some(i);
+                    compound_op = Some(Token::Multiply);
+                    break;
+                }
+                "CompoundDivide" => {
+                    assign_idx = Some(i);
+                    compound_op = Some(Token::Divide);
+                    break;
+                }
+                "PlusPlus" => {
+                    assign_idx = Some(i);
+                    compound_op = Some(Token::Plus);
+                    break;
+                }
+                "MinusMinus" => {
+                    assign_idx = Some(i);
+                    compound_op = Some(Token::Minus);
+                    break;
+                }
+                _ => {}
             }
+        }
 
-            //is something like arr[i].foo()
-            if i < len && toks[i].tok_type() == "Dot" {
-                let raw_text = toks.iter().map(|t| t.to_string()).collect::<String>();
-                return Ok(TBox::Expr(toks, raw_text));
-            }
+        if let Some(idx) = assign_idx {
+            let lhs = toks[0..idx].to_vec();
+            let rhs = toks[idx + 1..].to_vec();
+            let raw_text = toks.iter().map(|t| t.to_string()).collect::<String>();
 
-            if i >= len || toks[i].tok_type() != "Assign" {
-                let raw_text = format!("{}[...]", toks[0]);
+            if lhs.is_empty() {
                 return Err(ToyError::new(
                     ToyErrorType::MalformedVariableReassign,
                     Some(raw_text),
-                )); //this might be wrong
+                ));
             }
-            let val_toks = toks[i + 1..].to_vec();
-            let raw_text = format!(
-                "{}[...] = {}",
-                toks[0],
-                val_toks.iter().map(|t| t.to_string()).collect::<String>()
-            );
 
-            return Ok(TBox::ArrReassign(
-                toks[0].clone(),
-                idx_groups,
-                val_toks,
-                raw_text,
-            ));
-        }
-        if toks.len() > 1 && first == "StructRef" && toks[1].tok_type() == "Assign" {
-            //struct reassign like a.x = 0;
-            let (struct_name, field_names) = match toks[0].clone() {
-                Token::StructRef(sn, fen) => (*sn, fen),
-                _ => unreachable!(),
-            };
-            let to_reassign_toks = toks[2..toks.len()].to_vec();
-            let raw_text = format!(
-                "{}.{} = {}",
-                struct_name,
-                field_names.join("."),
-                to_reassign_toks
-                    .iter()
-                    .map(|t| t.to_string())
-                    .collect::<String>()
-            );
-            return Ok(TBox::StructReassign(
-                Box::new(struct_name),
-                field_names,
-                to_reassign_toks,
-                raw_text,
-            ));
-        }
-
-        if toks.len() > 1 && first == "StructRef" && toks[1].tok_type() == "LParen" {
-            let (struct_name, field_names) = match toks[0].clone() {
-                Token::StructRef(sn, fen) => (*sn, fen),
-                _ => unreachable!(),
-            };
-
-            if !field_names.is_empty() {
-                let method_name = field_names.last().unwrap().clone();
-                let object_tok = if field_names.len() == 1 {
-                    Token::VarRef(Box::new(struct_name))
+            if let Some(op) = compound_op {
+                // Expand lhs += rhs to lhs = lhs + rhs
+                // Expand lhs ++ to lhs = lhs + 1
+                let mut new_rhs = lhs.clone();
+                new_rhs.push(op);
+                if rhs.is_empty() {
+                    new_rhs.push(Token::IntLit(1));
                 } else {
-                    Token::StructRef(
-                        Box::new(struct_name),
-                        field_names[0..field_names.len() - 1].to_vec(),
-                    )
-                };
-
-                let mut new_toks = Vec::new();
-                new_toks.push(Token::VarRef(Box::new(method_name)));
-                new_toks.push(Token::LParen);
-                new_toks.push(object_tok);
-
-                if toks[2].tok_type() != "RParen" {
-                    new_toks.push(Token::Comma);
+                    new_rhs.extend(rhs);
                 }
-
-                new_toks.extend_from_slice(&toks[2..]);
-                let raw_text = toks.iter().map(|t| t.to_string()).collect::<String>();
-
-                return Ok(TBox::Expr(new_toks, raw_text));
+                return Ok(TBox::Assign(lhs, new_rhs, raw_text));
+            } else {
+                return Ok(TBox::Assign(lhs, rhs, raw_text));
             }
         }
+
         let raw_text = toks.iter().map(|t| t.to_string()).collect::<String>();
 
         return Ok(TBox::Expr(toks, raw_text));
@@ -1011,7 +854,7 @@ impl Boxer {
 
     /// Recursively box tokens into structured TBoxes (proto-AST)
     pub fn box_toks(&mut self, input: Vec<Token>) -> Result<Vec<TBox>, ToyError> {
-        self.toks = self.pre_process(&input);
+        self.toks = input;
         //self.toks = input.clone();
         self.tp = 0;
         return Ok(self.box_group(self.toks.clone())?);

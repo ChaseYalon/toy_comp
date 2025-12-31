@@ -295,7 +295,16 @@ impl AstGenerator {
     ) -> Result<(Ast, TypeTok), ToyError> {
         // Manually split the tokens between the braces at top-level commas,
         // so nested struct/array literals aren't split incorrectly.
-        let inner = &toks[2..toks.len() - 1]; // tokens inside the `{ ... }`
+        let inner = if toks.len() >= 2
+            && toks[0].tok_type() == "VarRef"
+            && toks[1].tok_type() == "LBrace"
+        {
+            &toks[2..toks.len() - 1]
+        } else if toks.len() >= 2 && toks[0].tok_type() == "LBrace" {
+            &toks[1..toks.len() - 1]
+        } else {
+            toks
+        };
         let mut unprocessed_kv: Vec<&[Token]> = Vec::new();
         let mut start = 0usize;
         let mut depth = 0i32;
@@ -323,6 +332,7 @@ impl AstGenerator {
                 .map(|t| t.to_string())
                 .collect::<Vec<String>>()
                 .join(" ");
+            // println!("Processing kv: {:?}", kv);
             if kv.len() < 3 {
                 return Err(ToyError::new(
                     ToyErrorType::MalformedStructField,
@@ -380,7 +390,12 @@ impl AstGenerator {
             .map(|t| t.to_string())
             .collect::<Vec<String>>()
             .join(" ");
-        //guard clause for not expressions - seems hacky but works
+
+        if toks.is_empty() {
+            return Err(ToyError::new(ToyErrorType::ExpectedExpression, None));
+        }
+
+        //guard clause for not expressions
         if toks[0].tok_type() == "Not" {
             let (to_be_negated_val, to_be_negated_type) =
                 self.parse_expr(&toks[1..toks.len()].to_vec())?;
@@ -392,85 +407,9 @@ impl AstGenerator {
             }
             return Ok((Ast::Not(Box::new(to_be_negated_val)), TypeTok::Bool));
         }
-        if toks.len() >= 3 {
-            let mut i = 0usize;
-            let mut new_toks: Vec<Token> = Vec::new();
-            let mut found = false;
-            while i < toks.len() {
-                if i + 2 < toks.len()
-                    && toks[i].tok_type() == "VarRef"
-                    && toks[i + 1].tok_type() == "Dot"
-                    && toks[i + 2].tok_type() == "VarRef"
-                {
-                    // collect keys
-                    if let Token::VarRef(name) = toks[i].clone() {
-                        let s_name = *name;
-                        let mut keys: Vec<String> = Vec::new();
-                        i += 1; // move to dot
-                        while i + 1 < toks.len()
-                            && toks[i].tok_type() == "Dot"
-                            && toks[i + 1].tok_type() == "VarRef"
-                        {
-                            if let Token::VarRef(k) = toks[i + 1].clone() {
-                                keys.push(*k);
-                            }
-                            i += 2;
-                        }
-                        new_toks.push(Token::StructRef(Box::new(s_name), keys));
-                        found = true;
-                        continue;
-                    } else {
-                        // should be unreachable
-                        new_toks.push(toks[i].clone());
-                        i += 1;
-                        continue;
-                    }
-                }
-                new_toks.push(toks[i].clone());
-                i += 1;
-            }
-            if found {
-                return self.parse_expr(&new_toks);
-            }
-        }
 
         //guard clause for single tokens
         if toks.len() == 1 {
-            //struct ref (a.x or a.x.y)
-            if toks[0].tok_type() == "StructRef" {
-                let (s_name, keys) = match toks[0].clone() {
-                    Token::StructRef(sn, k) => (*sn, k.clone()),
-                    _ => unreachable!(),
-                };
-
-                let mut current_type: TypeTok = self.lookup_var_type(&s_name).unwrap();
-
-                for key in &keys {
-                    match current_type {
-                        TypeTok::Struct(m) => {
-                            current_type = if m.get(key).is_some() {
-                                *m.get(key).unwrap().clone()
-                            } else {
-                                return Err(ToyError::new(
-                                    ToyErrorType::KeyNotOnStruct,
-                                    Some(raw_text.clone()),
-                                ));
-                            };
-                        }
-                        _ => {
-                            return Err(ToyError::new(
-                                ToyErrorType::VariableNotAStruct,
-                                Some(raw_text.clone()),
-                            ));
-                        }
-                    }
-                }
-
-                return Ok((
-                    Ast::StructRef(Box::new(s_name), keys, raw_text.clone()),
-                    current_type,
-                ));
-            }
             if toks[0].tok_type() == "IntLit" {
                 return Ok((Ast::IntLit(toks[0].get_val().unwrap()), TypeTok::Int));
             }
@@ -503,6 +442,10 @@ impl AstGenerator {
                 };
                 let var_ref_type = self.lookup_var_type(&s);
                 if var_ref_type.is_none() {
+                    println!(
+                        "TypeHintNeeded for {}. Available vars: {:?}",
+                        s, self.var_type_scopes
+                    );
                     return Err(ToyError::new(
                         ToyErrorType::TypeHintNeeded,
                         Some(raw_text.clone()),
@@ -511,6 +454,7 @@ impl AstGenerator {
                 return Ok((self.parse_var_ref(&toks[0])?, var_ref_type.unwrap().clone()));
             }
         }
+
         //guard clause for function calls
         if toks.first().unwrap().tok_type() == "VarRef" && toks[1].tok_type() == "LParen" {
             let mut depth = 0;
@@ -536,7 +480,8 @@ impl AstGenerator {
                 }
             }
         }
-        //guard calls for empty expressions
+
+        //guard calls for empty expressions (parens)
         if toks.first().unwrap().tok_type() == "LParen"
             && toks.last().unwrap().tok_type() == "RParen"
         {
@@ -563,293 +508,14 @@ impl AstGenerator {
                 return Ok((to_ret_ast, inner_type));
             }
         }
-        //arr ref like arr[0]
-        if toks.first().unwrap().tok_type() == "VarRef" && toks[1].tok_type() == "LBrack" {
-            let name = match toks[0].clone() {
-                Token::VarRef(a) => *a,
-                _ => unreachable!(),
-            };
-
-            let mut i = 2;
-            let mut idx_exprs: Vec<Ast> = Vec::new();
-            let mut arr_ref_end = 0;
-
-            while i < toks.len() {
-                // find closing bracket
-                let mut bracket_depth = 1;
-                let mut j = i;
-                while j < toks.len() && bracket_depth > 0 {
-                    if toks[j].tok_type() == "LBrack" {
-                        bracket_depth += 1;
-                    } else if toks[j].tok_type() == "RBrack" {
-                        bracket_depth -= 1;
-                    }
-                    j += 1;
-                }
-
-                if bracket_depth != 0 {
-                    return Err(ToyError::new(
-                        ToyErrorType::UnclosedDelimiter,
-                        Some(raw_text.clone()),
-                    ));
-                }
-
-                let inner_toks = &toks[i..j - 1];
-                let (idx_expr, _) = self.parse_num_expr(&inner_toks.to_vec())?;
-                idx_exprs.push(idx_expr);
-                arr_ref_end = j;
-
-                if j >= toks.len() || toks[j].tok_type() != "LBrack" {
-                    break;
-                }
-
-                i = j + 1;
-            }
-
-            let arr_type = match self.lookup_var_type(&name) {
-                Some(t) => t,
-                None => {
-                    return Err(ToyError::new(
-                        ToyErrorType::UndefinedVariable,
-                        Some(raw_text.clone()),
-                    ));
-                }
-            };
-
-            let mut item_type = arr_type.clone();
-            for _ in &idx_exprs {
-                item_type = match item_type {
-                    TypeTok::IntArr(1) => TypeTok::Int,
-                    TypeTok::StrArr(1) => TypeTok::Str,
-                    TypeTok::BoolArr(1) => TypeTok::Bool,
-                    TypeTok::FloatArr(1) => TypeTok::Float,
-                    TypeTok::AnyArr(1) => TypeTok::Any,
-                    TypeTok::IntArr(n) => TypeTok::IntArr(n - 1),
-                    TypeTok::StrArr(n) => TypeTok::StrArr(n - 1),
-                    TypeTok::BoolArr(n) => TypeTok::BoolArr(n - 1),
-                    TypeTok::FloatArr(n) => TypeTok::FloatArr(n - 1),
-                    TypeTok::AnyArr(n) => TypeTok::AnyArr(n - 1),
-                    TypeTok::StructArr(kv, 1) => TypeTok::Struct(kv),
-                    TypeTok::StructArr(kv, n) => TypeTok::StructArr(kv, n - 1),
-                    _ => {
-                        return Err(ToyError::new(
-                            ToyErrorType::ArrayTypeInvalid,
-                            Some(raw_text.clone()),
-                        ));
-                    } //if this error is triggered, something has gone very wrong
-                };
-            }
-
-            let arr_ref_ast = Ast::ArrRef(Box::new(name.clone()), idx_exprs.clone(), raw_text.clone());
-
-            if arr_ref_end < toks.len() {
-                let remaining_toks = &toks[arr_ref_end..];
-                if !remaining_toks.is_empty() {
-                    let op_tok = &remaining_toks[0];
-
-                    // Handle struct field access on array element: arr[i].field
-                    if *op_tok == Token::Dot && remaining_toks.len() >= 2 {
-                        let is_method_call = remaining_toks.len() >= 3
-                            && remaining_toks[1].tok_type() == "VarRef"
-                            && remaining_toks[2].tok_type() == "LParen";
-
-                        if !is_method_call {
-                            let mut keys: Vec<String> = Vec::new();
-                            let mut current_type = item_type.clone();
-                            let mut i = 1;
-
-                            while i < remaining_toks.len() {
-                                if remaining_toks[i].tok_type() == "VarRef" {
-                                    let field_name = match &remaining_toks[i] {
-                                        Token::VarRef(n) => *n.clone(),
-                                        _ => unreachable!(),
-                                    };
-
-                                    if let TypeTok::Struct(fields) = current_type {
-                                        if let Some(field_type) = fields.get(&field_name) {
-                                            current_type = *field_type.clone();
-                                            keys.push(field_name);
-                                        } else {
-                                            return Err(ToyError::new(
-                                                ToyErrorType::KeyNotOnStruct,
-                                                Some(raw_text.clone()),
-                                            ));
-                                        }
-                                    } else {
-                                        return Err(ToyError::new(
-                                            ToyErrorType::VariableNotAStruct,
-                                            Some(raw_text.clone()),
-                                        ));
-                                    }
-                                    i += 1;
-                                } else {
-                                    break;
-                                }
-
-                                if i < remaining_toks.len() {
-                                    if remaining_toks[i].tok_type() == "Dot" {
-                                        i += 1;
-                                    } else {
-                                        break;
-                                    }
-                                }
-                            }
-
-                            let arr_struct_ref = Ast::ArrStructRef(
-                                Box::new(name.clone()),
-                                idx_exprs.clone(),
-                                keys,
-                                raw_text.clone(),
-                            );
-
-                            if i < remaining_toks.len() {
-                                let next_op_tok = &remaining_toks[i];
-                                let rest_toks = &remaining_toks[i + 1..];
-                                let (rhs_ast, _rhs_type) = self.parse_expr(&rest_toks.to_vec())?;
-
-                                let op = match next_op_tok {
-                                    Token::Plus => InfixOp::Plus,
-                                    Token::Minus => InfixOp::Minus,
-                                    Token::Multiply => InfixOp::Multiply,
-                                    Token::Divide => InfixOp::Divide,
-                                    Token::Modulo => InfixOp::Modulo,
-                                    Token::LessThan => InfixOp::LessThan,
-                                    Token::LessThanEqt => InfixOp::LessThanEqt,
-                                    Token::GreaterThan => InfixOp::GreaterThan,
-                                    Token::GreaterThanEqt => InfixOp::GreaterThanEqt,
-                                    Token::Equals => InfixOp::Equals,
-                                    Token::NotEquals => InfixOp::NotEquals,
-                                    Token::And => InfixOp::And,
-                                    Token::Or => InfixOp::Or,
-                                    _ => {
-                                        return Err(ToyError::new(
-                                            ToyErrorType::InvalidInfixOperation,
-                                            Some(raw_text.clone()),
-                                        ));
-                                    }
-                                };
-
-                                return Ok((
-                                    Ast::InfixExpr(
-                                        Box::new(arr_struct_ref),
-                                        Box::new(rhs_ast),
-                                        op.clone(),
-                                        raw_text.clone(),
-                                    ),
-                                    match op {
-                                        InfixOp::Plus
-                                        | InfixOp::Minus
-                                        | InfixOp::Multiply
-                                        | InfixOp::Divide
-                                        | InfixOp::Modulo => current_type,
-                                        _ => TypeTok::Bool,
-                                    },
-                                ));
-                            } else {
-                                return Ok((arr_struct_ref, current_type));
-                            }
-                        }
-                    }
-
-                    // Handle method call on array element: arr[i].method(...)
-                    if *op_tok == Token::Dot && remaining_toks.len() >= 3 {
-                        if remaining_toks[1].tok_type() == "VarRef"
-                            && remaining_toks[2].tok_type() == "LParen"
-                        {
-                            // This is a method call on array element
-                            // Convert arr[i].method(...) to method(arr[i], ...)
-                            let method_name = match &remaining_toks[1] {
-                                Token::VarRef(n) => n.clone(),
-                                _ => unreachable!(),
-                            };
-
-                            // Build new tokens: method_name(arr[i], args...)
-                            let mut new_toks: Vec<Token> = Vec::new();
-                            new_toks.push(Token::VarRef(method_name));
-                            new_toks.push(Token::LParen);
-
-                            // Create a token for the array reference
-                            // We need to pass the original array ref tokens
-                            let arr_ref_toks = &toks[0..arr_ref_end];
-                            new_toks.extend_from_slice(arr_ref_toks);
-
-                            // Add comma if there are more arguments
-                            let args_start = 3; // after Dot, VarRef, LParen
-                            if args_start < remaining_toks.len()
-                                && remaining_toks[args_start].tok_type() != "RParen"
-                            {
-                                new_toks.push(Token::Comma);
-                            }
-
-                            // Add the rest of the arguments (everything after LParen)
-                            new_toks.extend_from_slice(&remaining_toks[args_start..]);
-
-                            // Parse the transformed function call
-                            return self.parse_expr(&new_toks);
-                        }
-                    }
-
-                    let right_toks = &remaining_toks[1..];
-                    let (right_ast, right_type) = self.parse_expr(&right_toks.to_vec())?;
-
-                    let op = match op_tok {
-                        Token::Plus => InfixOp::Plus,
-                        Token::Minus => InfixOp::Minus,
-                        Token::Multiply => InfixOp::Multiply,
-                        Token::Divide => InfixOp::Divide,
-                        Token::Modulo => InfixOp::Modulo,
-                        Token::LessThan => InfixOp::LessThan,
-                        Token::LessThanEqt => InfixOp::LessThanEqt,
-                        Token::GreaterThan => InfixOp::GreaterThan,
-                        Token::GreaterThanEqt => InfixOp::GreaterThanEqt,
-                        Token::Equals => InfixOp::Equals,
-                        Token::NotEquals => InfixOp::NotEquals,
-                        Token::And => InfixOp::And,
-                        Token::Or => InfixOp::Or,
-                        _ => {
-                            return Err(ToyError::new(
-                                ToyErrorType::InvalidInfixOperation,
-                                Some(raw_text.clone()),
-                            ));
-                        }
-                    };
-
-                    let result_type = match op {
-                        InfixOp::Plus
-                        | InfixOp::Minus
-                        | InfixOp::Multiply
-                        | InfixOp::Divide
-                        | InfixOp::Modulo => {
-                            if item_type == TypeTok::Float || right_type == TypeTok::Float {
-                                TypeTok::Float
-                            } else if item_type == TypeTok::Str || right_type == TypeTok::Str {
-                                TypeTok::Str
-                            } else {
-                                TypeTok::Int
-                            }
-                        }
-                        _ => TypeTok::Bool,
-                    };
-
-                    return Ok((
-                        Ast::InfixExpr(
-                            Box::new(arr_ref_ast),
-                            Box::new(right_ast),
-                            op,
-                            raw_text.clone(),
-                        ),
-                        result_type,
-                    ));
-                }
-            }
-
-            return Ok((arr_ref_ast, item_type));
-        }
 
         //Arr literals
         if toks.first().unwrap().tok_type() == "LBrack" {
+            // Check if it's an array literal or index access on something else?
+            // If it starts with LBrack, it must be ArrLit because IndexAccess requires LHS.
             return self.parse_arr_lit(toks);
         }
+
         //Struct literal
         if toks.first().unwrap().tok_type() == "VarRef" && toks[1].tok_type() == "LBrace" {
             let name = match toks[0].clone() {
@@ -885,13 +551,215 @@ impl AstGenerator {
                 }
                 i = j + 1;
             }
-            return Ok((struct_dec_exprs[0].clone(), struct_dec_types[0].clone()));
+            // If we parsed the whole thing as struct literal(s), return it.
+            // But wait, what if it's StructLit followed by something?
+            // e.g. Point{x:1}.x
+            // The loop above consumes struct literals.
+            // If i == toks.len(), we consumed everything.
+            if i == toks.len() {
+                return Ok((struct_dec_exprs[0].clone(), struct_dec_types[0].clone()));
+            }
+            // If not, we fall through to find_top_val, which should handle it.
         }
 
         let (best_idx, _, best_val) = self.find_top_val(toks)?;
         debug!(targets: ["parser", "parser_verbose"], best_val.clone());
         debug!(targets: ["parser", "parser_verbose"], toks.clone());
-        return match best_val {
+
+        match best_val {
+            Token::Dot => {
+                let left = &toks[0..best_idx];
+                let right = &toks[best_idx + 1..toks.len()];
+
+                let (left_ast, left_type) = self.parse_expr(&left.to_vec())?;
+
+                // Check for Method Call: name(...)
+                if right.len() >= 3
+                    && right[0].tok_type() == "VarRef"
+                    && right[1].tok_type() == "LParen"
+                    && right.last().unwrap().tok_type() == "RParen"
+                {
+                    let method_name = match &right[0] {
+                        Token::VarRef(n) => *n.clone(),
+                        _ => unreachable!(),
+                    };
+
+                    let fields = match &left_type {
+                        TypeTok::Struct(f) => f,
+                        _ => {
+                            return Err(ToyError::new(
+                                ToyErrorType::VariableNotAStruct,
+                                Some(raw_text.clone()),
+                            ));
+                        }
+                    };
+
+                    let struct_name = self.struct_type_to_name.get(fields).ok_or_else(|| {
+                        ToyError::new(ToyErrorType::VariableNotAStruct, Some(raw_text.clone()))
+                    })?;
+
+                    let mangled_name = format!("{}:::{}", struct_name, method_name);
+
+                    let args_toks = &right[2..right.len() - 1];
+                    let mut args = Vec::new();
+                    let mut current_arg_toks = Vec::new();
+                    let mut depth = 0;
+                    for t in args_toks {
+                        if t.tok_type() == "Comma" && depth == 0 {
+                            let (arg_ast, _) = self.parse_expr(&current_arg_toks)?;
+                            args.push(arg_ast);
+                            current_arg_toks.clear();
+                        } else {
+                            if t.tok_type() == "LParen"
+                                || t.tok_type() == "LBrace"
+                                || t.tok_type() == "LBrack"
+                            {
+                                depth += 1;
+                            } else if t.tok_type() == "RParen"
+                                || t.tok_type() == "RBrace"
+                                || t.tok_type() == "RBrack"
+                            {
+                                depth -= 1;
+                            }
+                            current_arg_toks.push(t.clone());
+                        }
+                    }
+                    if !current_arg_toks.is_empty() {
+                        let (arg_ast, _) = self.parse_expr(&current_arg_toks)?;
+                        args.push(arg_ast);
+                    }
+
+                    args.insert(0, left_ast);
+
+                    let ret_type = self
+                        .func_return_type_map
+                        .get(&mangled_name)
+                        .ok_or_else(|| {
+                            ToyError::new(ToyErrorType::UndefinedFunction, Some(raw_text.clone()))
+                        })?
+                        .clone();
+
+                    return Ok((
+                        Ast::FuncCall(Box::new(mangled_name), args, raw_text),
+                        ret_type,
+                    ));
+                }
+
+                if right.len() != 1 {
+                    return Err(ToyError::new(
+                        ToyErrorType::ExpectedIdentifier,
+                        Some(raw_text.clone()),
+                    ));
+                }
+                let member_name = match &right[0] {
+                    Token::VarRef(n) => *n.clone(),
+                    _ => {
+                        return Err(ToyError::new(
+                            ToyErrorType::ExpectedIdentifier,
+                            Some(raw_text.clone()),
+                        ));
+                    }
+                };
+
+                let member_type = match left_type {
+                    TypeTok::Struct(fields) => match fields.get(&member_name) {
+                        Some(t) => *t.clone(),
+                        None => {
+                            return Err(ToyError::new(
+                                ToyErrorType::KeyNotOnStruct,
+                                Some(raw_text.clone()),
+                            ));
+                        }
+                    },
+                    _ => {
+                        return Err(ToyError::new(
+                            ToyErrorType::VariableNotAStruct,
+                            Some(raw_text.clone()),
+                        ));
+                    }
+                };
+
+                Ok((
+                    Ast::MemberAccess(Box::new(left_ast), member_name, raw_text),
+                    member_type,
+                ))
+            }
+            Token::LBrack => {
+                let left = &toks[0..best_idx];
+                if toks.last().unwrap().tok_type() != "RBrack" {
+                    return Err(ToyError::new(
+                        ToyErrorType::UnclosedDelimiter,
+                        Some(raw_text.clone()),
+                    ));
+                }
+                let index_toks = &toks[best_idx + 1..toks.len() - 1];
+
+                let (left_ast, left_type) = self.parse_expr(&left.to_vec())?;
+                let (index_ast, index_type) = self.parse_num_expr(&index_toks.to_vec())?;
+
+                if index_type != TypeTok::Int {
+                    return Err(ToyError::new(
+                        ToyErrorType::TypeMismatch,
+                        Some(raw_text.clone()),
+                    ));
+                }
+
+                let elem_type = match left_type {
+                    TypeTok::IntArr(n) => {
+                        if n == 1 {
+                            TypeTok::Int
+                        } else {
+                            TypeTok::IntArr(n - 1)
+                        }
+                    }
+                    TypeTok::StrArr(n) => {
+                        if n == 1 {
+                            TypeTok::Str
+                        } else {
+                            TypeTok::StrArr(n - 1)
+                        }
+                    }
+                    TypeTok::BoolArr(n) => {
+                        if n == 1 {
+                            TypeTok::Bool
+                        } else {
+                            TypeTok::BoolArr(n - 1)
+                        }
+                    }
+                    TypeTok::FloatArr(n) => {
+                        if n == 1 {
+                            TypeTok::Float
+                        } else {
+                            TypeTok::FloatArr(n - 1)
+                        }
+                    }
+                    TypeTok::AnyArr(n) => {
+                        if n == 1 {
+                            TypeTok::Any
+                        } else {
+                            TypeTok::AnyArr(n - 1)
+                        }
+                    }
+                    TypeTok::StructArr(kv, n) => {
+                        if n == 1 {
+                            TypeTok::Struct(kv)
+                        } else {
+                            TypeTok::StructArr(kv, n - 1)
+                        }
+                    }
+                    _ => {
+                        return Err(ToyError::new(
+                            ToyErrorType::ArrayTypeInvalid,
+                            Some(raw_text.clone()),
+                        ));
+                    }
+                };
+
+                Ok((
+                    Ast::IndexAccess(Box::new(left_ast), Box::new(index_ast), raw_text),
+                    elem_type,
+                ))
+            }
             Token::IntLit(_) | Token::Plus | Token::FloatLit(_) => {
                 let left = &toks[0..best_idx];
                 let (_, left_type) = self.parse_expr(&left.to_vec())?;
@@ -905,9 +773,41 @@ impl AstGenerator {
                             ToyErrorType::InvalidOperationOnGivenType,
                             Some(raw_text.clone()),
                         ));
-                    } //like the second of three times I check this
+                    }
                 };
                 return Ok(res);
+            }
+            Token::VarRef(_) => {
+                let right = &toks[best_idx + 1..toks.len()];
+                if !right.is_empty() && right[0].tok_type() == "LBrace" {
+                    if right.last().unwrap().tok_type() != "RBrace" {
+                        return Err(ToyError::new(
+                            ToyErrorType::UnclosedDelimiter,
+                            Some(raw_text.clone()),
+                        ));
+                    }
+                    let inner_toks = &right[1..right.len() - 1];
+                    let name = match &toks[best_idx] {
+                        Token::VarRef(n) => *n.clone(),
+                        _ => unreachable!(),
+                    };
+                    let (ast, ty) = self.parse_struct_def(&inner_toks.to_vec(), name)?;
+                    Ok((ast, ty))
+                } else if best_idx == 0 && right.is_empty() {
+                    let name = match &toks[0] {
+                        Token::VarRef(n) => n,
+                        _ => unreachable!(),
+                    };
+                    let ty = self.lookup_var_type(name).ok_or_else(|| {
+                        ToyError::new(ToyErrorType::TypeHintNeeded, Some(raw_text.clone()))
+                    })?;
+                    Ok((self.parse_var_ref(&toks[0])?, ty))
+                } else {
+                    Err(ToyError::new(
+                        ToyErrorType::ExpectedExpression,
+                        Some(raw_text.clone()),
+                    ))
+                }
             }
             Token::Minus | Token::Divide | Token::Multiply | Token::Modulo => {
                 self.parse_num_expr(toks)
@@ -929,6 +829,6 @@ impl AstGenerator {
                     Some(raw_text.clone()),
                 ));
             }
-        };
+        }
     }
 }

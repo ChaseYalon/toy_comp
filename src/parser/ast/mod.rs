@@ -16,8 +16,6 @@ pub enum Ast {
     VarDec(Box<String>, TypeTok, Box<Ast>, String),
     ///var name, raw text
     VarRef(Box<String>, String),
-    ///Variable name and expression to assign it to, raw text
-    VarReassign(Box<String>, Box<Ast>, String),
 
     ///Condition, body, alt, raw text
     IfStmt(Box<Ast>, Vec<Ast>, Option<Vec<Ast>>, String),
@@ -46,10 +44,6 @@ pub enum Ast {
 
     ///Type, elements, raw text
     ArrLit(TypeTok, Vec<Ast>, String),
-    ///Arr, idx, raw text
-    ArrRef(Box<String>, Vec<Ast>, String),
-    ///Arr, idx, val, raw text
-    ArrReassign(Box<String>, Vec<Ast>, Box<Ast>, String),
 
     ///Name, types, raw text
     StructInterface(Box<String>, Box<BTreeMap<String, TypeTok>>, String),
@@ -57,15 +51,13 @@ pub enum Ast {
     ///Interface name, key, value (types MUST match), raw text
     StructLit(Box<String>, Box<BTreeMap<String, (Ast, TypeTok)>>, String),
 
-    ///Struct name (the variable the struct is assigned to NOT the interface), key
-    ///(key validity and type is checked) key list so me.foo.bar is Box::new("me"), vec!["foo, "bar"]
-    ///final parameter is raw text
-    StructRef(Box<String>, Vec<String>, String),
-    ///struct name, parameters, value, raw text
-    StructReassign(Box<String>, Vec<String>, Box<Ast>, String),
-    ///Array name, array indices, field keys, raw text
-    ///For accessing struct fields from array elements: arr[0].field or arr[0].field1.field2
-    ArrStructRef(Box<String>, Vec<Ast>, Vec<String>, String),
+    ///Target, Index, raw text, used for "[]" operations
+    IndexAccess(Box<Ast>, Box<Ast>, String),
+    ///Target, Member, raw text, used for "." operations
+    MemberAccess(Box<Ast>, String, String),
+    ///LHS, RHS, raw text
+    Assignment(Box<Ast>, Box<Ast>, String),
+
     Not(Box<Ast>),
 }
 impl Ast {
@@ -75,7 +67,6 @@ impl Ast {
             Ast::InfixExpr(_, _, _, _) => "InfixExpr".to_string(),
             Ast::VarDec(_, _, _, _) => "VarDec".to_string(),
             Ast::VarRef(_, _) => "VarRef".to_string(),
-            Ast::VarReassign(_, _, _) => "VarReassign".to_string(),
             Ast::BoolLit(_) => "BoolLit".to_string(),
             Ast::IfStmt(_, _, _, _) => "IfStmt".to_string(),
             Ast::EmptyExpr(_, _) => "EmptyExpr".to_string(),
@@ -89,13 +80,11 @@ impl Ast {
             Ast::Break => "Break".to_string(),
             Ast::FloatLit(_) => "FloatLit".to_string(),
             Ast::ArrLit(_, _, _) => "ArrLit".to_string(),
-            Ast::ArrRef(_, _, _) => "ArrRef".to_string(),
-            Ast::ArrReassign(_, _, _, _) => "ArrReassign".to_string(),
             Ast::StructInterface(_, _, _) => "StructInterface".to_string(),
             Ast::StructLit(_, _, _) => "StructLit".to_string(),
-            Ast::StructRef(_, _, _) => "StructRef".to_string(),
-            Ast::StructReassign(_, _, _, _) => "StructReassign".to_string(),
-            Ast::ArrStructRef(_, _, _, _) => "ArrStructRef".to_string(),
+            Ast::IndexAccess(_, _, _) => "IndexAccess".to_string(),
+            Ast::MemberAccess(_, _, _) => "MemberAccess".to_string(),
+            Ast::Assignment(_, _, _) => "Assignment".to_string(),
             Ast::Not(_) => "Not".to_string(),
         };
     }
@@ -106,7 +95,6 @@ impl Ast {
             Ast::IntLit(i) => i.to_string(),
             Ast::VarDec(_, _, _, s) => s.clone(),
             Ast::VarRef(_, s) => s.clone(),
-            Ast::VarReassign(_, _, s) => s.clone(),
             Ast::BoolLit(b) => b.to_string(),
             Ast::IfStmt(_, _, _, s) => s.clone(),
             Ast::EmptyExpr(_, s) => s.clone(),
@@ -120,13 +108,11 @@ impl Ast {
             Ast::Continue => "continue".to_string(),
             Ast::FloatLit(f) => f.to_string(),
             Ast::ArrLit(_, _, s) => s.clone(),
-            Ast::ArrRef(_, _, s) => s.clone(),
-            Ast::ArrReassign(_, _, _, s) => s.clone(),
             Ast::StructInterface(_, _, s) => s.clone(),
             Ast::StructLit(_, _, s) => s.clone(),
-            Ast::StructRef(_, _, s) => s.clone(),
-            Ast::StructReassign(_, _, _, s) => s.clone(),
-            Ast::ArrStructRef(_, _, _, s) => s.clone(),
+            Ast::IndexAccess(_, _, s) => s.clone(),
+            Ast::MemberAccess(_, _, s) => s.clone(),
+            Ast::Assignment(_, _, s) => s.clone(),
             Ast::Not(n) => format!("!{}", n.to_string()),
         }
     }
@@ -163,8 +149,6 @@ impl fmt::Display for Ast {
                     *name, value, var_type, s
                 ),
                 Ast::VarRef(var, s) => format!("Var({}), Literal({})", *var, s),
-                Ast::VarReassign(var, val, s) =>
-                    format!("Var({}) = Val({:?}), Literal({})", *var, *val, s),
                 Ast::BoolLit(b) => format!("BoolLit({})", b),
                 Ast::IfStmt(cond, body, alt, s) => format!(
                     "IfStmt Cond({}), Body({:?}), Alt({:?}), Literal({})",
@@ -194,29 +178,19 @@ impl fmt::Display for Ast {
                 Ast::FloatLit(fl) => format!("FloatLit({})", *fl),
                 Ast::ArrLit(t, v, s) =>
                     format!("ArrLit Type({:?}), Val({:?}), Literal({})", t, v, s),
-                Ast::ArrRef(a, i, s) =>
-                    format!("ArrRef Arr({:?}), Index({:?}), Literal({})", a, i, s),
-                Ast::ArrReassign(a, i, v, s) => format!(
-                    "ArrReassign Arr({}), Index({:?}), Value({}), Literal({})",
-                    *a, i, *v, s
-                ),
                 Ast::StructInterface(n, kv, s) => format!(
                     "StructInterface Name({}), Types({:?}), Literal({})",
                     *n, *kv, s
                 ),
                 Ast::StructLit(n, kv, s) =>
                     format!("StructLit Name({}), Types({:?}), Literal({})", *n, *kv, s),
-                Ast::StructRef(n, k, s) =>
-                    format!("StructRef Name({}), Key({:?}), Literal({})", n, k, s),
-                Ast::StructReassign(st, fi, v, s) => format!(
-                    "StructReassign Name({}), fields({:?}), Value({}), Literal({})",
-                    *st, fi, *v, s
-                ),
-                Ast::ArrStructRef(a, i, k, s) => format!(
-                    "ArrStructRef Arr({}), Index({:?}), Keys({:?}), Literal({})",
-                    *a, i, k, s
-                ),
                 Ast::Not(n) => format!("Not({})", *n),
+                Ast::IndexAccess(t, i, s) =>
+                    format!("IndexAccess Target({}), Index({}), Literal({})", *t, *i, s),
+                Ast::MemberAccess(t, m, s) =>
+                    format!("MemberAccess Target({}), Member({}), Literal({})", *t, m, s),
+                Ast::Assignment(l, r, s) =>
+                    format!("Assignment LHS({}), RHS({}), Literal({})", *l, *r, s),
             }
         )
     }

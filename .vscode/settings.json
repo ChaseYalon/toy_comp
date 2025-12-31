@@ -80,6 +80,7 @@
         "srem",
         "strequal",
         "tbox",
+        "thiserror",
         "tirgen",
         "TOLOWER",
         "uextend",

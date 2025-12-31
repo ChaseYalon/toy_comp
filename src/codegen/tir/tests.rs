@@ -4,6 +4,10 @@ use crate::codegen::tir::ir::{
 };
 use crate::lexer::Lexer;
 use crate::parser::Parser;
+use colored::*;
+use std::path::Path;
+use std::{env, fs};
+use std::fs::File;
 macro_rules! setup_tir {
     ($o: ident, $v:expr) => {
         let mut l = Lexer::new();
@@ -14,40 +18,262 @@ macro_rules! setup_tir {
         let $o = t.convert(ast).unwrap();
     };
 }
-fn compare_tir(a: Vec<Function>, b: Vec<Function>) {
+fn panic_with_write(test_name: &str, a: Vec<Function>, b: Vec<Function>){
+    let file = Path::new(env::var("CARGO_MANIFEST_DIR").unwrap().as_str()).join(Path::new("temp")).join(format!("tir_test_{}.txt", test_name));
+    let mut f = File::create(file.clone()).unwrap();
+    fs::write(file, format!("Generated TIR:\n{:#?}\n\nExpected TIR:\n{:#?}", a, b).as_bytes()).unwrap();
+    panic!();
+}
+fn compare_tir(test_name: &str, a: Vec<Function>, b: Vec<Function>) {
     if a.len() != b.len() {
         panic!(
-            "[ERROR] Generated: {} functions, got {} functions",
+            "{}\nGenerated: {} functions, got {} functions",
+            "[TEST ERROR]"
+                .color(Color::TrueColor {
+                    r: 255,
+                    g: 147,
+                    b: 32
+                })
+                .bold(),
             a.len(),
             b.len()
         );
     }
+
     for (i, func) in a.iter().enumerate() {
-        //g_ = generated
-        //r_ = received
         let Function {
-            body: g_body,
             name: g_name,
             ret_type: g_ret_type,
             params: g_params,
+            body: g_body,
             ..
         } = func.clone();
         let Function {
-            body: r_body,
             name: r_name,
             ret_type: r_ret_type,
             params: r_params,
+            body: r_body,
             ..
         } = b[i].clone();
-        assert_eq!(g_body, r_body);
-        assert_eq!(*g_name, *r_name);
-        assert_eq!(g_ret_type, r_ret_type);
+
+        if g_name != r_name {
+            eprintln!(
+                "{}\nExpected function name: {}, got: {}",
+                "[TEST ERROR]"
+                    .color(Color::TrueColor {
+                        r: 255,
+                        g: 147,
+                        b: 32
+                    })
+                    .bold(),
+                r_name.blue().bold(),
+                g_name
+                    .color(Color::TrueColor {
+                        r: 255,
+                        g: 147,
+                        b: 32
+                    })
+                    .bold()
+            );
+            panic_with_write(test_name, a.clone(), b.clone());
+        }
+
+        if g_ret_type != r_ret_type {
+            eprintln!(
+                "{}\nIn function {}, expected return type: {}, got: {}",
+                "[TEST ERROR]"
+                    .color(Color::TrueColor {
+                        r: 255,
+                        g: 147,
+                        b: 32
+                    })
+                    .bold(),
+                g_name.blue().bold(),
+                r_ret_type.to_string().green().bold(),
+                g_ret_type
+                    .to_string()
+                    .color(Color::TrueColor {
+                        r: 255,
+                        g: 147,
+                        b: 32
+                    })
+                    .bold()
+            );
+            panic_with_write(test_name, a.clone(), b.clone());
+        }
+
+        if g_params.len() != r_params.len() {
+            eprintln!(
+                "{}\nIn function {}, expected {} params, got: {} params",
+                "[TEST ERROR]"
+                    .color(Color::TrueColor {
+                        r: 255,
+                        g: 147,
+                        b: 32
+                    })
+                    .bold(),
+                g_name.blue().bold(),
+                r_params.len().to_string().green().bold(),
+                g_params
+                    .len()
+                    .to_string()
+                    .color(Color::TrueColor {
+                        r: 255,
+                        g: 147,
+                        b: 32
+                    })
+                    .bold()
+            );
+            panic_with_write(test_name, a.clone(), b.clone());
+        }
+
+        for (j, g_param) in g_params.iter().enumerate() {
+            let r_param = &r_params[j];
+            if g_param != r_param {
+                eprintln!(
+                    "{}\nIn function {}, param {}: expected {}, got: {}",
+                    "[TEST ERROR]"
+                        .color(Color::TrueColor {
+                            r: 255,
+                            g: 147,
+                            b: 32
+                        })
+                        .bold(),
+                    g_name.blue().bold(),
+                    j.to_string().blue().bold(),
+                    format!("{:#?}", r_param).green().bold(),
+                    format!("{:#?}", g_param)
+                        .color(Color::TrueColor {
+                            r: 255,
+                            g: 147,
+                            b: 32
+                        })
+                        .bold()
+                );
+                panic_with_write(test_name, a.clone(), b.clone());
+            }
+        }
+
+        if g_body.len() != r_body.len() {
+            eprintln!(
+                "{}\nIn function {}, expected {} blocks, got: {} blocks",
+                "[TEST ERROR]"
+                    .color(Color::TrueColor {
+                        r: 255,
+                        g: 147,
+                        b: 32
+                    })
+                    .bold(),
+                g_name.blue().bold(),
+                r_body.len().to_string().green().bold(),
+                g_body
+                    .len()
+                    .to_string()
+                    .color(Color::TrueColor {
+                        r: 255,
+                        g: 147,
+                        b: 32
+                    })
+                    .bold()
+            );
+            panic_with_write(test_name, a.clone(), b.clone());
+        }
+
+        for (j, g_block) in g_body.iter().enumerate() {
+            let r_block = &r_body[j];
+            if g_block.ins.len() != r_block.ins.len() {
+                eprintln!(
+                    "{}\nIn function {}, {} {}, expected {} instructions, got: {} instructions",
+                    "[TEST ERROR]"
+                        .color(Color::TrueColor {
+                            r: 255,
+                            g: 147,
+                            b: 32
+                        })
+                        .bold(),
+                    g_name.blue().bold(),
+                    "block".blue(),
+                    j.to_string().blue().bold(),
+                    r_block.ins.len().to_string().green().bold(),
+                    g_block
+                        .ins
+                        .len()
+                        .to_string()
+                        .color(Color::TrueColor {
+                            r: 255,
+                            g: 147,
+                            b: 32
+                        })
+                        .bold()
+                );
+                panic_with_write(test_name, a.clone(), b.clone());
+            }
+
+            for (k, g_ins) in g_block.ins.iter().enumerate() {
+                let r_ins = &r_block.ins[k];
+                if g_ins != r_ins {
+                    let temp = format!("{:#?}", r_ins);
+                    let wanted = temp.lines().collect::<Vec<_>>();
+                    let temp = format!("{:#?}", g_ins);
+                    let got = temp.lines().collect::<Vec<_>>();
+                    let max_lines = wanted.len().max(got.len());
+                    let col_width = 30; // width of the WANTED column
+
+                    eprintln!(
+                        "{}\n{} {}, {} {}, {} {}",
+                        "[TEST ERROR]"
+                            .color(Color::TrueColor {
+                                r: 255,
+                                g: 147,
+                                b: 32
+                            })
+                            .bold(),
+                        "function".blue(),
+                        g_name.blue().bold(),
+                        "block".blue(),
+                        j.to_string().blue().bold(),
+                        "instruction".blue(),
+                        k.to_string().blue().bold()
+                    );
+                    
+                    let half_width = col_width / 2;
+                    // Column headers
+                    eprintln!(
+                        "{:<width$} │ {:<width$}",
+                        "WANTED".color(Color::Red).bold(),
+                        "GOT".green().bold(),
+                        width = col_width
+                    );
+                    eprintln!(
+                        "{:<width$} │ {:<width$}",
+                        "",
+                        "",
+                        width = col_width
+                    );
+                    // Now the lines for WANTED / GOT
+                    for i in 0..max_lines {
+                        let w = wanted.get(i).unwrap_or(&"");
+                        let g = got.get(i).unwrap_or(&"");
+                        eprintln!(
+                            "{:<width$} │ {}",
+                            w.red().bold(),
+                            g.green().bold(),
+                            width = col_width
+                        );
+                    }
+
+                    panic_with_write(test_name, a.clone(), b.clone());
+                }
+            }
+        }
     }
 }
+
 #[test]
 fn test_tirgen_int_lit() {
     setup_tir!(ir, "5");
     compare_tir(
+        "int_lit",
         ir,
         vec![Function {
             params: vec![],
@@ -77,6 +303,7 @@ fn test_tirgen_int_lit() {
 fn test_tirgen_bool_lit() {
     setup_tir!(ir, "true");
     compare_tir(
+        "bool_lit",
         ir,
         vec![Function {
             params: vec![],
@@ -106,6 +333,7 @@ fn test_tirgen_bool_lit() {
 fn test_tirgen_numeric_infix() {
     setup_tir!(ir, "5 + 3 * 9");
     compare_tir(
+        "numeric_infix",
         ir,
         vec![Function {
             params: vec![],
@@ -161,6 +389,7 @@ fn test_tirgen_numeric_infix() {
 fn test_tirgen_boolean_infix() {
     setup_tir!(ir, "true && false");
     compare_tir(
+        "boolean_infix",
         ir,
         vec![Function {
             params: vec![],
@@ -204,6 +433,7 @@ fn test_tirgen_boolean_infix() {
 fn test_tirgen_var_dec_and_reassign() {
     setup_tir!(ir, "let x = 9; x += 3");
     compare_tir(
+        "var_dec_and_reassign",
         ir,
         vec![Function {
             params: vec![],
@@ -247,6 +477,7 @@ fn test_tirgen_var_dec_and_reassign() {
 fn test_tirgen_var_ref() {
     setup_tir!(ir, "let x = 9; x + 4");
     compare_tir(
+        "var_ref",
         ir,
         vec![Function {
             params: vec![],
@@ -290,6 +521,7 @@ fn test_tirgen_var_ref() {
 fn test_tirgen_if_stmt() {
     setup_tir!(ir, "let x = true || false; if x {5}; 9 + 3;");
     compare_tir(
+        "if_stmt",
         ir,
         vec![Function {
             params: vec![],
@@ -367,6 +599,7 @@ fn test_tirgen_if_stmt() {
 fn test_tirgen_if_else_stmt() {
     setup_tir!(ir, "let x = true || false; if x {5} else {9 + 3};");
     compare_tir(
+        "if_else_stmt",
         ir,
         vec![Function {
             params: vec![],
@@ -450,6 +683,7 @@ fn test_tirgen_if_else_stmt() {
 fn test_tirgen_empty_expr() {
     setup_tir!(ir, "let x = 9 * (4 + 3)");
     compare_tir(
+        "empty_expr",
         ir,
         vec![Function {
             params: vec![],
@@ -509,6 +743,7 @@ fn test_tirgen_func_call() {
         "fn add(a: int, b: int): int { return a + b }; add(3, 5)"
     );
     compare_tir(
+        "func_call",
         ir,
         vec![
             Function {
@@ -601,6 +836,7 @@ fn test_tirgen_while_stmt() {
     // Simple while loop test: while 5 < 10 { } - condition is always true, so loop body executes once
     setup_tir!(ir, "while 5 < 10 { }");
     compare_tir(
+        "while_stmt",
         ir,
         vec![Function {
             params: vec![],
@@ -668,6 +904,7 @@ fn test_tirgen_while_stmt() {
 fn test_tirgen_while_with_var_mod() {
     setup_tir!(ir, "let x = 0; while x < 3 { x = x + 1 }");
     compare_tir(
+        "while_with_var_mod",
         ir,
         vec![Function {
             params: vec![],
@@ -766,6 +1003,7 @@ fn test_tirgen_string_lit_concat_and_equals() {
         r#"let x = "foo"; let y = "fee"; let z = x + y; let a = x == y;"#
     );
     compare_tir(
+        "string_lit_concat_and_equals",
         ir,
         vec![Function {
             params: vec![],
@@ -849,6 +1087,7 @@ fn test_tirgen_string_lit_concat_and_equals() {
 fn test_tirgen_float_lit_and_opps() {
     setup_tir!(ir, "let x = 9.2 + 6");
     compare_tir(
+        "float_lit_and_opps",
         ir,
         vec![Function {
             name: Box::new("user_main".to_string()),
@@ -900,6 +1139,7 @@ fn test_tirgen_float_lit_and_opps() {
 fn test_tirgen_arr_lit_read_and_write() {
     setup_tir!(ir, "let arr = [1, 2, 3]; arr[2] = 9; let x = arr[1] + 3;");
     compare_tir(
+        "arr_lit_read_and_write",
         ir,
         vec![Function {
             name: Box::new("user_main".to_string()),
@@ -1089,6 +1329,7 @@ fn test_tirgen_struct_lit() {
         "struct Point{x: float, y: float}; let origin = Point{x: 0.0, y: 0.0}; let x = origin.x; origin.y = 3.4;"
     );
     compare_tir(
+        "struct_lit",
         ir,
         vec![Function {
             name: Box::new("user_main".to_string()),
@@ -1160,6 +1401,7 @@ fn test_tirgen_struct_lit() {
 fn test_tirgen_not() {
     setup_tir!(ir, "let x = false; let y = !x;");
     compare_tir(
+        "not",
         ir,
         vec![Function {
             params: vec![],
@@ -1211,6 +1453,7 @@ fn test_tirgen_recursion_bug() {
     println(fib(40));"
     );
     compare_tir(
+        "recursion_bug",
         ir,
         vec![
             Function {
@@ -1440,6 +1683,7 @@ fn test_tirgen_recursion_bug() {
 fn test_tirgen_broken_booleans() {
     setup_tir!(ir, "let x = true || false; println(!x);");
     compare_tir(
+        "broken_booleans",
         ir,
         vec![Function {
             params: vec![],
@@ -1513,6 +1757,7 @@ fn test_tirgen_broken_booleans() {
 fn test_tirgen_broken_floats() {
     setup_tir!(ir, "println(5.32);");
     compare_tir(
+        "broken_floats",
         ir,
         vec![Function {
             params: vec![],
@@ -1565,6 +1810,7 @@ fn test_tirgen_broken_floats() {
 fn test_tirgen_print_arr_lit() {
     setup_tir!(ir, "let arr = [1, 2, 3]; println(arr)");
     compare_tir(
+        "print_arr_lit",
         ir,
         vec![Function {
             name: Box::new("user_main".to_string()),
@@ -1718,6 +1964,7 @@ fn test_tirgen_if_no_else_return() {
         r#"fn isEven(n: int): str {if n % 2 == 0 {return "it is";} return "it is not";} println(isEven(5));"#
     );
     compare_tir(
+        "if_no_else_return",
         ir,
         vec![
             Function {
@@ -1885,6 +2132,7 @@ fn test_tirgen_struct_funcs() {
         "struct Point{x: int, y: int}; for Point { fn print_point() { println(this.x) } } let me = Point{x: 0, y: 0}; me.print_point();"
     );
     compare_tir(
+        "struct_funcs",
         ir,
         vec![
             Function {
@@ -2029,6 +2277,7 @@ println(points);
 "#
     );
     compare_tir(
+        "struct_func_multi",
         ir,
         vec![
             Function {

@@ -45,6 +45,25 @@ pub enum TirType {
     ///represents a pointer
     I8PTR,
 }
+impl TirType {
+    pub fn to_string(&self) -> String {
+        let s = match self {
+            TirType::I64 => "i64".to_string(),
+            TirType::I1 => "i1".to_string(),
+            TirType::F64 => "f64".to_string(),
+            TirType::StructInterface(types) => {
+                let mut s = "struct".to_string();
+                for t in types {
+                    s.push_str(&t.to_string());
+                }
+                s
+            }
+            TirType::Void => "void".to_string(),
+            TirType::I8PTR => "i8ptr".to_string(),
+        };
+        return s;
+    }
+}
 #[derive(PartialEq, Debug, Clone, Hash, Eq)]
 
 pub struct SSAValue {

@@ -13,6 +13,7 @@ pub enum ToyErrorType {
     InternalParserFailure,
     InvalidInfixOperation,
     ExpectedToken(Token), //missing '('
+    ExpectedIdentifier,
     ExpectedName(Box<String>),
     ExpectedExpression,
     InvalidArrayReference,
