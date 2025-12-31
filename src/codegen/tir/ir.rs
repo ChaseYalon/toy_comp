@@ -45,6 +45,25 @@ pub enum TirType {
     ///represents a pointer
     I8PTR,
 }
+impl TirType {
+    pub fn to_string(&self) -> String {
+        let s = match self {
+            TirType::I64 => "i64".to_string(),
+            TirType::I1 => "i1".to_string(),
+            TirType::F64 => "f64".to_string(),
+            TirType::StructInterface(types) => {
+                let mut s = "struct".to_string();
+                for t in types {
+                    s.push_str(&t.to_string());
+                }
+                s
+            }
+            TirType::Void => "void".to_string(),
+            TirType::I8PTR => "i8ptr".to_string(),
+        };
+        return s;
+    }
+}
 #[derive(PartialEq, Debug, Clone, Hash, Eq)]
 
 pub struct SSAValue {
@@ -407,18 +426,21 @@ impl TirBuilder {
         is_allocator: bool,
     ) -> Result<SSAValue, ToyError> {
         let curr_func_name = self.funcs[self.curr_func.unwrap()].name.clone();
-        let curr_block = self.curr_block.unwrap();
+        let curr_block_idx = self.curr_block.unwrap();
+        let curr_block = self.funcs[self.curr_func.unwrap()].body[curr_block_idx].id;
         let id = self._next_value_id();
         self.funcs.iter_mut().for_each(|f| {
-            f.heap_allocations
-                .iter_mut()
-                .for_each(|alloc: &mut HeapAllocation| {
-                    params.iter().for_each(|p| {
-                        if p == &alloc.alloc_ins {
-                            alloc.refs.push((curr_func_name.clone(), curr_block, p.val));
-                        }
+            if f.name == curr_func_name {
+                f.heap_allocations
+                    .iter_mut()
+                    .for_each(|alloc: &mut HeapAllocation| {
+                        params.iter().for_each(|p| {
+                            if p.val == alloc.alloc_ins.val || alloc.refs.iter().any(|r| r.2 == p.val) {
+                                alloc.refs.push((curr_func_name.clone(), curr_block, p.val));
+                            }
+                        })
                     })
-                })
+            }
         });
         let ret_type = self
             .funcs
@@ -443,13 +465,15 @@ impl TirBuilder {
             ty: Some(ret_type),
         };
         self.funcs.iter_mut().for_each(|f| {
-            f.heap_allocations
-                .iter_mut()
-                .for_each(|alloc: &mut HeapAllocation| {
-                    if ret_ins == alloc.alloc_ins {
-                        alloc.refs.push((curr_func_name.clone(), curr_block, id));
-                    }
-                })
+            if f.name == curr_func_name {
+                f.heap_allocations
+                    .iter_mut()
+                    .for_each(|alloc: &mut HeapAllocation| {
+                        if ret_ins.val == alloc.alloc_ins.val {
+                            alloc.refs.push((curr_func_name.clone(), curr_block, id));
+                        }
+                    })
+            }
         });
         return Ok(ret_ins);
     }
@@ -464,17 +488,20 @@ impl TirBuilder {
     ) -> Result<SSAValue, ToyError> {
         let (is_allocator, ret_type) = self.extern_funcs.get(&name).cloned().unwrap(); // parser validated
         let curr_func_name = self.funcs[self.curr_func.unwrap()].name.clone();
-        let curr_block = self.curr_block.unwrap();
+        let curr_block_idx = self.curr_block.unwrap();
+        let curr_block = self.funcs[self.curr_func.unwrap()].body[curr_block_idx].id;
         self.funcs.iter_mut().for_each(|f| {
-            f.heap_allocations
-                .iter_mut()
-                .for_each(|alloc: &mut HeapAllocation| {
-                    params.iter().for_each(|p| {
-                        if p == &alloc.alloc_ins {
-                            alloc.refs.push((curr_func_name.clone(), curr_block, p.val));
-                        }
+            if f.name == curr_func_name {
+                f.heap_allocations
+                    .iter_mut()
+                    .for_each(|alloc: &mut HeapAllocation| {
+                        params.iter().for_each(|p| {
+                            if p.val == alloc.alloc_ins.val || alloc.refs.iter().any(|r| r.2 == p.val) {
+                                alloc.refs.push((curr_func_name.clone(), curr_block, p.val));
+                            }
+                        })
                     })
-                })
+            }
         });
         let id = self._next_value_id();
         let ins =
@@ -501,15 +528,17 @@ impl TirBuilder {
                 .push(alloc)
         }
         self.funcs.iter_mut().for_each(|f| {
-            f.heap_allocations
-                .iter_mut()
-                .for_each(|alloc: &mut HeapAllocation| {
-                    if val == alloc.alloc_ins {
-                        alloc
-                            .refs
-                            .push((curr_func_name.clone(), curr_block, val.val));
-                    }
-                })
+            if f.name == curr_func_name {
+                f.heap_allocations
+                    .iter_mut()
+                    .for_each(|alloc: &mut HeapAllocation| {
+                        if val.val == alloc.alloc_ins.val {
+                            alloc
+                                .refs
+                                .push((curr_func_name.clone(), curr_block, val.val));
+                        }
+                    })
+            }
         });
         return Ok(val);
     }
@@ -572,20 +601,23 @@ impl TirBuilder {
             ty: Some(ty),
         };
         let curr_func_name = self.funcs[self.curr_func.unwrap()].name.clone();
-        let curr_block = self.curr_block.unwrap();
+        let curr_block_idx = self.curr_block.unwrap();
+        let curr_block = self.funcs[self.curr_func.unwrap()].body[curr_block_idx].id;
         self.funcs.iter_mut().for_each(|f| {
-            f.heap_allocations
-                .iter_mut()
-                .for_each(|alloc: &mut HeapAllocation| {
-                    vals.iter().for_each(|v| {
-                        if v == &alloc.alloc_ins {
-                            alloc.refs.push((curr_func_name.clone(), curr_block, v.val));
+            if f.name == curr_func_name {
+                f.heap_allocations
+                    .iter_mut()
+                    .for_each(|alloc: &mut HeapAllocation| {
+                        vals.iter().for_each(|v| {
+                            if v.val == alloc.alloc_ins.val || alloc.refs.iter().any(|r| r.2 == v.val) {
+                                alloc.refs.push((curr_func_name.clone(), curr_block, v.val));
+                            }
+                        });
+                        if alloc.alloc_ins.val == ret_ins.val {
+                            alloc.refs.push((curr_func_name.clone(), curr_block, id));
                         }
-                    });
-                    if alloc.alloc_ins == ret_ins {
-                        alloc.refs.push((curr_func_name.clone(), curr_block, id));
-                    }
-                })
+                    })
+            }
         });
         return Ok(ret_ins);
     }
@@ -598,17 +630,20 @@ impl TirBuilder {
         let id = self._next_value_id();
         let struct_val_clone = struct_val.clone();
         let curr_func_name = self.funcs[self.curr_func.unwrap()].name.clone();
-        let curr_block = self.curr_block.unwrap();
+        let curr_block_idx = self.curr_block.unwrap();
+        let curr_block = self.funcs[self.curr_func.unwrap()].body[curr_block_idx].id;
         self.funcs.iter_mut().for_each(|f| {
-            f.heap_allocations
-                .iter_mut()
-                .for_each(|alloc: &mut HeapAllocation| {
-                    if alloc.alloc_ins == struct_val_clone {
-                        alloc
-                            .refs
-                            .push((curr_func_name.clone(), curr_block, struct_val_clone.val));
-                    }
-                })
+            if f.name == curr_func_name {
+                f.heap_allocations
+                    .iter_mut()
+                    .for_each(|alloc: &mut HeapAllocation| {
+                        if alloc.alloc_ins.val == struct_val_clone.val {
+                            alloc
+                                .refs
+                                .push((curr_func_name.clone(), curr_block, struct_val_clone.val));
+                        }
+                    })
+            }
         });
         let ins = TIR::ReadStructLiteral(id, struct_val, field_idx);
         self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()]
@@ -630,22 +665,25 @@ impl TirBuilder {
         let struct_val_clone = struct_val.clone();
         let new_val_clone = new_val.clone();
         let curr_func_name = self.funcs[self.curr_func.unwrap()].name.clone();
-        let curr_block = self.curr_block.unwrap();
+        let curr_block_idx = self.curr_block.unwrap();
+        let curr_block = self.funcs[self.curr_func.unwrap()].body[curr_block_idx].id;
         self.funcs.iter_mut().for_each(|f| {
-            f.heap_allocations
-                .iter_mut()
-                .for_each(|alloc: &mut HeapAllocation| {
-                    if alloc.alloc_ins == struct_val_clone {
-                        alloc
-                            .refs
-                            .push((curr_func_name.clone(), curr_block, struct_val_clone.val));
-                    }
-                    if alloc.alloc_ins == new_val_clone {
-                        alloc
-                            .refs
-                            .push((curr_func_name.clone(), curr_block, new_val_clone.val));
-                    }
-                })
+            if f.name == curr_func_name {
+                f.heap_allocations
+                    .iter_mut()
+                    .for_each(|alloc: &mut HeapAllocation| {
+                        if alloc.alloc_ins.val == struct_val_clone.val {
+                            alloc
+                                .refs
+                                .push((curr_func_name.clone(), curr_block, struct_val_clone.val));
+                        }
+                        if alloc.alloc_ins.val == new_val_clone.val {
+                            alloc
+                                .refs
+                                .push((curr_func_name.clone(), curr_block, new_val_clone.val));
+                        }
+                    })
+            }
         });
         let ins = TIR::WriteStructLiteral(id, struct_val, field_idx, new_val);
         self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()]
@@ -706,25 +744,59 @@ impl TirBuilder {
             ty: values[0].ty.clone(),
         };
         let curr_func_name = self.funcs[self.curr_func.unwrap()].name.clone();
-        let curr_block = self.curr_block.unwrap();
+        let curr_block_idx = self.curr_block.unwrap();
+        let curr_block = self.funcs[self.curr_func.unwrap()].body[curr_block_idx].id;
         self.funcs.iter_mut().for_each(|f| {
-            f.heap_allocations
-                .iter_mut()
-                .for_each(|alloc: &mut HeapAllocation| {
+            if f.name == curr_func_name {
+                f.heap_allocations
+                    .iter_mut()
+                    .for_each(|alloc: &mut HeapAllocation| {
+                        let mut matched = false;
+                        values.iter().for_each(|v| {
+                            if v.val == alloc.alloc_ins.val || alloc.refs.iter().any(|r| r.2 == v.val) {
+                                alloc.refs.push((curr_func_name.clone(), curr_block, v.val));
+                                matched = true;
+                            }
+                        });
+                        if matched {
+                            alloc.refs.push((curr_func_name.clone(), curr_block, id));
+                        }
+                    })
+            }
+        });
+        // Use the type from the first value
+        return Ok(ret_val);
+    }
+    pub fn insert_phi(
+        &mut self,
+        block_id: BlockId,
+        phi_id: ValueId,
+        block_ids: Vec<BlockId>,
+        values: Vec<SSAValue>,
+    ) -> Result<(), ToyError> {
+        let ins = TIR::Phi(phi_id, block_ids, values.clone());
+        self.insert_at_block_start(block_id, ins)?;
+
+        let curr_func_name = self.funcs[self.curr_func.unwrap()].name.clone();
+        // block_id is passed in, so we use it directly.
+
+        self.funcs.iter_mut().for_each(|f| {
+            if f.name == curr_func_name {
+                f.heap_allocations.iter_mut().for_each(|alloc: &mut HeapAllocation| {
                     let mut matched = false;
                     values.iter().for_each(|v| {
-                        if v == &alloc.alloc_ins {
-                            alloc.refs.push((curr_func_name.clone(), curr_block, v.val));
+                        if v.val == alloc.alloc_ins.val || alloc.refs.iter().any(|r| r.2 == v.val) {
+                            alloc.refs.push((curr_func_name.clone(), block_id, v.val));
                             matched = true;
                         }
                     });
                     if matched {
-                        alloc.refs.push((curr_func_name.clone(), curr_block, id));
+                        alloc.refs.push((curr_func_name.clone(), block_id, phi_id));
                     }
                 })
+            }
         });
-        // Use the type from the first value
-        return Ok(ret_val);
+        Ok(())
     }
     pub fn create_block(&mut self) -> Result<BlockId, ToyError> {
         let id = self._next_block_id();
@@ -826,7 +898,8 @@ impl TirBuilder {
             &TypeTok::BoolArr(n) => (5, n),
             &TypeTok::IntArr(n) => (6, n),
             &TypeTok::FloatArr(n) => (7, n),
-            _ => unreachable!(), // parser validated
+            &TypeTok::StructArr(_, n) => (8, n), // struct arrays use type code 8, must have str method to be printed
+            _ => unreachable!(),                 // parser validated
         };
         let v = self.iconst(n, TypeTok::Int)?;
         param_values.push(v);

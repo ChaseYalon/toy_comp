@@ -112,7 +112,24 @@ fn print_point(p: Point): void{
     print("};");
 }
 ```
-
+You can bind methods to structs like this, lets redo that print_point
+```toy
+struct Point{
+    x: float,
+    y: float
+}
+for Point {
+    fn print_point(){// note the inferred return type of void
+        print("Point{x: ");
+        print(this.x);//notice this keyword
+        print(", y: ");
+        print(this.y);
+        print("};");
+    }
+}
+let origin = Point{x: 0.0, y: 0.0};
+origin.print_point(); //outputs Point{x: 0.0000, y: 0.0000};
+```
 <h2>Builtin functions</h2>
 <ul>
     <li> <code>print(s: any): void</code> prints an output to the standard output </li>

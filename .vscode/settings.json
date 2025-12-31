@@ -10,6 +10,7 @@
         "brack",
         "brif",
         "bxor",
+        "CLICOLOR",
         "clif",
         "codegen",
         "conv",
@@ -79,14 +80,17 @@
         "srem",
         "strequal",
         "tbox",
+        "thiserror",
         "tirgen",
         "TOLOWER",
         "uextend",
         "vecs",
         "winget",
         "worldfalse",
+        "xast",
         "xzvf",
-        "Yalon"
+        "Yalon",
+        "yast"
     ],
     "python.REPL.enableREPLSmartSend": false,
     //"cmake.sourceDirectory": "C:/Users/chase_qlo04cr/sideProjects/toy_comp/toy_comp/src/c",
@@ -100,6 +104,5 @@
     "rust-analyzer.diagnostics.enableExperimental": true,
     "rust-analyzer.cargo.buildScripts.invocationStrategy": "once",
     "cmake.sourceDirectory": "C:/Users/chase_qlo04cr/sideProjects/toy_comp/toy_comp/src/c",
-
 
 }

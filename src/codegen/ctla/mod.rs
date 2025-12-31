@@ -19,6 +19,8 @@ enum CfgNode {
     UnconditionalJump(BlockId, Box<CfgNode>),
     ///return, id is the block in question
     Return(BlockId),
+    ///loop back, id is the block in question
+    LoopBack(BlockId),
 }
 impl CTLA {
     pub fn new() -> CTLA {
@@ -26,17 +28,16 @@ impl CTLA {
             builder: TirBuilder::new(),
         };
     }
-    fn build_cfg_graph(&self, func: String, idx: BlockId) -> CfgNode {
-        println!(
-            "\n\nBLOCKS\n\n{:#?}",
-            &self
-                .builder
-                .funcs
-                .iter()
-                .find(|f| *f.name == func)
-                .unwrap()
-                .body
-        );
+    fn build_cfg_graph(
+        &self,
+        func: String,
+        idx: BlockId,
+        visited: &mut Vec<BlockId>,
+    ) -> CfgNode {
+        if visited.contains(&idx) {
+            return CfgNode::LoopBack(idx);
+        }
+        visited.push(idx);
         let block = self
             .builder
             .funcs
@@ -61,19 +62,21 @@ impl CTLA {
             })
             .unwrap(); //SAFETY: Every block must have at least one terminator
 
-        return match terminator {
+        let node = match terminator {
             TIR::JumpCond(_, _, true_b_idx, false_b_idx) => CfgNode::ConditionalJump(
                 idx,
-                Box::new(self.build_cfg_graph(func.clone(), true_b_idx.clone())),
-                Box::new(self.build_cfg_graph(func, false_b_idx.clone())),
+                Box::new(self.build_cfg_graph(func.clone(), true_b_idx.clone(), visited)),
+                Box::new(self.build_cfg_graph(func, false_b_idx.clone(), visited)),
             ),
             TIR::JumpBlockUnCond(_, jump_to_idx) => CfgNode::UnconditionalJump(
                 idx,
-                Box::new(self.build_cfg_graph(func, jump_to_idx.clone())),
+                Box::new(self.build_cfg_graph(func, jump_to_idx.clone(), visited)),
             ),
             TIR::Ret(_, _) => CfgNode::Return(idx),
             _ => unreachable!(), //not possible, every block must end with one of those three
         };
+        visited.pop();
+        return node;
     }
     fn find_cfg_node(&self, node: CfgNode, target_id: BlockId) -> Option<CfgNode> {
         match &node {
@@ -103,6 +106,12 @@ impl CTLA {
                 }
                 return None;
             }
+            CfgNode::LoopBack(id) => {
+                if *id == target_id {
+                    return Some(node.clone());
+                }
+                return None;
+            }
         }
     }
     /// Checks if a CFG node or any of its descendants reference the given allocation
@@ -111,6 +120,7 @@ impl CTLA {
             CfgNode::ConditionalJump(id, _, _) => *id,
             CfgNode::UnconditionalJump(id, _) => *id,
             CfgNode::Return(id) => *id,
+            CfgNode::LoopBack(id) => *id,
         };
 
         // Check if this node's block references the allocation
@@ -131,6 +141,7 @@ impl CTLA {
             }
             CfgNode::UnconditionalJump(_, next) => self.node_references_allocation(next, alloc),
             CfgNode::Return(_) => false,
+            CfgNode::LoopBack(_) => false,
         }
     }
 
@@ -217,6 +228,7 @@ impl CTLA {
                         CfgNode::ConditionalJump(id, _, _) => id,
                         CfgNode::UnconditionalJump(id, _) => id,
                         CfgNode::Return(id) => id,
+                        CfgNode::LoopBack(id) => id,
                     };
                     self.builder.splice_free_before(
                         *func.name.clone(),
@@ -235,6 +247,7 @@ impl CTLA {
                         CfgNode::ConditionalJump(id, _, _) => id,
                         CfgNode::UnconditionalJump(id, _) => id,
                         CfgNode::Return(id) => id,
+                        CfgNode::LoopBack(id) => id,
                     };
                     self.builder.splice_free_before(
                         *func.name.clone(),
@@ -271,6 +284,7 @@ impl CTLA {
                 // Continue following if it's still referenced
                 return self.follow_cfg_graph(*next, func, alloc);
             }
+            CfgNode::LoopBack(_) => Some(()),
         }
     }
     fn process_allocation(&mut self, alloc: HeapAllocation) -> Result<(), ToyError> {
@@ -283,7 +297,8 @@ impl CTLA {
             .find(|f| *f.name == func_name)
             .unwrap(); //SAFETY: Will always be in the array
         let first_block_id = func.body.first().map(|b| b.id).unwrap_or(0);
-        let cfg_graph = self.build_cfg_graph(func_name, first_block_id);
+        let mut visited = Vec::new();
+        let cfg_graph = self.build_cfg_graph(func_name, first_block_id, &mut visited);
         let alloc_block_id = alloc.block;
         let alloc_node = self.find_cfg_node(cfg_graph, alloc_block_id).unwrap(); //SAFETY: Should always be found
         self.follow_cfg_graph(alloc_node, &func, alloc);

@@ -18,7 +18,9 @@ fn capture_program_output(program: String) -> String {
         .expect("Failed to spawn process")
         .wait_with_output()
         .expect("Failed to wait on child");
-    let s = String::from_utf8(output.stdout).expect("Invalid UTF-8 output");
+    let mut s = String::from_utf8(output.stdout).expect("Invalid UTF-8 output");
+    let stderr = String::from_utf8(output.stderr).expect("Invalid UTF-8 stderr");
+    s.push_str(&stderr);
     return s;
 }
 
@@ -153,4 +155,65 @@ fn test_llvm_structs() {
         "structs"
     );
     assert!(output.contains("9384"));
+}
+
+#[test]
+fn test_llvm_codegen_struct_func_multi_param() {
+    compile_code_aot!(
+        output,
+        "struct Point{
+            x: int,
+            y: int
+        }
+        for Point{
+            fn move(dx: int, dy: int){
+                this.x = dx;
+                this.y = dy;
+            }
+            fn print_point() {
+                print(this.x);
+                println(this.y);
+            }
+        }
+
+        let origin = Point{x: 0, y: 0};
+        origin.move(2, 2);
+        origin.print_point()
+        ",
+        "struct_func_multi_param"
+    );
+    assert!(output.contains("22"))
+}
+
+#[test]
+fn test_llvm_codegen_stack_overflow() {
+    compile_code_aot!(
+        output,
+        "struct Point{
+            x: float,
+            y: float,
+        }
+
+        for Point {
+            fn move(dx: float, dy: float) {
+                this.x += dx;
+                this.y += dy;
+            }
+        }
+
+        let points = [
+            Point{x: 0.0, y: 0.0},
+            Point{x: 1.0, y: 1.0},
+            Point{x: -1.0, y: -1.0}
+        ];
+
+        let i = 0;
+        while i < len(points) {
+            points[i].move(5.0, 0-2.0);
+            i += 1;
+        }
+        println(points[0].x);",
+        "stack_overflow"
+    );
+    assert!(output.contains("5.00"));
 }

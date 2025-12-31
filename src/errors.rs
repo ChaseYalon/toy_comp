@@ -13,6 +13,7 @@ pub enum ToyErrorType {
     InternalParserFailure,
     InvalidInfixOperation,
     ExpectedToken(Token), //missing '('
+    ExpectedIdentifier,
     ExpectedName(Box<String>),
     ExpectedExpression,
     InvalidArrayReference,
@@ -116,6 +117,16 @@ impl fmt::Display for ToyErrorType {
             Self::TypeHintNeeded => write!(f, "TypeHintNeeded"),
             Self::MissingInstruction => write!(f, "MissingInstruction"),
             Self::LlvmError(s) => write!(f, "Llvm Error ({})", s),
+            Self::UndefinedFunction => write!(f, "Undefined Function"),
+            Self::UndefinedInterface => write!(f, "Undefined Interface"),
+            Self::UndefinedStruct => write!(f, "Undefined Struct"),
+            Self::UndefinedUnresolvedStruct => write!(f, "Undefined Unresolved Struct"),
+            Self::UnsupportedOS => write!(f, "Unsupported OS"),
+            Self::ExpressionNotNumeric => write!(f, "Expression Not Numeric"),
+            Self::ExpressionNotBoolean => write!(f, "Expression Not Boolean"),
+            Self::ArrayTypeInvalid => write!(f, "Array Type Invalid"),
+            Self::KeyNotOnStruct => write!(f, "Key Not On Struct"),
+            Self::TypeMismatch => write!(f, "Type Mismatch"),
             _ => todo!("chase implement error type {:?}", self),
         }
     }

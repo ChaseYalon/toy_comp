@@ -13,11 +13,6 @@ fn eq_tbox_ignoring_src(x: &TBox, y: &TBox) -> bool {
         (TBox::VarDec(xn, xt, xv, _), TBox::VarDec(yn, yt, yv, _)) => {
             xn == yn && xt == yt && xv == yv
         }
-
-        (TBox::VarRef(xn), TBox::VarRef(yn)) => xn == yn,
-
-        (TBox::VarReassign(xn, xv, _), TBox::VarReassign(yn, yv, _)) => xn == yn && xv == yv,
-
         (TBox::IfStmt(xc, xb, xa, _), TBox::IfStmt(yc, yb, ya, _)) => {
             xc == yc
                 && compare_tbox_vecs(xb.clone(), yb.clone())
@@ -42,17 +37,9 @@ fn eq_tbox_ignoring_src(x: &TBox, y: &TBox) -> bool {
         (TBox::While(xc, xb, _), TBox::While(yc, yb, _)) => {
             xc == yc && compare_tbox_vecs(xb.clone(), yb.clone())
         }
-
-        (TBox::ArrReassign(xa, xi, xv, _), TBox::ArrReassign(ya, yi, yv, _)) => {
-            xa == ya && xi == yi && xv == yv
-        }
-
+        (TBox::Assign(xl, xr, _), TBox::Assign(yl, yr, _)) => xl == yl && xr == yr,
         (TBox::StructInterface(xn, xkv, _), TBox::StructInterface(yn, ykv, _)) => {
             xn == yn && xkv == ykv
-        }
-
-        (TBox::StructReassign(xn, xf, xv, _), TBox::StructReassign(yn, yf, yv, _)) => {
-            xn == yn && xf == yf && xv == yv
         }
         _ => false,
     }
@@ -137,8 +124,8 @@ fn test_boxer_var_ref() {
                 vec![Token::IntLit(7)],
                 "".to_string()
             ),
-            TBox::VarReassign(
-                Token::VarRef(Box::new("x".to_string())),
+            TBox::Assign(
+                vec![Token::VarRef(Box::new("x".to_string()))],
                 vec![Token::IntLit(8)],
                 "".to_string()
             )
@@ -228,8 +215,8 @@ fn test_boxer_if_stmt() {
                     Token::LessThan,
                     Token::IntLit(9),
                 ],
-                vec![TBox::VarReassign(
-                    Token::VarRef(Box::new("x".to_string())),
+                vec![TBox::Assign(
+                    vec![Token::VarRef(Box::new("x".to_string()))],
                     vec![Token::IntLit(6)],
                     "".to_string()
                 )],
@@ -265,8 +252,8 @@ fn test_boxer_nested_if() {
                         Token::GreaterThan,
                         Token::IntLit(10),
                     ],
-                    vec![TBox::VarReassign(
-                        Token::VarRef(Box::new("x".to_string())),
+                    vec![TBox::Assign(
+                        vec![Token::VarRef(Box::new("x".to_string()))],
                         vec![Token::IntLit(8)],
                         "".to_string()
                     )],
@@ -458,8 +445,8 @@ fn test_boxer_while_loops() {
                         None,
                         "".to_string()
                     ),
-                    TBox::VarReassign(
-                        Token::VarRef(Box::new("x".to_string())),
+                    TBox::Assign(
+                        vec![Token::VarRef(Box::new("x".to_string()))],
                         vec![
                             Token::VarRef(Box::new("x".to_string())),
                             Token::Plus,
@@ -512,8 +499,8 @@ fn test_boxer_fn_loop() {
                                     Token::IntLit(1)
                                 ],
                                 vec![
-                                    TBox::VarReassign(
-                                        Token::VarRef(Box::new("x".to_string())),
+                                    TBox::Assign(
+                                        vec![Token::VarRef(Box::new("x".to_string()))],
                                         vec![
                                             Token::VarRef(Box::new("x".to_string())),
                                             Token::Plus,
@@ -536,8 +523,8 @@ fn test_boxer_fn_loop() {
                                 None,
                                 "".to_string()
                             ),
-                            TBox::VarReassign(
-                                Token::VarRef(Box::new("x".to_string())),
+                            TBox::Assign(
+                                vec![Token::VarRef(Box::new("x".to_string()))],
                                 vec![
                                     Token::VarRef(Box::new("x".to_string())),
                                     Token::Plus,
@@ -672,9 +659,13 @@ fn test_boxer_arr_item_reassign() {
                 ],
                 "".to_string()
             ),
-            TBox::ArrReassign(
-                Token::VarRef(Box::new("arr".to_string())),
-                vec![vec![Token::IntLit(1)]],
+            TBox::Assign(
+                vec![
+                    Token::VarRef(Box::new("arr".to_string())),
+                    Token::LBrack,
+                    Token::IntLit(1),
+                    Token::RBrack
+                ],
                 vec![Token::IntLit(4)],
                 "".to_string()
             )
@@ -717,9 +708,16 @@ fn test_boxer_n_dimensional_arr_reassign() {
                 ],
                 "".to_string()
             ),
-            TBox::ArrReassign(
-                Token::VarRef(Box::new("arr".to_string())),
-                vec![vec![Token::IntLit(0)], vec![Token::IntLit(1)]],
+            TBox::Assign(
+                vec![
+                    Token::VarRef(Box::new("arr".to_string())),
+                    Token::LBrack,
+                    Token::IntLit(0),
+                    Token::RBrack,
+                    Token::LBrack,
+                    Token::IntLit(1),
+                    Token::RBrack
+                ],
                 vec![Token::BoolLit(false)],
                 "".to_string()
             )
@@ -768,7 +766,9 @@ fn test_boxer_struct_lit_and_ref() {
                 vec![
                     Token::VarRef(Box::new("println".to_string())),
                     Token::LParen,
-                    Token::StructRef(Box::new("a".to_string()), vec!["x".to_string()]),
+                    Token::VarRef(Box::new("a".to_string())),
+                    Token::Dot,
+                    Token::VarRef(Box::new("x".to_string())),
                     Token::RParen
                 ],
                 "".to_string()
@@ -815,7 +815,9 @@ fn test_boxer_struct_problematic() {
                 vec![
                     Token::VarRef(Box::new("println".to_string())),
                     Token::LParen,
-                    Token::StructRef(Box::new("me".to_string()), vec!["first".to_string()]),
+                    Token::VarRef(Box::new("me".to_string())),
+                    Token::Dot,
+                    Token::VarRef(Box::new("first".to_string())),
                     Token::RParen
                 ],
                 "".to_string()
@@ -925,9 +927,12 @@ fn test_boxer_struct_reassign() {
                 ],
                 "".to_string()
             ),
-            TBox::StructReassign(
-                Box::new("b".to_string()),
-                vec!["a".to_string()],
+            TBox::Assign(
+                vec![
+                    Token::VarRef(Box::new("b".to_string())),
+                    Token::Dot,
+                    Token::VarRef(Box::new("a".to_string()))
+                ],
                 vec![
                     Token::VarRef(Box::new("Fee".to_string())),
                     Token::LBrace,
@@ -965,10 +970,11 @@ fn test_boxer_struct_func_param() {
                 TypeTok::Int,
                 vec![TBox::Return(
                     Box::new(TBox::Expr(
-                        vec![Token::StructRef(
-                            Box::new("f".to_string()),
-                            vec!["a".to_string()],
-                        )],
+                        vec![
+                            Token::VarRef(Box::new("f".to_string())),
+                            Token::Dot,
+                            Token::VarRef(Box::new("a".to_string())),
+                        ],
                         "".to_string()
                     )),
                     "".to_string()
@@ -1026,7 +1032,9 @@ fn test_boxer_struct_method_conversion() {
                     vec![
                         Token::VarRef(Box::new("println".to_string())),
                         Token::LParen,
-                        Token::StructRef(Box::new("this".to_string()), vec!["x".to_string()]),
+                        Token::VarRef(Box::new("this".to_string())),
+                        Token::Dot,
+                        Token::VarRef(Box::new("x".to_string())),
                         Token::RParen,
                     ],
                     "".to_string()
@@ -1052,13 +1060,58 @@ fn test_boxer_struct_method_conversion() {
             ),
             TBox::Expr(
                 vec![
+                    Token::VarRef(Box::new("me".to_string())),
+                    Token::Dot,
                     Token::VarRef(Box::new("print_point".to_string())),
                     Token::LParen,
-                    Token::VarRef(Box::new("me".to_string())),
                     Token::RParen
                 ],
                 "".to_string()
             )
         ]
+    ))
+}
+
+#[test]
+fn test_boxer_compound_assignment() {
+    let input = String::from("x += 1;");
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let toks = l.lex(input).unwrap();
+    let boxes = b.box_toks(toks);
+
+    assert!(compare_tbox_vecs(
+        boxes.unwrap(),
+        vec![TBox::Assign(
+            vec![Token::VarRef(Box::new("x".to_string()))],
+            vec![
+                Token::VarRef(Box::new("x".to_string())),
+                Token::Plus,
+                Token::IntLit(1)
+            ],
+            "x+=1".to_string()
+        )]
+    ))
+}
+
+#[test]
+fn test_boxer_increment() {
+    let input = String::from("x++;");
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let toks = l.lex(input).unwrap();
+    let boxes = b.box_toks(toks);
+
+    assert!(compare_tbox_vecs(
+        boxes.unwrap(),
+        vec![TBox::Assign(
+            vec![Token::VarRef(Box::new("x".to_string()))],
+            vec![
+                Token::VarRef(Box::new("x".to_string())),
+                Token::Plus,
+                Token::IntLit(1)
+            ],
+            "x++".to_string()
+        )]
     ))
 }

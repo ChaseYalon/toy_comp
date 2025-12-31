@@ -29,8 +29,9 @@ impl AstGenerator {
         let mut map: HashMap<String, u32> = HashMap::new();
         map.insert(Token::LParen.tok_type(), 10000);
         map.insert(Token::RParen.tok_type(), 10000);
-        map.insert(Token::LBrack.tok_type(), 10000); //should absolutely never be bound to
+        map.insert(Token::LBrack.tok_type(), 80); // IndexAccess
         map.insert(Token::RBrack.tok_type(), 10000);
+        map.insert(Token::Dot.tok_type(), 80); // MemberAccess
 
         map.insert(Token::StringLit(Box::new("".to_string())).tok_type(), 100);
         map.insert(Token::VarRef(Box::new("".to_string())).tok_type(), 100);
@@ -153,6 +154,44 @@ impl AstGenerator {
                     depth -= 1;
                     continue;
                 }
+                "LBrace" => {
+                    depth += 1;
+                    continue;
+                }
+                "RBrace" => {
+                    if depth == 0 {
+                        return Err(ToyError::new(
+                            ToyErrorType::UnclosedDelimiter,
+                            Some(raw_text.clone()),
+                        ));
+                    }
+                    depth -= 1;
+                    continue;
+                }
+                "LBrack" => {
+                    if depth == 0 && i > 0 {
+                        let maybe_val = self.p_table.get(&t.tok_type());
+                        if let Some(val) = maybe_val {
+                            if *val <= best_val {
+                                best_val = *val;
+                                best_idx = i;
+                                best_tok = t.clone();
+                            }
+                        }
+                    }
+                    depth += 1;
+                    continue;
+                }
+                "RBrack" => {
+                    if depth == 0 {
+                        return Err(ToyError::new(
+                            ToyErrorType::UnclosedDelimiter,
+                            Some(raw_text.clone()),
+                        ));
+                    }
+                    depth -= 1;
+                    continue;
+                }
                 _ => {}
             }
 
@@ -169,7 +208,7 @@ impl AstGenerator {
             }
 
             let val = *maybe_val.unwrap();
-            if val < best_val {
+            if val <= best_val {
                 best_val = val;
                 best_idx = i;
                 best_tok = t.clone();
@@ -455,21 +494,10 @@ impl AstGenerator {
             TBox::VarDec(name, var_type, v_val, _) => {
                 self.parse_var_dec(&name, &v_val, var_type.clone())?
             }
-            TBox::VarRef(name) => {
-                debug!(targets: ["parser_verbose"], name);
-                self.parse_var_ref(&name)?
-            }
-            TBox::VarReassign(var, val, raw_text) => {
-                let var_node = self.parse_var_ref(&var)?;
-                let (val_node, _) = self.parse_expr(&val)?;
-                Ast::VarReassign(
-                    Box::new(match var_node {
-                        Ast::VarRef(i, _) => i.to_string(),
-                        _ => "".to_string(),
-                    }),
-                    Box::new(val_node),
-                    raw_text,
-                )
+            TBox::Assign(lhs, rhs, raw_text) => {
+                let (lhs_node, _) = self.parse_expr(&lhs)?;
+                let (rhs_node, _) = self.parse_expr(&rhs)?;
+                Ast::Assignment(Box::new(lhs_node), Box::new(rhs_node), raw_text)
             }
             TBox::IfStmt(_, _, _, _) => {
                 return self.parse_if_stmt(val, should_eat);
@@ -502,36 +530,6 @@ impl AstGenerator {
             }
             TBox::Continue => Ast::Continue,
             TBox::Break => Ast::Break,
-            TBox::ArrReassign(a, i, v, raw_text) => {
-                let arr_name = match a {
-                    Token::VarRef(a) => *a,
-                    _ => unreachable!(),
-                };
-                let mut idx: Vec<Ast> = Vec::new();
-                for item in i {
-                    let (l_idx, _) = self.parse_num_expr(&item)?;
-                    idx.push(l_idx);
-                }
-                let (value, v_type) = self.parse_expr(&v)?;
-
-                let arr_type = self.lookup_var_type(&arr_name).unwrap();
-                //should not just be one but cannot figure out how to do it
-                if !arr_type.type_str().contains(&v_type.type_str())
-                    && arr_type != TypeTok::AnyArr(1)
-                {
-                    return Err(ToyError::new(
-                        ToyErrorType::ArrayElementsMustMatchArrayType,
-                        Some(raw_text.clone()),
-                    ));
-                }
-                Ast::ArrReassign(Box::new(arr_name), idx, Box::new(value), raw_text)
-            }
-            TBox::StructReassign(n, fields, value_toks, raw_text) => {
-                let name = *n;
-                let (value, _) = self.parse_expr(&value_toks)?;
-                //static type checking is done at codegen/compile time so type unsafety is fine here, will not compile unsafe code
-                Ast::StructReassign(Box::new(name), fields, Box::new(value), raw_text)
-            }
             TBox::StructInterface(name, types, raw_text) => {
                 let boxed: BTreeMap<String, Box<TypeTok>> = (*types)
                     .clone()

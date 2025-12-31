@@ -17,7 +17,7 @@ static void _toy_init() {
     DEBUG_HEAP = DebugHeap_create();
 }
 
-//datatype is 0 for string, 1 for bool, 2 for int, 3 for float, 4 for str[], 5 for bool[], 6 for int[], 7 for float[]
+//datatype is 0 for string, 1 for bool, 2 for int, 3 for float, 4 for str[], 5 for bool[], 6 for int[], 7 for float[], 8 for struct[]
 //if datatype is 0 (input is string) then nput is a pointer
 char* _toy_format(int64_t input, int64_t datatype, int64_t degree) {
     switch(datatype) {
@@ -452,6 +452,10 @@ int64_t toy_read_from_arr(int64_t arr_in_ptr, int64_t idx) {
     ToyArr* arr_ptr = (ToyArr*) arr_in_ptr;
     if (arr_ptr == NULL) {
         fprintf(stderr, "[ERROR] toy_read_from_arr got a null pointer");
+        abort();
+    }
+    if (arr_ptr->arr == NULL) {
+        fprintf(stderr, "[ERROR] toy_read_from_arr got an array with null data pointer");
         abort();
     }
     if (idx > arr_ptr->length) {

@@ -15,13 +15,13 @@ pub mod ir;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Scope {
     parent: Option<Rc<RefCell<Scope>>>,
-    vars: HashMap<String, (SSAValue, TypeTok)>,
+    vars: BTreeMap<String, (SSAValue, TypeTok)>,
 }
 impl Scope {
     pub fn new_child(parent: &Rc<RefCell<Scope>>) -> Rc<RefCell<Scope>> {
         return Rc::new(RefCell::new(Scope {
             parent: Some(parent.clone()),
-            vars: HashMap::new(),
+            vars: BTreeMap::new(),
         }));
     }
     pub fn get_var(&self, name: &str) -> Result<SSAValue, ToyError> {
@@ -60,7 +60,7 @@ impl AstToIrConverter {
             builder: TirBuilder::new(),
             global_scope: Rc::new(RefCell::new(Scope {
                 parent: None,
-                vars: HashMap::new(),
+                vars: BTreeMap::new(),
             })),
             last_val: None,
             interfaces: HashMap::new(),
@@ -96,59 +96,69 @@ impl AstToIrConverter {
                 _ => Ok(TypeTok::Int),
             },
             Ast::ArrLit(ty, _, _) => Ok(ty.clone()),
-            Ast::ArrRef(n, _, _) => {
-                let arr_ty = scope.as_ref().borrow().get_var_type(n)?;
-                match arr_ty {
-                    TypeTok::IntArr(_) => Ok(TypeTok::Int),
-                    TypeTok::BoolArr(_) => Ok(TypeTok::Bool),
-                    TypeTok::FloatArr(_) => Ok(TypeTok::Float),
-                    TypeTok::StrArr(_) => Ok(TypeTok::Str),
+            Ast::IndexAccess(target, _, _) => {
+                let target_ty = self.get_expr_type(target, scope)?;
+                match target_ty {
+                    TypeTok::IntArr(d) => {
+                        if d == 1 {
+                            Ok(TypeTok::Int)
+                        } else {
+                            Ok(TypeTok::IntArr(d - 1))
+                        }
+                    }
+                    TypeTok::BoolArr(d) => {
+                        if d == 1 {
+                            Ok(TypeTok::Bool)
+                        } else {
+                            Ok(TypeTok::BoolArr(d - 1))
+                        }
+                    }
+                    TypeTok::FloatArr(d) => {
+                        if d == 1 {
+                            Ok(TypeTok::Float)
+                        } else {
+                            Ok(TypeTok::FloatArr(d - 1))
+                        }
+                    }
+                    TypeTok::StrArr(d) => {
+                        if d == 1 {
+                            Ok(TypeTok::Str)
+                        } else {
+                            Ok(TypeTok::StrArr(d - 1))
+                        }
+                    }
+                    TypeTok::StructArr(fields, d) => {
+                        if d == 1 {
+                            Ok(TypeTok::Struct(fields))
+                        } else {
+                            Ok(TypeTok::StructArr(fields, d - 1))
+                        }
+                    }
                     _ => unreachable!(),
                 }
             }
             Ast::StructLit(_, _, _) => Ok(TypeTok::Int),
             Ast::Not(_) => Ok(TypeTok::Bool),
-            Ast::StructRef(s, fields, _) => {
-                let mut current_ty = scope.as_ref().borrow().get_var(s)?.ty.clone().unwrap(); // parser validated
-
-                for field_name in fields {
-                    let field_types = match &current_ty {
-                        TirType::StructInterface(types) => types.clone(),
-                        _ => unreachable!(),
-                    };
-
-                    let mut field_idx: Option<usize> = None;
-                    let mut field_tir_ty: Option<TirType> = None;
-
-                    for (_, (field_map, iface_type)) in &self.interfaces {
-                        if let TirType::StructInterface(iface_fields) = iface_type {
-                            if iface_fields == &field_types {
-                                if let Some(&idx) =
-                                    (field_map as &HashMap<String, usize>).get(field_name)
-                                {
-                                    field_idx = Some(idx);
-                                    field_tir_ty = Some(field_types[idx].clone());
-                                    break;
-                                }
-                            }
+            Ast::MemberAccess(target, field_name, _) => {
+                let target_ty = self.get_expr_type(target, scope)?;
+                match target_ty {
+                    TypeTok::Struct(fields) => {
+                        if let Some(field_ty) = fields.get(field_name) {
+                            Ok(*field_ty.clone())
+                        } else {
+                            Err(ToyError::new(
+                                ToyErrorType::KeyNotOnStruct,
+                                Some(field_name.clone()),
+                            ))
                         }
                     }
-
-                    let _idx = field_idx.unwrap(); // parser validated
-                    current_ty = field_tir_ty.unwrap(); // parser validated
-                }
-
-                // Convert final TirType -> TypeTok
-                match current_ty {
-                    TirType::I64 => Ok(TypeTok::Int),
-                    TirType::I1 => Ok(TypeTok::Bool),
-                    TirType::F64 => Ok(TypeTok::Float),
-                    TirType::I8PTR => Ok(TypeTok::Str),
-                    // If the final access is still a struct, there's no explicit TypeTok here yet.
-                    TirType::StructInterface(_) => Ok(TypeTok::Int),
-                    TirType::Void => Ok(TypeTok::Void),
+                    _ => Err(ToyError::new(
+                        ToyErrorType::VariableNotAStruct,
+                        Some(format!("{:?}", target)),
+                    )),
                 }
             }
+
             _ => Err(ToyError::new(
                 ToyErrorType::TypeIdNotAssigned,
                 Some(format!("{}", node)),
@@ -302,21 +312,63 @@ impl AstToIrConverter {
 
                 return Ok(arr);
             }
-            Ast::ArrRef(n, idxs, _) => {
-                if idxs.is_empty() {
-                    unreachable!();
-                }
+            Ast::IndexAccess(target, index, _) => {
+                let target_ty = self.get_expr_type(&target, scope)?;
+                let elem_ty = match target_ty {
+                    TypeTok::IntArr(n) => {
+                        if n == 1 {
+                            TypeTok::Int
+                        } else {
+                            TypeTok::IntArr(n - 1)
+                        }
+                    }
+                    TypeTok::BoolArr(n) => {
+                        if n == 1 {
+                            TypeTok::Bool
+                        } else {
+                            TypeTok::BoolArr(n - 1)
+                        }
+                    }
+                    TypeTok::StrArr(n) => {
+                        if n == 1 {
+                            TypeTok::Str
+                        } else {
+                            TypeTok::StrArr(n - 1)
+                        }
+                    }
+                    TypeTok::FloatArr(n) => {
+                        if n == 1 {
+                            TypeTok::Float
+                        } else {
+                            TypeTok::FloatArr(n - 1)
+                        }
+                    }
+                    TypeTok::AnyArr(n) => {
+                        if n == 1 {
+                            TypeTok::Any
+                        } else {
+                            TypeTok::AnyArr(n - 1)
+                        }
+                    }
+                    TypeTok::StructArr(kv, n) => {
+                        if n == 1 {
+                            TypeTok::Struct(kv)
+                        } else {
+                            TypeTok::StructArr(kv, n - 1)
+                        }
+                    }
+                    _ => unreachable!(),
+                };
 
-                let mut current_arr = scope.as_ref().borrow().get_var(&*n)?;
-                for idx_expr in idxs {
-                    let idx = self.compile_expr(idx_expr, scope)?;
-                    let read_params = vec![current_arr, idx];
-                    current_arr = self
-                        .builder
-                        .call("toy_read_from_arr".to_string(), read_params)?;
-                }
+                let target_val = self.compile_expr(*target, scope)?;
+                let idx_val = self.compile_expr(*index, scope)?;
+                let read_params = vec![target_val, idx_val];
+                let mut res = self
+                    .builder
+                    .call("toy_read_from_arr".to_string(), read_params)?;
 
-                return Ok(current_arr);
+                res.ty = Some(self.builder.type_tok_to_tir_type(elem_ty));
+                Ok(res)
             }
             Ast::StructLit(interface_name, kv, _) => {
                 let mut compiled_map: BTreeMap<String, SSAValue> = BTreeMap::new();
@@ -331,42 +383,36 @@ impl AstToIrConverter {
                 }
                 self.builder.create_struct_literal(val_vec, ty)
             }
-            Ast::StructRef(var_name, fields, _) => {
-                let mut current_val = scope.as_ref().borrow().get_var(&*var_name)?;
+            Ast::MemberAccess(target, field_name, _) => {
+                let target_val = self.compile_expr(*target, scope)?;
+                let struct_type = target_val.ty.clone().unwrap();
 
-                for field_name in fields {
-                    let struct_type = current_val.ty.clone().unwrap(); // parser validated
+                let field_types = match &struct_type {
+                    TirType::StructInterface(types) => types.clone(),
+                    _ => return unreachable!(),
+                };
 
-                    let field_types = match &struct_type {
-                        TirType::StructInterface(types) => types.clone(),
-                        _ => return unreachable!(),
-                    };
+                let mut field_idx: Option<usize> = None;
+                let mut field_type: Option<TirType> = None;
 
-                    let mut field_idx: Option<usize> = None;
-                    let mut field_type: Option<TirType> = None;
-
-                    for (_, (field_map, iface_type)) in &self.interfaces {
-                        if let TirType::StructInterface(iface_fields) = iface_type {
-                            if iface_fields == &field_types {
-                                if let Some(&idx) =
-                                    (field_map as &HashMap<String, usize>).get(&field_name)
-                                {
-                                    field_idx = Some(idx);
-                                    field_type = Some(field_types[idx].clone());
-                                    break;
-                                }
+                for (_, (field_map, iface_type)) in &self.interfaces {
+                    if let TirType::StructInterface(iface_fields) = iface_type {
+                        if iface_fields == &field_types {
+                            if let Some(&idx) =
+                                (field_map as &HashMap<String, usize>).get(&field_name)
+                            {
+                                field_idx = Some(idx);
+                                field_type = Some(field_types[idx].clone());
+                                break;
                             }
                         }
                     }
-                    let idx = field_idx.unwrap(); // parser validated
-                    let ty = field_type.unwrap(); // parser validated
-                    current_val = self
-                        .builder
-                        .read_struct_literal(current_val, idx as u64, ty)?;
                 }
-
-                return Ok(current_val);
+                let idx = field_idx.unwrap(); // parser validated
+                let ty = field_type.unwrap(); // parser validated
+                self.builder.read_struct_literal(target_val, idx as u64, ty)
             }
+
             Ast::Not(v) => {
                 let val = self.compile_expr(*v, scope)?;
                 self.builder.not(val)
@@ -389,20 +435,7 @@ impl AstToIrConverter {
             .set_var(name, compiled_val.clone(), ty);
         return Ok(compiled_val);
     }
-    fn compile_var_reassign(
-        &mut self,
-        name: String,
-        ast_val: Ast,
-        scope: &Rc<RefCell<Scope>>,
-    ) -> Result<SSAValue, ToyError> {
-        let compiled_val = self.compile_expr(ast_val, scope)?;
-        let ty = scope.as_ref().borrow().get_var_type(&name)?;
-        scope
-            .as_ref()
-            .borrow_mut()
-            .set_var(name, compiled_val.clone(), ty);
-        return Ok(compiled_val);
-    }
+
     fn compile_if_stmt(&mut self, node: Ast, scope: &Rc<RefCell<Scope>>) -> Result<(), ToyError> {
         let (cond, body, alt) = match node {
             Ast::IfStmt(c, b, a, _) => (*c, b, a),
@@ -434,7 +467,6 @@ impl AstToIrConverter {
 
         return Ok(());
     }
-
     fn compile_while_stmt(
         &mut self,
         node: Ast,
@@ -445,25 +477,25 @@ impl AstToIrConverter {
             _ => unreachable!(),
         };
 
-        let pre_loop_vars: HashMap<String, (SSAValue, TypeTok)> =
+        let pre_loop_vars: BTreeMap<String, (SSAValue, TypeTok)> =
             scope.as_ref().borrow().vars.clone();
-
         let header_id = self.builder.create_block()?;
         self.builder.jump_block_un_cond(header_id);
         self.builder.switch_block(header_id);
 
-        let mut phi_id_map: HashMap<String, ValueId> = HashMap::new();
-        for var_name in pre_loop_vars.keys() {
+        let mut phi_id_map: BTreeMap<String, ValueId> = BTreeMap::new();
+
+        for var_name in pre_loop_vars.keys().rev() {
             let phi_id = self.builder.alloc_value_id();
-            phi_id_map.insert((var_name as &String).clone(), phi_id);
+            phi_id_map.insert(var_name.clone(), phi_id);
         }
 
         for (var_name, pre_val) in &pre_loop_vars {
-            if let Some(phi_id) = phi_id_map.get(var_name) {
+            if let Some(&phi_id) = phi_id_map.get(var_name) {
                 scope.as_ref().borrow_mut().set_var(
                     var_name.clone(),
                     SSAValue {
-                        val: *phi_id,
+                        val: phi_id,
                         ty: pre_val.0.ty.clone(),
                     },
                     pre_val.1.clone(),
@@ -488,30 +520,24 @@ impl AstToIrConverter {
             self.compile_stmt(ast, &child_scope)?;
         }
 
-        let post_loop_vars: HashMap<String, (SSAValue, TypeTok)> =
+        let post_loop_vars: BTreeMap<String, (SSAValue, TypeTok)> =
             child_scope.as_ref().borrow().vars.clone();
 
         self.builder.jump_block_un_cond(header_id)?;
-
-        let mut phi_instructions: Vec<TIR> = Vec::new();
 
         for (var_name, pre_val) in &pre_loop_vars {
             let post_val = post_loop_vars
                 .get(var_name)
                 .cloned()
-                .unwrap_or_else(|| (pre_val.clone()));
+                .unwrap_or_else(|| pre_val.clone());
             if let Some(&phi_id) = phi_id_map.get(var_name) {
-                let phi_ins = TIR::Phi(
+                self.builder.insert_phi(
+                    header_id,
                     phi_id,
                     vec![0, body_id],
                     vec![pre_val.0.clone(), post_val.0],
-                );
-                phi_instructions.push(phi_ins);
+                )?;
             }
-        }
-
-        for phi_ins in phi_instructions.into_iter().rev() {
-            self.builder.insert_at_block_start(header_id, phi_ins)?;
         }
 
         self.builder.switch_block(merge_id);
@@ -560,7 +586,6 @@ impl AstToIrConverter {
             | Ast::VarRef(_, _)
             | Ast::StringLit(_, _)
             | Ast::ArrLit(_, _, _)
-            | Ast::ArrRef(_, _, _)
             | Ast::StructLit(_, _, _)
             | Ast::Not(_) => {
                 let _ = self.compile_expr(node, scope)?;
@@ -568,8 +593,67 @@ impl AstToIrConverter {
             Ast::VarDec(box_name, ty, box_val, _) => {
                 let _ = self.compile_var_dec(*box_name, *box_val, ty, scope)?;
             }
-            Ast::VarReassign(boxed_name, boxed_val, _) => {
-                let _ = self.compile_var_reassign(*boxed_name, *boxed_val, scope)?;
+            Ast::Assignment(lhs, rhs, _) => {
+                let val = self.compile_expr(*rhs, scope)?;
+                match *lhs {
+                    Ast::VarRef(name, _) => {
+                        let ty = scope.as_ref().borrow().get_var_type(&name)?;
+                        scope.as_ref().borrow_mut().set_var(*name, val, ty);
+                    }
+                    Ast::IndexAccess(target, index, _) => {
+                        let arr = self.compile_expr(*target, scope)?;
+                        let idx = self.compile_expr(*index, scope)?;
+
+                        let type_val = match val.ty {
+                            Some(TirType::I8PTR) => 4, // String
+                            Some(TirType::I1) => 5,    // Bool
+                            Some(TirType::I64) => 6,   // Int
+                            Some(TirType::F64) => 7,   // Float
+                            _ => 2,                    // Default to Int
+                        };
+                        let type_param = self.builder.iconst(type_val, TypeTok::Int)?;
+
+                        let write_params = vec![arr, val, idx, type_param];
+                        self.builder
+                            .call("toy_write_to_arr".to_string(), write_params)?;
+                    }
+                    Ast::MemberAccess(target, field_name, _) => {
+                        let struct_val = self.compile_expr(*target, scope)?;
+                        let struct_type = struct_val.ty.clone().unwrap();
+
+                        let field_types = match &struct_type {
+                            TirType::StructInterface(types) => types.clone(),
+                            _ => unreachable!(),
+                        };
+
+                        let mut field_idx: Option<usize> = None;
+                        let mut field_type: Option<TirType> = None;
+
+                        for (_, (field_map, iface_type)) in &self.interfaces {
+                            if let TirType::StructInterface(iface_fields) = iface_type {
+                                if iface_fields == &field_types {
+                                    if let Some(&idx) =
+                                        (field_map as &HashMap<String, usize>).get(&field_name)
+                                    {
+                                        field_idx = Some(idx);
+                                        field_type = Some(field_types[idx].clone());
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        let idx = field_idx.unwrap();
+                        let ty = field_type.unwrap();
+                        self.builder
+                            .write_struct_literal(struct_val, idx as u64, val, ty)?;
+                    }
+                    _ => {
+                        return Err(ToyError::new(
+                            ToyErrorType::MalformedVariableReassign,
+                            Some("Invalid assignment target".to_string()),
+                        ));
+                    }
+                }
             }
             Ast::IfStmt(_, _, _, _) => self.compile_if_stmt(node, scope)?,
             Ast::WhileStmt(_, _, _) => self.compile_while_stmt(node, scope)?,
@@ -579,35 +663,7 @@ impl AstToIrConverter {
                 let compiled_val = self.compile_expr(ast_val, scope)?;
                 self.builder.ret(compiled_val);
             }
-            Ast::ArrReassign(name, idxs, val, _) => {
-                if idxs.is_empty() {
-                    unreachable!(); //ast type checker should prevent this
-                }
-                let mut current_arr = scope.as_ref().borrow().get_var(&*name)?;
 
-                for i in 0..(idxs.len() - 1) {
-                    let idx = self.compile_expr(idxs[i].clone(), scope)?;
-                    let read_params = vec![current_arr, idx];
-                    current_arr = self
-                        .builder
-                        .call("toy_read_from_arr".to_string(), read_params)?;
-                }
-                let last_idx = self.compile_expr(idxs[idxs.len() - 1].clone(), scope)?;
-                let compiled_val = self.compile_expr(*val, scope)?;
-
-                let type_val = match compiled_val.ty {
-                    Some(TirType::I8PTR) => 4, // String
-                    Some(TirType::I1) => 5,    // Bool
-                    Some(TirType::I64) => 6,   // Int
-                    Some(TirType::F64) => 7,   // Float
-                    _ => 2,                    // Default to Int
-                };
-                let type_param = self.builder.iconst(type_val, TypeTok::Int)?;
-
-                let write_params = vec![current_arr, compiled_val, last_idx, type_param];
-                self.builder
-                    .call("toy_write_to_arr".to_string(), write_params)?;
-            }
             Ast::StructInterface(n, t, _) => {
                 let mut tir_proto: Vec<TirType> = Vec::new();
                 let mut key_to_idx: HashMap<String, usize> = HashMap::new();
@@ -621,76 +677,7 @@ impl AstToIrConverter {
                 let tir = self.builder.create_struct_interface(*n.clone(), tir_proto);
                 self.interfaces.insert(*n, (key_to_idx, tir));
             }
-            Ast::StructReassign(var_name, fields, new_val, _) => {
-                if fields.is_empty() {
-                    unreachable!(); //ast type checker should prevent this
-                }
-                let mut current_val = scope.as_ref().borrow().get_var(&*var_name)?;
-                for i in 0..(fields.len() - 1) {
-                    let field_name = &fields[i];
-                    let struct_type = current_val.ty.clone().unwrap(); // parser validated
 
-                    let field_types = match &struct_type {
-                        TirType::StructInterface(types) => types.clone(),
-                        _ => unreachable!(), //ast type checker should prevent this
-                    };
-
-                    let mut field_idx: Option<usize> = None;
-                    let mut field_type: Option<TirType> = None;
-
-                    for (_, (field_map, iface_type)) in &self.interfaces {
-                        if let TirType::StructInterface(iface_fields) = iface_type {
-                            if iface_fields == &field_types {
-                                if let Some(&idx) =
-                                    (field_map as &HashMap<String, usize>).get(field_name)
-                                {
-                                    field_idx = Some(idx);
-                                    field_type = Some(field_types[idx].clone());
-                                    break;
-                                }
-                            }
-                        }
-                    }
-
-                    let idx = field_idx.unwrap(); // parser validated
-                    let ty = field_type.unwrap(); // parser validated
-                    current_val = self
-                        .builder
-                        .read_struct_literal(current_val, idx as u64, ty)?;
-                }
-
-                let last_field = &fields[fields.len() - 1];
-                let struct_type = current_val.ty.clone().unwrap(); // parser validated
-
-                let field_types = match &struct_type {
-                    TirType::StructInterface(types) => types.clone(),
-                    _ => unreachable!(), //ast type checker should prevent this
-                };
-
-                let mut field_idx: Option<usize> = None;
-                let mut field_type: Option<TirType> = None;
-
-                for (_, (field_map, iface_type)) in &self.interfaces {
-                    if let TirType::StructInterface(iface_fields) = iface_type {
-                        if iface_fields == &field_types {
-                            if let Some(&idx) =
-                                (field_map as &HashMap<String, usize>).get(last_field)
-                            {
-                                field_idx = Some(idx);
-                                field_type = Some(field_types[idx].clone());
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                let idx = field_idx.unwrap(); // parser validated
-                let ty = field_type.unwrap(); // parser validated
-
-                let compiled_val = self.compile_expr(*new_val, scope)?;
-                self.builder
-                    .write_struct_literal(current_val, idx as u64, compiled_val, ty)?;
-            }
             _ => todo!("Chase you have not implemented {} yet", node),
         };
         return Ok(());

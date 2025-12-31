@@ -1210,3 +1210,180 @@ fn test_lexer_for_block() {
         ]
     )
 }
+
+#[test]
+fn test_lexer_struct_func_multi_param_bug() {
+    let mut l = Lexer::new();
+    let toks = l
+        .lex(
+            "
+        struct Point{
+            x: float,
+            y: float,
+        }
+
+        for Point {
+            fn move(dx: float, dy: float) {
+                this.x += dx;
+                this.y += dy;
+            }
+        }
+
+        let points = [
+            Point{x: 0.0, y: 0.0},
+            Point{x: 1.0, y: 1.0},
+            Point{x: -1.0, y: -1.0}
+        ];
+
+        let i = 0;
+        while i < len(points) {
+            points[i].move(5.0, 0-2.0);
+            i += 1;
+        }
+
+        println(points);"
+                .to_string(),
+        )
+        .unwrap();
+    assert_eq!(
+        toks,
+        vec![
+            Token::Struct(Box::new("Point".to_string())),
+            Token::LBrace,
+            Token::VarRef(Box::new("x".to_string())),
+            Token::Colon,
+            Token::Type(TypeTok::Float),
+            Token::Comma,
+            Token::VarRef(Box::new("y".to_string())),
+            Token::Colon,
+            Token::Type(TypeTok::Float),
+            Token::Comma,
+            Token::RBrace,
+            Token::For,
+            Token::VarRef(Box::new("Point".to_string())),
+            Token::LBrace,
+            Token::Func,
+            Token::VarName(Box::new("move".to_string())),
+            Token::LParen,
+            Token::VarRef(Box::new("dx".to_string())),
+            Token::Colon,
+            Token::Type(TypeTok::Float),
+            Token::Comma,
+            Token::VarRef(Box::new("dy".to_string())),
+            Token::Colon,
+            Token::Type(TypeTok::Float),
+            Token::RParen,
+            Token::LBrace,
+            Token::VarRef(Box::new("this".to_string())),
+            Token::Dot,
+            Token::VarRef(Box::new("x".to_string())),
+            Token::CompoundPlus,
+            Token::VarRef(Box::new("dx".to_string())),
+            Token::Semicolon,
+            Token::VarRef(Box::new("this".to_string())),
+            Token::Dot,
+            Token::VarRef(Box::new("y".to_string())),
+            Token::CompoundPlus,
+            Token::VarRef(Box::new("dy".to_string())),
+            Token::Semicolon,
+            Token::RBrace,
+            Token::RBrace,
+            Token::Let,
+            Token::VarName(Box::new("points".to_string())),
+            Token::Assign,
+            Token::LBrack,
+            Token::VarRef(Box::new("Point".to_string())),
+            Token::LBrace,
+            Token::VarRef(Box::new("x".to_string())),
+            Token::Colon,
+            Token::FloatLit(OrderedFloat(0.0)),
+            Token::Comma,
+            Token::VarRef(Box::new("y".to_string())),
+            Token::Colon,
+            Token::FloatLit(OrderedFloat(0.0)),
+            Token::RBrace,
+            Token::Comma,
+            Token::VarRef(Box::new("Point".to_string())),
+            Token::LBrace,
+            Token::VarRef(Box::new("x".to_string())),
+            Token::Colon,
+            Token::FloatLit(OrderedFloat(1.0)),
+            Token::Comma,
+            Token::VarRef(Box::new("y".to_string())),
+            Token::Colon,
+            Token::FloatLit(OrderedFloat(1.0)),
+            Token::RBrace,
+            Token::Comma,
+            Token::VarRef(Box::new("Point".to_string())),
+            Token::LBrace,
+            Token::VarRef(Box::new("x".to_string())),
+            Token::Colon,
+            Token::FloatLit(OrderedFloat(-1.0)),
+            Token::Comma,
+            Token::VarRef(Box::new("y".to_string())),
+            Token::Colon,
+            Token::FloatLit(OrderedFloat(-1.0)),
+            Token::RBrace,
+            Token::RBrack,
+            Token::Semicolon,
+            Token::Let,
+            Token::VarName(Box::new("i".to_string())),
+            Token::Assign,
+            Token::IntLit(0),
+            Token::Semicolon,
+            Token::While,
+            Token::VarRef(Box::new("i".to_string())),
+            Token::LessThan,
+            Token::VarRef(Box::new("len".to_string())),
+            Token::LParen,
+            Token::VarRef(Box::new("points".to_string())),
+            Token::RParen,
+            Token::LBrace,
+            Token::VarRef(Box::new("points".to_string())),
+            Token::LBrack,
+            Token::VarRef(Box::new("i".to_string())),
+            Token::RBrack,
+            Token::Dot,
+            Token::VarRef(Box::new("move".to_string())),
+            Token::LParen,
+            Token::FloatLit(OrderedFloat(5.0)),
+            Token::Comma,
+            Token::IntLit(0),
+            Token::Minus,
+            Token::FloatLit(OrderedFloat(2.0)),
+            Token::RParen,
+            Token::Semicolon,
+            Token::VarRef(Box::new("i".to_string())),
+            Token::CompoundPlus,
+            Token::IntLit(1),
+            Token::Semicolon,
+            Token::RBrace,
+            Token::VarRef(Box::new("println".to_string())),
+            Token::LParen,
+            Token::VarRef(Box::new("points".to_string())),
+            Token::RParen,
+            Token::Semicolon,
+        ]
+    )
+}
+
+#[test]
+fn test_lexer_unary_minus_int_and_float() {
+    let mut l = Lexer::new();
+    let toks = l.lex("let a = -5; let b = -3.14;".to_string()).unwrap();
+    assert_eq!(
+        toks,
+        vec![
+            Token::Let,
+            Token::VarName(Box::new("a".to_string())),
+            Token::Assign,
+            Token::IntLit(-5),
+            Token::Semicolon,
+            Token::Let,
+            Token::VarName(Box::new("b".to_string())),
+            Token::Assign,
+            Token::FloatLit(OrderedFloat(-3.14)),
+            Token::Semicolon,
+        ]
+    )
+}
