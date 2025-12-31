@@ -41,6 +41,9 @@ fn eq_tbox_ignoring_src(x: &TBox, y: &TBox) -> bool {
         (TBox::StructInterface(xn, xkv, _), TBox::StructInterface(yn, ykv, _)) => {
             xn == yn && xkv == ykv
         }
+        (TBox::ExternFuncDec(xn, xp, xr, _), TBox::ExternFuncDec(yn, yp, yr, _)) => {
+            xn == yn && xr == yr && compare_tbox_vecs(xp.clone(), yp.clone())
+        }
         _ => false,
     }
 }
@@ -1113,5 +1116,81 @@ fn test_boxer_increment() {
             ],
             "x++".to_string()
         )]
+    ))
+}
+
+
+#[test]
+fn test_boxer_extern_function_declaration() {
+    let input = String::from("extern fn printf(msg: str): int;");
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let toks = l.lex(input).unwrap();
+    let boxes = b.box_toks(toks);
+
+    assert!(compare_tbox_vecs(
+        boxes.unwrap(),
+        vec![TBox::ExternFuncDec(
+            Token::VarName(Box::new("printf".to_string())),
+            vec![TBox::FuncParam(
+                Token::VarRef(Box::new("msg".to_string())),
+                TypeTok::Str,
+                "".to_string()
+            )],
+            TypeTok::Int,
+            "extern fn printf(msg: str): int;".to_string()
+        )]
+    ))
+}
+
+#[test]
+fn test_boxer_extern_function_declaration_void() {
+    let input = String::from("extern fn puts(msg: str): void;");
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let toks = l.lex(input).unwrap();
+    let boxes = b.box_toks(toks);
+
+    assert!(compare_tbox_vecs(
+        boxes.unwrap(),
+        vec![TBox::ExternFuncDec(
+            Token::VarName(Box::new("puts".to_string())),
+            vec![TBox::FuncParam(
+                Token::VarRef(Box::new("msg".to_string())),
+                TypeTok::Str,
+                "".to_string()
+            )],
+            TypeTok::Void,
+            "extern fn puts(msg: str): void;".to_string()
+        )]
+    ))
+}
+
+#[test]
+fn test_boxer_import_stmt() {
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let toks = l.lex("import math; println(math.abs(-5));".to_string());
+    let boxes = b.box_toks(toks.unwrap());
+    assert!(compare_tbox_vecs(
+        boxes.unwrap(),
+        vec![
+            TBox::ImportStmt("math".to_string(), "import math;".to_string()),
+            TBox::Expr(
+                vec![
+                    Token::VarRef(Box::new("println".to_string())),
+                    Token::LParen,
+                    Token::VarRef(Box::new("math".to_string())),
+                    Token::Dot,
+                    Token::VarRef(Box::new("abs".to_string())),
+                    Token::LParen,
+                    Token::Minus,
+                    Token::IntLit(5),
+                    Token::RParen,
+                    Token::RParen
+                ],
+                "".to_string()
+            )
+        ]
     ))
 }

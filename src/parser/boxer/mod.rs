@@ -292,10 +292,36 @@ impl Boxer {
                 i = for_end;
                 continue;
             }
-            if ty == "Func" && brace_depth == 0 && paren_depth == 0 {
+            if (ty == "Func" || ty == "Extern") && brace_depth == 0 && paren_depth == 0 {
                 if !curr.is_empty() {
                     boxes.push(self.box_statement(curr.clone())?);
                     curr.clear();
+                }
+
+                if ty == "Extern" {
+                    let mut func_end = i + 1;
+                    while func_end < input.len() && input[func_end].tok_type() != "Semicolon" {
+                        func_end += 1;
+                    }
+                    if func_end >= input.len() {
+                        let raw_text = format!(
+                            "extern fn {}",
+                            input[i..i + 5.min(input.len() - i)]
+                                .iter()
+                                .map(|t| t.to_string())
+                                .collect::<String>()
+                        );
+                        return Err(ToyError::new(
+                            ToyErrorType::MalformedFunctionDeclaration,
+                            Some(raw_text),
+                        ));
+                    }
+                    // Include the semicolon
+                    func_end += 1;
+                    let func_slice = input[i..func_end].to_vec();
+                    boxes.push(self.box_extern_fn_stmt(func_slice)?);
+                    i = func_end;
+                    continue;
                 }
 
                 let mut func_end = i + 1;
@@ -412,6 +438,87 @@ impl Boxer {
             func_params.push(param);
         }
         return Ok(func_params);
+    }
+
+    fn box_extern_fn_stmt(&mut self, input: Vec<Token>) -> Result<TBox, ToyError> {
+        let raw_text = format!(
+            "extern fn {}",
+            input
+                .iter()
+                .take(10)
+                .map(|t| t.to_string())
+                .collect::<String>()
+        );
+        // input[0] is Extern
+        if input[0].tok_type() != "Extern" {
+            return Err(ToyError::new(
+                ToyErrorType::MalformedFunctionDeclaration,
+                Some(raw_text.clone()),
+            ));
+        }
+        // input[1] should be Func
+        if input[1].tok_type() != "Func" {
+            return Err(ToyError::new(
+                ToyErrorType::MalformedFunctionDeclaration,
+                Some(raw_text.clone()),
+            ));
+        }
+
+        let func_name = input[2].clone();
+        if input[3].tok_type() != "LParen" {
+            return Err(ToyError::new(
+                ToyErrorType::MalformedFunctionDeclaration,
+                Some(raw_text),
+            ));
+        }
+
+        let mut unboxed_params: Vec<Token> = Vec::new();
+        let mut return_type_begin: usize = 0;
+        for i in 4..input.len() {
+            if input[i].tok_type() == "RParen" {
+                return_type_begin = i;
+                break;
+            }
+            unboxed_params.push(input[i].clone());
+        }
+        let boxed_params: Vec<TBox> = self.box_params(unboxed_params)?;
+
+        // Check return type
+        // After RParen, we expect Colon Type Semicolon OR Semicolon (Void)
+
+        let return_type = if input[return_type_begin + 1].tok_type() == "Semicolon" {
+            TypeTok::Void
+        } else {
+            if input[return_type_begin + 1].tok_type() != "Colon" {
+                return Err(ToyError::new(
+                    ToyErrorType::MalformedFunctionDeclaration,
+                    Some(raw_text.clone()),
+                ));
+            }
+            if input[return_type_begin + 2].tok_type() != "Type" {
+                return Err(ToyError::new(
+                    ToyErrorType::MalformedFunctionDeclaration,
+                    Some(raw_text.clone()),
+                ));
+            }
+            if input[return_type_begin + 3].tok_type() != "Semicolon" {
+                return Err(ToyError::new(
+                    ToyErrorType::MalformedFunctionDeclaration,
+                    Some(raw_text.clone()),
+                ));
+            }
+            match input[return_type_begin + 2].clone() {
+                Token::Type(t) => t,
+                _ => unreachable!(),
+            }
+        };
+
+        return Ok(TBox::ExternFuncDec(
+            func_name,
+            boxed_params,
+            return_type,
+            raw_text,
+        ));
     }
 
     fn box_fn_stmt(&mut self, input: Vec<Token>) -> Result<TBox, ToyError> {

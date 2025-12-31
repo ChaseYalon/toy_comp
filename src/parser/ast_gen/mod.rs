@@ -419,6 +419,55 @@ impl AstGenerator {
         return Ok(if_stmt);
     }
 
+    fn parse_extern_func_dec(&mut self, stmt: TBox, should_eat: bool) -> Result<Ast, ToyError> {
+        let (name_tok, params, return_type, raw_text) = match stmt {
+            TBox::ExternFuncDec(n, p, r, rt) => (n, p, r, rt),
+            _ => unreachable!(),
+        };
+        let name = match name_tok {
+            Token::VarName(n) => *n,
+            _ => unreachable!(),
+        };
+
+        let mut ast_params: Vec<Ast> = Vec::new();
+        let mut param_types: Vec<TypeTok> = Vec::new();
+
+        for param in params {
+            let (param_name, param_type, param_raw_text) = match param {
+                TBox::FuncParam(name, type_tok, rt) => {
+                    let n = match name {
+                        Token::VarRef(var) => *var,
+                        _ => unreachable!(),
+                    };
+                    (n, type_tok, rt)
+                }
+                _ => unreachable!(),
+            };
+
+            ast_params.push(Ast::FuncParam(
+                Box::new(param_name.clone()),
+                param_type.clone(),
+                param_raw_text,
+            ));
+            param_types.push(param_type.clone());
+        }
+
+        self.func_param_type_map.insert(name.clone(), param_types);
+        self.func_return_type_map
+            .insert(name.clone(), return_type.clone());
+
+        if should_eat {
+            self.eat();
+        }
+
+        return Ok(Ast::ExternFuncDec(
+            Box::new(name),
+            ast_params,
+            return_type,
+            raw_text,
+        ));
+    }
+
     fn parse_func_dec(&mut self, stmt: TBox, should_eat: bool) -> Result<Ast, ToyError> {
         let (name_tok, params, return_type, box_boxy, raw_text) = match stmt {
             TBox::FuncDec(n, p, r, b, rt) => (n, p, r, b, rt),
@@ -503,6 +552,7 @@ impl AstGenerator {
                 return self.parse_if_stmt(val, should_eat);
             }
             TBox::FuncDec(_, _, _, _, _) => return self.parse_func_dec(val, should_eat),
+            TBox::ExternFuncDec(_, _, _, _) => return self.parse_extern_func_dec(val, should_eat),
             TBox::Return(val, raw_text) => {
                 let expr = match *val {
                     TBox::Expr(ref v, _) => v,

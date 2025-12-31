@@ -256,8 +256,10 @@ impl AstToIrConverter {
                     _ => &*n,
                 };
 
+                let is_user_defined = self.builder.extern_funcs.get(name).map(|(_, _, u)| *u).unwrap_or(false);
+
                 let mut final_params = Vec::new();
-                if vec!["toy_print", "toy_println"].contains(&name) {
+                if !is_user_defined && vec!["toy_print", "toy_println"].contains(&name) {
                     if p.len() != 1 {
                         return unreachable!();
                     }
@@ -265,7 +267,7 @@ impl AstToIrConverter {
                     let ty = self.get_expr_type(&p[0], scope)?;
                     self.builder
                         .inject_type_param(&ty, true, &mut final_params)?;
-                } else if vec![
+                } else if !is_user_defined && vec![
                     "toy_type_to_str",
                     "toy_type_to_int",
                     "toy_type_to_bool",
@@ -544,6 +546,19 @@ impl AstToIrConverter {
 
         return Ok(());
     }
+    fn compile_extern_func_dec(
+        &mut self,
+        node: Ast,
+        _scope: &Rc<RefCell<Scope>>,
+    ) -> Result<(), ToyError> {
+        let (name, _, ret_type) = match node {
+            Ast::ExternFuncDec(n, p, r, _) => (*n, p, r),
+            _ => unreachable!(),
+        };
+        self.builder.register_extern_func(name, ret_type);
+        Ok(())
+    }
+
     fn compile_func_dec(&mut self, node: Ast, scope: &Rc<RefCell<Scope>>) -> Result<(), ToyError> {
         let (name, params, ret_type, body) = match node {
             Ast::FuncDec(n, p, r, b, _) => (*n, p, r, b),
@@ -658,6 +673,7 @@ impl AstToIrConverter {
             Ast::IfStmt(_, _, _, _) => self.compile_if_stmt(node, scope)?,
             Ast::WhileStmt(_, _, _) => self.compile_while_stmt(node, scope)?,
             Ast::FuncDec(_, _, _, _, _) => self.compile_func_dec(node, scope)?,
+            Ast::ExternFuncDec(_, _, _, _) => self.compile_extern_func_dec(node, scope)?,
             Ast::Return(v, _) => {
                 let ast_val = *v;
                 let compiled_val = self.compile_expr(ast_val, scope)?;

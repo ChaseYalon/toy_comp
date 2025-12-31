@@ -26,6 +26,9 @@ pub enum Ast {
     ///Name, Params, ReturnType, Body, raw text
     FuncDec(Box<String>, Vec<Ast>, TypeTok, Vec<Ast>, String),
 
+    ///Name, Params, ReturnType, raw text
+    ExternFuncDec(Box<String>, Vec<Ast>, TypeTok, String),
+
     ///Name, params as exprs, raw text
     FuncCall(Box<String>, Vec<Ast>, String),
 
@@ -72,6 +75,7 @@ impl Ast {
             Ast::EmptyExpr(_, _) => "EmptyExpr".to_string(),
             Ast::FuncParam(_, _, _) => "FuncParam".to_string(),
             Ast::FuncDec(_, _, _, _, _) => "FuncDec".to_string(),
+            Ast::ExternFuncDec(_, _, _, _) => "ExternFuncDec".to_string(),
             Ast::FuncCall(_, _, _) => "FuncCall".to_string(),
             Ast::Return(_, _) => "Return".to_string(),
             Ast::StringLit(_, _) => "StringLit".to_string(),
@@ -100,6 +104,7 @@ impl Ast {
             Ast::EmptyExpr(_, s) => s.clone(),
             Ast::FuncParam(_, _, s) => s.clone(),
             Ast::FuncDec(_, _, _, _, s) => s.clone(),
+            Ast::ExternFuncDec(_, _, _, s) => s.clone(),
             Ast::FuncCall(_, _, s) => s.clone(),
             Ast::Return(_, s) => s.clone(),
             Ast::StringLit(_, s) => s.clone(),
@@ -162,6 +167,10 @@ impl fmt::Display for Ast {
                 Ast::FuncDec(name, params, return_type, body, s) => format!(
                     "FuncDec Name({}), Params({:?}), ReturnType({:?}), Body({:?}), Literal({})",
                     *name, params, return_type, body, s
+                ),
+                Ast::ExternFuncDec(name, params, return_type, s) => format!(
+                    "ExternFuncDec Name({}), Params({:?}), ReturnType({:?}), Literal({})",
+                    *name, params, return_type, s
                 ),
                 Ast::FuncCall(name, params, s) => format!(
                     "FuncCall, Name({}), Params({:?}), Literal({})",

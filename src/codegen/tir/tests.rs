@@ -2741,3 +2741,70 @@ println(points);
         ],
     );
 }
+
+#[test]
+fn test_tirgen_extern_func_dec_and_call() {
+    setup_tir!(
+        res,
+        "extern fn printf(msg: str): int;
+         printf(\"Hello\")"
+    );
+    compare_tir(
+        "extern_func_dec_and_call",
+        res,
+        vec![
+            Function {
+                params: vec![],
+                name: Box::new("user_main".to_string()),
+                body: vec![Block {
+                    id: 0,
+                    ins: vec![
+                        TIR::GlobalString(0, Box::new("Hello".to_string())),
+                        TIR::CallExternFunction(
+                            1,
+                            Box::new("toy_malloc".to_string()),
+                            vec![SSAValue {
+                                val: 0,
+                                ty: Some(TirType::I8PTR),
+                            }],
+                            true,
+                            TirType::I64,
+                        ),
+                        TIR::CallExternFunction(
+                            2,
+                            Box::new("printf".to_string()),
+                            vec![SSAValue {
+                                val: 1,
+                                ty: Some(TirType::I8PTR),
+                            }],
+                            false,
+                            TirType::I64,
+                        ),
+                        TIR::IConst(3, 0, TirType::I64),
+                        TIR::Ret(
+                            4,
+                            SSAValue {
+                                val: 3,
+                                ty: Some(TirType::I64),
+                            },
+                        ),
+                    ],
+                }],
+                ins_counter: 5,
+                ret_type: TirType::I64,
+                heap_allocations: vec![crate::codegen::tir::ir::HeapAllocation {
+                    block: 0,
+                    allocation_id: 0,
+                    function: Box::new("user_main".to_string()),
+                    refs: vec![(Box::new("user_main".to_string()), 0, 1)],
+                    alloc_ins: SSAValue {
+                        val: 1,
+                        ty: Some(TirType::I8PTR),
+                    },
+                }],
+                heap_counter: 1,
+            },
+        ],
+    );
+}
+

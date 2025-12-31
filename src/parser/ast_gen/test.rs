@@ -46,6 +46,10 @@ fn eq_ast_ignoring_src(x: &Ast, y: &Ast) -> bool {
                 && compare_ast_vecs(xb.clone(), yb.clone())
         }
 
+        (Ast::ExternFuncDec(xn, xp, xr, _), Ast::ExternFuncDec(yn, yp, yr, _)) => {
+            xn == yn && xr == yr && compare_ast_vecs(xp.clone(), yp.clone())
+        }
+
         (Ast::FuncCall(xn, xp, _), Ast::FuncCall(yn, yp, _)) => {
             xn == yn && compare_ast_vecs(xp.clone(), yp.clone())
         }
@@ -1885,3 +1889,29 @@ fn test_ast_gen_struct_arr_func_call() {
         ]
     ))
 }
+
+#[test]
+fn test_ast_gen_extern_func_dec() {
+    let input = String::from("extern fn printf(msg: str): int;");
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let mut g = AstGenerator::new();
+    let toks = l.lex(input).unwrap();
+    let boxes = b.box_toks(toks).unwrap();
+    let ast = g.generate(boxes).unwrap();
+
+    assert!(compare_ast_vecs(
+        ast,
+        vec![Ast::ExternFuncDec(
+            Box::new("printf".to_string()),
+            vec![Ast::FuncParam(
+                Box::new("msg".to_string()),
+                TypeTok::Str,
+                "".to_string()
+            )],
+            TypeTok::Int,
+            "".to_string()
+        )]
+    ));
+}
+

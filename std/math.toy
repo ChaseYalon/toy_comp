@@ -1,0 +1,4 @@
+extern fn toy_math_abs(a: int): int;
+fn abs(a: int): int {
+    return toy_math_abs(a);
+}

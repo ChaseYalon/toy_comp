@@ -45,12 +45,15 @@ pub enum Token {
     While,
     Struct(Box<String>),
     For, //in the context of binding functions to structs
+    Extern,
+    Import,
+
     //Names
     VarName(Box<String>),
     VarRef(Box<String>),
     ///Struct, key
     StructRef(Box<String>, Vec<String>),
-
+    
     //Syntax
     Semicolon,
     Colon,
@@ -201,6 +204,8 @@ impl Token {
             Self::Dot => "Dot".to_string(),
             Self::Not => "Not".to_string(),
             Self::For => "For".to_string(),
+            Self::Extern => "Extern".to_string(),
+            Self::Import => "Import".to_string(),
         };
     }
     ///Is used to get value out of an int literal
@@ -277,11 +282,13 @@ impl Token {
                     for f in k {
                         result.push_str(f);
                     }
-                    result
+                    *result
                 }
                 Token::Dot => String::from("."),
                 Token::Not => String::from("!"),
                 Token::For => String::from("for"),
+                Token::Extern => String::from("extern"),
+                Token::Import => String::from("import"),
             }
         );
     }

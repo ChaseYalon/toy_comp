@@ -132,11 +132,34 @@ impl<'a> LlvmGenerator<'a> {
             TIR::CallExternFunction(id, name, params, _, ret_type) => {
                 let func_body = if let Some(f) = self.main_module.get_function(&name) {
                     f
-                } else {
-                    let hm_func = self.func_map.get(&*name).unwrap();
+                } else if let Some(hm_func) = self.func_map.get(&*name) {
                     self.main_module.add_function(
                         &*name,
                         hm_func.to_owned(),
+                        Some(Linkage::External),
+                    )
+                } else {
+                    let mut compiled_types: Vec<BasicMetadataTypeEnum> = vec![];
+                    for p in &params {
+                        let t = p.ty.as_ref().expect("Param type should be known");
+                        compiled_types.push(self._tir_to_llvm_type(t.clone()).into());
+                    }
+
+                    let fn_type = match ret_type {
+                        TirType::I64 => self.ctx.i64_type().fn_type(&compiled_types, false),
+                        TirType::F64 => self.ctx.f64_type().fn_type(&compiled_types, false),
+                        TirType::I1 => self.ctx.bool_type().fn_type(&compiled_types, false),
+                        TirType::I8PTR => self
+                            .ctx
+                            .ptr_type(AddressSpace::default())
+                            .fn_type(&compiled_types, false),
+                        TirType::Void => self.ctx.void_type().fn_type(&compiled_types, false),
+                        _ => todo!("Chase you have not implemented this return type yet"),
+                    };
+
+                    self.main_module.add_function(
+                        &*name,
+                        fn_type,
                         Some(Linkage::External),
                     )
                 };
