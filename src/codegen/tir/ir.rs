@@ -826,7 +826,8 @@ impl TirBuilder {
             &TypeTok::BoolArr(n) => (5, n),
             &TypeTok::IntArr(n) => (6, n),
             &TypeTok::FloatArr(n) => (7, n),
-            _ => unreachable!(), // parser validated
+            &TypeTok::StructArr(_, n) => (8, n), // struct arrays use type code 8, must have str method to be printed
+            _ => unreachable!(),                 // parser validated
         };
         let v = self.iconst(n, TypeTok::Int)?;
         param_values.push(v);

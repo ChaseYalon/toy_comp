@@ -35,6 +35,12 @@ impl Lexer {
         debug!(targets: ["lexer", "lexer_verbose"], i, self.cp, &self.chars);
         return self.chars[self.cp + i];
     }
+    /// Get a snippet of text around the current position for error reporting
+    fn get_error_context(&self) -> String {
+        let start = self.cp.saturating_sub(10);
+        let end = (self.cp + 10).min(self.chars.len());
+        self.chars[start..end].iter().collect()
+    }
     fn lex_keyword(&mut self, word: &str, tok: Token) -> bool {
         for (i, c) in word.char_indices() {
             if self.peek(i) != c {
@@ -88,7 +94,12 @@ impl Lexer {
             TypeTok::Str => TypeTok::StrArr(arr_count),
             TypeTok::Float => TypeTok::FloatArr(arr_count),
             TypeTok::Any => TypeTok::AnyArr(arr_count),
-            _ => return Err(ToyError::new(ToyErrorType::ArrayTypeInvalid, None)),
+            _ => {
+                return Err(ToyError::new(
+                    ToyErrorType::ArrayTypeInvalid,
+                    Some(self.get_error_context()),
+                ));
+            }
         };
 
         self.toks.push(Token::Type(arr_type));
@@ -194,11 +205,19 @@ impl Lexer {
             if c == '.' {
                 self.flush();
                 if self.toks.len() == 0 {
-                    return Err(ToyError::new(ToyErrorType::MalformedFieldName, None)); //I hate that none but dont want to fix it
+                    return Err(ToyError::new(
+                        ToyErrorType::MalformedFieldName,
+                        Some(self.get_error_context()),
+                    ));
                 }
                 match self.toks.last().unwrap() {
-                    Token::VarName(_) | Token::VarRef(_) => {}
-                    _ => return Err(ToyError::new(ToyErrorType::MalformedFieldName, None)),
+                    Token::VarName(_) | Token::VarRef(_) | Token::RBrack | Token::RParen => {}
+                    _ => {
+                        return Err(ToyError::new(
+                            ToyErrorType::MalformedFieldName,
+                            Some(self.get_error_context()),
+                        ));
+                    }
                 }
                 let len = self.chars.len();
                 loop {
@@ -213,7 +232,10 @@ impl Lexer {
                     }
 
                     if field_name.is_empty() {
-                        return Err(ToyError::new(ToyErrorType::MalformedFieldName, None));
+                        return Err(ToyError::new(
+                            ToyErrorType::MalformedFieldName,
+                            Some(self.get_error_context()),
+                        ));
                     }
 
                     self.toks.push(Token::Dot);
@@ -259,6 +281,47 @@ impl Lexer {
                     self.toks.push(Token::MinusMinus);
                     self.cp += 2;
                     continue;
+                }
+                self.flush();
+                if self.peek(1).is_ascii_digit() {
+                    let is_unary = self.toks.is_empty() || {
+                        match self.toks.last().unwrap() {
+                            Token::Assign
+                            | Token::LParen
+                            | Token::LBrack
+                            | Token::LBrace
+                            | Token::Comma
+                            | Token::Colon
+                            | Token::Plus
+                            | Token::Minus
+                            | Token::Multiply
+                            | Token::Divide
+                            | Token::Modulo
+                            | Token::Equals
+                            | Token::NotEquals
+                            | Token::LessThan
+                            | Token::GreaterThan
+                            | Token::LessThanEqt
+                            | Token::GreaterThanEqt
+                            | Token::And
+                            | Token::Or
+                            | Token::Not
+                            | Token::Return
+                            | Token::If
+                            | Token::While
+                            | Token::Semicolon
+                            | Token::CompoundPlus
+                            | Token::CompoundMinus
+                            | Token::CompoundMultiply
+                            | Token::CompoundDivide => true,
+                            _ => false,
+                        }
+                    };
+                    if is_unary {
+                        self.num_buf.push('-');
+                        self.eat();
+                        continue;
+                    }
                 }
                 self.flush();
                 self.toks.push(Token::Minus);
@@ -423,7 +486,10 @@ impl Lexer {
                 continue;
             }
 
-            return Err(ToyError::new(ToyErrorType::UnknownCharacter(c), None));
+            return Err(ToyError::new(
+                ToyErrorType::UnknownCharacter(c),
+                Some(self.get_error_context()),
+            ));
         }
         debug!(targets: ["lexer_verbose"], self.toks.clone());
 

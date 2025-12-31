@@ -17,56 +17,10 @@ impl Boxer {
         }
     }
     fn pre_process(&self, input: &Vec<Token>) -> Vec<Token> {
-        let mut toks: Vec<Token> = Vec::new();
+        // First pass: collapse dotted field access sequences into StructRef tokens
+        let mut first_pass: Vec<Token> = Vec::new();
         let mut i = 0usize;
         while i < input.len() {
-            let t = input[i].clone();
-            // compound ops
-            if t.tok_type() == "CompoundPlus" {
-                toks.push(Token::Assign);
-                toks.push(input[i - 1].clone());
-                toks.push(Token::Plus);
-                i += 1;
-                continue;
-            }
-            if t.tok_type() == "CompoundMinus" {
-                toks.push(Token::Assign);
-                toks.push(input[i - 1].clone());
-                toks.push(Token::Minus);
-                i += 1;
-                continue;
-            }
-            if t.tok_type() == "CompoundMultiply" {
-                toks.push(Token::Assign);
-                toks.push(input[i - 1].clone());
-                toks.push(Token::Multiply);
-                i += 1;
-                continue;
-            }
-            if t.tok_type() == "CompoundDivide" {
-                toks.push(Token::Assign);
-                toks.push(input[i - 1].clone());
-                toks.push(Token::Divide);
-                i += 1;
-                continue;
-            }
-            if t.tok_type() == "PlusPlus" {
-                toks.push(Token::Assign);
-                toks.push(input[i - 1].clone());
-                toks.push(Token::Plus);
-                toks.push(Token::IntLit(1));
-                i += 1;
-                continue;
-            }
-            if t.tok_type() == "CompoundMinus" {
-                toks.push(Token::Assign);
-                toks.push(input[i - 1].clone());
-                toks.push(Token::Minus);
-                toks.push(Token::IntLit(1));
-                i += 1;
-                continue;
-            }
-
             // collapse dotted field access sequences into StructRef tokens
             if i + 2 < input.len()
                 && input[i].tok_type() == "VarRef"
@@ -86,9 +40,63 @@ impl Boxer {
                         }
                         i += 2;
                     }
-                    toks.push(Token::StructRef(Box::new(s_name), keys));
+                    first_pass.push(Token::StructRef(Box::new(s_name), keys));
                     continue;
                 }
+            }
+            first_pass.push(input[i].clone());
+            i += 1;
+        }
+
+        // Second pass: handle compound ops (now StructRefs are already collapsed)
+        let mut toks: Vec<Token> = Vec::new();
+        i = 0;
+        while i < first_pass.len() {
+            let t = first_pass[i].clone();
+            // compound ops
+            if t.tok_type() == "CompoundPlus" {
+                toks.push(Token::Assign);
+                toks.push(first_pass[i - 1].clone());
+                toks.push(Token::Plus);
+                i += 1;
+                continue;
+            }
+            if t.tok_type() == "CompoundMinus" {
+                toks.push(Token::Assign);
+                toks.push(first_pass[i - 1].clone());
+                toks.push(Token::Minus);
+                i += 1;
+                continue;
+            }
+            if t.tok_type() == "CompoundMultiply" {
+                toks.push(Token::Assign);
+                toks.push(first_pass[i - 1].clone());
+                toks.push(Token::Multiply);
+                i += 1;
+                continue;
+            }
+            if t.tok_type() == "CompoundDivide" {
+                toks.push(Token::Assign);
+                toks.push(first_pass[i - 1].clone());
+                toks.push(Token::Divide);
+                i += 1;
+                continue;
+            }
+            if t.tok_type() == "PlusPlus" {
+                toks.push(Token::Assign);
+                toks.push(first_pass[i - 1].clone());
+                toks.push(Token::Plus);
+                toks.push(Token::IntLit(1));
+                i += 1;
+                continue;
+            }
+            if t.tok_type() == "MinusMinus" {
+                toks.push(Token::Assign);
+                toks.push(first_pass[i - 1].clone());
+                toks.push(Token::Minus);
+                toks.push(Token::IntLit(1));
+                i += 1;
+                continue;
             }
 
             toks.push(t);
@@ -620,6 +628,9 @@ impl Boxer {
         let mut params: BTreeMap<String, TypeTok> = BTreeMap::new();
 
         for group in item_groups {
+            if group.is_empty() {
+                continue;
+            }
             if group[1] != Token::Colon {
                 let field_text = format!(
                     "field: {}",
@@ -800,6 +811,12 @@ impl Boxer {
                 } else {
                     break;
                 }
+            }
+
+            //is something like arr[i].foo()
+            if i < len && toks[i].tok_type() == "Dot" {
+                let raw_text = toks.iter().map(|t| t.to_string()).collect::<String>();
+                return Ok(TBox::Expr(toks, raw_text));
             }
 
             if i >= len || toks[i].tok_type() != "Assign" {

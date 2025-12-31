@@ -15,13 +15,13 @@ pub mod ir;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Scope {
     parent: Option<Rc<RefCell<Scope>>>,
-    vars: HashMap<String, (SSAValue, TypeTok)>,
+    vars: BTreeMap<String, (SSAValue, TypeTok)>,
 }
 impl Scope {
     pub fn new_child(parent: &Rc<RefCell<Scope>>) -> Rc<RefCell<Scope>> {
         return Rc::new(RefCell::new(Scope {
             parent: Some(parent.clone()),
-            vars: HashMap::new(),
+            vars: BTreeMap::new(),
         }));
     }
     pub fn get_var(&self, name: &str) -> Result<SSAValue, ToyError> {
@@ -60,7 +60,7 @@ impl AstToIrConverter {
             builder: TirBuilder::new(),
             global_scope: Rc::new(RefCell::new(Scope {
                 parent: None,
-                vars: HashMap::new(),
+                vars: BTreeMap::new(),
             })),
             last_val: None,
             interfaces: HashMap::new(),
@@ -148,6 +148,45 @@ impl AstToIrConverter {
                     TirType::StructInterface(_) => Ok(TypeTok::Int),
                     TirType::Void => Ok(TypeTok::Void),
                 }
+            }
+            Ast::ArrStructRef(arr_name, _, fields, _) => {
+                // Get the array type from scope
+                let arr_ty = scope.as_ref().borrow().get_var_type(arr_name)?;
+
+                // Get the element type
+                let mut current_ty = match arr_ty {
+                    TypeTok::StructArr(fields, _) => TypeTok::Struct(fields),
+                    _ => {
+                        return Err(ToyError::new(
+                            ToyErrorType::VariableNotAStruct,
+                            Some(format!("{:?}", arr_name)),
+                        ));
+                    }
+                };
+
+                // Walk through the fields to get the final type
+                for field_name in fields {
+                    match &current_ty {
+                        TypeTok::Struct(field_map) => {
+                            current_ty = if let Some(field_ty) = field_map.get(field_name) {
+                                *field_ty.clone()
+                            } else {
+                                return Err(ToyError::new(
+                                    ToyErrorType::KeyNotOnStruct,
+                                    Some(field_name.clone()),
+                                ));
+                            };
+                        }
+                        _ => {
+                            return Err(ToyError::new(
+                                ToyErrorType::VariableNotAStruct,
+                                Some(field_name.clone()),
+                            ));
+                        }
+                    }
+                }
+
+                Ok(current_ty)
             }
             _ => Err(ToyError::new(
                 ToyErrorType::TypeIdNotAssigned,
@@ -367,6 +406,58 @@ impl AstToIrConverter {
 
                 return Ok(current_val);
             }
+            Ast::ArrStructRef(arr_name, idxs, fields, _) => {
+                // First, get the array element
+                if idxs.is_empty() {
+                    unreachable!();
+                }
+
+                let mut current_val = scope.as_ref().borrow().get_var(&*arr_name)?;
+                for idx_expr in idxs {
+                    let idx = self.compile_expr(idx_expr, scope)?;
+                    let read_params = vec![current_val, idx];
+                    current_val = self
+                        .builder
+                        .call("toy_read_from_arr".to_string(), read_params)?;
+                }
+
+                // Now access the fields on the struct element
+                for field_name in fields {
+                    let struct_type = current_val.ty.clone().unwrap(); // parser validated
+
+                    let field_types = match &struct_type {
+                        TirType::StructInterface(types) => types.clone(),
+                        _ => {
+                            eprintln!("Expected StructInterface but got: {:?}", struct_type);
+                            unreachable!()
+                        }
+                    };
+
+                    let mut field_idx: Option<usize> = None;
+                    let mut field_type: Option<TirType> = None;
+
+                    for (_, (field_map, iface_type)) in &self.interfaces {
+                        if let TirType::StructInterface(iface_fields) = iface_type {
+                            if iface_fields == &field_types {
+                                if let Some(&idx) =
+                                    (field_map as &HashMap<String, usize>).get(&field_name)
+                                {
+                                    field_idx = Some(idx);
+                                    field_type = Some(field_types[idx].clone());
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    let idx = field_idx.unwrap(); // parser validated
+                    let ty = field_type.unwrap(); // parser validated
+                    current_val = self
+                        .builder
+                        .read_struct_literal(current_val, idx as u64, ty)?;
+                }
+
+                return Ok(current_val);
+            }
             Ast::Not(v) => {
                 let val = self.compile_expr(*v, scope)?;
                 self.builder.not(val)
@@ -434,7 +525,6 @@ impl AstToIrConverter {
 
         return Ok(());
     }
-
     fn compile_while_stmt(
         &mut self,
         node: Ast,
@@ -445,25 +535,25 @@ impl AstToIrConverter {
             _ => unreachable!(),
         };
 
-        let pre_loop_vars: HashMap<String, (SSAValue, TypeTok)> =
+        let pre_loop_vars: BTreeMap<String, (SSAValue, TypeTok)> =
             scope.as_ref().borrow().vars.clone();
-
         let header_id = self.builder.create_block()?;
         self.builder.jump_block_un_cond(header_id);
         self.builder.switch_block(header_id);
 
-        let mut phi_id_map: HashMap<String, ValueId> = HashMap::new();
-        for var_name in pre_loop_vars.keys() {
+        let mut phi_id_map: BTreeMap<String, ValueId> = BTreeMap::new();
+
+        for var_name in pre_loop_vars.keys().rev() {
             let phi_id = self.builder.alloc_value_id();
-            phi_id_map.insert((var_name as &String).clone(), phi_id);
+            phi_id_map.insert(var_name.clone(), phi_id);
         }
 
         for (var_name, pre_val) in &pre_loop_vars {
-            if let Some(phi_id) = phi_id_map.get(var_name) {
+            if let Some(&phi_id) = phi_id_map.get(var_name) {
                 scope.as_ref().borrow_mut().set_var(
                     var_name.clone(),
                     SSAValue {
-                        val: *phi_id,
+                        val: phi_id,
                         ty: pre_val.0.ty.clone(),
                     },
                     pre_val.1.clone(),
@@ -488,7 +578,7 @@ impl AstToIrConverter {
             self.compile_stmt(ast, &child_scope)?;
         }
 
-        let post_loop_vars: HashMap<String, (SSAValue, TypeTok)> =
+        let post_loop_vars: BTreeMap<String, (SSAValue, TypeTok)> =
             child_scope.as_ref().borrow().vars.clone();
 
         self.builder.jump_block_un_cond(header_id)?;
@@ -499,7 +589,7 @@ impl AstToIrConverter {
             let post_val = post_loop_vars
                 .get(var_name)
                 .cloned()
-                .unwrap_or_else(|| (pre_val.clone()));
+                .unwrap_or_else(|| pre_val.clone());
             if let Some(&phi_id) = phi_id_map.get(var_name) {
                 let phi_ins = TIR::Phi(
                     phi_id,
@@ -510,7 +600,7 @@ impl AstToIrConverter {
             }
         }
 
-        for phi_ins in phi_instructions.into_iter().rev() {
+        for phi_ins in phi_instructions.into_iter() {
             self.builder.insert_at_block_start(header_id, phi_ins)?;
         }
 

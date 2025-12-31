@@ -100,6 +100,10 @@ fn eq_ast_ignoring_src(x: &Ast, y: &Ast) -> bool {
             xn == yn && xf == yf && eq_ast_ignoring_src(xv, yv)
         }
 
+        (Ast::ArrStructRef(xa, xi, xk, _), Ast::ArrStructRef(ya, yi, yk, _)) => {
+            xa == ya && compare_ast_vecs(xi.clone(), yi.clone()) && xk == yk
+        }
+
         (Ast::Not(xn), Ast::Not(yn)) => eq_ast_ignoring_src(xn, yn),
 
         _ => todo!("Chase you have not implemented {} node yet", x.node_type()),
@@ -1616,6 +1620,235 @@ fn test_ast_gen_struct_func_call() {
                 ],
                 "".to_string()
             ),
+        ]
+    ))
+}
+
+#[test]
+fn test_ast_gen_struct_func_call_multi_param() {
+    setup_ast!(
+        r#"
+        struct Point{
+            x: int,
+            y: int,
+        }
+        for Point{
+            fn move(dx: int, dy: int){
+                this.dx = dx;
+                this.dy = dy;
+            }
+        }
+
+        let origin = Point{x: 0, y: 0};
+        origin.move(2, 2);
+        "#,
+        ast
+    );
+
+    assert!(compare_ast_vecs(
+        ast,
+        vec![
+            Ast::StructInterface(
+                Box::new("Point".to_string()),
+                Box::new(BTreeMap::from([
+                    ("x".to_string(), TypeTok::Int),
+                    ("y".to_string(), TypeTok::Int),
+                ])),
+                "".to_string()
+            ),
+            Ast::FuncDec(
+                Box::new("Point:::move".to_string()),
+                vec![
+                    Ast::FuncParam(
+                        Box::new("this".to_string()),
+                        TypeTok::Struct(BTreeMap::from([
+                            ("x".to_string(), Box::new(TypeTok::Int)),
+                            ("y".to_string(), Box::new(TypeTok::Int)),
+                        ])),
+                        "".to_string()
+                    ),
+                    Ast::FuncParam(Box::new("dx".to_string()), TypeTok::Int, "".to_string()),
+                    Ast::FuncParam(Box::new("dy".to_string()), TypeTok::Int, "".to_string()),
+                ],
+                TypeTok::Void,
+                vec![
+                    Ast::StructReassign(
+                        Box::new("this".to_string()),
+                        vec!["dx".to_string()],
+                        Box::new(Ast::VarRef(Box::new("dx".to_string()), "".to_string())),
+                        "".to_string()
+                    ),
+                    Ast::StructReassign(
+                        Box::new("this".to_string()),
+                        vec!["dy".to_string()],
+                        Box::new(Ast::VarRef(Box::new("dy".to_string()), "".to_string())),
+                        "".to_string()
+                    )
+                ],
+                "".to_string()
+            ),
+            Ast::VarDec(
+                Box::new("origin".to_string()),
+                TypeTok::Struct(BTreeMap::from([
+                    ("x".to_string(), Box::new(TypeTok::Int)),
+                    ("y".to_string(), Box::new(TypeTok::Int)),
+                ])),
+                Box::new(Ast::StructLit(
+                    Box::new("Point".to_string()),
+                    Box::new(BTreeMap::from([
+                        ("x".to_string(), (Ast::IntLit(0), TypeTok::Int)),
+                        ("y".to_string(), (Ast::IntLit(0), TypeTok::Int)),
+                    ])),
+                    "".to_string()
+                )),
+                "".to_string()
+            ),
+            Ast::FuncCall(
+                Box::new("Point:::move".to_string()),
+                vec![
+                    Ast::VarRef(Box::new("origin".to_string()), "".to_string()),
+                    Ast::IntLit(2),
+                    Ast::IntLit(2)
+                ],
+                "".to_string()
+            )
+        ]
+    ))
+}
+
+#[test]
+fn test_ast_gen_struct_arr_func_call() {
+    setup_ast!(
+        r#"
+        struct Foo{
+            a: int
+        }
+        for Foo {
+            fn set_a(new_a: int){
+                this.a = new_a;
+            }
+        }
+        let fee = [
+            Foo{
+                a: 4
+            }
+        ];
+
+        let i = 0;
+        while i < len(fee){
+            fee[i].set_a(5);
+            i++;
+        }
+        println(fee[0].a)
+        "#,
+        ast
+    );
+    assert!(compare_ast_vecs(
+        ast,
+        vec![
+            Ast::StructInterface(
+                Box::new("Foo".to_string()),
+                Box::new(BTreeMap::from([("a".to_string(), TypeTok::Int)])),
+                "".to_string()
+            ),
+            Ast::FuncDec(
+                Box::new("Foo:::set_a".to_string()),
+                vec![
+                    Ast::FuncParam(
+                        Box::new("this".to_string()),
+                        TypeTok::Struct(BTreeMap::from([(
+                            "a".to_string(),
+                            Box::new(TypeTok::Int)
+                        )])),
+                        "".to_string()
+                    ),
+                    Ast::FuncParam(Box::new("new_a".to_string()), TypeTok::Int, "".to_string())
+                ],
+                TypeTok::Void,
+                vec![Ast::StructReassign(
+                    Box::new("this".to_string()),
+                    vec!["a".to_string()],
+                    Box::new(Ast::VarRef(Box::new("new_a".to_string()), "".to_string())),
+                    "".to_string()
+                )],
+                "".to_string()
+            ),
+            Ast::VarDec(
+                Box::new("fee".to_string()),
+                TypeTok::StructArr(
+                    BTreeMap::from([("a".to_string(), Box::new(TypeTok::Int))]),
+                    1
+                ),
+                Box::new(Ast::ArrLit(
+                    TypeTok::StructArr(
+                        BTreeMap::from([("a".to_string(), Box::new(TypeTok::Int))]),
+                        1
+                    ),
+                    vec![Ast::StructLit(
+                        Box::new("Foo".to_string()),
+                        Box::new(BTreeMap::from([(
+                            "a".to_string(),
+                            (Ast::IntLit(4), TypeTok::Int)
+                        )])),
+                        "".to_string()
+                    )],
+                    "".to_string()
+                )),
+                "".to_string()
+            ),
+            Ast::VarDec(
+                Box::new("i".to_string()),
+                TypeTok::Int,
+                Box::new(Ast::IntLit(0)),
+                "".to_string()
+            ),
+            Ast::WhileStmt(
+                Box::new(Ast::InfixExpr(
+                    Box::new(Ast::VarRef(Box::new("i".to_string()), "".to_string())),
+                    Box::new(Ast::FuncCall(
+                        Box::new("len".to_string()),
+                        vec![Ast::VarRef(Box::new("fee".to_string()), "".to_string())],
+                        "".to_string()
+                    )),
+                    InfixOp::LessThan,
+                    "".to_string()
+                )),
+                vec![
+                    Ast::FuncCall(
+                        Box::new("Foo:::set_a".to_string()),
+                        vec![
+                            Ast::ArrRef(
+                                Box::new("fee".to_string()),
+                                vec![Ast::VarRef(Box::new("i".to_string()), "".to_string())],
+                                "".to_string()
+                            ),
+                            Ast::IntLit(5)
+                        ],
+                        "".to_string()
+                    ),
+                    Ast::VarReassign(
+                        Box::new("i".to_string()),
+                        Box::new(Ast::InfixExpr(
+                            Box::new(Ast::VarRef(Box::new("i".to_string()), "".to_string())),
+                            Box::new(Ast::IntLit(1)),
+                            InfixOp::Plus,
+                            "".to_string()
+                        )),
+                        "".to_string()
+                    )
+                ],
+                "".to_string()
+            ),
+            Ast::FuncCall(
+                Box::new("println".to_string()),
+                vec![Ast::ArrStructRef(
+                    Box::new("fee".to_string()),
+                    vec![Ast::IntLit(0)],
+                    vec!["a".to_string()],
+                    "".to_string()
+                )],
+                "".to_string()
+            )
         ]
     ))
 }

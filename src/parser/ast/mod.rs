@@ -63,6 +63,9 @@ pub enum Ast {
     StructRef(Box<String>, Vec<String>, String),
     ///struct name, parameters, value, raw text
     StructReassign(Box<String>, Vec<String>, Box<Ast>, String),
+    ///Array name, array indices, field keys, raw text
+    ///For accessing struct fields from array elements: arr[0].field or arr[0].field1.field2
+    ArrStructRef(Box<String>, Vec<Ast>, Vec<String>, String),
     Not(Box<Ast>),
 }
 impl Ast {
@@ -92,6 +95,7 @@ impl Ast {
             Ast::StructLit(_, _, _) => "StructLit".to_string(),
             Ast::StructRef(_, _, _) => "StructRef".to_string(),
             Ast::StructReassign(_, _, _, _) => "StructReassign".to_string(),
+            Ast::ArrStructRef(_, _, _, _) => "ArrStructRef".to_string(),
             Ast::Not(_) => "Not".to_string(),
         };
     }
@@ -122,6 +126,7 @@ impl Ast {
             Ast::StructLit(_, _, s) => s.clone(),
             Ast::StructRef(_, _, s) => s.clone(),
             Ast::StructReassign(_, _, _, s) => s.clone(),
+            Ast::ArrStructRef(_, _, _, s) => s.clone(),
             Ast::Not(n) => format!("!{}", n.to_string()),
         }
     }
@@ -206,6 +211,10 @@ impl fmt::Display for Ast {
                 Ast::StructReassign(st, fi, v, s) => format!(
                     "StructReassign Name({}), fields({:?}), Value({}), Literal({})",
                     *st, fi, *v, s
+                ),
+                Ast::ArrStructRef(a, i, k, s) => format!(
+                    "ArrStructRef Arr({}), Index({:?}), Keys({:?}), Literal({})",
+                    *a, i, k, s
                 ),
                 Ast::Not(n) => format!("Not({})", *n),
             }

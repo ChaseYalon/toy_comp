@@ -27,16 +27,6 @@ impl CTLA {
         };
     }
     fn build_cfg_graph(&self, func: String, idx: BlockId) -> CfgNode {
-        println!(
-            "\n\nBLOCKS\n\n{:#?}",
-            &self
-                .builder
-                .funcs
-                .iter()
-                .find(|f| *f.name == func)
-                .unwrap()
-                .body
-        );
         let block = self
             .builder
             .funcs

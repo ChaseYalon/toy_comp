@@ -227,15 +227,21 @@ impl AstGenerator {
 
         let mut arr_elems: Vec<Vec<Token>> = Vec::new();
         let mut current: Vec<Token> = Vec::new();
-        let mut nest = 0;
+        let mut bracket_nest = 0;
+        let mut brace_nest = 0;
+        let mut paren_nest = 0;
         for t in arr_toks {
-            if t.tok_type() == "LBrack" {
-                nest += 1;
-            } else if t.tok_type() == "RBrack" {
-                nest -= 1;
+            match t.tok_type().as_str() {
+                "LBrack" => bracket_nest += 1,
+                "RBrack" => bracket_nest -= 1,
+                "LBrace" => brace_nest += 1,
+                "RBrace" => brace_nest -= 1,
+                "LParen" => paren_nest += 1,
+                "RParen" => paren_nest -= 1,
+                _ => {}
             }
 
-            if t.tok_type() == "Comma" && nest == 0 {
+            if t.tok_type() == "Comma" && bracket_nest == 0 && brace_nest == 0 && paren_nest == 0 {
                 arr_elems.push(current.clone());
                 current.clear();
             } else {
@@ -269,6 +275,8 @@ impl AstGenerator {
                 TypeTok::FloatArr(n) => TypeTok::FloatArr(n + 1),
                 TypeTok::StrArr(n) => TypeTok::StrArr(n + 1),
                 TypeTok::AnyArr(n) => TypeTok::AnyArr(n + 1),
+                TypeTok::Struct(kv) => TypeTok::StructArr(kv, 1),
+                TypeTok::StructArr(kv, n) => TypeTok::StructArr(kv, n + 1),
                 other => other,
             };
         }
@@ -621,6 +629,8 @@ impl AstGenerator {
                     TypeTok::BoolArr(n) => TypeTok::BoolArr(n - 1),
                     TypeTok::FloatArr(n) => TypeTok::FloatArr(n - 1),
                     TypeTok::AnyArr(n) => TypeTok::AnyArr(n - 1),
+                    TypeTok::StructArr(kv, 1) => TypeTok::Struct(kv),
+                    TypeTok::StructArr(kv, n) => TypeTok::StructArr(kv, n - 1),
                     _ => {
                         return Err(ToyError::new(
                             ToyErrorType::ArrayTypeInvalid,
@@ -630,12 +640,155 @@ impl AstGenerator {
                 };
             }
 
-            let arr_ref_ast = Ast::ArrRef(Box::new(name), idx_exprs, raw_text.clone());
+            let arr_ref_ast = Ast::ArrRef(Box::new(name.clone()), idx_exprs.clone(), raw_text.clone());
 
             if arr_ref_end < toks.len() {
                 let remaining_toks = &toks[arr_ref_end..];
                 if !remaining_toks.is_empty() {
                     let op_tok = &remaining_toks[0];
+
+                    // Handle struct field access on array element: arr[i].field
+                    if *op_tok == Token::Dot && remaining_toks.len() >= 2 {
+                        let is_method_call = remaining_toks.len() >= 3
+                            && remaining_toks[1].tok_type() == "VarRef"
+                            && remaining_toks[2].tok_type() == "LParen";
+
+                        if !is_method_call {
+                            let mut keys: Vec<String> = Vec::new();
+                            let mut current_type = item_type.clone();
+                            let mut i = 1;
+
+                            while i < remaining_toks.len() {
+                                if remaining_toks[i].tok_type() == "VarRef" {
+                                    let field_name = match &remaining_toks[i] {
+                                        Token::VarRef(n) => *n.clone(),
+                                        _ => unreachable!(),
+                                    };
+
+                                    if let TypeTok::Struct(fields) = current_type {
+                                        if let Some(field_type) = fields.get(&field_name) {
+                                            current_type = *field_type.clone();
+                                            keys.push(field_name);
+                                        } else {
+                                            return Err(ToyError::new(
+                                                ToyErrorType::KeyNotOnStruct,
+                                                Some(raw_text.clone()),
+                                            ));
+                                        }
+                                    } else {
+                                        return Err(ToyError::new(
+                                            ToyErrorType::VariableNotAStruct,
+                                            Some(raw_text.clone()),
+                                        ));
+                                    }
+                                    i += 1;
+                                } else {
+                                    break;
+                                }
+
+                                if i < remaining_toks.len() {
+                                    if remaining_toks[i].tok_type() == "Dot" {
+                                        i += 1;
+                                    } else {
+                                        break;
+                                    }
+                                }
+                            }
+
+                            let arr_struct_ref = Ast::ArrStructRef(
+                                Box::new(name.clone()),
+                                idx_exprs.clone(),
+                                keys,
+                                raw_text.clone(),
+                            );
+
+                            if i < remaining_toks.len() {
+                                let next_op_tok = &remaining_toks[i];
+                                let rest_toks = &remaining_toks[i + 1..];
+                                let (rhs_ast, _rhs_type) = self.parse_expr(&rest_toks.to_vec())?;
+
+                                let op = match next_op_tok {
+                                    Token::Plus => InfixOp::Plus,
+                                    Token::Minus => InfixOp::Minus,
+                                    Token::Multiply => InfixOp::Multiply,
+                                    Token::Divide => InfixOp::Divide,
+                                    Token::Modulo => InfixOp::Modulo,
+                                    Token::LessThan => InfixOp::LessThan,
+                                    Token::LessThanEqt => InfixOp::LessThanEqt,
+                                    Token::GreaterThan => InfixOp::GreaterThan,
+                                    Token::GreaterThanEqt => InfixOp::GreaterThanEqt,
+                                    Token::Equals => InfixOp::Equals,
+                                    Token::NotEquals => InfixOp::NotEquals,
+                                    Token::And => InfixOp::And,
+                                    Token::Or => InfixOp::Or,
+                                    _ => {
+                                        return Err(ToyError::new(
+                                            ToyErrorType::InvalidInfixOperation,
+                                            Some(raw_text.clone()),
+                                        ));
+                                    }
+                                };
+
+                                return Ok((
+                                    Ast::InfixExpr(
+                                        Box::new(arr_struct_ref),
+                                        Box::new(rhs_ast),
+                                        op.clone(),
+                                        raw_text.clone(),
+                                    ),
+                                    match op {
+                                        InfixOp::Plus
+                                        | InfixOp::Minus
+                                        | InfixOp::Multiply
+                                        | InfixOp::Divide
+                                        | InfixOp::Modulo => current_type,
+                                        _ => TypeTok::Bool,
+                                    },
+                                ));
+                            } else {
+                                return Ok((arr_struct_ref, current_type));
+                            }
+                        }
+                    }
+
+                    // Handle method call on array element: arr[i].method(...)
+                    if *op_tok == Token::Dot && remaining_toks.len() >= 3 {
+                        if remaining_toks[1].tok_type() == "VarRef"
+                            && remaining_toks[2].tok_type() == "LParen"
+                        {
+                            // This is a method call on array element
+                            // Convert arr[i].method(...) to method(arr[i], ...)
+                            let method_name = match &remaining_toks[1] {
+                                Token::VarRef(n) => n.clone(),
+                                _ => unreachable!(),
+                            };
+
+                            // Build new tokens: method_name(arr[i], args...)
+                            let mut new_toks: Vec<Token> = Vec::new();
+                            new_toks.push(Token::VarRef(method_name));
+                            new_toks.push(Token::LParen);
+
+                            // Create a token for the array reference
+                            // We need to pass the original array ref tokens
+                            let arr_ref_toks = &toks[0..arr_ref_end];
+                            new_toks.extend_from_slice(arr_ref_toks);
+
+                            // Add comma if there are more arguments
+                            let args_start = 3; // after Dot, VarRef, LParen
+                            if args_start < remaining_toks.len()
+                                && remaining_toks[args_start].tok_type() != "RParen"
+                            {
+                                new_toks.push(Token::Comma);
+                            }
+
+                            // Add the rest of the arguments (everything after LParen)
+                            new_toks.extend_from_slice(&remaining_toks[args_start..]);
+
+                            // Parse the transformed function call
+                            return self.parse_expr(&new_toks);
+                        }
+                    }
+
                     let right_toks = &remaining_toks[1..];
                     let (right_ast, right_type) = self.parse_expr(&right_toks.to_vec())?;
 

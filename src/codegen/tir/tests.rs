@@ -1995,3 +1995,497 @@ fn test_tirgen_struct_funcs() {
         ],
     );
 }
+
+#[test]
+fn test_tirgen_struct_func_multi() {
+    setup_tir!(
+        ir,
+        r#"
+struct Point{
+    x: float,
+    y: float,
+}
+
+for Point {
+    fn move(dx: float, dy: float) {
+        this.x += dx;
+        this.y += dy;
+    }
+}
+
+let points = [
+    Point{x: 0.0, y: 0.0},
+    Point{x: 1.0, y: 1.0},
+    Point{x: -1.0, y: -1.0}
+];
+
+let i = 0;
+while i < len(points) {
+    points[i].move(5.0, 0-2.0);
+    i += 1;
+}
+
+println(points);
+"#
+    );
+    compare_tir(
+        ir,
+        vec![
+            Function {
+                params: vec![],
+                name: Box::new("user_main".to_string()),
+                body: vec![
+                    Block {
+                        id: 0,
+                        ins: vec![
+                            TIR::CreateStructInterface(
+                                0,
+                                Box::new("Point".to_string()),
+                                TirType::StructInterface(vec![TirType::F64, TirType::F64]),
+                            ),
+                            TIR::FConst(4, 0.0, TirType::F64),
+                            TIR::FConst(5, 0.0, TirType::F64),
+                            TIR::CreateStructLiteral(
+                                6,
+                                TirType::StructInterface(vec![TirType::F64, TirType::F64]),
+                                vec![
+                                    SSAValue {
+                                        val: 4,
+                                        ty: Some(TirType::F64),
+                                    },
+                                    SSAValue {
+                                        val: 5,
+                                        ty: Some(TirType::F64),
+                                    },
+                                ],
+                            ),
+                            TIR::FConst(7, 1.0, TirType::F64),
+                            TIR::FConst(8, 1.0, TirType::F64),
+                            TIR::CreateStructLiteral(
+                                9,
+                                TirType::StructInterface(vec![TirType::F64, TirType::F64]),
+                                vec![
+                                    SSAValue {
+                                        val: 7,
+                                        ty: Some(TirType::F64),
+                                    },
+                                    SSAValue {
+                                        val: 8,
+                                        ty: Some(TirType::F64),
+                                    },
+                                ],
+                            ),
+                            TIR::FConst(10, -1.0, TirType::F64),
+                            TIR::FConst(11, -1.0, TirType::F64),
+                            TIR::CreateStructLiteral(
+                                12,
+                                TirType::StructInterface(vec![TirType::F64, TirType::F64]),
+                                vec![
+                                    SSAValue {
+                                        val: 10,
+                                        ty: Some(TirType::F64),
+                                    },
+                                    SSAValue {
+                                        val: 11,
+                                        ty: Some(TirType::F64),
+                                    },
+                                ],
+                            ),
+                            TIR::IConst(13, 3, TirType::I64),
+                            TIR::IConst(14, 8, TirType::I64),
+                            TIR::CallExternFunction(
+                                15,
+                                Box::new("toy_malloc_arr".to_string()),
+                                vec![
+                                    SSAValue {
+                                        val: 13,
+                                        ty: Some(TirType::I64),
+                                    },
+                                    SSAValue {
+                                        val: 14,
+                                        ty: Some(TirType::I64),
+                                    },
+                                ],
+                                true,
+                                TirType::I64,
+                            ),
+                            TIR::IConst(16, 0, TirType::I64),
+                            TIR::IConst(17, 8, TirType::I64),
+                            TIR::CallExternFunction(
+                                18,
+                                Box::new("toy_write_to_arr".to_string()),
+                                vec![
+                                    SSAValue {
+                                        val: 15,
+                                        ty: Some(TirType::I64),
+                                    },
+                                    SSAValue {
+                                        val: 6,
+                                        ty: Some(TirType::StructInterface(vec![
+                                            TirType::F64,
+                                            TirType::F64,
+                                        ])),
+                                    },
+                                    SSAValue {
+                                        val: 16,
+                                        ty: Some(TirType::I64),
+                                    },
+                                    SSAValue {
+                                        val: 17,
+                                        ty: Some(TirType::I64),
+                                    },
+                                ],
+                                false,
+                                TirType::Void,
+                            ),
+                            TIR::IConst(19, 1, TirType::I64),
+                            TIR::IConst(20, 8, TirType::I64),
+                            TIR::CallExternFunction(
+                                21,
+                                Box::new("toy_write_to_arr".to_string()),
+                                vec![
+                                    SSAValue {
+                                        val: 15,
+                                        ty: Some(TirType::I64),
+                                    },
+                                    SSAValue {
+                                        val: 9,
+                                        ty: Some(TirType::StructInterface(vec![
+                                            TirType::F64,
+                                            TirType::F64,
+                                        ])),
+                                    },
+                                    SSAValue {
+                                        val: 19,
+                                        ty: Some(TirType::I64),
+                                    },
+                                    SSAValue {
+                                        val: 20,
+                                        ty: Some(TirType::I64),
+                                    },
+                                ],
+                                false,
+                                TirType::Void,
+                            ),
+                            TIR::IConst(22, 2, TirType::I64),
+                            TIR::IConst(23, 8, TirType::I64),
+                            TIR::CallExternFunction(
+                                24,
+                                Box::new("toy_write_to_arr".to_string()),
+                                vec![
+                                    SSAValue {
+                                        val: 15,
+                                        ty: Some(TirType::I64),
+                                    },
+                                    SSAValue {
+                                        val: 12,
+                                        ty: Some(TirType::StructInterface(vec![
+                                            TirType::F64,
+                                            TirType::F64,
+                                        ])),
+                                    },
+                                    SSAValue {
+                                        val: 22,
+                                        ty: Some(TirType::I64),
+                                    },
+                                    SSAValue {
+                                        val: 23,
+                                        ty: Some(TirType::I64),
+                                    },
+                                ],
+                                false,
+                                TirType::Void,
+                            ),
+                            TIR::IConst(25, 0, TirType::I64),
+                            TIR::JumpBlockUnCond(26, 2),
+                        ],
+                    },
+                    Block {
+                        id: 2,
+                        ins: vec![
+                            TIR::Phi(
+                                27,
+                                vec![0, 3],
+                                vec![
+                                    SSAValue {
+                                        val: 15,
+                                        ty: Some(TirType::I64),
+                                    },
+                                    SSAValue {
+                                        val: 27,
+                                        ty: Some(TirType::I64),
+                                    },
+                                ],
+                            ),
+                            TIR::Phi(
+                                28,
+                                vec![0, 3],
+                                vec![
+                                    SSAValue {
+                                        val: 25,
+                                        ty: Some(TirType::I64),
+                                    },
+                                    SSAValue {
+                                        val: 40,
+                                        ty: Some(TirType::I64),
+                                    },
+                                ],
+                            ),
+                            TIR::CallExternFunction(
+                                29,
+                                Box::new("toy_arrlen".to_string()),
+                                vec![SSAValue {
+                                    val: 27,
+                                    ty: Some(TirType::I64),
+                                }],
+                                false,
+                                TirType::I64,
+                            ),
+                            TIR::BoolInfix(
+                                30,
+                                SSAValue {
+                                    val: 28,
+                                    ty: Some(TirType::I64),
+                                },
+                                SSAValue {
+                                    val: 29,
+                                    ty: Some(TirType::I64),
+                                },
+                                BoolInfixOp::LessThan,
+                            ),
+                            TIR::JumpCond(
+                                31,
+                                SSAValue {
+                                    val: 30,
+                                    ty: Some(TirType::I1),
+                                },
+                                3,
+                                4,
+                            ),
+                        ],
+                    },
+                    Block {
+                        id: 3,
+                        ins: vec![
+                            TIR::CallExternFunction(
+                                32,
+                                Box::new("toy_read_from_arr".to_string()),
+                                vec![
+                                    SSAValue {
+                                        val: 27,
+                                        ty: Some(TirType::I64),
+                                    },
+                                    SSAValue {
+                                        val: 28,
+                                        ty: Some(TirType::I64),
+                                    },
+                                ],
+                                false,
+                                TirType::I64,
+                            ),
+                            TIR::FConst(33, 5.0, TirType::F64),
+                            TIR::IConst(34, 0, TirType::I64),
+                            TIR::FConst(35, 2.0, TirType::F64),
+                            TIR::ItoF(
+                                36,
+                                SSAValue {
+                                    val: 34,
+                                    ty: Some(TirType::I64),
+                                },
+                                TirType::F64,
+                            ),
+                            TIR::NumericInfix(
+                                37,
+                                SSAValue {
+                                    val: 36,
+                                    ty: Some(TirType::F64),
+                                },
+                                SSAValue {
+                                    val: 35,
+                                    ty: Some(TirType::F64),
+                                },
+                                NumericInfixOp::Minus,
+                            ),
+                            TIR::CallLocalFunction(
+                                38,
+                                Box::new("Point:::move".to_string()),
+                                vec![
+                                    SSAValue {
+                                        val: 32,
+                                        ty: Some(TirType::I64),
+                                    },
+                                    SSAValue {
+                                        val: 33,
+                                        ty: Some(TirType::F64),
+                                    },
+                                    SSAValue {
+                                        val: 37,
+                                        ty: Some(TirType::F64),
+                                    },
+                                ],
+                                false,
+                                TirType::Void,
+                            ),
+                            TIR::IConst(39, 1, TirType::I64),
+                            TIR::NumericInfix(
+                                40,
+                                SSAValue {
+                                    val: 28,
+                                    ty: Some(TirType::I64),
+                                },
+                                SSAValue {
+                                    val: 39,
+                                    ty: Some(TirType::I64),
+                                },
+                                NumericInfixOp::Plus,
+                            ),
+                            TIR::JumpBlockUnCond(41, 2),
+                        ],
+                    },
+                    Block {
+                        id: 4,
+                        ins: vec![
+                            TIR::IConst(42, 8, TirType::I64),
+                            TIR::IConst(43, 1, TirType::I64),
+                            TIR::CallExternFunction(
+                                44,
+                                Box::new("toy_println".to_string()),
+                                vec![
+                                    SSAValue {
+                                        val: 27,
+                                        ty: Some(TirType::I64),
+                                    },
+                                    SSAValue {
+                                        val: 42,
+                                        ty: Some(TirType::I64),
+                                    },
+                                    SSAValue {
+                                        val: 43,
+                                        ty: Some(TirType::I64),
+                                    },
+                                ],
+                                false,
+                                TirType::Void,
+                            ),
+                            TIR::IConst(45, 0, TirType::I64),
+                            TIR::Ret(
+                                46,
+                                SSAValue {
+                                    val: 45,
+                                    ty: Some(TirType::I64),
+                                },
+                            ),
+                        ],
+                    },
+                ],
+                ins_counter: 47,
+                ret_type: TirType::I64,
+                heap_allocations: vec![],
+                heap_counter: 0,
+            },
+            Function {
+                params: vec![
+                    SSAValue {
+                        val: 1,
+                        ty: Some(TirType::StructInterface(vec![TirType::F64, TirType::F64])),
+                    },
+                    SSAValue {
+                        val: 2,
+                        ty: Some(TirType::F64),
+                    },
+                    SSAValue {
+                        val: 3,
+                        ty: Some(TirType::F64),
+                    },
+                ],
+                name: Box::new("Point:::move".to_string()),
+                body: vec![Block {
+                    id: 1,
+                    ins: vec![
+                        TIR::ReadStructLiteral(
+                            3,
+                            SSAValue {
+                                val: 1,
+                                ty: Some(TirType::StructInterface(vec![
+                                    TirType::F64,
+                                    TirType::F64,
+                                ])),
+                            },
+                            0,
+                        ),
+                        TIR::NumericInfix(
+                            4,
+                            SSAValue {
+                                val: 3,
+                                ty: Some(TirType::F64),
+                            },
+                            SSAValue {
+                                val: 2,
+                                ty: Some(TirType::F64),
+                            },
+                            NumericInfixOp::Plus,
+                        ),
+                        TIR::WriteStructLiteral(
+                            5,
+                            SSAValue {
+                                val: 1,
+                                ty: Some(TirType::StructInterface(vec![
+                                    TirType::F64,
+                                    TirType::F64,
+                                ])),
+                            },
+                            0,
+                            SSAValue {
+                                val: 4,
+                                ty: Some(TirType::F64),
+                            },
+                        ),
+                        TIR::ReadStructLiteral(
+                            6,
+                            SSAValue {
+                                val: 1,
+                                ty: Some(TirType::StructInterface(vec![
+                                    TirType::F64,
+                                    TirType::F64,
+                                ])),
+                            },
+                            1,
+                        ),
+                        TIR::NumericInfix(
+                            7,
+                            SSAValue {
+                                val: 6,
+                                ty: Some(TirType::F64),
+                            },
+                            SSAValue {
+                                val: 3,
+                                ty: Some(TirType::F64),
+                            },
+                            NumericInfixOp::Plus,
+                        ),
+                        TIR::WriteStructLiteral(
+                            8,
+                            SSAValue {
+                                val: 1,
+                                ty: Some(TirType::StructInterface(vec![
+                                    TirType::F64,
+                                    TirType::F64,
+                                ])),
+                            },
+                            1,
+                            SSAValue {
+                                val: 7,
+                                ty: Some(TirType::F64),
+                            },
+                        ),
+                        TIR::Ret(9, SSAValue { val: 0, ty: None }),
+                    ],
+                }],
+                ins_counter: 10,
+                ret_type: TirType::Void,
+                heap_allocations: vec![],
+                heap_counter: 0,
+            },
+        ],
+    );
+}
