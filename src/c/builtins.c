@@ -454,6 +454,10 @@ int64_t toy_read_from_arr(int64_t arr_in_ptr, int64_t idx) {
         fprintf(stderr, "[ERROR] toy_read_from_arr got a null pointer");
         abort();
     }
+    if (arr_ptr->arr == NULL) {
+        fprintf(stderr, "[ERROR] toy_read_from_arr got an array with null data pointer");
+        abort();
+    }
     if (idx > arr_ptr->length) {
         fprintf(stderr, "[ERROR] Tried to read from index %"PRId64" but array is only %"PRId64" elements long", idx, arr_ptr->length);
         abort();

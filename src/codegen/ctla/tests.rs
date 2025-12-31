@@ -112,3 +112,37 @@ fn test_ctla_multi_alloc_return() {
     );
     assert!(!output.contains("FAIL_TEST"));
 }
+
+
+#[test]
+fn test_ctla_uaf_loop_bug() {
+    compile_code_aot!(
+        output,
+        "struct Point{
+            x: float,
+            y: float,
+        }
+
+        for Point {
+            fn move(dx: float, dy: float) {
+                this.x += dx;
+                this.y += dy;
+            }
+        }
+
+        let points = [
+            Point{x: 0.0, y: 0.0},
+            Point{x: 1.0, y: 1.0},
+            Point{x: -1.0, y: -1.0}
+        ];
+
+        let i = 0;
+        while i < len(points) {
+            points[i].move(5.0, 0-2.0);
+            i += 1;
+        }
+        println(points[0].x);",
+        "ctla_uaf_loop_bug"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+}

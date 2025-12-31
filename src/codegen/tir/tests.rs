@@ -21,7 +21,7 @@ macro_rules! setup_tir {
 fn panic_with_write(test_name: &str, a: Vec<Function>, b: Vec<Function>){
     let file = Path::new(env::var("CARGO_MANIFEST_DIR").unwrap().as_str()).join(Path::new("temp")).join(format!("tir_test_{}.txt", test_name));
     let mut f = File::create(file.clone()).unwrap();
-    fs::write(file, format!("Generated TIR:\n{:#?}\n\nExpected TIR:\n{:#?}", a, b).as_bytes()).unwrap();
+    fs::write(file, format!("GOT: \n{:#?}\n\nWANT:\n{:#?}", a, b).as_bytes()).unwrap();
     panic!();
 }
 fn compare_tir(test_name: &str, a: Vec<Function>, b: Vec<Function>) {
@@ -240,8 +240,8 @@ fn compare_tir(test_name: &str, a: Vec<Function>, b: Vec<Function>) {
                     // Column headers
                     eprintln!(
                         "{:<width$} │ {:<width$}",
-                        "WANTED".color(Color::Red).bold(),
-                        "GOT".green().bold(),
+                        "WANTED".green().bold(),
+                        "GOT".red().bold(),
                         width = col_width
                     );
                     eprintln!(
@@ -256,8 +256,8 @@ fn compare_tir(test_name: &str, a: Vec<Function>, b: Vec<Function>) {
                         let g = got.get(i).unwrap_or(&"");
                         eprintln!(
                             "{:<width$} │ {}",
-                            w.red().bold(),
-                            g.green().bold(),
+                            w.green().bold(),
+                            g.red().bold(),
                             width = col_width
                         );
                     }
@@ -1248,8 +1248,8 @@ fn test_tirgen_arr_lit_read_and_write() {
                         false,
                         TirType::Void,
                     ),
-                    TIR::IConst(15, 2, TirType::I64),
-                    TIR::IConst(16, 9, TirType::I64),
+                    TIR::IConst(15, 9, TirType::I64),
+                    TIR::IConst(16, 2, TirType::I64),
                     TIR::IConst(17, 6, TirType::I64),
                     TIR::CallExternFunction(
                         18,
@@ -1260,11 +1260,11 @@ fn test_tirgen_arr_lit_read_and_write() {
                                 ty: Some(TirType::I64),
                             },
                             SSAValue {
-                                val: 16,
+                                val: 15,
                                 ty: Some(TirType::I64),
                             },
                             SSAValue {
-                                val: 15,
+                                val: 16,
                                 ty: Some(TirType::I64),
                             },
                             SSAValue {
@@ -2561,7 +2561,10 @@ println(points);
                                 vec![
                                     SSAValue {
                                         val: 32,
-                                        ty: Some(TirType::I64),
+                                        ty: Some(TirType::StructInterface(vec![
+                                            TirType::F64,
+                                            TirType::F64,
+                                        ])),
                                     },
                                     SSAValue {
                                         val: 33,

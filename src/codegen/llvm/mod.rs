@@ -71,6 +71,7 @@ impl<'a> LlvmGenerator<'a> {
             let alt_ty = match ty {
                 TirType::I64 => Some(TirType::I8PTR),
                 TirType::I8PTR => Some(TirType::I64),
+                TirType::StructInterface(_) => Some(TirType::I64),
                 _ => None,
             };
             if let Some(at) = alt_ty {
@@ -155,6 +156,24 @@ impl<'a> LlvmGenerator<'a> {
                                 )
                                 .unwrap()
                                 .into()
+                        } else if expected_type.is_pointer_type() && v.is_int_value() {
+                            builder
+                                .build_int_to_ptr(
+                                    v.into_int_value(),
+                                    expected_type.into_pointer_type(),
+                                    "i64_to_ptr",
+                                )
+                                .unwrap()
+                                .into()
+                        } else if expected_type.is_int_type() && v.is_pointer_value() {
+                            builder
+                                .build_ptr_to_int(
+                                    v.into_pointer_value(),
+                                    self.ctx.i64_type(),
+                                    "ptr_to_i64",
+                                )
+                                .unwrap()
+                                .into()
                         } else {
                             match p.ty.clone().unwrap() {
                                 TirType::I1 => builder
@@ -226,6 +245,15 @@ impl<'a> LlvmGenerator<'a> {
                                     v.into_float_value(),
                                     self.ctx.i64_type(),
                                     "double_to_i64_bitcast",
+                                )
+                                .unwrap()
+                                .into()
+                        } else if expected_type.is_pointer_type() && v.is_int_value() {
+                            builder
+                                .build_int_to_ptr(
+                                    v.into_int_value(),
+                                    expected_type.into_pointer_type(),
+                                    "i64_to_ptr",
                                 )
                                 .unwrap()
                                 .into()
@@ -683,6 +711,13 @@ impl<'a> LlvmGenerator<'a> {
                 let compiled_idx = self.ctx.i32_type().const_int(idx, false);
                 let struct_literal_as_struct: PointerValue = match struct_literal {
                     BasicValueEnum::PointerValue(p) => p,
+                    BasicValueEnum::IntValue(i) => builder
+                        .build_int_to_ptr(
+                            i,
+                            self.ctx.ptr_type(AddressSpace::default()),
+                            "i64_to_ptr",
+                        )
+                        .unwrap(),
                     _ => panic!("Got {:?}", struct_literal.get_type()),
                 };
                 let field_ptr = unsafe {
@@ -721,6 +756,13 @@ impl<'a> LlvmGenerator<'a> {
                 let compiled_idx = self.ctx.i32_type().const_int(field_idx, false);
                 let struct_literal_as_struct: PointerValue = match struct_literal {
                     BasicValueEnum::PointerValue(p) => p,
+                    BasicValueEnum::IntValue(i) => builder
+                        .build_int_to_ptr(
+                            i,
+                            self.ctx.ptr_type(AddressSpace::default()),
+                            "i64_to_ptr",
+                        )
+                        .unwrap(),
                     _ => unreachable!(),
                 };
                 let field_ptr = unsafe {

@@ -18,7 +18,9 @@ fn capture_program_output(program: String) -> String {
         .expect("Failed to spawn process")
         .wait_with_output()
         .expect("Failed to wait on child");
-    let s = String::from_utf8(output.stdout).expect("Invalid UTF-8 output");
+    let mut s = String::from_utf8(output.stdout).expect("Invalid UTF-8 output");
+    let stderr = String::from_utf8(output.stderr).expect("Invalid UTF-8 stderr");
+    s.push_str(&stderr);
     return s;
 }
 

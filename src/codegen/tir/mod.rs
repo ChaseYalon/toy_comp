@@ -525,25 +525,19 @@ impl AstToIrConverter {
 
         self.builder.jump_block_un_cond(header_id)?;
 
-        let mut phi_instructions: Vec<TIR> = Vec::new();
-
         for (var_name, pre_val) in &pre_loop_vars {
             let post_val = post_loop_vars
                 .get(var_name)
                 .cloned()
                 .unwrap_or_else(|| pre_val.clone());
             if let Some(&phi_id) = phi_id_map.get(var_name) {
-                let phi_ins = TIR::Phi(
+                self.builder.insert_phi(
+                    header_id,
                     phi_id,
                     vec![0, body_id],
                     vec![pre_val.0.clone(), post_val.0],
-                );
-                phi_instructions.push(phi_ins);
+                )?;
             }
-        }
-
-        for phi_ins in phi_instructions.into_iter() {
-            self.builder.insert_at_block_start(header_id, phi_ins)?;
         }
 
         self.builder.switch_block(merge_id);
