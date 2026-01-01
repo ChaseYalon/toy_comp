@@ -56,10 +56,10 @@ file(MAKE_DIRECTORY ${OUT_BASE})
 add_library(runtime STATIC
     builtins.c
     hashmap.c
-    stub.c
     ctla/ctla.c
     ctla/hashmap.c
     math/math.c
+    stub.c
 )
 
 add_library(core STATIC

@@ -15,7 +15,7 @@ macro_rules! setup_tir {
         let mut t = AstToIrConverter::new();
         let toks = l.lex($v.to_string()).unwrap();
         let ast = p.parse(toks).unwrap(); //I dont like .unwrap(0)
-        let $o = t.convert(ast).unwrap();
+        let $o = t.convert(ast, true).unwrap();
     };
 }
 fn panic_with_write(test_name: &str, a: Vec<Function>, b: Vec<Function>){
@@ -2808,3 +2808,67 @@ fn test_tirgen_extern_func_dec_and_call() {
     );
 }
 
+#[test]
+fn test_tirgen_import_stmt() {
+    setup_tir!(
+        ir,
+        r#"import math;
+        let x = math.abs(-5);"#
+    );
+    compare_tir(
+        "import_stmt", 
+        ir, 
+        vec![
+            Function {
+                params: vec![],
+                name: Box::new("user_main".to_string()),
+                body: vec![Block {
+                    id: 0,
+                    ins: vec![
+                        TIR::IConst(0, -5, TirType::I64),
+                        TIR::CallExternFunction(
+                            1,
+                            Box::new("std::math::abs".to_string()),
+                            vec![SSAValue {
+                                val: 0,
+                                ty: Some(TirType::I64),
+                            }],
+                            false,
+                            TirType::I64,
+                        ),
+                        TIR::IConst(2, 0, TirType::I64),
+                        TIR::Ret(
+                            3,
+                            SSAValue {
+                                val: 2,
+                                ty: Some(TirType::I64),
+                            },
+                        ),
+                    ],
+                }],
+                ins_counter: 4,
+                ret_type: TirType::I64,
+                heap_allocations: vec![],
+                heap_counter: 0,
+            },
+        ]
+    );
+}
+
+#[test]
+fn test_tirgen_library_no_user_main() {
+    let src = "fn add(a: int, b: int): int { return a + b; }";
+    let mut l = Lexer::new();
+    let mut p = Parser::new();
+    let mut t = AstToIrConverter::new();
+    let toks = l.lex(src.to_string()).unwrap();
+    let ast = p.parse(toks).unwrap();
+    
+    // Convert with is_main = false
+    let tir = t.convert(ast, false).unwrap();
+    let has_user_main = tir.iter().any(|f| *f.name == "user_main");
+    assert!(!has_user_main, "Library module should not have user_main");
+    
+    let has_add = tir.iter().any(|f| *f.name == "add");
+    assert!(has_add, "Library module should have the defined function 'add'");
+}

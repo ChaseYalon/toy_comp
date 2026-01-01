@@ -6,8 +6,8 @@ use crate::{
 
 pub mod ast;
 mod ast_gen;
-mod boxer;
-mod toy_box;
+pub mod boxer;
+pub mod toy_box;
 
 ///Wrapper struct around boxer and generator sub modules
 pub struct Parser {

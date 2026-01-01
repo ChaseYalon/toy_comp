@@ -1,7 +1,10 @@
 #![allow(unused)]
 use crate::codegen::tir::ir::{BlockId, Function, SSAValue, TirBuilder, ValueId};
 use crate::errors::ToyErrorType;
+use crate::lexer::Lexer;
 use crate::parser::ast::InfixOp;
+use crate::parser::boxer::Boxer;
+use crate::parser::toy_box::TBox;
 use crate::token::TypeTok;
 use crate::{
     codegen::tir::ir::{TIR, TirType},
@@ -10,6 +13,7 @@ use crate::{
 };
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
+use std::fs;
 use std::rc::Rc;
 pub mod ir;
 #[derive(Debug, Clone, PartialEq)]
@@ -694,6 +698,30 @@ impl AstToIrConverter {
                 self.interfaces.insert(*n, (key_to_idx, tir));
             }
 
+            Ast::ImportStmt(name, _) => {
+                let path = format!("std/{}.toy", name);
+                if let Ok(content) = fs::read_to_string(&path) {
+                    let mut l = Lexer::new();
+                    if let Ok(toks) = l.lex(content) {
+                        let mut b = Boxer::new();
+                        if let Ok(boxes) = b.box_toks(toks) {
+                            for b in boxes {
+                                match b {
+                                    TBox::ExternFuncDec(name_tok, _, ret_type, _) |
+                                    TBox::FuncDec(name_tok, _, ret_type, _, _) => {
+                                        if let Some(n) = name_tok.get_var_name() {
+                                            let full_name = format!("std::{}::{}", name, n);
+                                            self.builder.register_extern(full_name, false, ret_type);
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             _ => todo!("Chase you have not implemented {} yet", node),
         };
         return Ok(());
@@ -744,7 +772,7 @@ impl AstToIrConverter {
         self.builder
             .register_extern("toy_free_arr".to_string(), false, TypeTok::Void);
     }
-    pub fn convert(&mut self, ast: Vec<Ast>) -> Result<Vec<Function>, ToyError> {
+    pub fn convert(&mut self, ast: Vec<Ast>, is_main: bool) -> Result<Vec<Function>, ToyError> {
         self.register_extern_funcs();
         self.builder
             .new_func(Box::new("user_main".to_string()), vec![], TypeTok::Int);
@@ -755,6 +783,10 @@ impl AstToIrConverter {
         //seems bad
         let to_res = self.builder.iconst(0, TypeTok::Int)?;
         self.builder.ret(to_res);
+        if !is_main && self.builder.funcs[self.builder.curr_func.unwrap()].body[0].ins.len() == 2 {
+            //remove user main if it is empty
+            self.builder.funcs.remove(self.builder.curr_func.unwrap());
+        }
         return Ok(self.builder.funcs.clone());
     }
 }

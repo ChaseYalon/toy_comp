@@ -169,7 +169,7 @@ pub struct Function {
 pub struct TirBuilder {
     block_counter: BlockId,
     pub funcs: Vec<Function>,
-    curr_func: Option<usize>,                       //index into self.funcs
+    pub curr_func: Option<usize>,                       //index into self.funcs
     curr_block: Option<usize>,                      //index into self.curr_func.body,
     pub extern_funcs: HashMap<String, (bool, TirType, bool)>, //external function name to is_allocator, return_type, is_user_defined
 }
