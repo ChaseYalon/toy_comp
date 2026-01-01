@@ -6,7 +6,10 @@ use crate::parser::ast::Ast;
 use crate::parser::toy_box::TBox;
 use crate::token::Token;
 use crate::token::TypeTok;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use crate::lexer::Lexer;
+use crate::parser::boxer::Boxer;
+use std::fs;
 
 mod exprs;
 pub struct AstGenerator {
@@ -20,6 +23,7 @@ pub struct AstGenerator {
     func_return_type_map: HashMap<String, TypeTok>,
     // Maps struct field signature to struct name for method resolution
     struct_type_to_name: HashMap<BTreeMap<String, Box<TypeTok>>, String>,
+    imports: HashSet<String>,
 }
 
 impl AstGenerator {
@@ -94,7 +98,32 @@ impl AstGenerator {
             func_param_type_map: fptm,
             func_return_type_map: frtm,
             struct_type_to_name: HashMap::new(),
+            imports: HashSet::new(),
         };
+    }
+
+    fn load_module(&mut self, name: &str) {
+        let path = format!("std/{}.toy", name);
+        if let Ok(content) = fs::read_to_string(&path) {
+             let mut l = Lexer::new();
+             if let Ok(toks) = l.lex(content) {
+                 let mut b = Boxer::new();
+                 if let Ok(boxes) = b.box_toks(toks) {
+                     for b in boxes {
+                         match b {
+                             TBox::ExternFuncDec(name_tok, _, ret_type, _) |
+                             TBox::FuncDec(name_tok, _, ret_type, _, _) => {
+                                 if let Some(n) = name_tok.get_var_name() {
+                                     let full_name = format!("std::{}::{}", name, n);
+                                     self.func_return_type_map.insert(full_name, ret_type);
+                                 }
+                             }
+                             _ => {}
+                         }
+                     }
+                 }
+             }
+        }
     }
 
     fn push_scope(&mut self) {
@@ -591,6 +620,11 @@ impl AstGenerator {
                 self.struct_type_to_name.insert(boxed, (*name).clone());
 
                 Ast::StructInterface(name, types, raw_text)
+            }
+            TBox::ImportStmt(name, raw_text) => {
+                self.imports.insert(name.clone());
+                self.load_module(&name);
+                Ast::ImportStmt(name, raw_text)
             }
 
             _ => todo!("Unimplemented statement {}", val),

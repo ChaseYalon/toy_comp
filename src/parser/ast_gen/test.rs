@@ -100,6 +100,8 @@ fn eq_ast_ignoring_src(x: &Ast, y: &Ast) -> bool {
             eq_ast_ignoring_src(xl, yl) && eq_ast_ignoring_src(xr, yr)
         }
 
+        (Ast::ImportStmt(xp, _), Ast::ImportStmt(yp, _)) => xp == yp,
+
         _ => todo!("Chase you have not implemented {} node yet", x.node_type()),
     }
 }
@@ -1915,3 +1917,33 @@ fn test_ast_gen_extern_func_dec() {
     ));
 }
 
+#[test]
+fn test_ast_gen_import_stmt_resolution() {
+    let input = String::from(r#"import math; let x = math.abs(-5);"#);
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let mut g = AstGenerator::new();
+    let toks = l.lex(input).unwrap();
+    let boxes = b.box_toks(toks).unwrap();
+    let ast = g.generate(boxes).unwrap();
+
+    assert!(compare_ast_vecs(
+        ast,
+        vec![
+            Ast::ImportStmt(
+                "math".to_string(),
+                "".to_string()
+            ),
+            Ast::VarDec(
+                Box::new("x".to_string()),
+                TypeTok::Int,
+                Box::new(Ast::FuncCall(
+                    Box::new("std::math::abs".to_string()),
+                    vec![Ast::IntLit(-5)],
+                    "".to_string()
+                )),
+                "".to_string()
+            )
+        ]
+    ));
+}

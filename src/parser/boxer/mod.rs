@@ -743,10 +743,44 @@ impl Boxer {
 
         Ok(modified_boxes)
     }
-
+    fn box_import_stmt(&self, toks: &Vec<Token>) -> Result<TBox, ToyError> {
+        let raw_text = format!(
+            "import {};",
+            toks[1..]
+                .iter()
+                .map(|t| t.to_string())
+                .collect::<String>()
+        );
+        if toks[0].tok_type() != "Import" {
+            return Err(ToyError::new(
+                ToyErrorType::MalformedImportStatement,
+                Some(raw_text),
+            ));
+        }
+        if toks.len() < 2 {
+            return Err(ToyError::new(
+                ToyErrorType::MalformedImportStatement,
+                Some(raw_text),
+            ));
+        }
+        let module_name = match toks[1].clone() {
+            Token::StringLit(s) => *s,
+            Token::VarName(s) => *s,
+            Token::VarRef(s) => *s,
+            _ => {
+                return Err(ToyError::new(
+                    ToyErrorType::MalformedImportStatement,
+                    Some(raw_text),
+                ));
+            }
+        };
+        Ok(TBox::ImportStmt(module_name, raw_text))
+    }
     fn box_statement(&mut self, toks: Vec<Token>) -> Result<TBox, ToyError> {
         let first = toks[0].tok_type();
-
+        if first == "Import" {
+            return self.box_import_stmt(&toks);
+        }
         if first == "Let" {
             return self.box_var_dec(&toks);
         }

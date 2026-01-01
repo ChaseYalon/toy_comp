@@ -571,6 +571,64 @@ impl AstGenerator {
                 let left = &toks[0..best_idx];
                 let right = &toks[best_idx + 1..toks.len()];
 
+                if left.len() == 1 {
+                    if let Some(name) = left[0].get_var_name() {
+                        if self.imports.contains(&*name) {
+                            if right.len() >= 3
+                                && right[0].tok_type() == "VarRef"
+                                && right[1].tok_type() == "LParen"
+                                && right.last().unwrap().tok_type() == "RParen"
+                            {
+                                let func_name = match &right[0] {
+                                    Token::VarRef(n) => *n.clone(),
+                                    _ => unreachable!(),
+                                };
+                                let full_name = format!("std::{}::{}", name, func_name);
+
+                                let args_toks = &right[2..right.len() - 1];
+                                let mut args = Vec::new();
+                                let mut current_arg_toks = Vec::new();
+                                let mut depth = 0;
+                                for t in args_toks {
+                                    if t.tok_type() == "Comma" && depth == 0 {
+                                        let (arg_ast, _) = self.parse_expr(&current_arg_toks)?;
+                                        args.push(arg_ast);
+                                        current_arg_toks.clear();
+                                    } else {
+                                        if t.tok_type() == "LParen"
+                                            || t.tok_type() == "LBrace"
+                                            || t.tok_type() == "LBrack"
+                                        {
+                                            depth += 1;
+                                        } else if t.tok_type() == "RParen"
+                                            || t.tok_type() == "RBrace"
+                                            || t.tok_type() == "RBrack"
+                                        {
+                                            depth -= 1;
+                                        }
+                                        current_arg_toks.push(t.clone());
+                                    }
+                                }
+                                if !current_arg_toks.is_empty() {
+                                    let (arg_ast, _) = self.parse_expr(&current_arg_toks)?;
+                                    args.push(arg_ast);
+                                }
+
+                                let ret_type = self
+                                    .func_return_type_map
+                                    .get(&full_name)
+                                    .cloned()
+                                    .unwrap_or(TypeTok::Void);
+
+                                return Ok((
+                                    Ast::FuncCall(Box::new(full_name), args, raw_text),
+                                    ret_type,
+                                ));
+                            }
+                        }
+                    }
+                }
+
                 let (left_ast, left_type) = self.parse_expr(&left.to_vec())?;
 
                 // Check for Method Call: name(...)

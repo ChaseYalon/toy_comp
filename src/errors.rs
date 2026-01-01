@@ -50,6 +50,7 @@ pub enum ToyErrorType {
     MissingInstruction,
     LlvmError(String),
     UndefinedSSAValue,
+    MalformedImportStatement
 }
 
 #[derive(Debug, Error)]

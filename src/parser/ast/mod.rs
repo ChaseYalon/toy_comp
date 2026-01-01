@@ -60,8 +60,10 @@ pub enum Ast {
     MemberAccess(Box<Ast>, String, String),
     ///LHS, RHS, raw text
     Assignment(Box<Ast>, Box<Ast>, String),
-
+    ///find the inverse of a node, must be a boolean expression
     Not(Box<Ast>),
+    ///Path to the module being imported from, source code
+    ImportStmt(String, String)
 }
 impl Ast {
     pub fn node_type(&self) -> String {
@@ -90,6 +92,7 @@ impl Ast {
             Ast::MemberAccess(_, _, _) => "MemberAccess".to_string(),
             Ast::Assignment(_, _, _) => "Assignment".to_string(),
             Ast::Not(_) => "Not".to_string(),
+            Ast::ImportStmt(_, _) => "ImportStmt".to_string(),
         };
     }
 
@@ -119,6 +122,7 @@ impl Ast {
             Ast::MemberAccess(_, _, s) => s.clone(),
             Ast::Assignment(_, _, s) => s.clone(),
             Ast::Not(n) => format!("!{}", n.to_string()),
+            Ast::ImportStmt(_, s) => s.clone(),
         }
     }
 }
@@ -200,6 +204,8 @@ impl fmt::Display for Ast {
                     format!("MemberAccess Target({}), Member({}), Literal({})", *t, m, s),
                 Ast::Assignment(l, r, s) =>
                     format!("Assignment LHS({}), RHS({}), Literal({})", *l, *r, s),
+                Ast::ImportStmt(path, s) =>
+                    format!("ImportStmt Path({}), Literal({})", path, s),
             }
         )
     }

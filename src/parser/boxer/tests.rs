@@ -44,6 +44,7 @@ fn eq_tbox_ignoring_src(x: &TBox, y: &TBox) -> bool {
         (TBox::ExternFuncDec(xn, xp, xr, _), TBox::ExternFuncDec(yn, yp, yr, _)) => {
             xn == yn && xr == yr && compare_tbox_vecs(xp.clone(), yp.clone())
         }
+        (TBox::ImportStmt(xn, _), TBox::ImportStmt(yn, _)) => xn == yn,
         _ => false,
     }
 }
@@ -1184,8 +1185,7 @@ fn test_boxer_import_stmt() {
                     Token::Dot,
                     Token::VarRef(Box::new("abs".to_string())),
                     Token::LParen,
-                    Token::Minus,
-                    Token::IntLit(5),
+                    Token::IntLit(-5),
                     Token::RParen,
                     Token::RParen
                 ],

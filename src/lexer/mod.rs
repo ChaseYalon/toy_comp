@@ -561,6 +561,7 @@ impl Lexer {
         }
         if self.toks.last().unwrap().tok_type() == "Let"
             || self.toks.last().unwrap().tok_type() == "Func"
+            || self.toks.last().unwrap().tok_type() == "Import"
         {
             let proto_output: String = self.str_buf.clone().into_iter().collect();
             self.toks.push(Token::VarName(Box::new(proto_output)));
