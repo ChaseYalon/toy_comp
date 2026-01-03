@@ -237,3 +237,13 @@ fn test_llvm_codegen_math (){
     );
     assert!(output.contains("42"));
 }
+
+#[test]
+fn test_llvm_module_import() {
+    compile_code_aot!(
+        output,
+        "import std.math; let x = math.abs(-15); println(x);",
+        "module_import"
+    );
+    assert!(output.contains("15") && !output.contains("-15"));
+}

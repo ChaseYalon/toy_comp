@@ -82,7 +82,10 @@ impl Linker {
             .status();
         let status = match rstatus {
             Ok(f) => f,
-            Err(_) => return Err(ToyError::new(ToyErrorType::InternalLinkerFailure, None)),
+            Err(_) => {
+                eprintln!("Linker args: {:#?}", args);
+                return Err(ToyError::new(ToyErrorType::InternalLinkerFailure, None))
+            },
         };
         if !status.success() {
             return Err(ToyError::new(ToyErrorType::InternalLinkerFailure, None));

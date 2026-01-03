@@ -756,7 +756,7 @@ fn test_tirgen_func_call() {
                         TIR::IConst(3, 5, TirType::I64),
                         TIR::CallLocalFunction(
                             4,
-                            Box::new("add".to_string()),
+                            Box::new("add_int_int".to_string()),
                             vec![
                                 SSAValue {
                                     val: 2,
@@ -797,7 +797,7 @@ fn test_tirgen_func_call() {
                         ty: Some(TirType::I64),
                     },
                 ],
-                name: Box::new("add".to_string()),
+                name: Box::new("add_int_int".to_string()),
                 body: vec![Block {
                     id: 1,
                     ins: vec![
@@ -1466,7 +1466,7 @@ fn test_tirgen_recursion_bug() {
                         TIR::IConst(1, 40, TirType::I64),
                         TIR::CallLocalFunction(
                             2,
-                            Box::new("fib".to_string()),
+                            Box::new("fib_int".to_string()),
                             vec![SSAValue {
                                 val: 1,
                                 ty: Some(TirType::I64),
@@ -1511,7 +1511,7 @@ fn test_tirgen_recursion_bug() {
                 heap_counter: 0,
             },
             Function {
-                name: Box::new("fib".to_string()),
+                name: Box::new("fib_int".to_string()),
                 params: vec![SSAValue {
                     val: 0,
                     ty: Some(TirType::I64),
@@ -1618,7 +1618,7 @@ fn test_tirgen_recursion_bug() {
                             ),
                             TIR::CallLocalFunction(
                                 15,
-                                Box::new("fib".to_string()),
+                                Box::new("fib_int".to_string()),
                                 vec![SSAValue {
                                     val: 14,
                                     ty: Some(TirType::I64),
@@ -1641,7 +1641,7 @@ fn test_tirgen_recursion_bug() {
                             ),
                             TIR::CallLocalFunction(
                                 18,
-                                Box::new("fib".to_string()),
+                                Box::new("fib_int".to_string()),
                                 vec![SSAValue {
                                     val: 17,
                                     ty: Some(TirType::I64),
@@ -1976,15 +1976,15 @@ fn test_tirgen_if_no_else_return() {
                         TIR::IConst(1, 5, TirType::I64),
                         TIR::CallLocalFunction(
                             2,
-                            Box::new("isEven".to_string()),
+                            Box::new("isEven_int".to_string()),
                             vec![SSAValue {
                                 val: 1,
                                 ty: Some(TirType::I64),
                             }],
-                            false,
+                            true,
                             TirType::I8PTR,
                         ),
-                        TIR::IConst(3, 2, TirType::I64),
+                        TIR::IConst(3, 0, TirType::I64),
                         TIR::IConst(4, 0, TirType::I64),
                         TIR::CallExternFunction(
                             5,
@@ -2026,7 +2026,7 @@ fn test_tirgen_if_no_else_return() {
                     val: 0,
                     ty: Some(TirType::I64),
                 }],
-                name: Box::new("isEven".to_string()),
+                name: Box::new("isEven_int".to_string()),
                 body: vec![
                     Block {
                         id: 1,
@@ -2164,7 +2164,7 @@ fn test_tirgen_struct_funcs() {
                         ),
                         TIR::CallLocalFunction(
                             5,
-                            Box::new("Point:::print_point".to_string()),
+                            Box::new("Point:::print_point_struct".to_string()),
                             vec![SSAValue {
                                 val: 4,
                                 ty: Some(TirType::StructInterface(vec![
@@ -2195,7 +2195,7 @@ fn test_tirgen_struct_funcs() {
                     val: 1,
                     ty: Some(TirType::StructInterface(vec![TirType::I64, TirType::I64])),
                 }],
-                name: Box::new("Point:::print_point".to_string()),
+                name: Box::new("Point:::print_point_struct".to_string()),
                 body: vec![Block {
                     id: 1,
                     ins: vec![
@@ -2557,7 +2557,7 @@ println(points);
                             ),
                             TIR::CallLocalFunction(
                                 38,
-                                Box::new("Point:::move".to_string()),
+                                Box::new("Point:::move_struct_float_float".to_string()),
                                 vec![
                                     SSAValue {
                                         val: 32,
@@ -2650,7 +2650,7 @@ println(points);
                         ty: Some(TirType::F64),
                     },
                 ],
-                name: Box::new("Point:::move".to_string()),
+                name: Box::new("Point:::move_struct_float_float".to_string()),
                 body: vec![Block {
                     id: 1,
                     ins: vec![
@@ -2812,7 +2812,7 @@ fn test_tirgen_extern_func_dec_and_call() {
 fn test_tirgen_import_stmt() {
     setup_tir!(
         ir,
-        r#"import math;
+        r#"import std.math;
         let x = math.abs(-5);"#
     );
     compare_tir(
@@ -2828,7 +2828,7 @@ fn test_tirgen_import_stmt() {
                         TIR::IConst(0, -5, TirType::I64),
                         TIR::CallExternFunction(
                             1,
-                            Box::new("std::math::abs".to_string()),
+                            Box::new("std::math::abs_int".to_string()),
                             vec![SSAValue {
                                 val: 0,
                                 ty: Some(TirType::I64),
@@ -2869,6 +2869,6 @@ fn test_tirgen_library_no_user_main() {
     let has_user_main = tir.iter().any(|f| *f.name == "user_main");
     assert!(!has_user_main, "Library module should not have user_main");
     
-    let has_add = tir.iter().any(|f| *f.name == "add");
+    let has_add = tir.iter().any(|f| *f.name == "add_int_int");
     assert!(has_add, "Library module should have the defined function 'add'");
 }

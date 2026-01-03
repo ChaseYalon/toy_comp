@@ -1391,12 +1391,14 @@ fn test_lexer_unary_minus_int_and_float() {
 #[test]
 fn test_lexer_import() {
     let mut l = Lexer::new();
-    let toks = l.lex("import math; let x = math.abs(-3);".to_string()).unwrap();
+    let toks = l.lex("import std.math; let x = math.abs(-3);".to_string()).unwrap();
     assert_eq!(
         toks,
             vec![
                 Token::Import,
-                Token::VarName(Box::new("math".to_string())),
+                Token::VarName(Box::new("std".to_string())),
+                Token::Dot,
+                Token::VarRef(Box::new("math".to_string())),
                 Token::Semicolon,
                 Token::Let,
                 Token::VarName(Box::new("x".to_string())),

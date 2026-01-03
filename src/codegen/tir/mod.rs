@@ -97,7 +97,29 @@ impl AstToIrConverter {
                 "int" => Ok(TypeTok::Int),
                 "float" => Ok(TypeTok::Float),
                 "bool" => Ok(TypeTok::Bool),
-                _ => Ok(TypeTok::Int),
+                _ => {
+                    if let Some((_, tir_ty, _)) = self.builder.extern_funcs.get(&*n.to_string()) {
+                        match tir_ty {
+                            TirType::I64 => Ok(TypeTok::Int),
+                            TirType::F64 => Ok(TypeTok::Float),
+                            TirType::I1 => Ok(TypeTok::Bool),
+                            TirType::Void => Ok(TypeTok::Void),
+                            TirType::I8PTR => Ok(TypeTok::Str),
+                            _ => Ok(TypeTok::Int),
+                        }
+                    } else if let Some(f) = self.builder.funcs.iter().find(|f| *f.name == *n.clone()) {
+                        match f.ret_type {
+                            TirType::I64 => Ok(TypeTok::Int),
+                            TirType::F64 => Ok(TypeTok::Float),
+                            TirType::I1 => Ok(TypeTok::Bool),
+                            TirType::Void => Ok(TypeTok::Void),
+                            TirType::I8PTR => Ok(TypeTok::Str),
+                            _ => Ok(TypeTok::Int),
+                        }
+                    } else {
+                        Ok(TypeTok::Int)
+                    }
+                }
             },
             Ast::ArrLit(ty, _, _) => Ok(ty.clone()),
             Ast::IndexAccess(target, _, _) => {
@@ -699,18 +721,19 @@ impl AstToIrConverter {
             }
 
             Ast::ImportStmt(name, _) => {
-                let path = format!("std/{}.toy", name);
+                let path = format!("{}.toy", name.replace(".", "/"));
                 if let Ok(content) = fs::read_to_string(&path) {
                     let mut l = Lexer::new();
                     if let Ok(toks) = l.lex(content) {
                         let mut b = Boxer::new();
                         if let Ok(boxes) = b.box_toks(toks) {
+                            let prefix = name.replace(".", "::");
                             for b in boxes {
                                 match b {
                                     TBox::ExternFuncDec(name_tok, _, ret_type, _) |
                                     TBox::FuncDec(name_tok, _, ret_type, _, _) => {
                                         if let Some(n) = name_tok.get_var_name() {
-                                            let full_name = format!("std::{}::{}", name, n);
+                                            let full_name = format!("{}::{}", prefix, n);
                                             self.builder.register_extern(full_name, false, ret_type);
                                         }
                                     }

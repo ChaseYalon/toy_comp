@@ -573,7 +573,7 @@ impl AstGenerator {
 
                 if left.len() == 1 {
                     if let Some(name) = left[0].get_var_name() {
-                        if self.imports.contains(&*name) {
+                        if let Some(full_module_name) = self.imports.get(&*name) {
                             if right.len() >= 3
                                 && right[0].tok_type() == "VarRef"
                                 && right[1].tok_type() == "LParen"
@@ -583,16 +583,19 @@ impl AstGenerator {
                                     Token::VarRef(n) => *n.clone(),
                                     _ => unreachable!(),
                                 };
-                                let full_name = format!("std::{}::{}", name, func_name);
+                                let prefix = full_module_name.replace(".", "::");
+                                let full_name = format!("{}::{}", prefix, func_name);
 
                                 let args_toks = &right[2..right.len() - 1];
                                 let mut args = Vec::new();
+                                let mut arg_types = Vec::new();
                                 let mut current_arg_toks = Vec::new();
                                 let mut depth = 0;
                                 for t in args_toks {
                                     if t.tok_type() == "Comma" && depth == 0 {
-                                        let (arg_ast, _) = self.parse_expr(&current_arg_toks)?;
+                                        let (arg_ast, arg_type) = self.parse_expr(&current_arg_toks)?;
                                         args.push(arg_ast);
+                                        arg_types.push(arg_type);
                                         current_arg_toks.clear();
                                     } else {
                                         if t.tok_type() == "LParen"
@@ -610,18 +613,30 @@ impl AstGenerator {
                                     }
                                 }
                                 if !current_arg_toks.is_empty() {
-                                    let (arg_ast, _) = self.parse_expr(&current_arg_toks)?;
+                                    let (arg_ast, arg_type) = self.parse_expr(&current_arg_toks)?;
                                     args.push(arg_ast);
+                                    arg_types.push(arg_type);
                                 }
 
-                                let ret_type = self
-                                    .func_return_type_map
-                                    .get(&full_name)
-                                    .cloned()
-                                    .unwrap_or(TypeTok::Void);
+                                let mut mangled_full_name = full_name.clone();
+                                for t in &arg_types {
+                                    mangled_full_name = format!("{}_{}", mangled_full_name, t.type_str().to_lowercase());
+                                }
+
+                                let mut final_name = mangled_full_name.clone();
+                                let mut ret_type = self.func_return_type_map.get(&final_name).cloned();
+
+                                if ret_type.is_none() {
+                                    if let Some(rt) = self.func_return_type_map.get(&full_name) {
+                                        final_name = full_name;
+                                        ret_type = Some(rt.clone());
+                                    }
+                                }
+
+                                let ret_type = ret_type.unwrap_or(TypeTok::Void);
 
                                 return Ok((
-                                    Ast::FuncCall(Box::new(full_name), args, raw_text),
+                                    Ast::FuncCall(Box::new(final_name), args, raw_text),
                                     ret_type,
                                 ));
                             }
@@ -660,12 +675,14 @@ impl AstGenerator {
 
                     let args_toks = &right[2..right.len() - 1];
                     let mut args = Vec::new();
+                    let mut arg_types = Vec::new();
                     let mut current_arg_toks = Vec::new();
                     let mut depth = 0;
                     for t in args_toks {
                         if t.tok_type() == "Comma" && depth == 0 {
-                            let (arg_ast, _) = self.parse_expr(&current_arg_toks)?;
+                            let (arg_ast, arg_type) = self.parse_expr(&current_arg_toks)?;
                             args.push(arg_ast);
+                            arg_types.push(arg_type);
                             current_arg_toks.clear();
                         } else {
                             if t.tok_type() == "LParen"
@@ -683,22 +700,29 @@ impl AstGenerator {
                         }
                     }
                     if !current_arg_toks.is_empty() {
-                        let (arg_ast, _) = self.parse_expr(&current_arg_toks)?;
+                        let (arg_ast, arg_type) = self.parse_expr(&current_arg_toks)?;
                         args.push(arg_ast);
+                        arg_types.push(arg_type);
                     }
 
                     args.insert(0, left_ast);
+                    arg_types.insert(0, left_type);
+
+                    let mut final_mangled_name = mangled_name.clone();
+                    for t in &arg_types {
+                        final_mangled_name = format!("{}_{}", final_mangled_name, t.type_str().to_lowercase());
+                    }
 
                     let ret_type = self
                         .func_return_type_map
-                        .get(&mangled_name)
+                        .get(&final_mangled_name)
                         .ok_or_else(|| {
                             ToyError::new(ToyErrorType::UndefinedFunction, Some(raw_text.clone()))
                         })?
                         .clone();
 
                     return Ok((
-                        Ast::FuncCall(Box::new(mangled_name), args, raw_text),
+                        Ast::FuncCall(Box::new(final_mangled_name), args, raw_text),
                         ret_type,
                     ));
                 }

@@ -23,7 +23,9 @@ pub struct AstGenerator {
     func_return_type_map: HashMap<String, TypeTok>,
     // Maps struct field signature to struct name for method resolution
     struct_type_to_name: HashMap<BTreeMap<String, Box<TypeTok>>, String>,
-    imports: HashSet<String>,
+    ///module name -> path so std.math maps to /std/math.toy (posix)
+    imports: HashMap<String, String>,
+    extern_funcs: HashSet<String>,
 }
 
 impl AstGenerator {
@@ -98,23 +100,31 @@ impl AstGenerator {
             func_param_type_map: fptm,
             func_return_type_map: frtm,
             struct_type_to_name: HashMap::new(),
-            imports: HashSet::new(),
+            imports: HashMap::new(),
+            extern_funcs: HashSet::new(),
         };
     }
 
     fn load_module(&mut self, name: &str) {
-        let path = format!("std/{}.toy", name);
+        let path = format!("{}.toy", name.replace(".", "/"));
         if let Ok(content) = fs::read_to_string(&path) {
              let mut l = Lexer::new();
              if let Ok(toks) = l.lex(content) {
                  let mut b = Boxer::new();
                  if let Ok(boxes) = b.box_toks(toks) {
+                     let prefix = name.replace(".", "::");
                      for b in boxes {
                          match b {
-                             TBox::ExternFuncDec(name_tok, _, ret_type, _) |
+                             TBox::ExternFuncDec(name_tok, _, ret_type, _) => {
+                                 if let Some(n) = name_tok.get_var_name() {
+                                     let full_name = format!("{}::{}", prefix, n);
+                                     self.func_return_type_map.insert(full_name.clone(), ret_type);
+                                     self.extern_funcs.insert(full_name);
+                                 }
+                             }
                              TBox::FuncDec(name_tok, _, ret_type, _, _) => {
                                  if let Some(n) = name_tok.get_var_name() {
-                                     let full_name = format!("std::{}::{}", name, n);
+                                     let full_name = format!("{}::{}", prefix, n);
                                      self.func_return_type_map.insert(full_name, ret_type);
                                  }
                              }
@@ -282,7 +292,6 @@ impl AstGenerator {
             Token::VarRef(n) => *n,
             _ => unreachable!(),
         };
-
         let param_toks = &toks[2..toks.len() - 1];
         let mut unprocessed_params: Vec<Vec<Token>> = Vec::new();
 
@@ -330,6 +339,21 @@ impl AstGenerator {
                     }
                 }
             }
+        }
+        let builtins = vec!["print", "println", "len", "str", "bool", "int", "float", "input"];
+        if !builtins.contains(&name.as_str()) {
+            for (_, t) in processed_params.clone() {
+                resolved_name = format!("{}_{}", resolved_name, t.type_str().to_lowercase());
+            }
+        }
+        if types_opt.is_none() {
+            types_opt = self.func_param_type_map.get(&resolved_name);
+        }
+
+        if types_opt.is_some() && !self.func_return_type_map.contains_key(&resolved_name) {
+             if self.func_return_type_map.contains_key(&name) {
+                 resolved_name = name.clone();
+             }
         }
 
         if types_opt.is_none() {
@@ -481,6 +505,7 @@ impl AstGenerator {
             param_types.push(param_type.clone());
         }
 
+        self.extern_funcs.insert(name.clone());
         self.func_param_type_map.insert(name.clone(), param_types);
         self.func_return_type_map
             .insert(name.clone(), return_type.clone());
@@ -622,7 +647,13 @@ impl AstGenerator {
                 Ast::StructInterface(name, types, raw_text)
             }
             TBox::ImportStmt(name, raw_text) => {
-                self.imports.insert(name.clone());
+                self.imports.insert(name.clone(), name.clone());
+                if name.contains('.') {
+                    let parts: Vec<&str> = name.split('.').collect();
+                    if let Some(alias) = parts.last() {
+                        self.imports.insert(alias.to_string(), name.clone());
+                    }
+                }
                 self.load_module(&name);
                 Ast::ImportStmt(name, raw_text)
             }

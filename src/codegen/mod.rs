@@ -3,6 +3,7 @@ mod llvm;
 mod tir;
 mod linker;
 use crate::codegen::linker::Linker;
+use crate::codegen::linker::FILE_EXTENSION_EXE;
 use crate::codegen::llvm::LlvmGenerator;
 use crate::parser::ast::Ast;
 use crate::{codegen::ctla::CTLA, errors::ToyError};
@@ -12,6 +13,9 @@ use crate::parser::Parser;
 use inkwell::context::Context;
 use inkwell::module::Module;
 use std::fs;
+use std::path::Path;
+use std::env;
+use std::process::Command;
 use tir::AstToIrConverter;
 pub use tir::ir::{Block, Function, SSAValue, TIR, TirType};
 
@@ -40,7 +44,17 @@ impl<'a> Generator<'a> {
     }
 
     fn compile_dependency(&self, module_name: &str) -> Result<(), ToyError> {
-        let path = format!("std/{}.toy", module_name);
+        // Check if the object file already exists
+        let obj_path_str = format!("{}.o", module_name);
+        let obj_path = Path::new(&obj_path_str);
+        if obj_path.exists() {
+            return Ok(());
+        }
+
+        // Resolve path: replace dots with slashes
+        let path_str = format!("{}.toy", module_name.replace(".", "/"));
+        let path = Path::new(&path_str);
+        
         let content = fs::read_to_string(&path).map_err(|_| {
             ToyError::new(
                 ToyErrorType::MissingFile,
@@ -51,7 +65,9 @@ impl<'a> Generator<'a> {
         let mut lexer = Lexer::new();
         let tokens = lexer.lex(content)?;
 
-        let mut parser = Parser::new();
+        // Use the module prefix for name mangling
+        let module_prefix = module_name.replace(".", "::");
+        let mut parser = Parser::with_module_prefix(module_prefix);
         let ast = parser.parse(tokens)?;
 
         let ctx = Context::create();
@@ -85,7 +101,20 @@ impl<'a> Generator<'a> {
             link_files.push(format!("{}.o", import));
         }
 
-        self.linker.link(link_files, name)?;
+        self.linker.link(link_files, name.clone())?;
+
+        let p_args: Vec<String> = env::args().collect();
+        if p_args.contains(&"--repl".to_string()) || p_args.contains(&"--run".to_string()) {
+            let output_name = format!("{}{}", name, FILE_EXTENSION_EXE);
+            let mut prgm = Command::new(format!("{}{}", "./", output_name));
+            let _ = prgm.spawn().map_err(|e| ToyError::new(ToyErrorType::LlvmError(format!("Failed to run program: {}", e)), None))?.wait().unwrap();
+
+            if !p_args.contains(&"--save-temps".to_string()) {
+                let _ = fs::remove_file(&output_name);
+                let _ = fs::remove_file(format!("{}.o", name));
+                let _ = fs::remove_file(format!("{}.ll", name));
+            }
+        }
         return Ok(());
     }
 }

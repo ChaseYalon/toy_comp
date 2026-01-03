@@ -343,7 +343,7 @@ fn test_boxer_func_dec_and_call() {
         boxes.unwrap(),
         vec![
             TBox::FuncDec(
-                Token::VarName(Box::new("add".to_string())),
+                Token::VarName(Box::new("add_int_int".to_string())),
                 vec![
                     TBox::FuncParam(
                         Token::VarRef(Box::new("a".to_string())),
@@ -965,7 +965,7 @@ fn test_boxer_struct_func_param() {
                 "".to_string()
             ),
             TBox::FuncDec(
-                Token::VarName(Box::new("bar".to_string())),
+                Token::VarName(Box::new("bar_struct".to_string())),
                 vec![TBox::FuncParam(
                     Token::VarRef(Box::new("f".to_string())),
                     TypeTok::Struct(BTreeMap::from([("a".to_string(), Box::new(TypeTok::Int))])),
@@ -1022,7 +1022,7 @@ fn test_boxer_struct_method_conversion() {
                 "".to_string()
             ),
             TBox::FuncDec(
-                Token::VarName(Box::new("Point:::print_point".to_string())),
+                Token::VarName(Box::new("Point:::print_point_struct".to_string())),
                 vec![TBox::FuncParam(
                     Token::VarRef(Box::new("this".to_string())),
                     TypeTok::Struct(BTreeMap::from([
@@ -1171,12 +1171,12 @@ fn test_boxer_extern_function_declaration_void() {
 fn test_boxer_import_stmt() {
     let mut l = Lexer::new();
     let mut b = Boxer::new();
-    let toks = l.lex("import math; println(math.abs(-5));".to_string());
+    let toks = l.lex("import std.math; println(math.abs(-5));".to_string());
     let boxes = b.box_toks(toks.unwrap());
     assert!(compare_tbox_vecs(
         boxes.unwrap(),
         vec![
-            TBox::ImportStmt("math".to_string(), "import math;".to_string()),
+            TBox::ImportStmt("std.math".to_string(), "import std.math;".to_string()),
             TBox::Expr(
                 vec![
                     Token::VarRef(Box::new("println".to_string())),

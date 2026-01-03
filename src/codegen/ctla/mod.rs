@@ -159,6 +159,21 @@ impl CTLA {
             None => block.ins.len(), // Should not happen if block is well-formed
         }
     }
+    /// Checks if a block's return instruction returns the given allocation
+    /// If so, we should NOT free it - the caller takes ownership
+    fn block_returns_allocation(&self, func: &Function, block_id: BlockId, alloc: &HeapAllocation) -> bool {
+        let block = func.body.iter().find(|b| b.id == block_id).unwrap();
+        // Find the return instruction
+        for ins in &block.ins {
+            if let TIR::Ret(_, returned_val) = ins {
+                // Check if the returned value is the allocation itself
+                if returned_val.val == alloc.alloc_ins.val {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
     fn alloc_type_to_free_func(&self, alloc: &HeapAllocation) -> String {
         let func = self
             .builder
@@ -180,6 +195,11 @@ impl CTLA {
                 }
                 return "toy_free".to_string();
             }
+            // For local function calls that return heap-allocated values (strings),
+            // we use toy_free since they return string pointers
+            TIR::CallLocalFunction(_, _, _, _, _) => {
+                return "toy_free".to_string();
+            }
             _ => unreachable!(),
         };
     }
@@ -191,6 +211,10 @@ impl CTLA {
     ) -> Option<()> {
         match alloc_node {
             CfgNode::Return(return_block_id) => {
+                // If this block returns the allocation, don't free it - caller takes ownership
+                if self.block_returns_allocation(func, return_block_id, &alloc) {
+                    return Some(());
+                }
                 let idx = self.get_insertion_index(func, return_block_id);
                 self.builder.splice_free_before(
                     *func.name.clone(),

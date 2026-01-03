@@ -6,6 +6,9 @@ pub struct Boxer {
     toks: Vec<Token>,
     tp: usize, // token pointer
     interfaces: BTreeMap<String, BTreeMap<String, TypeTok>>,
+    /// Optional module prefix for name mangling (e.g., "std::math")
+    module_prefix: Option<String>,
+    current_struct: Option<(String, TypeTok)>,
 }
 
 impl Boxer {
@@ -14,7 +17,31 @@ impl Boxer {
             toks: Vec::new(),
             tp: 0,
             interfaces: BTreeMap::new(),
+            module_prefix: None,
+            current_struct: None,
         }
+    }
+
+    /// Create a Boxer with a module prefix for name mangling.
+    /// The prefix should be in the form "std::<path>::<filename>" (e.g., "std::math")
+    pub fn with_module_prefix(prefix: String) -> Boxer {
+        Boxer {
+            toks: Vec::new(),
+            tp: 0,
+            interfaces: BTreeMap::new(),
+            module_prefix: Some(prefix),
+            current_struct: None,
+        }
+    }
+
+    /// Mangle a function name with the module prefix if set
+    fn mangle_func_name(&self, name: Token) -> Token {
+        if let Some(prefix) = &self.module_prefix {
+            if let Some(func_name) = name.get_var_name() {
+                return Token::VarName(Box::new(format!("{}::{}", prefix, func_name)));
+            }
+        }
+        name
     }
     fn box_var_dec(&self, input: &Vec<Token>) -> Result<TBox, ToyError> {
         let raw_text = if input[2].tok_type() == "Colon" {
@@ -536,7 +563,7 @@ impl Boxer {
                 Some(raw_text.clone()),
             ));
         }
-        let func_name = input[1].clone();
+        let func_name = self.mangle_func_name(input[1].clone());
         if input[2].tok_type() != "LParen" {
             return Err(ToyError::new(
                 ToyErrorType::MalformedFunctionDeclaration,
@@ -552,7 +579,20 @@ impl Boxer {
             }
             unboxed_params.push(input[i].clone());
         }
-        let boxed_params: Vec<TBox> = self.box_params(unboxed_params)?;
+        let mut boxed_params: Vec<TBox> = self.box_params(unboxed_params)?;
+
+        let mut func_name = func_name;
+        if let Some((struct_name, struct_type)) = &self.current_struct {
+            let this_param = TBox::FuncParam(
+                Token::VarRef(Box::new("this".to_string())),
+                struct_type.clone(),
+                "this".to_string(),
+            );
+            boxed_params.insert(0, this_param);
+            if let Token::VarName(n) = func_name {
+                func_name = Token::VarName(Box::new(format!("{}:::{}", struct_name, n)));
+            }
+        }
 
         let (return_type, body_start_idx) = if input[return_type_begin + 1].tok_type() == "LBrace" {
             (TypeTok::Void, return_type_begin + 2)
@@ -595,10 +635,18 @@ impl Boxer {
                 Some(raw_text),
             ));
         }
-        let body_boxes: Vec<TBox> = self.box_group(body_toks.to_vec())?;
+        let mut final_mangled_name = func_name;
+        for p in boxed_params.clone() {
+            let ty = match p{
+                TBox::FuncParam(_, t, _) => t,
+                _ => unreachable!()
+            };
+            final_mangled_name = Token::VarName(Box::new(format!("{}_{}", final_mangled_name, ty.type_str().to_lowercase())));
 
+        }
+        let body_boxes: Vec<TBox> = self.box_group(body_toks.to_vec())?;
         return Ok(TBox::FuncDec(
-            func_name,
+            final_mangled_name,
             boxed_params,
             return_type,
             body_boxes,
@@ -714,34 +762,14 @@ impl Boxer {
             .map(|(k, v)| (k, Box::new(v)))
             .collect();
 
-        let this_type = TypeTok::Struct(boxed_fields);
+        let this_type = TypeTok::Struct(boxed_fields.clone());
 
+        self.current_struct = Some((struct_name.clone(), this_type.clone()));
         let body_toks = input[3..input.len() - 1].to_vec();
         let boxed_body = self.box_group(body_toks)?;
+        self.current_struct = None;
 
-        let mut modified_boxes = Vec::new();
-
-        for b in boxed_body {
-            match b {
-                TBox::FuncDec(mut name, mut params, ret_type, body, func_raw_text) => {
-                    let literal_name = match name {
-                        Token::VarName(n) => *n,
-                        _ => unreachable!(),
-                    };
-                    name = Token::VarName(Box::new(struct_name.clone() + ":::" + &literal_name));
-                    let this_param = TBox::FuncParam(
-                        Token::VarRef(Box::new("this".to_string())),
-                        this_type.clone(),
-                        "this".to_string(),
-                    );
-                    params.insert(0, this_param);
-                    modified_boxes.push(TBox::FuncDec(name, params, ret_type, body, func_raw_text));
-                }
-                _ => modified_boxes.push(b),
-            }
-        }
-
-        Ok(modified_boxes)
+        Ok(boxed_body)
     }
     fn box_import_stmt(&self, toks: &Vec<Token>) -> Result<TBox, ToyError> {
         let raw_text = format!(
@@ -763,17 +791,13 @@ impl Boxer {
                 Some(raw_text),
             ));
         }
-        let module_name = match toks[1].clone() {
-            Token::StringLit(s) => *s,
-            Token::VarName(s) => *s,
-            Token::VarRef(s) => *s,
-            _ => {
-                return Err(ToyError::new(
-                    ToyErrorType::MalformedImportStatement,
-                    Some(raw_text),
-                ));
+        let mut module_name = String::new();
+        for i in 1..toks.len() {
+            if toks[i].tok_type() == "Semicolon" {
+                break;
             }
-        };
+            module_name.push_str(&toks[i].to_string());
+        }
         Ok(TBox::ImportStmt(module_name, raw_text))
     }
     fn box_statement(&mut self, toks: Vec<Token>) -> Result<TBox, ToyError> {

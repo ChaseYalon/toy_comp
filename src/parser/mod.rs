@@ -22,6 +22,16 @@ impl Parser {
             ast_gen: AstGenerator::new(),
         };
     }
+
+    /// Create a Parser with a module prefix for name mangling standard library functions.
+    /// The prefix should be in the form "std::<filename>" (e.g., "std::math")
+    pub fn with_module_prefix(prefix: String) -> Parser {
+        return Parser {
+            boxer: Boxer::with_module_prefix(prefix),
+            ast_gen: AstGenerator::new(),
+        };
+    }
+
     pub fn parse(&mut self, input: Vec<Token>) -> Result<Vec<Ast>, ToyError> {
         let boxes = self.boxer.box_toks(input)?;
         let ast = self.ast_gen.generate(boxes)?;

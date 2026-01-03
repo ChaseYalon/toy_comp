@@ -27,14 +27,8 @@ use inkwell::{
     targets::{FileType, InitializationConfig, Target},
 };
 use std::path::Path;
-use std::process::Command;
-use std::fs;
 use std::env;
-pub static FILE_EXTENSION_EXE: &str = if cfg!(target_os = "windows") {
-    ".exe"
-} else {
-    ""
-};
+
 pub struct LlvmGenerator<'a> {
     ctx: &'a Context,
     main_module: Module<'a>,
@@ -863,7 +857,8 @@ impl<'a> LlvmGenerator<'a> {
         };
 
         let llvm_func = if let Some(f) = self.main_module.get_function(&func.name) {
-            if &*func.name != "user_main" {
+            // Keep external linkage for user_main and std:: functions
+            if &*func.name != "user_main" && !func.name.starts_with("std::") {
                 f.set_linkage(Linkage::Internal);
             }
             f
@@ -871,7 +866,7 @@ impl<'a> LlvmGenerator<'a> {
             self.main_module.add_function(
                 &*func.name.clone(),
                 fn_type,
-                Some(if &*func.name == "user_main" {
+                Some(if &*func.name == "user_main" || func.name.starts_with("std::") {
                     Linkage::External
                 } else {
                     Linkage::Internal
@@ -1085,19 +1080,6 @@ impl<'a> LlvmGenerator<'a> {
         let ll_file = format!("{}.ll", prgm_name);
         self.main_module.print_to_file(Path::new(&ll_file))?;
 
-        
-        let p_args: Vec<String> = env::args().collect();
-        if p_args.clone().contains(&"--repl".to_owned()) || p_args.clone().contains(&"--run".to_owned()) {
-            let output_name = format!("{}{}", prgm_name, FILE_EXTENSION_EXE);
-            let mut prgm = Command::new(format!("{}{}", "./", output_name.as_str()));
-            let _ = prgm.spawn().unwrap().wait().unwrap();
-
-            if !p_args.contains(&"--save-temps".to_string()) {
-                fs::remove_file(output_name.as_str()).unwrap();
-                fs::remove_file(format!("{}.o", prgm_name)).unwrap();
-                fs::remove_file(format!("{}.ll", prgm_name)).unwrap();
-            }
-        }
         return Ok(());
     }
 }

@@ -469,6 +469,21 @@ impl TirBuilder {
             val: id,
             ty: Some(ret_type),
         };
+        // If this function returns heap-allocated data, create a HeapAllocation for it in the caller
+        if is_allocator {
+            let curr_block_id =
+                self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()].id;
+            let alloc = HeapAllocation {
+                block: curr_block_id,
+                allocation_id: self._next_alloc_id(),
+                function: self.funcs[self.curr_func.unwrap()].name.clone(),
+                refs: vec![],
+                alloc_ins: ret_ins.clone(),
+            };
+            self.funcs[self.curr_func.unwrap()]
+                .heap_allocations
+                .push(alloc);
+        }
         self.funcs.iter_mut().for_each(|f| {
             if f.name == curr_func_name {
                 f.heap_allocations
@@ -552,8 +567,10 @@ impl TirBuilder {
     /// Checks local functions first, then falls back to registered extern functions.
     pub fn call(&mut self, name: String, params: Vec<SSAValue>) -> Result<SSAValue, ToyError> {
         // Check if it's a local function first
-        if self.funcs.iter().any(|f| *f.name == name) {
-            return self.call_local(name, params, false);
+        if let Some(func) = self.funcs.iter().find(|f| *f.name == name) {
+            // Function is an allocator if it returns I8PTR (heap-allocated string)
+            let is_allocator = func.ret_type == TirType::I8PTR;
+            return self.call_local(name, params, is_allocator);
         }
 
         // Otherwise, try extern

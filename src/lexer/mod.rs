@@ -205,13 +205,20 @@ impl Lexer {
             if self.lex_keyword("import", Token::Import) {
                 continue;
             }
-                if c.is_ascii_digit() || (c == '.' && self.num_buf.len() > 0) {
+            if (c.is_ascii_digit() || (c == '.' && self.num_buf.len() > 0))
+                && self.str_buf.len() == 0
+            {
                 debug!(targets: ["lexer_verbose"], "In ascii print");
                 self.num_buf.push(c);
                 self.eat();
                 continue;
             }
             if c == '.' {
+                if self.num_buf.len() > 0 {
+                    self.num_buf.push(c);
+                    self.eat();
+                    continue;
+                }
                 self.flush();
                 if self.toks.len() == 0 {
                     return Err(ToyError::new(
@@ -350,6 +357,14 @@ impl Lexer {
                 continue;
             }
             if c == '/' {
+                if self.peek(1) == '/' {
+                    self.flush();
+                    //Comment, skip to end of line
+                    while self.cp < self.chars.len() && self.chars[self.cp] != '\n' {
+                        self.eat();
+                    }
+                    continue;
+                }
                 if self.peek(1) == '=' {
                     self.flush();
                     self.toks.push(Token::CompoundDivide);
