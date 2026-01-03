@@ -19,9 +19,29 @@ use inkwell::context::Context;
 use inkwell::module::Module;
 
 use crate::codegen::Generator;
+use crate::errors::ToyError;
 use crate::lexer::Lexer;
 use crate::parser::Parser;
-
+pub struct Compiler<'a> {
+    lexer: Lexer,
+    parser: Parser,
+    generator: Generator<'a>,
+}
+impl<'a> Compiler<'a> {
+    pub fn new(ctx: &'a Context, module: Module<'a>) -> Compiler<'a> {
+        Compiler::<'a> {
+            lexer: Lexer::new(),
+            parser: Parser::new(),
+            generator: Generator::new(ctx, module),
+        }
+    }
+    pub fn compile(&mut self, source: String) -> Result<(), ToyError>{
+        let tokens = self.lexer.lex(source)?;
+        let ast = self.parser.parse(tokens)?;
+        self.generator.generate(ast, "program".to_string())?;
+        Ok(())
+    }
+}
 fn run_repl() {
     loop {
         print!("> ");

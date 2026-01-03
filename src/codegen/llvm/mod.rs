@@ -20,22 +20,15 @@ use crate::{
         Block, Function, SSAValue, TIR, TirType,
         tir::ir::{BlockId, BoolInfixOp, NumericInfixOp},
     },
-    errors::{ToyError, ToyErrorType},
+    errors::ToyError
 };
 use inkwell::{
     OptimizationLevel,
     targets::{FileType, InitializationConfig, Target},
 };
 use std::path::Path;
-
 use std::env;
-use std::fs;
-use std::process::Command;
-pub static FILE_EXTENSION_EXE: &str = if cfg!(target_os = "windows") {
-    ".exe"
-} else {
-    ""
-};
+
 pub struct LlvmGenerator<'a> {
     ctx: &'a Context,
     main_module: Module<'a>,
@@ -132,11 +125,34 @@ impl<'a> LlvmGenerator<'a> {
             TIR::CallExternFunction(id, name, params, _, ret_type) => {
                 let func_body = if let Some(f) = self.main_module.get_function(&name) {
                     f
-                } else {
-                    let hm_func = self.func_map.get(&*name).unwrap();
+                } else if let Some(hm_func) = self.func_map.get(&*name) {
                     self.main_module.add_function(
                         &*name,
                         hm_func.to_owned(),
+                        Some(Linkage::External),
+                    )
+                } else {
+                    let mut compiled_types: Vec<BasicMetadataTypeEnum> = vec![];
+                    for p in &params {
+                        let t = p.ty.as_ref().expect("Param type should be known");
+                        compiled_types.push(self._tir_to_llvm_type(t.clone()).into());
+                    }
+
+                    let fn_type = match ret_type {
+                        TirType::I64 => self.ctx.i64_type().fn_type(&compiled_types, false),
+                        TirType::F64 => self.ctx.f64_type().fn_type(&compiled_types, false),
+                        TirType::I1 => self.ctx.bool_type().fn_type(&compiled_types, false),
+                        TirType::I8PTR => self
+                            .ctx
+                            .ptr_type(AddressSpace::default())
+                            .fn_type(&compiled_types, false),
+                        TirType::Void => self.ctx.void_type().fn_type(&compiled_types, false),
+                        _ => todo!("Chase you have not implemented this return type yet"),
+                    };
+
+                    self.main_module.add_function(
+                        &*name,
+                        fn_type,
                         Some(Linkage::External),
                     )
                 };
@@ -841,7 +857,8 @@ impl<'a> LlvmGenerator<'a> {
         };
 
         let llvm_func = if let Some(f) = self.main_module.get_function(&func.name) {
-            if &*func.name != "user_main" {
+            // Keep external linkage for user_main and std:: functions
+            if &*func.name != "user_main" && !func.name.starts_with("std::") {
                 f.set_linkage(Linkage::Internal);
             }
             f
@@ -849,7 +866,7 @@ impl<'a> LlvmGenerator<'a> {
             self.main_module.add_function(
                 &*func.name.clone(),
                 fn_type,
-                Some(if &*func.name == "user_main" {
+                Some(if &*func.name == "user_main" || func.name.starts_with("std::") {
                     Linkage::External
                 } else {
                     Linkage::Internal
@@ -1058,84 +1075,11 @@ impl<'a> LlvmGenerator<'a> {
             .set_data_layout(&target_machine.get_target_data().get_data_layout());
 
         let obj_file = format!("{}.o", prgm_name);
-        let obj_path = Path::new(&obj_file);
+        let obj_path: &Path = Path::new(&obj_file);
         target_machine.write_to_file(&self.main_module, FileType::Object, obj_path)?;
         let ll_file = format!("{}.ll", prgm_name);
         self.main_module.print_to_file(Path::new(&ll_file))?;
 
-        //linker
-        let target = env!("TARGET").replace("\"", "");
-        let lib_str = format!("lib/{}/", target);
-        let lib_path = Path::new(&lib_str);
-        let crt2_path = lib_path.join("crt2.o");
-        let crtbegin_path = lib_path.join("crtbegin.o");
-        let crt1_path = lib_path.join("crt1.o");
-        let crti_path = lib_path.join("crti.o");
-        let lbruntime_path = lib_path.join("libruntime.a");
-        let crtn_path = lib_path.join("crtn.o");
-        let libc_path = lib_path.join("libc.so.6");
-        let libm_path = lib_path.join("libm.so.6");
-        let output_name = format!("{}{}", prgm_name, FILE_EXTENSION_EXE);
-        let args: Vec<&str> = if env::consts::OS == "windows" {
-            vec![
-                "-m",
-                "i386pep",
-                crt2_path.to_str().unwrap(),
-                crtbegin_path.to_str().unwrap(),
-                obj_path.to_str().unwrap(),
-                "-L",
-                lib_path.to_str().unwrap(),
-                "-lruntime",
-                "-lmingw32",
-                "-lmingwex",
-                "-lmsvcrt",
-                "-lkernel32",
-                "-luser32",
-                "-lshell32",
-                "-lgcc",
-                "-o",
-                output_name.as_str(),
-            ]
-        } else {
-            vec![
-                "-m",
-                "elf_x86_64",
-                crt1_path.to_str().unwrap(),
-                crti_path.to_str().unwrap(),
-                obj_path.to_str().unwrap(),
-                lbruntime_path.to_str().unwrap(),
-                crtn_path.to_str().unwrap(),
-                libc_path.to_str().unwrap(),
-                libm_path.to_str().unwrap(),
-                "-dynamic-linker",
-                "/lib64/ld-linux-x86-64.so.2",
-                "-o",
-                output_name.as_str(),
-            ]
-        };
-        let rstatus = Command::new(lib_path.join("ld.lld"))
-            .args(args.clone())
-            .status();
-        let status = match rstatus {
-            Ok(f) => f,
-            Err(_) => return Err(ToyError::new(ToyErrorType::InternalLinkerFailure, None)),
-        };
-        if !status.success() {
-            return Err(ToyError::new(ToyErrorType::InternalLinkerFailure, None));
-        }
-        let p_args: Vec<String> = env::args().collect();
-        if p_args.clone().contains(&"--repl".to_owned())
-            || p_args.clone().contains(&"--run".to_owned())
-        {
-            let mut prgm = Command::new(format!("{}{}", "./", output_name.as_str()));
-            let _ = prgm.spawn().unwrap().wait().unwrap();
-
-            if !p_args.contains(&"--save-temps".to_string()) {
-                fs::remove_file(output_name.as_str()).unwrap();
-                fs::remove_file(format!("{}.o", prgm_name)).unwrap();
-                fs::remove_file(format!("{}.ll", prgm_name)).unwrap();
-            }
-        }
         return Ok(());
     }
 }

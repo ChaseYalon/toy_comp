@@ -14,7 +14,7 @@ let fee = [
 
 let i = 0;
 while i < len(fee){
-    foo[i].set_a(5);
+    fee[i].set_a(5);
     i++;
 }
 println(fee[0].a)

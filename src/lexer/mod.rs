@@ -154,6 +154,9 @@ impl Lexer {
             if self.lex_keyword("bool", Token::Type(TypeTok::Bool)) {
                 continue;
             }
+            if self.lex_keyword("void", Token::Type(TypeTok::Void)) {
+                continue;
+            }
             if self.lex_keyword("true", Token::BoolLit(true)) {
                 continue;
             }
@@ -196,13 +199,26 @@ impl Lexer {
             if self.lex_keyword("for", Token::For) {
                 continue;
             }
-            if c.is_ascii_digit() || (c == '.' && self.num_buf.len() > 0) {
+            if self.lex_keyword("extern", Token::Extern) {
+                continue;
+            }
+            if self.lex_keyword("import", Token::Import) {
+                continue;
+            }
+            if (c.is_ascii_digit() || (c == '.' && self.num_buf.len() > 0))
+                && self.str_buf.len() == 0
+            {
                 debug!(targets: ["lexer_verbose"], "In ascii print");
                 self.num_buf.push(c);
                 self.eat();
                 continue;
             }
             if c == '.' {
+                if self.num_buf.len() > 0 {
+                    self.num_buf.push(c);
+                    self.eat();
+                    continue;
+                }
                 self.flush();
                 if self.toks.len() == 0 {
                     return Err(ToyError::new(
@@ -341,6 +357,14 @@ impl Lexer {
                 continue;
             }
             if c == '/' {
+                if self.peek(1) == '/' {
+                    self.flush();
+                    //Comment, skip to end of line
+                    while self.cp < self.chars.len() && self.chars[self.cp] != '\n' {
+                        self.eat();
+                    }
+                    continue;
+                }
                 if self.peek(1) == '=' {
                     self.flush();
                     self.toks.push(Token::CompoundDivide);
@@ -552,6 +576,7 @@ impl Lexer {
         }
         if self.toks.last().unwrap().tok_type() == "Let"
             || self.toks.last().unwrap().tok_type() == "Func"
+            || self.toks.last().unwrap().tok_type() == "Import"
         {
             let proto_output: String = self.str_buf.clone().into_iter().collect();
             self.toks.push(Token::VarName(Box::new(proto_output)));

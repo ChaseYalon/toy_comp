@@ -26,6 +26,9 @@ pub enum Ast {
     ///Name, Params, ReturnType, Body, raw text
     FuncDec(Box<String>, Vec<Ast>, TypeTok, Vec<Ast>, String),
 
+    ///Name, Params, ReturnType, raw text
+    ExternFuncDec(Box<String>, Vec<Ast>, TypeTok, String),
+
     ///Name, params as exprs, raw text
     FuncCall(Box<String>, Vec<Ast>, String),
 
@@ -57,8 +60,10 @@ pub enum Ast {
     MemberAccess(Box<Ast>, String, String),
     ///LHS, RHS, raw text
     Assignment(Box<Ast>, Box<Ast>, String),
-
+    ///find the inverse of a node, must be a boolean expression
     Not(Box<Ast>),
+    ///Path to the module being imported from, source code
+    ImportStmt(String, String)
 }
 impl Ast {
     pub fn node_type(&self) -> String {
@@ -72,6 +77,7 @@ impl Ast {
             Ast::EmptyExpr(_, _) => "EmptyExpr".to_string(),
             Ast::FuncParam(_, _, _) => "FuncParam".to_string(),
             Ast::FuncDec(_, _, _, _, _) => "FuncDec".to_string(),
+            Ast::ExternFuncDec(_, _, _, _) => "ExternFuncDec".to_string(),
             Ast::FuncCall(_, _, _) => "FuncCall".to_string(),
             Ast::Return(_, _) => "Return".to_string(),
             Ast::StringLit(_, _) => "StringLit".to_string(),
@@ -86,6 +92,7 @@ impl Ast {
             Ast::MemberAccess(_, _, _) => "MemberAccess".to_string(),
             Ast::Assignment(_, _, _) => "Assignment".to_string(),
             Ast::Not(_) => "Not".to_string(),
+            Ast::ImportStmt(_, _) => "ImportStmt".to_string(),
         };
     }
 
@@ -100,6 +107,7 @@ impl Ast {
             Ast::EmptyExpr(_, s) => s.clone(),
             Ast::FuncParam(_, _, s) => s.clone(),
             Ast::FuncDec(_, _, _, _, s) => s.clone(),
+            Ast::ExternFuncDec(_, _, _, s) => s.clone(),
             Ast::FuncCall(_, _, s) => s.clone(),
             Ast::Return(_, s) => s.clone(),
             Ast::StringLit(_, s) => s.clone(),
@@ -114,6 +122,7 @@ impl Ast {
             Ast::MemberAccess(_, _, s) => s.clone(),
             Ast::Assignment(_, _, s) => s.clone(),
             Ast::Not(n) => format!("!{}", n.to_string()),
+            Ast::ImportStmt(_, s) => s.clone(),
         }
     }
 }
@@ -163,6 +172,10 @@ impl fmt::Display for Ast {
                     "FuncDec Name({}), Params({:?}), ReturnType({:?}), Body({:?}), Literal({})",
                     *name, params, return_type, body, s
                 ),
+                Ast::ExternFuncDec(name, params, return_type, s) => format!(
+                    "ExternFuncDec Name({}), Params({:?}), ReturnType({:?}), Literal({})",
+                    *name, params, return_type, s
+                ),
                 Ast::FuncCall(name, params, s) => format!(
                     "FuncCall, Name({}), Params({:?}), Literal({})",
                     *name, params, s
@@ -191,6 +204,8 @@ impl fmt::Display for Ast {
                     format!("MemberAccess Target({}), Member({}), Literal({})", *t, m, s),
                 Ast::Assignment(l, r, s) =>
                     format!("Assignment LHS({}), RHS({}), Literal({})", *l, *r, s),
+                Ast::ImportStmt(path, s) =>
+                    format!("ImportStmt Path({}), Literal({})", path, s),
             }
         )
     }

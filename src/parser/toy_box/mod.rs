@@ -25,6 +25,11 @@ pub enum TBox {
     Continue,
     ///Name, types, Source code
     StructInterface(Box<String>, Box<BTreeMap<String, TypeTok>>, String),
+    ///used for extern function declarations, those functions are called like any other
+    ///Name, Params, Return Type, source code
+    ExternFuncDec(Token, Vec<TBox>, TypeTok, String),
+    ///name of the module being imported, source_code
+    ImportStmt(String, String),
 }
 
 impl fmt::Display for TBox {
@@ -64,6 +69,11 @@ impl fmt::Display for TBox {
                     "TBox_Struct_Interface Name({}), KV({:?}), Literal({})",
                     *n, *kv, s
                 ),
+                TBox::ExternFuncDec(name, params, return_type, s) => format!(
+                    "TBox_Extern_Func_Dec Name({}), Params({:?}), ReturnType({:?}), Literal({})",
+                    name, params, return_type, s
+                ),
+                TBox::ImportStmt(name, s) => format!("TBox_Import_Stmt Name({}), Literal({})", name, s),
             }
         )
     }

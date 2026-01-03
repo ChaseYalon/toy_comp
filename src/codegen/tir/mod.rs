@@ -1,7 +1,10 @@
 #![allow(unused)]
 use crate::codegen::tir::ir::{BlockId, Function, SSAValue, TirBuilder, ValueId};
 use crate::errors::ToyErrorType;
+use crate::lexer::Lexer;
 use crate::parser::ast::InfixOp;
+use crate::parser::boxer::Boxer;
+use crate::parser::toy_box::TBox;
 use crate::token::TypeTok;
 use crate::{
     codegen::tir::ir::{TIR, TirType},
@@ -10,6 +13,7 @@ use crate::{
 };
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
+use std::fs;
 use std::rc::Rc;
 pub mod ir;
 #[derive(Debug, Clone, PartialEq)]
@@ -93,7 +97,29 @@ impl AstToIrConverter {
                 "int" => Ok(TypeTok::Int),
                 "float" => Ok(TypeTok::Float),
                 "bool" => Ok(TypeTok::Bool),
-                _ => Ok(TypeTok::Int),
+                _ => {
+                    if let Some((_, tir_ty, _)) = self.builder.extern_funcs.get(&*n.to_string()) {
+                        match tir_ty {
+                            TirType::I64 => Ok(TypeTok::Int),
+                            TirType::F64 => Ok(TypeTok::Float),
+                            TirType::I1 => Ok(TypeTok::Bool),
+                            TirType::Void => Ok(TypeTok::Void),
+                            TirType::I8PTR => Ok(TypeTok::Str),
+                            _ => Ok(TypeTok::Int),
+                        }
+                    } else if let Some(f) = self.builder.funcs.iter().find(|f| *f.name == *n.clone()) {
+                        match f.ret_type {
+                            TirType::I64 => Ok(TypeTok::Int),
+                            TirType::F64 => Ok(TypeTok::Float),
+                            TirType::I1 => Ok(TypeTok::Bool),
+                            TirType::Void => Ok(TypeTok::Void),
+                            TirType::I8PTR => Ok(TypeTok::Str),
+                            _ => Ok(TypeTok::Int),
+                        }
+                    } else {
+                        Ok(TypeTok::Int)
+                    }
+                }
             },
             Ast::ArrLit(ty, _, _) => Ok(ty.clone()),
             Ast::IndexAccess(target, _, _) => {
@@ -256,8 +282,10 @@ impl AstToIrConverter {
                     _ => &*n,
                 };
 
+                let is_user_defined = self.builder.extern_funcs.get(name).map(|(_, _, u)| *u).unwrap_or(false);
+
                 let mut final_params = Vec::new();
-                if vec!["toy_print", "toy_println"].contains(&name) {
+                if !is_user_defined && vec!["toy_print", "toy_println"].contains(&name) {
                     if p.len() != 1 {
                         return unreachable!();
                     }
@@ -265,7 +293,7 @@ impl AstToIrConverter {
                     let ty = self.get_expr_type(&p[0], scope)?;
                     self.builder
                         .inject_type_param(&ty, true, &mut final_params)?;
-                } else if vec![
+                } else if !is_user_defined && vec![
                     "toy_type_to_str",
                     "toy_type_to_int",
                     "toy_type_to_bool",
@@ -544,6 +572,19 @@ impl AstToIrConverter {
 
         return Ok(());
     }
+    fn compile_extern_func_dec(
+        &mut self,
+        node: Ast,
+        _scope: &Rc<RefCell<Scope>>,
+    ) -> Result<(), ToyError> {
+        let (name, _, ret_type) = match node {
+            Ast::ExternFuncDec(n, p, r, _) => (*n, p, r),
+            _ => unreachable!(),
+        };
+        self.builder.register_extern_func(name, ret_type);
+        Ok(())
+    }
+
     fn compile_func_dec(&mut self, node: Ast, scope: &Rc<RefCell<Scope>>) -> Result<(), ToyError> {
         let (name, params, ret_type, body) = match node {
             Ast::FuncDec(n, p, r, b, _) => (*n, p, r, b),
@@ -658,6 +699,7 @@ impl AstToIrConverter {
             Ast::IfStmt(_, _, _, _) => self.compile_if_stmt(node, scope)?,
             Ast::WhileStmt(_, _, _) => self.compile_while_stmt(node, scope)?,
             Ast::FuncDec(_, _, _, _, _) => self.compile_func_dec(node, scope)?,
+            Ast::ExternFuncDec(_, _, _, _) => self.compile_extern_func_dec(node, scope)?,
             Ast::Return(v, _) => {
                 let ast_val = *v;
                 let compiled_val = self.compile_expr(ast_val, scope)?;
@@ -676,6 +718,31 @@ impl AstToIrConverter {
                 }
                 let tir = self.builder.create_struct_interface(*n.clone(), tir_proto);
                 self.interfaces.insert(*n, (key_to_idx, tir));
+            }
+
+            Ast::ImportStmt(name, _) => {
+                let path = format!("{}.toy", name.replace(".", "/"));
+                if let Ok(content) = fs::read_to_string(&path) {
+                    let mut l = Lexer::new();
+                    if let Ok(toks) = l.lex(content) {
+                        let mut b = Boxer::new();
+                        if let Ok(boxes) = b.box_toks(toks) {
+                            let prefix = name.replace(".", "::");
+                            for b in boxes {
+                                match b {
+                                    TBox::ExternFuncDec(name_tok, _, ret_type, _) |
+                                    TBox::FuncDec(name_tok, _, ret_type, _, _) => {
+                                        if let Some(n) = name_tok.get_var_name() {
+                                            let full_name = format!("{}::{}", prefix, n);
+                                            self.builder.register_extern(full_name, false, ret_type);
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             _ => todo!("Chase you have not implemented {} yet", node),
@@ -728,7 +795,7 @@ impl AstToIrConverter {
         self.builder
             .register_extern("toy_free_arr".to_string(), false, TypeTok::Void);
     }
-    pub fn convert(&mut self, ast: Vec<Ast>) -> Result<Vec<Function>, ToyError> {
+    pub fn convert(&mut self, ast: Vec<Ast>, is_main: bool) -> Result<Vec<Function>, ToyError> {
         self.register_extern_funcs();
         self.builder
             .new_func(Box::new("user_main".to_string()), vec![], TypeTok::Int);
@@ -739,6 +806,10 @@ impl AstToIrConverter {
         //seems bad
         let to_res = self.builder.iconst(0, TypeTok::Int)?;
         self.builder.ret(to_res);
+        if !is_main && self.builder.funcs[self.builder.curr_func.unwrap()].body[0].ins.len() == 2 {
+            //remove user main if it is empty
+            self.builder.funcs.remove(self.builder.curr_func.unwrap());
+        }
         return Ok(self.builder.funcs.clone());
     }
 }

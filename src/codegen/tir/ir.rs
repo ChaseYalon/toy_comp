@@ -169,9 +169,9 @@ pub struct Function {
 pub struct TirBuilder {
     block_counter: BlockId,
     pub funcs: Vec<Function>,
-    curr_func: Option<usize>,                       //index into self.funcs
+    pub curr_func: Option<usize>,                       //index into self.funcs
     curr_block: Option<usize>,                      //index into self.curr_func.body,
-    extern_funcs: HashMap<String, (bool, TirType)>, //external function name to is_allocator, return_type
+    pub extern_funcs: HashMap<String, (bool, TirType, bool)>, //external function name to is_allocator, return_type, is_user_defined
 }
 impl TirBuilder {
     pub fn new() -> TirBuilder {
@@ -213,6 +213,11 @@ impl TirBuilder {
         self.curr_func = Some(self.funcs.len() - 1); //item just pushed;
         self.funcs[self.curr_func.unwrap()].body.push(block);
         self.curr_block = Some(self.funcs[self.curr_func.unwrap()].body.len() - 1);
+    }
+
+    pub fn register_extern_func(&mut self, name: String, ret_type: TypeTok) {
+        let tir_ret_type = self.type_tok_to_tir_type(ret_type);
+        self.extern_funcs.insert(name, (false, tir_ret_type, true));
     }
 
     /// Updates the parameters of the current function
@@ -464,6 +469,21 @@ impl TirBuilder {
             val: id,
             ty: Some(ret_type),
         };
+        // If this function returns heap-allocated data, create a HeapAllocation for it in the caller
+        if is_allocator {
+            let curr_block_id =
+                self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()].id;
+            let alloc = HeapAllocation {
+                block: curr_block_id,
+                allocation_id: self._next_alloc_id(),
+                function: self.funcs[self.curr_func.unwrap()].name.clone(),
+                refs: vec![],
+                alloc_ins: ret_ins.clone(),
+            };
+            self.funcs[self.curr_func.unwrap()]
+                .heap_allocations
+                .push(alloc);
+        }
         self.funcs.iter_mut().for_each(|f| {
             if f.name == curr_func_name {
                 f.heap_allocations
@@ -486,7 +506,7 @@ impl TirBuilder {
         name: String,
         params: Vec<SSAValue>,
     ) -> Result<SSAValue, ToyError> {
-        let (is_allocator, ret_type) = self.extern_funcs.get(&name).cloned().unwrap(); // parser validated
+        let (is_allocator, ret_type, _) = self.extern_funcs.get(&name).cloned().unwrap(); // parser validated
         let curr_func_name = self.funcs[self.curr_func.unwrap()].name.clone();
         let curr_block_idx = self.curr_block.unwrap();
         let curr_block = self.funcs[self.curr_func.unwrap()].body[curr_block_idx].id;
@@ -547,8 +567,10 @@ impl TirBuilder {
     /// Checks local functions first, then falls back to registered extern functions.
     pub fn call(&mut self, name: String, params: Vec<SSAValue>) -> Result<SSAValue, ToyError> {
         // Check if it's a local function first
-        if self.funcs.iter().any(|f| *f.name == name) {
-            return self.call_local(name, params, false);
+        if let Some(func) = self.funcs.iter().find(|f| *f.name == name) {
+            // Function is an allocator if it returns I8PTR (heap-allocated string)
+            let is_allocator = func.ret_type == TirType::I8PTR;
+            return self.call_local(name, params, is_allocator);
         }
 
         // Otherwise, try extern
@@ -567,7 +589,7 @@ impl TirBuilder {
         params: Vec<SSAValue>,
     ) -> Result<(), ToyError> {
         //params should never be freed, so no need to track refs
-        let (is_allocator, ret_type) = self.extern_funcs.get(&name).cloned().unwrap(); // parser validated
+        let (is_allocator, ret_type, _) = self.extern_funcs.get(&name).cloned().unwrap(); // parser validated
 
         let id = self._next_value_id();
         let ins = TIR::CallExternFunction(id, Box::new(name), params, is_allocator, ret_type);
@@ -857,7 +879,7 @@ impl TirBuilder {
     }
     pub fn register_extern(&mut self, name: String, is_allocator: bool, ret_type: TypeTok) {
         self.extern_funcs
-            .insert(name, (is_allocator, self.type_tok_to_tir_type(ret_type)));
+            .insert(name, (is_allocator, self.type_tok_to_tir_type(ret_type), false));
     }
     pub fn global_string(&mut self, name: String) -> Result<SSAValue, ToyError> {
         let id = self._next_value_id();

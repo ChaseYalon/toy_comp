@@ -41,6 +41,10 @@ fn eq_tbox_ignoring_src(x: &TBox, y: &TBox) -> bool {
         (TBox::StructInterface(xn, xkv, _), TBox::StructInterface(yn, ykv, _)) => {
             xn == yn && xkv == ykv
         }
+        (TBox::ExternFuncDec(xn, xp, xr, _), TBox::ExternFuncDec(yn, yp, yr, _)) => {
+            xn == yn && xr == yr && compare_tbox_vecs(xp.clone(), yp.clone())
+        }
+        (TBox::ImportStmt(xn, _), TBox::ImportStmt(yn, _)) => xn == yn,
         _ => false,
     }
 }
@@ -339,7 +343,7 @@ fn test_boxer_func_dec_and_call() {
         boxes.unwrap(),
         vec![
             TBox::FuncDec(
-                Token::VarName(Box::new("add".to_string())),
+                Token::VarName(Box::new("add_int_int".to_string())),
                 vec![
                     TBox::FuncParam(
                         Token::VarRef(Box::new("a".to_string())),
@@ -961,7 +965,7 @@ fn test_boxer_struct_func_param() {
                 "".to_string()
             ),
             TBox::FuncDec(
-                Token::VarName(Box::new("bar".to_string())),
+                Token::VarName(Box::new("bar_struct".to_string())),
                 vec![TBox::FuncParam(
                     Token::VarRef(Box::new("f".to_string())),
                     TypeTok::Struct(BTreeMap::from([("a".to_string(), Box::new(TypeTok::Int))])),
@@ -1018,7 +1022,7 @@ fn test_boxer_struct_method_conversion() {
                 "".to_string()
             ),
             TBox::FuncDec(
-                Token::VarName(Box::new("Point:::print_point".to_string())),
+                Token::VarName(Box::new("Point:::print_point_struct".to_string())),
                 vec![TBox::FuncParam(
                     Token::VarRef(Box::new("this".to_string())),
                     TypeTok::Struct(BTreeMap::from([
@@ -1113,5 +1117,80 @@ fn test_boxer_increment() {
             ],
             "x++".to_string()
         )]
+    ))
+}
+
+
+#[test]
+fn test_boxer_extern_function_declaration() {
+    let input = String::from("extern fn printf(msg: str): int;");
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let toks = l.lex(input).unwrap();
+    let boxes = b.box_toks(toks);
+
+    assert!(compare_tbox_vecs(
+        boxes.unwrap(),
+        vec![TBox::ExternFuncDec(
+            Token::VarName(Box::new("printf".to_string())),
+            vec![TBox::FuncParam(
+                Token::VarRef(Box::new("msg".to_string())),
+                TypeTok::Str,
+                "".to_string()
+            )],
+            TypeTok::Int,
+            "extern fn printf(msg: str): int;".to_string()
+        )]
+    ))
+}
+
+#[test]
+fn test_boxer_extern_function_declaration_void() {
+    let input = String::from("extern fn puts(msg: str): void;");
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let toks = l.lex(input).unwrap();
+    let boxes = b.box_toks(toks);
+
+    assert!(compare_tbox_vecs(
+        boxes.unwrap(),
+        vec![TBox::ExternFuncDec(
+            Token::VarName(Box::new("puts".to_string())),
+            vec![TBox::FuncParam(
+                Token::VarRef(Box::new("msg".to_string())),
+                TypeTok::Str,
+                "".to_string()
+            )],
+            TypeTok::Void,
+            "extern fn puts(msg: str): void;".to_string()
+        )]
+    ))
+}
+
+#[test]
+fn test_boxer_import_stmt() {
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let toks = l.lex("import std.math; println(math.abs(-5));".to_string());
+    let boxes = b.box_toks(toks.unwrap());
+    assert!(compare_tbox_vecs(
+        boxes.unwrap(),
+        vec![
+            TBox::ImportStmt("std.math".to_string(), "import std.math;".to_string()),
+            TBox::Expr(
+                vec![
+                    Token::VarRef(Box::new("println".to_string())),
+                    Token::LParen,
+                    Token::VarRef(Box::new("math".to_string())),
+                    Token::Dot,
+                    Token::VarRef(Box::new("abs".to_string())),
+                    Token::LParen,
+                    Token::IntLit(-5),
+                    Token::RParen,
+                    Token::RParen
+                ],
+                "".to_string()
+            )
+        ]
     ))
 }

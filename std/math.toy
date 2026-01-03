@@ -1,0 +1,403 @@
+//trig
+extern fn toy_math_sin(a: int): int;
+extern fn toy_math_sinf(a: float): float;
+fn sin(a: int): int {
+    return toy_math_sin(a);
+}
+fn sin(a: float): float {
+    return toy_math_sinf(a);
+}
+
+extern fn toy_math_cos(a: int): int;
+extern fn toy_math_cosf(a: float): float;
+fn cos(a: int): int {
+    return toy_math_cos(a);
+}
+fn cos(a: float): float{
+    return toy_math_cosf(a);
+}
+
+extern fn toy_math_tan(a: int): int;
+extern fn toy_math_tanf(a: float): float;
+fn tan(a: int): int {
+    return toy_math_tan(a);
+}
+fn tan(a: float): float{
+    return toy_math_tanf(a);
+}
+
+extern fn toy_math_asin(a: int): int;
+extern fn toy_math_asinf(a: float): float;
+fn asin(a: int): int {
+    return toy_math_asin(a);
+}
+fn asin(a: float): float{
+    return toy_math_asinf(a);
+}
+
+extern fn toy_math_acos(a: int): int;
+extern fn toy_math_acosf(a: float): float;
+fn acos(a: int): int{
+    return toy_math_acos(a);
+}
+fn acos(a: float): float {
+    return toy_math_acosf(a);
+}
+
+extern fn toy_math_atan(a: int): int;
+extern fn toy_math_atanf(a: float): float;
+fn atan(a: int): int{
+    return toy_math_atan(a);
+}
+fn atan(a: float): float{
+    return toy_math_atanf(a);
+}
+
+extern fn toy_math_atan2(a: int, b: int): int;
+extern fn toy_math_atan2f(a: float, b: float): float;
+fn atan2(a: int, b: int): int{
+    return toy_math_atan2(a, b);
+}
+fn atan2(a: float, b: int): float{
+    return toy_math_atan2f(a, float(b));
+}
+fn atan2(a: int, b: float): float{
+    return toy_math_atan2f(float(a), b);
+}
+fn atan2(a: float, b: float): float {
+    return toy_math_atan2f(a, b);
+}
+
+
+//hyperbolic
+extern fn toy_math_sinh(a: int): int;
+extern fn toy_math_sinhf(a: float): float;
+fn sinh(a: int): int {
+    return toy_math_sinh(a);
+}
+fn sinh(a: float): float {
+    return toy_math_sinhf(a);
+}
+extern fn toy_math_cosh(a: int): int;
+extern fn toy_math_coshf(a: float): float;
+fn cosh(a: int): int {
+    return toy_math_cosh(a);
+}
+fn cosh(a: float): float {
+    return toy_math_coshf(a);
+}
+extern fn toy_math_tanh(a: int): int;
+extern fn toy_math_tanhf(a: float): float;
+fn tanh(a: int): int {
+    return toy_math_tanh(a);
+}
+fn tanh(a: float): float {
+    return toy_math_tanhf(a);
+}
+extern fn toy_math_asinh(a: int): int;
+extern fn toy_math_asinhf(a: float): float;
+fn asinh(a: int): int {
+    return toy_math_asinh(a);
+}
+fn asinh(a: float): float {
+    return toy_math_asinhf(a);
+}
+extern fn toy_math_acosh(a: int): int;
+extern fn toy_math_acoshf(a: float): float;
+fn acosh(a: int): int {
+    return toy_math_acosh(a);
+}
+fn acosh(a: float): float {
+    return toy_math_acoshf(a);
+}
+extern fn toy_math_atanh(a: int): int;
+extern fn toy_math_atanhf(a: float): float;
+fn atanh(a: int): int {
+    return toy_math_atanh(a);
+}
+fn atanh(a: float): float {
+    return toy_math_atanhf(a);
+}
+
+
+//exponential and logarithmic
+extern fn toy_math_exp(a: int): int;
+extern fn toy_math_expf(a: float): float;
+fn exp(a: int): int {
+    return toy_math_exp(a);
+}
+fn exp(a: float): float {
+    return toy_math_expf(a);
+}
+
+extern fn toy_math_exp2(a: int): int;
+extern fn toy_math_exp2f(a: float): float;
+fn exp2(a: int): int {
+    return toy_math_exp2(a);
+}
+fn exp2(a: float): float {
+    return toy_math_exp2f(a);
+}
+
+extern fn toy_math_expm1(a: int): int;
+extern fn toy_math_expm1f(a: float): float;
+fn expm1(a: int): int {
+    return toy_math_expm1(a);
+}
+fn expm1(a: float): float {
+    return toy_math_expm1f(a);
+}
+
+extern fn toy_math_log(a: int): int;
+extern fn toy_math_logf(a: float): float;
+fn log(a: int): int {
+    return toy_math_log(a);
+}
+fn log(a: float): float {
+    return toy_math_logf(a);
+}
+
+extern fn toy_math_log10(a: int): int;
+extern fn toy_math_log10f(a: float): float;
+fn log10(a: int): int {
+    return toy_math_log10(a);
+}
+fn log10(a: float): float {
+    return toy_math_log10f(a);
+}
+
+extern fn toy_math_log2(a: int): int;
+extern fn toy_math_log2f(a: float): float;
+fn log2(a: int): int {
+    return toy_math_log2(a);
+}
+fn log2(a: float): float {
+    return toy_math_log2f(a);
+}
+
+extern fn toy_math_log1p(a: int): int;
+extern fn toy_math_log1pf(a: float): float;
+fn log1p(a: int): int {
+    return toy_math_log1p(a);
+}
+fn log1p(a: float): float {
+    return toy_math_log1pf(a);
+}
+
+
+extern fn toy_math_abs(a: int): int;
+fn abs(a: int): int {
+    return toy_math_abs(a);
+}
+extern fn toy_math_absf(a: float): float;
+fn abs(a: float): float {
+    return toy_math_absf(a);
+}
+
+extern fn toy_math_pow(a: int, b: int): int;
+extern fn toy_math_powf(a: float, b: float): float;
+fn pow(a: int, b: int): int {
+    return toy_math_pow(a, b);
+}
+fn pow(a: float, b: float): float {
+    return toy_math_powf(a, b);
+}
+fn pow(a: float, b: int): float {
+    return toy_math_powf(a, float(b));
+}
+fn pow(a: int, b: float): float {
+    return toy_math_powf(float(a), b);
+}
+
+extern fn toy_math_sqrt(a: int): int;
+extern fn toy_math_sqrtf(a: float): float;
+fn sqrt(a: int): int {
+    return toy_math_sqrt(a);
+}
+fn sqrt(a: float): float {
+    return toy_math_sqrtf(a);
+}
+
+extern fn toy_math_cbrt(a: int): int;
+extern fn toy_math_cbrtf(a: float): float;
+fn cbrt(a: int): int {
+    return toy_math_cbrt(a);
+}
+fn cbrt(a: float): float {
+    return toy_math_cbrtf(a);
+}
+
+extern fn toy_math_hypot(a: int, b: int): int;
+extern fn toy_math_hypotf(a: float, b: float): float;
+fn hypot(a: int, b: int): int {
+    return toy_math_hypot(a, b);
+}
+fn hypot(a: float, b: float): float {
+    return toy_math_hypotf(a, b);
+}
+
+extern fn toy_math_ceil(a: int): int;
+extern fn toy_math_ceilf(a: float): float;
+fn ceil(a: int): int {
+    return toy_math_ceil(a);
+}
+fn ceil(a: float): float {
+    return toy_math_ceilf(a);
+}
+
+extern fn toy_math_floor(a: int): int;
+extern fn toy_math_floorf(a: float): float;
+fn floor(a: int): int {
+    return toy_math_floor(a);
+}
+fn floor(a: float): float {
+    return toy_math_floorf(a);
+}
+
+extern fn toy_math_trunc(a: int): int;
+extern fn toy_math_truncf(a: float): float;
+fn trunc(a: int): int {
+    return toy_math_trunc(a);
+}
+fn trunc(a: float): float {
+    return toy_math_truncf(a);
+}
+
+extern fn toy_math_round(a: int): int;
+extern fn toy_math_roundf(a: float): float;
+fn round(a: int): int {
+    return toy_math_round(a);
+}
+fn round(a: float): float {
+    return toy_math_roundf(a);
+}
+
+extern fn toy_math_nearbyint(a: int): int;
+extern fn toy_math_nearbyintf(a: float): float;
+fn nearbyint(a: int): int {
+    return toy_math_nearbyint(a);
+}
+fn nearbyint(a: float): float {
+    return toy_math_nearbyintf(a);
+}
+
+extern fn toy_math_fmod(a: int, b: int): int;
+extern fn toy_math_fmodf(a: float, b: float): float;
+fn fmod(a: int, b: int): int {
+    return toy_math_fmod(a, b);
+}
+fn fmod(a: float, b: float): float {
+    return toy_math_fmodf(a, b);
+}
+
+extern fn toy_math_remainder(a: int, b: int): int;
+extern fn toy_math_remainderf(a: float, b: float): float;
+fn remainder(a: int, b: int): int {
+    return toy_math_remainder(a, b);
+}
+fn remainder(a: float, b: float): float {
+    return toy_math_remainderf(a, b);
+}
+
+extern fn toy_math_ldexp(a: int, b: int): int;
+extern fn toy_math_ldexpf(a: float, b: int): float;
+fn ldexp(a: int, b: int): int {
+    return toy_math_ldexp(a, b);
+}
+fn ldexp(a: float, b: int): float {
+    return toy_math_ldexpf(a, b);
+}
+
+extern fn toy_math_scalbn(a: int, b: int): int;
+extern fn toy_math_scalbnf(a: float, b: int): float;
+fn scalbn(a: int, b: int): int {
+    return toy_math_scalbn(a, b);
+}
+fn scalbn(a: float, b: int): float {
+    return toy_math_scalbnf(a, b);
+}
+
+extern fn toy_math_scalbln(a: int, b: int): int;
+extern fn toy_math_scalblnf(a: float, b: int): float;
+fn scalbln(a: int, b: int): int {
+    return toy_math_scalbln(a, b);
+}
+fn scalbln(a: float, b: int): float {
+    return toy_math_scalblnf(a, b);
+}
+
+extern fn toy_math_ilogb(a: int): int;
+extern fn toy_math_ilogbf(a: float): int;
+fn ilogb(a: int): int {
+    return toy_math_ilogb(a);
+}
+fn ilogb(a: float): int {
+    return toy_math_ilogbf(a);
+}
+
+extern fn toy_math_logb(a: int): int;
+extern fn toy_math_logbf(a: float): float;
+fn logb(a: int): int {
+    return toy_math_logb(a);
+}
+fn logb(a: float): float {
+    return toy_math_logbf(a);
+}
+
+extern fn toy_math_nextafter(a: int, b: int): int;
+extern fn toy_math_nextafterf(a: float, b: float): float;
+fn nextafter(a: int, b: int): int {
+    return toy_math_nextafter(a, b);
+}
+fn nextafter(a: float, b: float): float {
+    return toy_math_nextafterf(a, b);
+}
+
+extern fn toy_math_nexttoward(a: int, b: int): int;
+extern fn toy_math_nexttowardf(a: float, b: float): float;
+fn nexttoward(a: int, b: int): int {
+    return toy_math_nexttoward(a, b);
+}
+fn nexttoward(a: float, b: float): float {
+    return toy_math_nexttowardf(a, b);
+}
+
+extern fn toy_math_copysign(a: int, b: int): int;
+extern fn toy_math_copysignf(a: float, b: float): float;
+fn copysign(a: int, b: int): int {
+    return toy_math_copysign(a, b);
+}
+fn copysign(a: float, b: float): float {
+    return toy_math_copysignf(a, b);
+}
+
+extern fn toy_math_dim(a: int, b: int): int;
+extern fn toy_math_dimf(a: float, b: float): float;
+fn dim(a: int, b: int): int {
+    return toy_math_dim(a, b);
+}
+fn dim(a: float, b: float): float {
+    return toy_math_dimf(a, b);
+}
+
+extern fn toy_math_max(a: int, b: int): int;
+extern fn toy_math_maxf(a: float, b: float): float;
+fn max(a: int, b: int): int {
+    return toy_math_max(a, b);
+}
+fn max(a: float, b: float): float {
+    return toy_math_maxf(a, b);
+}
+
+extern fn toy_math_min(a: int, b: int): int;
+extern fn toy_math_minf(a: float, b: float): float;
+fn min(a: int, b: int): int {
+    return toy_math_min(a, b);
+}
+fn min(a: float, b: float): float {
+    return toy_math_minf(a, b);
+}
+
+fn fabs(a: float): float {
+    return toy_math_absf(a);
+}

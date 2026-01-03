@@ -50,6 +50,8 @@ pub enum ToyErrorType {
     MissingInstruction,
     LlvmError(String),
     UndefinedSSAValue,
+    MalformedImportStatement,
+    MissingFile
 }
 
 #[derive(Debug, Error)]
@@ -127,6 +129,7 @@ impl fmt::Display for ToyErrorType {
             Self::ArrayTypeInvalid => write!(f, "Array Type Invalid"),
             Self::KeyNotOnStruct => write!(f, "Key Not On Struct"),
             Self::TypeMismatch => write!(f, "Type Mismatch"),
+            Self::MissingFile => write!(f, "Missing File"),
             _ => todo!("chase implement error type {:?}", self),
         }
     }

@@ -46,6 +46,10 @@ fn eq_ast_ignoring_src(x: &Ast, y: &Ast) -> bool {
                 && compare_ast_vecs(xb.clone(), yb.clone())
         }
 
+        (Ast::ExternFuncDec(xn, xp, xr, _), Ast::ExternFuncDec(yn, yp, yr, _)) => {
+            xn == yn && xr == yr && compare_ast_vecs(xp.clone(), yp.clone())
+        }
+
         (Ast::FuncCall(xn, xp, _), Ast::FuncCall(yn, yp, _)) => {
             xn == yn && compare_ast_vecs(xp.clone(), yp.clone())
         }
@@ -95,6 +99,8 @@ fn eq_ast_ignoring_src(x: &Ast, y: &Ast) -> bool {
         (Ast::Assignment(xl, xr, _), Ast::Assignment(yl, yr, _)) => {
             eq_ast_ignoring_src(xl, yl) && eq_ast_ignoring_src(xr, yr)
         }
+
+        (Ast::ImportStmt(xp, _), Ast::ImportStmt(yp, _)) => xp == yp,
 
         _ => todo!("Chase you have not implemented {} node yet", x.node_type()),
     }
@@ -499,7 +505,7 @@ fn test_ast_gen_func_dec_call() {
         ast,
         vec![
             Ast::FuncDec(
-                Box::new("add".to_string()),
+                Box::new("add_int_int".to_string()),
                 vec![
                     Ast::FuncParam(Box::new("a".to_string()), TypeTok::Int, "".to_string()),
                     Ast::FuncParam(Box::new("b".to_string()), TypeTok::Int, "".to_string())
@@ -520,7 +526,7 @@ fn test_ast_gen_func_dec_call() {
                 Box::new("x".to_string()),
                 TypeTok::Int,
                 Box::new(Ast::FuncCall(
-                    Box::new("add".to_string()),
+                    Box::new("add_int_int".to_string()),
                     vec![Ast::IntLit(2), Ast::IntLit(3),],
                     "".to_string()
                 )),
@@ -614,7 +620,7 @@ fn test_ast_gen_fibonacci() {
         ast,
         vec![
             Ast::FuncDec(
-                Box::new("fib".to_string()),
+                Box::new("fib_int".to_string()),
                 vec![Ast::FuncParam(
                     Box::new("n".to_string()),
                     TypeTok::Int,
@@ -647,7 +653,7 @@ fn test_ast_gen_fibonacci() {
                     Ast::Return(
                         Box::new(Ast::InfixExpr(
                             Box::new(Ast::FuncCall(
-                                Box::new("fib".to_string()),
+                                Box::new("fib_int".to_string()),
                                 vec![Ast::InfixExpr(
                                     Box::new(Ast::VarRef(
                                         Box::new("n".to_string()),
@@ -660,7 +666,7 @@ fn test_ast_gen_fibonacci() {
                                 "".to_string()
                             )),
                             Box::new(Ast::FuncCall(
-                                Box::new("fib".to_string()),
+                                Box::new("fib_int".to_string()),
                                 vec![Ast::InfixExpr(
                                     Box::new(Ast::VarRef(
                                         Box::new("n".to_string()),
@@ -683,7 +689,7 @@ fn test_ast_gen_fibonacci() {
             Ast::FuncCall(
                 Box::new("println".to_string()),
                 vec![Ast::FuncCall(
-                    Box::new("fib".to_string()),
+                    Box::new("fib_int".to_string()),
                     vec![Ast::IntLit(5)],
                     "".to_string()
                 )],
@@ -1407,7 +1413,7 @@ fn test_ast_gen_struct_func_param() {
                 "".to_string()
             ),
             Ast::FuncDec(
-                Box::new("bar".to_string()),
+                Box::new("bar_struct".to_string()),
                 vec![Ast::FuncParam(
                     Box::new("f".to_string()),
                     TypeTok::Struct(BTreeMap::from([("a".to_string(), Box::new(TypeTok::Int))])),
@@ -1425,7 +1431,7 @@ fn test_ast_gen_struct_func_param() {
                 "".to_string()
             ),
             Ast::FuncCall(
-                Box::new("bar".to_string()),
+                Box::new("bar_struct".to_string()),
                 vec![Ast::StructLit(
                     Box::new("Foo".to_string()),
                     Box::new(BTreeMap::from([(
@@ -1539,7 +1545,7 @@ fn test_ast_gen_nested_func_call_bug() {
         ast,
         vec![
             Ast::FuncDec(
-                Box::new("add".to_string()),
+                Box::new("add_int_int".to_string()),
                 vec![
                     Ast::FuncParam(Box::new("a".to_string()), TypeTok::Int, "".to_string()),
                     Ast::FuncParam(Box::new("b".to_string()), TypeTok::Int, "".to_string())
@@ -1559,7 +1565,7 @@ fn test_ast_gen_nested_func_call_bug() {
             Ast::FuncCall(
                 Box::new("println".to_string()),
                 vec![Ast::FuncCall(
-                    Box::new("add".to_string()),
+                    Box::new("add_int_int".to_string()),
                     vec![Ast::IntLit(5), Ast::IntLit(4)],
                     "".to_string()
                 )],
@@ -1587,7 +1593,7 @@ fn test_ast_gen_struct_func_call() {
                 "".to_string()
             ),
             Ast::FuncDec(
-                Box::new("Human:::set_age".to_string()),
+                Box::new("Human:::set_age_struct_int".to_string()),
                 vec![
                     Ast::FuncParam(
                         Box::new("this".to_string()),
@@ -1634,7 +1640,7 @@ fn test_ast_gen_struct_func_call() {
                 "".to_string()
             ),
             Ast::FuncCall(
-                Box::new("Human:::set_age".to_string()),
+                Box::new("Human:::set_age_struct_int".to_string()),
                 vec![
                     Ast::VarRef(Box::new("me".to_string()), "".to_string()),
                     Ast::IntLit(17)
@@ -1678,7 +1684,7 @@ fn test_ast_gen_struct_func_call_multi_param() {
                 "".to_string()
             ),
             Ast::FuncDec(
-                Box::new("Point:::move".to_string()),
+                Box::new("Point:::move_struct_int_int".to_string()),
                 vec![
                     Ast::FuncParam(
                         Box::new("this".to_string()),
@@ -1731,7 +1737,7 @@ fn test_ast_gen_struct_func_call_multi_param() {
                 "".to_string()
             ),
             Ast::FuncCall(
-                Box::new("Point:::move".to_string()),
+                Box::new("Point:::move_struct_int_int".to_string()),
                 vec![
                     Ast::VarRef(Box::new("origin".to_string()), "".to_string()),
                     Ast::IntLit(2),
@@ -1779,7 +1785,7 @@ fn test_ast_gen_struct_arr_func_call() {
                 "".to_string()
             ),
             Ast::FuncDec(
-                Box::new("Foo:::set_a".to_string()),
+                Box::new("Foo:::set_a_struct_int".to_string()),
                 vec![
                     Ast::FuncParam(
                         Box::new("this".to_string()),
@@ -1845,7 +1851,7 @@ fn test_ast_gen_struct_arr_func_call() {
                 )),
                 vec![
                     Ast::FuncCall(
-                        Box::new("Foo:::set_a".to_string()),
+                        Box::new("Foo:::set_a_struct_int".to_string()),
                         vec![
                             Ast::IndexAccess(
                                 Box::new(Ast::VarRef(Box::new("fee".to_string()), "".to_string())),
@@ -1884,4 +1890,60 @@ fn test_ast_gen_struct_arr_func_call() {
             )
         ]
     ))
+}
+
+#[test]
+fn test_ast_gen_extern_func_dec() {
+    let input = String::from("extern fn printf(msg: str): int;");
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let mut g = AstGenerator::new();
+    let toks = l.lex(input).unwrap();
+    let boxes = b.box_toks(toks).unwrap();
+    let ast = g.generate(boxes).unwrap();
+
+    assert!(compare_ast_vecs(
+        ast,
+        vec![Ast::ExternFuncDec(
+            Box::new("printf".to_string()),
+            vec![Ast::FuncParam(
+                Box::new("msg".to_string()),
+                TypeTok::Str,
+                "".to_string()
+            )],
+            TypeTok::Int,
+            "".to_string()
+        )]
+    ));
+}
+
+#[test]
+fn test_ast_gen_import_stmt_resolution() {
+    let input = String::from(r#"import std.math; let x = math.abs(-5);"#);
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let mut g = AstGenerator::new();
+    let toks = l.lex(input).unwrap();
+    let boxes = b.box_toks(toks).unwrap();
+    let ast = g.generate(boxes).unwrap();
+
+    assert!(compare_ast_vecs(
+        ast,
+        vec![
+            Ast::ImportStmt(
+                "std.math".to_string(),
+                "".to_string()
+            ),
+            Ast::VarDec(
+                Box::new("x".to_string()),
+                TypeTok::Int,
+                Box::new(Ast::FuncCall(
+                    Box::new("std::math::abs_int".to_string()),
+                    vec![Ast::IntLit(-5)],
+                    "".to_string()
+                )),
+                "".to_string()
+            )
+        ]
+    ));
 }
