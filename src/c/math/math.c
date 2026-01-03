@@ -43,7 +43,7 @@ double toy_math_atanf(double value) {
 int64_t toy_math_atan2(int64_t y, int64_t x) {
     return (int64_t)(atan2((double)y, (double)x) * 1e6);
 }
-int64_t toy_math_atan2f(double y, double x) {
+double toy_math_atan2f(double y, double x) {
     return atan2(y, x);
 }
 
