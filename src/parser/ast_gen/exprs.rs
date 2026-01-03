@@ -593,7 +593,8 @@ impl AstGenerator {
                                 let mut depth = 0;
                                 for t in args_toks {
                                     if t.tok_type() == "Comma" && depth == 0 {
-                                        let (arg_ast, arg_type) = self.parse_expr(&current_arg_toks)?;
+                                        let (arg_ast, arg_type) =
+                                            self.parse_expr(&current_arg_toks)?;
                                         args.push(arg_ast);
                                         arg_types.push(arg_type);
                                         current_arg_toks.clear();
@@ -620,11 +621,16 @@ impl AstGenerator {
 
                                 let mut mangled_full_name = full_name.clone();
                                 for t in &arg_types {
-                                    mangled_full_name = format!("{}_{}", mangled_full_name, t.type_str().to_lowercase());
+                                    mangled_full_name = format!(
+                                        "{}_{}",
+                                        mangled_full_name,
+                                        t.type_str().to_lowercase()
+                                    );
                                 }
 
                                 let mut final_name = mangled_full_name.clone();
-                                let mut ret_type = self.func_return_type_map.get(&final_name).cloned();
+                                let mut ret_type =
+                                    self.func_return_type_map.get(&final_name).cloned();
 
                                 if ret_type.is_none() {
                                     if let Some(rt) = self.func_return_type_map.get(&full_name) {
@@ -710,7 +716,8 @@ impl AstGenerator {
 
                     let mut final_mangled_name = mangled_name.clone();
                     for t in &arg_types {
-                        final_mangled_name = format!("{}_{}", final_mangled_name, t.type_str().to_lowercase());
+                        final_mangled_name =
+                            format!("{}_{}", final_mangled_name, t.type_str().to_lowercase());
                     }
 
                     let ret_type = self

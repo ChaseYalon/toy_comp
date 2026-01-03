@@ -1,0 +1,5 @@
+//low level module for interacting with hardware
+extern toy_sys_exit()
+fn exit(int){
+
+}

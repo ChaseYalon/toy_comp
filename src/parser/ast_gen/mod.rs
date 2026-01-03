@@ -2,13 +2,13 @@ use ordered_float::OrderedFloat;
 
 use crate::debug;
 use crate::errors::{ToyError, ToyErrorType};
+use crate::lexer::Lexer;
 use crate::parser::ast::Ast;
+use crate::parser::boxer::Boxer;
 use crate::parser::toy_box::TBox;
 use crate::token::Token;
 use crate::token::TypeTok;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use crate::lexer::Lexer;
-use crate::parser::boxer::Boxer;
 use std::fs;
 
 mod exprs;
@@ -108,31 +108,32 @@ impl AstGenerator {
     fn load_module(&mut self, name: &str) {
         let path = format!("{}.toy", name.replace(".", "/"));
         if let Ok(content) = fs::read_to_string(&path) {
-             let mut l = Lexer::new();
-             if let Ok(toks) = l.lex(content) {
-                 let mut b = Boxer::new();
-                 if let Ok(boxes) = b.box_toks(toks) {
-                     let prefix = name.replace(".", "::");
-                     for b in boxes {
-                         match b {
-                             TBox::ExternFuncDec(name_tok, _, ret_type, _) => {
-                                 if let Some(n) = name_tok.get_var_name() {
-                                     let full_name = format!("{}::{}", prefix, n);
-                                     self.func_return_type_map.insert(full_name.clone(), ret_type);
-                                     self.extern_funcs.insert(full_name);
-                                 }
-                             }
-                             TBox::FuncDec(name_tok, _, ret_type, _, _) => {
-                                 if let Some(n) = name_tok.get_var_name() {
-                                     let full_name = format!("{}::{}", prefix, n);
-                                     self.func_return_type_map.insert(full_name, ret_type);
-                                 }
-                             }
-                             _ => {}
-                         }
-                     }
-                 }
-             }
+            let mut l = Lexer::new();
+            if let Ok(toks) = l.lex(content) {
+                let mut b = Boxer::new();
+                if let Ok(boxes) = b.box_toks(toks) {
+                    let prefix = name.replace(".", "::");
+                    for b in boxes {
+                        match b {
+                            TBox::ExternFuncDec(name_tok, _, ret_type, _) => {
+                                if let Some(n) = name_tok.get_var_name() {
+                                    let full_name = format!("{}::{}", prefix, n);
+                                    self.func_return_type_map
+                                        .insert(full_name.clone(), ret_type);
+                                    self.extern_funcs.insert(full_name);
+                                }
+                            }
+                            TBox::FuncDec(name_tok, _, ret_type, _, _) => {
+                                if let Some(n) = name_tok.get_var_name() {
+                                    let full_name = format!("{}::{}", prefix, n);
+                                    self.func_return_type_map.insert(full_name, ret_type);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -340,7 +341,9 @@ impl AstGenerator {
                 }
             }
         }
-        let builtins = vec!["print", "println", "len", "str", "bool", "int", "float", "input"];
+        let builtins = vec![
+            "print", "println", "len", "str", "bool", "int", "float", "input",
+        ];
         if !builtins.contains(&name.as_str()) {
             for (_, t) in processed_params.clone() {
                 resolved_name = format!("{}_{}", resolved_name, t.type_str().to_lowercase());
@@ -351,9 +354,9 @@ impl AstGenerator {
         }
 
         if types_opt.is_some() && !self.func_return_type_map.contains_key(&resolved_name) {
-             if self.func_return_type_map.contains_key(&name) {
-                 resolved_name = name.clone();
-             }
+            if self.func_return_type_map.contains_key(&name) {
+                resolved_name = name.clone();
+            }
         }
 
         if types_opt.is_none() {
@@ -432,8 +435,8 @@ impl AstGenerator {
     }
 
     fn parse_if_stmt(&mut self, stmt: TBox, should_eat: bool) -> Result<Ast, ToyError> {
-        let (cond, body, alt, raw_text) = match stmt {
-            TBox::IfStmt(c, b, a, rt) => (c, b, a, rt),
+        let (cond, body, elifs, alt, raw_text) = match stmt {
+            TBox::IfStmt(c, b, ei, a, rt) => (c, b, ei, a, rt),
             _ => unreachable!(),
         };
 
@@ -454,15 +457,39 @@ impl AstGenerator {
         self.pop_scope()?;
 
         let mut else_val: Option<Vec<Ast>> = None;
-        if alt.is_some() {
+        if let Some(else_stmts) = alt {
             self.push_scope();
             let mut else_vec: Vec<Ast> = Vec::new();
-            for stmt in alt.unwrap() {
+            for stmt in else_stmts {
                 else_vec.push(self.parse_stmt(stmt, false)?);
             }
             self.pop_scope()?;
             else_val = Some(else_vec);
         }
+
+        if let Some(elif_list) = elifs {
+            for (e_cond_toks, e_body_boxes) in elif_list.into_iter().rev() {
+                let (e_cond, e_type) = self.parse_expr(&e_cond_toks)?;
+                if e_type != TypeTok::Bool {
+                    return Err(ToyError::new(
+                        ToyErrorType::ExpressionNotBoolean,
+                        Some("else if condition".to_string()),
+                    ));
+                }
+
+                self.push_scope();
+                let mut e_stmts = Vec::new();
+                for stmt in e_body_boxes {
+                    e_stmts.push(self.parse_stmt(stmt, false)?);
+                }
+                self.pop_scope()?;
+
+                let elif_stmt =
+                    Ast::IfStmt(Box::new(e_cond), e_stmts, else_val, "else if".to_string());
+                else_val = Some(vec![elif_stmt]);
+            }
+        }
+
         let if_stmt = Ast::IfStmt(Box::new(b_cond), stmt_vec, else_val, raw_text);
 
         if should_eat {
@@ -602,7 +629,7 @@ impl AstGenerator {
                 let (rhs_node, _) = self.parse_expr(&rhs)?;
                 Ast::Assignment(Box::new(lhs_node), Box::new(rhs_node), raw_text)
             }
-            TBox::IfStmt(_, _, _, _) => {
+            TBox::IfStmt(_, _, _, _, _) => {
                 return self.parse_if_stmt(val, should_eat);
             }
             TBox::FuncDec(_, _, _, _, _) => return self.parse_func_dec(val, should_eat),

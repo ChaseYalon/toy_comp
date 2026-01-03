@@ -35,7 +35,7 @@ impl<'a> Compiler<'a> {
             generator: Generator::new(ctx, module),
         }
     }
-    pub fn compile(&mut self, source: String) -> Result<(), ToyError>{
+    pub fn compile(&mut self, source: String) -> Result<(), ToyError> {
         let tokens = self.lexer.lex(source)?;
         let ast = self.parser.parse(tokens)?;
         self.generator.generate(ast, "program".to_string())?;

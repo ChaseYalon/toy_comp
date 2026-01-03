@@ -13,9 +13,22 @@ fn eq_tbox_ignoring_src(x: &TBox, y: &TBox) -> bool {
         (TBox::VarDec(xn, xt, xv, _), TBox::VarDec(yn, yt, yv, _)) => {
             xn == yn && xt == yt && xv == yv
         }
-        (TBox::IfStmt(xc, xb, xa, _), TBox::IfStmt(yc, yb, ya, _)) => {
+        (TBox::IfStmt(xc, xb, xe, xa, _), TBox::IfStmt(yc, yb, ye, ya, _)) => {
             xc == yc
                 && compare_tbox_vecs(xb.clone(), yb.clone())
+                && match (xe, ye) {
+                    (Some(xev), Some(yev)) => {
+                        if xev.len() != yev.len() {
+                            false
+                        } else {
+                            xev.iter().zip(yev.iter()).all(|((xc, xb), (yc, yb))| {
+                                xc == yc && compare_tbox_vecs(xb.clone(), yb.clone())
+                            })
+                        }
+                    }
+                    (None, None) => true,
+                    _ => false,
+                }
                 && match (xa, ya) {
                     (None, None) => true,
                     (Some(xav), Some(yav)) => compare_tbox_vecs(xav.clone(), yav.clone()),
@@ -225,6 +238,7 @@ fn test_boxer_if_stmt() {
                     "".to_string()
                 )],
                 None,
+                None,
                 "".to_string()
             )
         ]
@@ -262,9 +276,11 @@ fn test_boxer_nested_if() {
                         "".to_string()
                     )],
                     None,
+                    None,
                     "".to_string()
                 )
             ],
+            None,
             None,
             "".to_string()
         )]
@@ -289,6 +305,7 @@ fn test_boxer_if_else() {
                 vec![Token::IntLit(5)],
                 "".to_string()
             )],
+            None,
             Some(vec![TBox::VarDec(
                 Token::VarName(Box::new("x".to_string())),
                 Some(TypeTok::Int),
@@ -437,6 +454,7 @@ fn test_boxer_while_loops() {
                         ],
                         vec![TBox::Continue],
                         None,
+                        None,
                         "".to_string()
                     ),
                     TBox::IfStmt(
@@ -446,6 +464,7 @@ fn test_boxer_while_loops() {
                             Token::IntLit(7)
                         ],
                         vec![TBox::Break],
+                        None,
                         None,
                         "".to_string()
                     ),
@@ -515,6 +534,7 @@ fn test_boxer_fn_loop() {
                                     TBox::Continue
                                 ],
                                 None,
+                                None,
                                 "".to_string()
                             ),
                             TBox::IfStmt(
@@ -524,6 +544,7 @@ fn test_boxer_fn_loop() {
                                     Token::IntLit(7)
                                 ],
                                 vec![TBox::Break],
+                                None,
                                 None,
                                 "".to_string()
                             ),
@@ -1120,7 +1141,6 @@ fn test_boxer_increment() {
     ))
 }
 
-
 #[test]
 fn test_boxer_extern_function_declaration() {
     let input = String::from("extern fn printf(msg: str): int;");
@@ -1192,5 +1212,50 @@ fn test_boxer_import_stmt() {
                 "".to_string()
             )
         ]
+    ))
+}
+
+#[test]
+fn test_boxer_if_else_chain() {
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let toks =
+        l.lex("if x == 1 {let y = 2;} else if x == 2 {let y = 3;} else {let y = 4;}".to_string());
+    let boxes = b.box_toks(toks.unwrap());
+    assert!(compare_tbox_vecs(
+        boxes.unwrap(),
+        vec![TBox::IfStmt(
+            vec![
+                Token::VarRef(Box::new("x".to_string())),
+                Token::Equals,
+                Token::IntLit(1)
+            ],
+            vec![TBox::VarDec(
+                Token::VarName(Box::new("y".to_string())),
+                None,
+                vec![Token::IntLit(2)],
+                "".to_string()
+            )],
+            Some(vec![(
+                vec![
+                    Token::VarRef(Box::new("x".to_string())),
+                    Token::Equals,
+                    Token::IntLit(2)
+                ],
+                vec![TBox::VarDec(
+                    Token::VarName(Box::new("y".to_string())),
+                    None,
+                    vec![Token::IntLit(3)],
+                    "".to_string()
+                )]
+            )]),
+            Some(vec![TBox::VarDec(
+                Token::VarName(Box::new("y".to_string())),
+                None,
+                vec![Token::IntLit(4)],
+                "".to_string()
+            )]),
+            "".to_string()
+        )]
     ))
 }

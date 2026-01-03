@@ -221,7 +221,7 @@ fn test_llvm_codegen_stack_overflow() {
 #[test]
 fn test_llvm_codegen_extern_func() {
     compile_code_aot!(
-        output, 
+        output,
         "extern fn toy_println(a: int, b: int, c: int); toy_println(4, 2, 0);",
         "extern_func"
     );
@@ -229,7 +229,7 @@ fn test_llvm_codegen_extern_func() {
 }
 
 #[test]
-fn test_llvm_codegen_math (){
+fn test_llvm_codegen_math() {
     compile_code_aot!(
         output,
         "extern fn toy_math_abs(a: int): int; fn abs(a: int): int { return toy_math_abs(a); } let x = abs(-42); println(x);",

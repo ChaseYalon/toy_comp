@@ -107,7 +107,9 @@ impl AstToIrConverter {
                             TirType::I8PTR => Ok(TypeTok::Str),
                             _ => Ok(TypeTok::Int),
                         }
-                    } else if let Some(f) = self.builder.funcs.iter().find(|f| *f.name == *n.clone()) {
+                    } else if let Some(f) =
+                        self.builder.funcs.iter().find(|f| *f.name == *n.clone())
+                    {
                         match f.ret_type {
                             TirType::I64 => Ok(TypeTok::Int),
                             TirType::F64 => Ok(TypeTok::Float),
@@ -282,7 +284,12 @@ impl AstToIrConverter {
                     _ => &*n,
                 };
 
-                let is_user_defined = self.builder.extern_funcs.get(name).map(|(_, _, u)| *u).unwrap_or(false);
+                let is_user_defined = self
+                    .builder
+                    .extern_funcs
+                    .get(name)
+                    .map(|(_, _, u)| *u)
+                    .unwrap_or(false);
 
                 let mut final_params = Vec::new();
                 if !is_user_defined && vec!["toy_print", "toy_println"].contains(&name) {
@@ -293,13 +300,14 @@ impl AstToIrConverter {
                     let ty = self.get_expr_type(&p[0], scope)?;
                     self.builder
                         .inject_type_param(&ty, true, &mut final_params)?;
-                } else if !is_user_defined && vec![
-                    "toy_type_to_str",
-                    "toy_type_to_int",
-                    "toy_type_to_bool",
-                    "toy_type_to_float",
-                ]
-                .contains(&name)
+                } else if !is_user_defined
+                    && vec![
+                        "toy_type_to_str",
+                        "toy_type_to_int",
+                        "toy_type_to_bool",
+                        "toy_type_to_float",
+                    ]
+                    .contains(&name)
                 {
                     if p.len() != 1 {
                         return unreachable!();
@@ -730,11 +738,12 @@ impl AstToIrConverter {
                             let prefix = name.replace(".", "::");
                             for b in boxes {
                                 match b {
-                                    TBox::ExternFuncDec(name_tok, _, ret_type, _) |
-                                    TBox::FuncDec(name_tok, _, ret_type, _, _) => {
+                                    TBox::ExternFuncDec(name_tok, _, ret_type, _)
+                                    | TBox::FuncDec(name_tok, _, ret_type, _, _) => {
                                         if let Some(n) = name_tok.get_var_name() {
                                             let full_name = format!("{}::{}", prefix, n);
-                                            self.builder.register_extern(full_name, false, ret_type);
+                                            self.builder
+                                                .register_extern(full_name, false, ret_type);
                                         }
                                     }
                                     _ => {}
@@ -806,7 +815,12 @@ impl AstToIrConverter {
         //seems bad
         let to_res = self.builder.iconst(0, TypeTok::Int)?;
         self.builder.ret(to_res);
-        if !is_main && self.builder.funcs[self.builder.curr_func.unwrap()].body[0].ins.len() == 2 {
+        if !is_main
+            && self.builder.funcs[self.builder.curr_func.unwrap()].body[0]
+                .ins
+                .len()
+                == 2
+        {
             //remove user main if it is empty
             self.builder.funcs.remove(self.builder.curr_func.unwrap());
         }

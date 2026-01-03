@@ -53,7 +53,7 @@ pub enum Token {
     VarRef(Box<String>),
     ///Struct, key
     StructRef(Box<String>, Vec<String>),
-    
+
     //Syntax
     Semicolon,
     Colon,

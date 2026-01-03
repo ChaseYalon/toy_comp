@@ -51,7 +51,7 @@ pub enum ToyErrorType {
     LlvmError(String),
     UndefinedSSAValue,
     MalformedImportStatement,
-    MissingFile
+    MissingFile,
 }
 
 #[derive(Debug, Error)]

@@ -113,7 +113,6 @@ fn test_ctla_multi_alloc_return() {
     assert!(!output.contains("FAIL_TEST"));
 }
 
-
 #[test]
 fn test_ctla_uaf_loop_bug() {
     compile_code_aot!(

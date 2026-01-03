@@ -637,12 +637,15 @@ impl Boxer {
         }
         let mut final_mangled_name = func_name;
         for p in boxed_params.clone() {
-            let ty = match p{
+            let ty = match p {
                 TBox::FuncParam(_, t, _) => t,
-                _ => unreachable!()
+                _ => unreachable!(),
             };
-            final_mangled_name = Token::VarName(Box::new(format!("{}_{}", final_mangled_name, ty.type_str().to_lowercase())));
-
+            final_mangled_name = Token::VarName(Box::new(format!(
+                "{}_{}",
+                final_mangled_name,
+                ty.type_str().to_lowercase()
+            )));
         }
         let body_boxes: Vec<TBox> = self.box_group(body_toks.to_vec())?;
         return Ok(TBox::FuncDec(
@@ -774,10 +777,7 @@ impl Boxer {
     fn box_import_stmt(&self, toks: &Vec<Token>) -> Result<TBox, ToyError> {
         let raw_text = format!(
             "import {};",
-            toks[1..]
-                .iter()
-                .map(|t| t.to_string())
-                .collect::<String>()
+            toks[1..].iter().map(|t| t.to_string()).collect::<String>()
         );
         if toks[0].tok_type() != "Import" {
             return Err(ToyError::new(
@@ -961,6 +961,68 @@ impl Boxer {
 
         let body_boxes = self.box_group(body_toks);
 
+        let mut else_ifs: Vec<(Vec<Token>, Vec<TBox>)> = Vec::new();
+
+        while i < input.len() {
+            if input[i].tok_type() == "Else"
+                && i + 1 < input.len()
+                && input[i + 1].tok_type() == "If"
+            {
+                i += 2; // skip 'else' 'if'
+
+                let mut elif_cond: Vec<Token> = Vec::new();
+                while i < input.len() && input[i].tok_type() != "LBrace" {
+                    elif_cond.push(input[i].clone());
+                    i += 1;
+                }
+
+                if i >= input.len() {
+                    let raw_text = format!(
+                        "else if {}",
+                        elif_cond.iter().map(|t| t.to_string()).collect::<String>()
+                    );
+                    return Err(ToyError::new(
+                        ToyErrorType::UnclosedDelimiter,
+                        Some(raw_text),
+                    ));
+                }
+
+                i += 1; // skip '{'
+
+                let mut depth = 1;
+                let mut elif_body_toks: Vec<Token> = Vec::new();
+                while i < input.len() && depth > 0 {
+                    let t = input[i].clone();
+                    if t.tok_type() == "LBrace" {
+                        depth += 1;
+                    } else if t.tok_type() == "RBrace" {
+                        depth -= 1;
+                    }
+
+                    if depth > 0 {
+                        elif_body_toks.push(t);
+                    }
+                    i += 1;
+                }
+
+                if depth != 0 {
+                    let raw_text = format!(
+                        "else if {} {{ ...",
+                        elif_cond.iter().map(|t| t.to_string()).collect::<String>()
+                    );
+                    return Err(ToyError::new(
+                        ToyErrorType::UnclosedDelimiter,
+                        Some(raw_text),
+                    ));
+                }
+
+                let elif_body_boxes = self.box_group(elif_body_toks)?;
+                else_ifs.push((elif_cond, elif_body_boxes));
+            } else {
+                break;
+            }
+        }
+
         let mut else_body_boxes = None;
         if i < input.len() && input[i].tok_type() == "Else" {
             i += 1; // skip 'Else'
@@ -1011,8 +1073,14 @@ impl Boxer {
             cond.iter().map(|t| t.to_string()).collect::<String>()
         );
 
+        let elifs = if else_ifs.is_empty() {
+            None
+        } else {
+            Some(else_ifs)
+        };
+
         Ok((
-            TBox::IfStmt(cond, body_boxes?, else_body_boxes, raw_text),
+            TBox::IfStmt(cond, body_boxes?, elifs, else_body_boxes, raw_text),
             i,
         ))
     }

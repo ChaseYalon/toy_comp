@@ -1930,10 +1930,7 @@ fn test_ast_gen_import_stmt_resolution() {
     assert!(compare_ast_vecs(
         ast,
         vec![
-            Ast::ImportStmt(
-                "std.math".to_string(),
-                "".to_string()
-            ),
+            Ast::ImportStmt("std.math".to_string(), "".to_string()),
             Ast::VarDec(
                 Box::new("x".to_string()),
                 TypeTok::Int,
@@ -1947,3 +1944,50 @@ fn test_ast_gen_import_stmt_resolution() {
         ]
     ));
 }
+
+#[test]
+fn test_ast_gen_else_if() {
+    let input = "let x = 0; if true {x = 1;} else if false {x = 2;} else {x = 3;}".to_string();
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let mut g = AstGenerator::new();
+    let toks = l.lex(input).unwrap();
+    let boxes = b.box_toks(toks).unwrap();
+    let ast = g.generate(boxes).unwrap();
+
+    assert!(compare_ast_vecs(
+        ast,
+        vec![
+            Ast::VarDec(
+                Box::new("x".to_string()),
+                TypeTok::Int,
+                Box::new(Ast::IntLit(0)),
+                "".to_string()
+            ),
+            Ast::IfStmt(
+                Box::new(Ast::BoolLit(true)),
+                vec![Ast::Assignment(
+                    Box::new(Ast::VarRef(Box::new("x".to_string()), "".to_string())),
+                    Box::new(Ast::IntLit(1)),
+                    "".to_string()
+                )],
+                Some(vec![Ast::IfStmt(
+                    Box::new(Ast::BoolLit(false)),
+                    vec![Ast::Assignment(
+                        Box::new(Ast::VarRef(Box::new("x".to_string()), "".to_string())),
+                        Box::new(Ast::IntLit(2)),
+                        "".to_string()
+                    )],
+                    Some(vec![Ast::Assignment(
+                        Box::new(Ast::VarRef(Box::new("x".to_string()), "".to_string())),
+                        Box::new(Ast::IntLit(3)),
+                        "".to_string()
+                    )]),
+                    "else if".to_string()
+                )]),
+                "".to_string()
+            )
+        ]
+    ));
+}
+

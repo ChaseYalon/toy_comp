@@ -5,9 +5,9 @@ use crate::codegen::tir::ir::{
 use crate::lexer::Lexer;
 use crate::parser::Parser;
 use colored::*;
+use std::fs::File;
 use std::path::Path;
 use std::{env, fs};
-use std::fs::File;
 macro_rules! setup_tir {
     ($o: ident, $v:expr) => {
         let mut l = Lexer::new();
@@ -18,10 +18,16 @@ macro_rules! setup_tir {
         let $o = t.convert(ast, true).unwrap();
     };
 }
-fn panic_with_write(test_name: &str, a: Vec<Function>, b: Vec<Function>){
-    let file = Path::new(env::var("CARGO_MANIFEST_DIR").unwrap().as_str()).join(Path::new("temp")).join(format!("tir_test_{}.txt", test_name));
+fn panic_with_write(test_name: &str, a: Vec<Function>, b: Vec<Function>) {
+    let file = Path::new(env::var("CARGO_MANIFEST_DIR").unwrap().as_str())
+        .join(Path::new("temp"))
+        .join(format!("tir_test_{}.txt", test_name));
     let mut f = File::create(file.clone()).unwrap();
-    fs::write(file, format!("GOT: \n{:#?}\n\nWANT:\n{:#?}", a, b).as_bytes()).unwrap();
+    fs::write(
+        file,
+        format!("GOT: \n{:#?}\n\nWANT:\n{:#?}", a, b).as_bytes(),
+    )
+    .unwrap();
     panic!();
 }
 fn compare_tir(test_name: &str, a: Vec<Function>, b: Vec<Function>) {
@@ -235,7 +241,7 @@ fn compare_tir(test_name: &str, a: Vec<Function>, b: Vec<Function>) {
                         "instruction".blue(),
                         k.to_string().blue().bold()
                     );
-                    
+
                     let half_width = col_width / 2;
                     // Column headers
                     eprintln!(
@@ -244,12 +250,7 @@ fn compare_tir(test_name: &str, a: Vec<Function>, b: Vec<Function>) {
                         "GOT".red().bold(),
                         width = col_width
                     );
-                    eprintln!(
-                        "{:<width$} │ {:<width$}",
-                        "",
-                        "",
-                        width = col_width
-                    );
+                    eprintln!("{:<width$} │ {:<width$}", "", "", width = col_width);
                     // Now the lines for WANTED / GOT
                     for i in 0..max_lines {
                         let w = wanted.get(i).unwrap_or(&"");
@@ -2752,59 +2753,57 @@ fn test_tirgen_extern_func_dec_and_call() {
     compare_tir(
         "extern_func_dec_and_call",
         res,
-        vec![
-            Function {
-                params: vec![],
-                name: Box::new("user_main".to_string()),
-                body: vec![Block {
-                    id: 0,
-                    ins: vec![
-                        TIR::GlobalString(0, Box::new("Hello".to_string())),
-                        TIR::CallExternFunction(
-                            1,
-                            Box::new("toy_malloc".to_string()),
-                            vec![SSAValue {
-                                val: 0,
-                                ty: Some(TirType::I8PTR),
-                            }],
-                            true,
-                            TirType::I64,
-                        ),
-                        TIR::CallExternFunction(
-                            2,
-                            Box::new("printf".to_string()),
-                            vec![SSAValue {
-                                val: 1,
-                                ty: Some(TirType::I8PTR),
-                            }],
-                            false,
-                            TirType::I64,
-                        ),
-                        TIR::IConst(3, 0, TirType::I64),
-                        TIR::Ret(
-                            4,
-                            SSAValue {
-                                val: 3,
-                                ty: Some(TirType::I64),
-                            },
-                        ),
-                    ],
-                }],
-                ins_counter: 5,
-                ret_type: TirType::I64,
-                heap_allocations: vec![crate::codegen::tir::ir::HeapAllocation {
-                    block: 0,
-                    allocation_id: 0,
-                    function: Box::new("user_main".to_string()),
-                    refs: vec![(Box::new("user_main".to_string()), 0, 1)],
-                    alloc_ins: SSAValue {
-                        val: 1,
-                        ty: Some(TirType::I8PTR),
-                    },
-                }],
-                heap_counter: 1,
-            },
-        ],
+        vec![Function {
+            params: vec![],
+            name: Box::new("user_main".to_string()),
+            body: vec![Block {
+                id: 0,
+                ins: vec![
+                    TIR::GlobalString(0, Box::new("Hello".to_string())),
+                    TIR::CallExternFunction(
+                        1,
+                        Box::new("toy_malloc".to_string()),
+                        vec![SSAValue {
+                            val: 0,
+                            ty: Some(TirType::I8PTR),
+                        }],
+                        true,
+                        TirType::I64,
+                    ),
+                    TIR::CallExternFunction(
+                        2,
+                        Box::new("printf".to_string()),
+                        vec![SSAValue {
+                            val: 1,
+                            ty: Some(TirType::I8PTR),
+                        }],
+                        false,
+                        TirType::I64,
+                    ),
+                    TIR::IConst(3, 0, TirType::I64),
+                    TIR::Ret(
+                        4,
+                        SSAValue {
+                            val: 3,
+                            ty: Some(TirType::I64),
+                        },
+                    ),
+                ],
+            }],
+            ins_counter: 5,
+            ret_type: TirType::I64,
+            heap_allocations: vec![crate::codegen::tir::ir::HeapAllocation {
+                block: 0,
+                allocation_id: 0,
+                function: Box::new("user_main".to_string()),
+                refs: vec![(Box::new("user_main".to_string()), 0, 1)],
+                alloc_ins: SSAValue {
+                    val: 1,
+                    ty: Some(TirType::I8PTR),
+                },
+            }],
+            heap_counter: 1,
+        }],
     );
 }
 
@@ -2816,42 +2815,40 @@ fn test_tirgen_import_stmt() {
         let x = math.abs(-5);"#
     );
     compare_tir(
-        "import_stmt", 
-        ir, 
-        vec![
-            Function {
-                params: vec![],
-                name: Box::new("user_main".to_string()),
-                body: vec![Block {
-                    id: 0,
-                    ins: vec![
-                        TIR::IConst(0, -5, TirType::I64),
-                        TIR::CallExternFunction(
-                            1,
-                            Box::new("std::math::abs_int".to_string()),
-                            vec![SSAValue {
-                                val: 0,
-                                ty: Some(TirType::I64),
-                            }],
-                            false,
-                            TirType::I64,
-                        ),
-                        TIR::IConst(2, 0, TirType::I64),
-                        TIR::Ret(
-                            3,
-                            SSAValue {
-                                val: 2,
-                                ty: Some(TirType::I64),
-                            },
-                        ),
-                    ],
-                }],
-                ins_counter: 4,
-                ret_type: TirType::I64,
-                heap_allocations: vec![],
-                heap_counter: 0,
-            },
-        ]
+        "import_stmt",
+        ir,
+        vec![Function {
+            params: vec![],
+            name: Box::new("user_main".to_string()),
+            body: vec![Block {
+                id: 0,
+                ins: vec![
+                    TIR::IConst(0, -5, TirType::I64),
+                    TIR::CallExternFunction(
+                        1,
+                        Box::new("std::math::abs_int".to_string()),
+                        vec![SSAValue {
+                            val: 0,
+                            ty: Some(TirType::I64),
+                        }],
+                        false,
+                        TirType::I64,
+                    ),
+                    TIR::IConst(2, 0, TirType::I64),
+                    TIR::Ret(
+                        3,
+                        SSAValue {
+                            val: 2,
+                            ty: Some(TirType::I64),
+                        },
+                    ),
+                ],
+            }],
+            ins_counter: 4,
+            ret_type: TirType::I64,
+            heap_allocations: vec![],
+            heap_counter: 0,
+        }],
     );
 }
 
@@ -2863,12 +2860,15 @@ fn test_tirgen_library_no_user_main() {
     let mut t = AstToIrConverter::new();
     let toks = l.lex(src.to_string()).unwrap();
     let ast = p.parse(toks).unwrap();
-    
+
     // Convert with is_main = false
     let tir = t.convert(ast, false).unwrap();
     let has_user_main = tir.iter().any(|f| *f.name == "user_main");
     assert!(!has_user_main, "Library module should not have user_main");
-    
+
     let has_add = tir.iter().any(|f| *f.name == "add_int_int");
-    assert!(has_add, "Library module should have the defined function 'add'");
+    assert!(
+        has_add,
+        "Library module should have the defined function 'add'"
+    );
 }

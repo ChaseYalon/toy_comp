@@ -1,10 +1,8 @@
 use crate::errors::{ToyError, ToyErrorType};
-use std::path::Path;
 use std::env;
+use std::path::Path;
 use std::process::Command;
-pub struct Linker {
-
-}
+pub struct Linker {}
 pub static FILE_EXTENSION_EXE: &str = if cfg!(target_os = "windows") {
     ".exe"
 } else {
@@ -12,9 +10,7 @@ pub static FILE_EXTENSION_EXE: &str = if cfg!(target_os = "windows") {
 };
 impl Linker {
     pub fn new() -> Linker {
-        Linker {
-
-        }
+        Linker {}
     }
     pub fn link(&mut self, files: Vec<String>, output: String) -> Result<(), ToyError> {
         //linker
@@ -84,8 +80,8 @@ impl Linker {
             Ok(f) => f,
             Err(_) => {
                 eprintln!("Linker args: {:#?}", args);
-                return Err(ToyError::new(ToyErrorType::InternalLinkerFailure, None))
-            },
+                return Err(ToyError::new(ToyErrorType::InternalLinkerFailure, None));
+            }
         };
         if !status.success() {
             return Err(ToyError::new(ToyErrorType::InternalLinkerFailure, None));

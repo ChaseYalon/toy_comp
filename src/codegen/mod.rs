@@ -1,20 +1,20 @@
 mod ctla;
+mod linker;
 mod llvm;
 mod tir;
-mod linker;
-use crate::codegen::linker::Linker;
 use crate::codegen::linker::FILE_EXTENSION_EXE;
+use crate::codegen::linker::Linker;
 use crate::codegen::llvm::LlvmGenerator;
-use crate::parser::ast::Ast;
-use crate::{codegen::ctla::CTLA, errors::ToyError};
 use crate::errors::ToyErrorType;
 use crate::lexer::Lexer;
 use crate::parser::Parser;
+use crate::parser::ast::Ast;
+use crate::{codegen::ctla::CTLA, errors::ToyError};
 use inkwell::context::Context;
 use inkwell::module::Module;
+use std::env;
 use std::fs;
 use std::path::Path;
-use std::env;
 use std::process::Command;
 use tir::AstToIrConverter;
 pub use tir::ir::{Block, Function, SSAValue, TIR, TirType};
@@ -23,7 +23,7 @@ pub struct Generator<'a> {
     converter: AstToIrConverter,
     analyzer: CTLA,
     generator: LlvmGenerator<'a>,
-    linker: Linker
+    linker: Linker,
 }
 
 impl<'a> Generator<'a> {
@@ -32,11 +32,16 @@ impl<'a> Generator<'a> {
             converter: AstToIrConverter::new(),
             analyzer: CTLA::new(),
             generator: LlvmGenerator::new(ctx, main_module), //I hate that that is nesscary
-            linker: Linker::new()
+            linker: Linker::new(),
         }
     }
 
-    pub fn compile_to_object(&mut self, ast: Vec<Ast>, name: String, is_main: bool) -> Result<(), ToyError> {
+    pub fn compile_to_object(
+        &mut self,
+        ast: Vec<Ast>,
+        name: String,
+        is_main: bool,
+    ) -> Result<(), ToyError> {
         let _ = self.converter.convert(ast, is_main)?;
         let ir = self.analyzer.analyze(self.converter.builder.clone())?;
         self.generator.generate(ir, name)?;
@@ -54,7 +59,7 @@ impl<'a> Generator<'a> {
         // Resolve path: replace dots with slashes
         let path_str = format!("{}.toy", module_name.replace(".", "/"));
         let path = Path::new(&path_str);
-        
+
         let content = fs::read_to_string(&path).map_err(|_| {
             ToyError::new(
                 ToyErrorType::MissingFile,
@@ -107,7 +112,16 @@ impl<'a> Generator<'a> {
         if p_args.contains(&"--repl".to_string()) || p_args.contains(&"--run".to_string()) {
             let output_name = format!("{}{}", name, FILE_EXTENSION_EXE);
             let mut prgm = Command::new(format!("{}{}", "./", output_name));
-            let _ = prgm.spawn().map_err(|e| ToyError::new(ToyErrorType::LlvmError(format!("Failed to run program: {}", e)), None))?.wait().unwrap();
+            let _ = prgm
+                .spawn()
+                .map_err(|e| {
+                    ToyError::new(
+                        ToyErrorType::LlvmError(format!("Failed to run program: {}", e)),
+                        None,
+                    )
+                })?
+                .wait()
+                .unwrap();
 
             if !p_args.contains(&"--save-temps".to_string()) {
                 let _ = fs::remove_file(&output_name);

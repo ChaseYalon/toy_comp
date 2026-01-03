@@ -169,8 +169,8 @@ pub struct Function {
 pub struct TirBuilder {
     block_counter: BlockId,
     pub funcs: Vec<Function>,
-    pub curr_func: Option<usize>,                       //index into self.funcs
-    curr_block: Option<usize>,                      //index into self.curr_func.body,
+    pub curr_func: Option<usize>, //index into self.funcs
+    curr_block: Option<usize>,    //index into self.curr_func.body,
     pub extern_funcs: HashMap<String, (bool, TirType, bool)>, //external function name to is_allocator, return_type, is_user_defined
 }
 impl TirBuilder {
@@ -440,7 +440,9 @@ impl TirBuilder {
                     .iter_mut()
                     .for_each(|alloc: &mut HeapAllocation| {
                         params.iter().for_each(|p| {
-                            if p.val == alloc.alloc_ins.val || alloc.refs.iter().any(|r| r.2 == p.val) {
+                            if p.val == alloc.alloc_ins.val
+                                || alloc.refs.iter().any(|r| r.2 == p.val)
+                            {
                                 alloc.refs.push((curr_func_name.clone(), curr_block, p.val));
                             }
                         })
@@ -516,7 +518,9 @@ impl TirBuilder {
                     .iter_mut()
                     .for_each(|alloc: &mut HeapAllocation| {
                         params.iter().for_each(|p| {
-                            if p.val == alloc.alloc_ins.val || alloc.refs.iter().any(|r| r.2 == p.val) {
+                            if p.val == alloc.alloc_ins.val
+                                || alloc.refs.iter().any(|r| r.2 == p.val)
+                            {
                                 alloc.refs.push((curr_func_name.clone(), curr_block, p.val));
                             }
                         })
@@ -631,7 +635,9 @@ impl TirBuilder {
                     .iter_mut()
                     .for_each(|alloc: &mut HeapAllocation| {
                         vals.iter().for_each(|v| {
-                            if v.val == alloc.alloc_ins.val || alloc.refs.iter().any(|r| r.2 == v.val) {
+                            if v.val == alloc.alloc_ins.val
+                                || alloc.refs.iter().any(|r| r.2 == v.val)
+                            {
                                 alloc.refs.push((curr_func_name.clone(), curr_block, v.val));
                             }
                         });
@@ -660,9 +666,11 @@ impl TirBuilder {
                     .iter_mut()
                     .for_each(|alloc: &mut HeapAllocation| {
                         if alloc.alloc_ins.val == struct_val_clone.val {
-                            alloc
-                                .refs
-                                .push((curr_func_name.clone(), curr_block, struct_val_clone.val));
+                            alloc.refs.push((
+                                curr_func_name.clone(),
+                                curr_block,
+                                struct_val_clone.val,
+                            ));
                         }
                     })
             }
@@ -695,14 +703,18 @@ impl TirBuilder {
                     .iter_mut()
                     .for_each(|alloc: &mut HeapAllocation| {
                         if alloc.alloc_ins.val == struct_val_clone.val {
-                            alloc
-                                .refs
-                                .push((curr_func_name.clone(), curr_block, struct_val_clone.val));
+                            alloc.refs.push((
+                                curr_func_name.clone(),
+                                curr_block,
+                                struct_val_clone.val,
+                            ));
                         }
                         if alloc.alloc_ins.val == new_val_clone.val {
-                            alloc
-                                .refs
-                                .push((curr_func_name.clone(), curr_block, new_val_clone.val));
+                            alloc.refs.push((
+                                curr_func_name.clone(),
+                                curr_block,
+                                new_val_clone.val,
+                            ));
                         }
                     })
             }
@@ -775,7 +787,9 @@ impl TirBuilder {
                     .for_each(|alloc: &mut HeapAllocation| {
                         let mut matched = false;
                         values.iter().for_each(|v| {
-                            if v.val == alloc.alloc_ins.val || alloc.refs.iter().any(|r| r.2 == v.val) {
+                            if v.val == alloc.alloc_ins.val
+                                || alloc.refs.iter().any(|r| r.2 == v.val)
+                            {
                                 alloc.refs.push((curr_func_name.clone(), curr_block, v.val));
                                 matched = true;
                             }
@@ -804,18 +818,22 @@ impl TirBuilder {
 
         self.funcs.iter_mut().for_each(|f| {
             if f.name == curr_func_name {
-                f.heap_allocations.iter_mut().for_each(|alloc: &mut HeapAllocation| {
-                    let mut matched = false;
-                    values.iter().for_each(|v| {
-                        if v.val == alloc.alloc_ins.val || alloc.refs.iter().any(|r| r.2 == v.val) {
-                            alloc.refs.push((curr_func_name.clone(), block_id, v.val));
-                            matched = true;
+                f.heap_allocations
+                    .iter_mut()
+                    .for_each(|alloc: &mut HeapAllocation| {
+                        let mut matched = false;
+                        values.iter().for_each(|v| {
+                            if v.val == alloc.alloc_ins.val
+                                || alloc.refs.iter().any(|r| r.2 == v.val)
+                            {
+                                alloc.refs.push((curr_func_name.clone(), block_id, v.val));
+                                matched = true;
+                            }
+                        });
+                        if matched {
+                            alloc.refs.push((curr_func_name.clone(), block_id, phi_id));
                         }
-                    });
-                    if matched {
-                        alloc.refs.push((curr_func_name.clone(), block_id, phi_id));
-                    }
-                })
+                    })
             }
         });
         Ok(())
@@ -878,8 +896,10 @@ impl TirBuilder {
             .unwrap()) // parser validated
     }
     pub fn register_extern(&mut self, name: String, is_allocator: bool, ret_type: TypeTok) {
-        self.extern_funcs
-            .insert(name, (is_allocator, self.type_tok_to_tir_type(ret_type), false));
+        self.extern_funcs.insert(
+            name,
+            (is_allocator, self.type_tok_to_tir_type(ret_type), false),
+        );
     }
     pub fn global_string(&mut self, name: String) -> Result<SSAValue, ToyError> {
         let id = self._next_value_id();

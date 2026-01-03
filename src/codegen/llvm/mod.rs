@@ -20,14 +20,14 @@ use crate::{
         Block, Function, SSAValue, TIR, TirType,
         tir::ir::{BlockId, BoolInfixOp, NumericInfixOp},
     },
-    errors::ToyError
+    errors::ToyError,
 };
 use inkwell::{
     OptimizationLevel,
     targets::{FileType, InitializationConfig, Target},
 };
-use std::path::Path;
 use std::env;
+use std::path::Path;
 
 pub struct LlvmGenerator<'a> {
     ctx: &'a Context,
@@ -150,11 +150,8 @@ impl<'a> LlvmGenerator<'a> {
                         _ => todo!("Chase you have not implemented this return type yet"),
                     };
 
-                    self.main_module.add_function(
-                        &*name,
-                        fn_type,
-                        Some(Linkage::External),
-                    )
+                    self.main_module
+                        .add_function(&*name, fn_type, Some(Linkage::External))
                 };
                 let param_types = func_body.get_type().get_param_types();
                 let llvm_params: Vec<BasicMetadataValueEnum> = params
@@ -866,11 +863,13 @@ impl<'a> LlvmGenerator<'a> {
             self.main_module.add_function(
                 &*func.name.clone(),
                 fn_type,
-                Some(if &*func.name == "user_main" || func.name.starts_with("std::") {
-                    Linkage::External
-                } else {
-                    Linkage::Internal
-                }),
+                Some(
+                    if &*func.name == "user_main" || func.name.starts_with("std::") {
+                        Linkage::External
+                    } else {
+                        Linkage::Internal
+                    },
+                ),
             )
         };
         self.curr_func = Some(llvm_func);
