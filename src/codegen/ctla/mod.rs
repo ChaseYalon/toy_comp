@@ -190,7 +190,8 @@ impl CTLA {
             .expect("Allocation instruction not found in block");
         match alloc_ins {
             TIR::CallExternFunction(_, f_box, _, _, _) => {
-                if *f_box.to_owned() == "toy_malloc_arr".to_string() {
+                //that argv thing is hacky but I dont know how to say under the hood it calls toy_malloc_arr
+                if *f_box.to_owned() == "toy_malloc_arr".to_string() || "std::sys::argv".to_string() == *f_box.to_owned() {
                     return "toy_free_arr".to_string();
                 }
                 return "toy_free".to_string();

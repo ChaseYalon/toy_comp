@@ -59,6 +59,7 @@ add_library(runtime STATIC
     ctla/ctla.c
     ctla/hashmap.c
     std/math.c
+    std/sys.c
     stub.c
 )
 
@@ -69,6 +70,7 @@ add_library(core STATIC
     ctla/hashmap.c
     llvm_stubs.c
     std/math.c
+    std/sys.c
 )
 
 set_target_properties(runtime core PROPERTIES

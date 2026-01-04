@@ -299,7 +299,7 @@ impl AstToIrConverter {
                     final_params.push(ssa_params[0].clone());
                     let ty = self.get_expr_type(&p[0], scope)?;
                     self.builder
-                        .inject_type_param(&ty, true, &mut final_params)?;
+                        .inject_type_param(&ty, true, false, &mut final_params)?;
                 } else if !is_user_defined
                     && vec![
                         "toy_type_to_str",
@@ -315,7 +315,7 @@ impl AstToIrConverter {
                     final_params.push(ssa_params[0].clone());
                     let ty = self.get_expr_type(&p[0], scope)?;
                     self.builder
-                        .inject_type_param(&ty, false, &mut final_params)?;
+                        .inject_type_param(&ty, false, false, &mut final_params)?;
                 } else {
                     final_params = ssa_params;
                 }
@@ -333,15 +333,26 @@ impl AstToIrConverter {
                     ssa_vals.push(compiled_val);
                 }
                 let len = self.compile_expr(Ast::IntLit(vals.len() as i64), scope)?;
+                let degree = match ty {
+                    TypeTok::IntArr(d) => d,
+                    TypeTok::BoolArr(d) => d,
+                    TypeTok::StrArr(d) => d,
+                    TypeTok::FloatArr(d) => d,
+                    TypeTok::AnyArr(d) => d,
+                    TypeTok::StructArr(_, d) => d,
+                    _ => unreachable!(),
+                };
                 let mut params = vec![len];
-                self.builder.inject_type_param(&ty, false, &mut params);
+                self.builder.inject_type_param(&ty, false, true, &mut params)?;
+                params.push(self.builder.iconst(degree as i64, TypeTok::Int)?);
+                eprintln!("Params: {:?}", params);
                 let arr = self.builder.call("toy_malloc_arr".to_string(), params)?;
                 for (i, ssa_val) in ssa_vals.iter().enumerate() {
                     let idx = self.builder.iconst(i as i64, TypeTok::Int)?;
                     let x: SSAValue = ssa_val.clone();
                     let mut write_params: Vec<SSAValue> = [arr.clone(), x, idx].to_vec();
                     self.builder
-                        .inject_type_param(&ty, false, &mut write_params);
+                        .inject_type_param(&ty, false, true, &mut write_params)?;
                     self.builder
                         .call("toy_write_to_arr".to_string(), write_params);
                 }
@@ -654,10 +665,10 @@ impl AstToIrConverter {
                         let idx = self.compile_expr(*index, scope)?;
 
                         let type_val = match val.ty {
-                            Some(TirType::I8PTR) => 4, // String
-                            Some(TirType::I1) => 5,    // Bool
-                            Some(TirType::I64) => 6,   // Int
-                            Some(TirType::F64) => 7,   // Float
+                            Some(TirType::I8PTR) => 0, // String element
+                            Some(TirType::I1) => 1,    // Bool element
+                            Some(TirType::I64) => 2,   // Int element
+                            Some(TirType::F64) => 3,   // Float element
                             _ => 2,                    // Default to Int
                         };
                         let type_param = self.builder.iconst(type_val, TypeTok::Int)?;
@@ -743,7 +754,11 @@ impl AstToIrConverter {
                                         if let Some(n) = name_tok.get_var_name() {
                                             let full_name = format!("{}::{}", prefix, n);
                                             self.builder
-                                                .register_extern(full_name, false, ret_type);
+                                                .register_extern(full_name, match ret_type{
+                                                    TypeTok::AnyArr(_) | TypeTok::IntArr(_)| TypeTok::BoolArr(_)| TypeTok::StrArr(_)| TypeTok::FloatArr(_)| TypeTok::StructArr(_,_)  => true,
+                                                    TypeTok::Str => true,
+                                                    _ => false,
+                                                }, ret_type);
                                         }
                                     }
                                     _ => {}

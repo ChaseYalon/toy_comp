@@ -929,6 +929,7 @@ impl TirBuilder {
         &mut self,
         t: &TypeTok,
         inject_dimension: bool,
+        use_element_type: bool,
         param_values: &mut Vec<SSAValue>,
     ) -> Result<(), ToyError> {
         let (n, degree) = match t {
@@ -936,10 +937,10 @@ impl TirBuilder {
             &TypeTok::Bool => (1, 0),
             &TypeTok::Int => (2, 0),
             &TypeTok::Float => (3, 0),
-            &TypeTok::StrArr(n) => (4, n),
-            &TypeTok::BoolArr(n) => (5, n),
-            &TypeTok::IntArr(n) => (6, n),
-            &TypeTok::FloatArr(n) => (7, n),
+            &TypeTok::StrArr(n) => (if use_element_type && n == 1 { 0 } else { 4 }, n),
+            &TypeTok::BoolArr(n) => (if use_element_type && n == 1 { 1 } else { 5 }, n),
+            &TypeTok::IntArr(n) => (if use_element_type && n == 1 { 2 } else { 6 }, n),
+            &TypeTok::FloatArr(n) => (if use_element_type && n == 1 { 3 } else { 7 }, n),
             &TypeTok::StructArr(_, n) => (8, n), // struct arrays use type code 8, must have str method to be printed
             _ => unreachable!(),                 // parser validated
         };

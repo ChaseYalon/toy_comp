@@ -26,6 +26,7 @@ pub struct AstGenerator {
     ///module name -> path so std.math maps to /std/math.toy (posix)
     imports: HashMap<String, String>,
     extern_funcs: HashSet<String>,
+    module_prefix: Option<String>,
 }
 
 impl AstGenerator {
@@ -102,7 +103,14 @@ impl AstGenerator {
             struct_type_to_name: HashMap::new(),
             imports: HashMap::new(),
             extern_funcs: HashSet::new(),
+            module_prefix: None,
         };
+    }
+
+    pub fn with_module_prefix(prefix: String) -> AstGenerator {
+        let mut generator = AstGenerator::new();
+        generator.module_prefix = Some(prefix);
+        generator
     }
 
     fn load_module(&mut self, name: &str) {
@@ -115,18 +123,34 @@ impl AstGenerator {
                     let prefix = name.replace(".", "::");
                     for b in boxes {
                         match b {
-                            TBox::ExternFuncDec(name_tok, _, ret_type, _) => {
+                            TBox::ExternFuncDec(name_tok, params, ret_type, _) => {
                                 if let Some(n) = name_tok.get_var_name() {
                                     let full_name = format!("{}::{}", prefix, n);
                                     self.func_return_type_map
                                         .insert(full_name.clone(), ret_type);
-                                    self.extern_funcs.insert(full_name);
+                                    self.extern_funcs.insert(full_name.clone());
+
+                                    let mut param_types = Vec::new();
+                                    for p in params {
+                                        if let TBox::FuncParam(_, ty, _) = p {
+                                            param_types.push(ty);
+                                        }
+                                    }
+                                    self.func_param_type_map.insert(full_name, param_types);
                                 }
                             }
-                            TBox::FuncDec(name_tok, _, ret_type, _, _) => {
+                            TBox::FuncDec(name_tok, params, ret_type, _, _) => {
                                 if let Some(n) = name_tok.get_var_name() {
                                     let full_name = format!("{}::{}", prefix, n);
-                                    self.func_return_type_map.insert(full_name, ret_type);
+                                    self.func_return_type_map.insert(full_name.clone(), ret_type);
+
+                                    let mut param_types = Vec::new();
+                                    for p in params {
+                                        if let TBox::FuncParam(_, ty, _) = p {
+                                            param_types.push(ty);
+                                        }
+                                    }
+                                    self.func_param_type_map.insert(full_name, param_types);
                                 }
                             }
                             _ => {}
@@ -353,6 +377,16 @@ impl AstGenerator {
             types_opt = self.func_param_type_map.get(&resolved_name);
         }
 
+        if types_opt.is_none() {
+            if let Some(prefix) = &self.module_prefix {
+                let mangled_name = format!("{}::{}", prefix, resolved_name);
+                if self.func_param_type_map.contains_key(&mangled_name) {
+                    resolved_name = mangled_name;
+                    types_opt = self.func_param_type_map.get(&resolved_name);
+                }
+            }
+        }
+
         if types_opt.is_some() && !self.func_return_type_map.contains_key(&resolved_name) {
             if self.func_return_type_map.contains_key(&name) {
                 resolved_name = name.clone();
@@ -365,7 +399,12 @@ impl AstGenerator {
                 Some(raw_text.clone()),
             ));
         }
-
+        if types_opt.as_ref().unwrap().len() != processed_params.len() {
+            return Err(ToyError::new(
+                ToyErrorType::IncorrectNumberOfArguments,
+                Some(raw_text.clone()),
+            ));
+        }
         let types = types_opt.unwrap();
         for (i, (_, type_tok)) in processed_params.iter().enumerate() {
             if type_tok != &types[i] && types[i] != TypeTok::Any {

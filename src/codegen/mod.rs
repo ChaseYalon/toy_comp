@@ -106,9 +106,11 @@ impl<'a> Generator<'a> {
             link_files.push(format!("{}.o", import));
         }
 
-        self.linker.link(link_files, name.clone())?;
-
         let p_args: Vec<String> = env::args().collect();
+        let save_temps = p_args.contains(&"--save-temps".to_string());
+
+        self.linker.link(link_files, name.clone(), save_temps)?;
+
         if p_args.contains(&"--repl".to_string()) || p_args.contains(&"--run".to_string()) {
             let output_name = format!("{}{}", name, FILE_EXTENSION_EXE);
             let mut prgm = Command::new(format!("{}{}", "./", output_name));
@@ -123,7 +125,7 @@ impl<'a> Generator<'a> {
                 .wait()
                 .unwrap();
 
-            if !p_args.contains(&"--save-temps".to_string()) {
+            if !save_temps {
                 let _ = fs::remove_file(&output_name);
                 let _ = fs::remove_file(format!("{}.o", name));
                 let _ = fs::remove_file(format!("{}.ll", name));

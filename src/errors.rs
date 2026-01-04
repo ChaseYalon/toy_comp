@@ -52,6 +52,7 @@ pub enum ToyErrorType {
     UndefinedSSAValue,
     MalformedImportStatement,
     MissingFile,
+    IncorrectNumberOfArguments
 }
 
 #[derive(Debug, Error)]

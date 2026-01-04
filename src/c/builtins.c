@@ -70,15 +70,12 @@ char* _toy_format(int64_t input, int64_t datatype, int64_t degree) {
             char** element_strs = malloc(sizeof(char*) * array->length);
 
             for (int64_t i = 0; i < array->length; i++) {
-                if (degree == 1){
-                    element_strs[i] = _toy_format(array->arr[i].value, array->arr[i].type - 4, degree - 1);
-                    total_len += strlen(element_strs[i]);
-                    if (i != array->length - 1) total_len += 2; // ", "
-                } else {
-                    element_strs[i] = _toy_format(array->arr[i].value, array->arr[i].type, degree - 1);
-                    total_len += strlen(element_strs[i]);
-                    if (i != array->length - 1) total_len += 2; // ", "
-                }
+                int64_t elem_type = array->arr[i].type;
+                // For 1D arrays (degree==1), the elements are primitives (0-3)
+                // For higher dim arrays, elements are arrays (4-7) and need to stay that way
+                element_strs[i] = _toy_format(array->arr[i].value, elem_type, degree - 1);
+                total_len += strlen(element_strs[i]);
+                if (i != array->length - 1) total_len += 2; // ", "
             }
 
             // allocate final buffer
@@ -386,7 +383,7 @@ int64_t toy_double_to_float_bits(double d) {
     u.d = d;
     return u.i;
 }
-int64_t toy_malloc_arr(int64_t len, int64_t type) {
+int64_t toy_malloc_arr(int64_t len, int64_t type, int64_t degree) {
     size_t size = (size_t)(len * 16 * 1.4); // allocate 40% more space
     ToyArrVal* arr_ptr = META_MALLOC(size);
 
@@ -400,8 +397,19 @@ int64_t toy_malloc_arr(int64_t len, int64_t type) {
     arr->length = len;
     arr->capacity = (int64_t)(len * 1.4);
     arr->arr = arr_ptr;
-    arr->type = type;
-
+    // Convert element types (0-3) to array types (4-7)
+    if (type == 0) {
+        arr->type = 4;
+    } else if (type == 1) {
+        arr->type = 5;
+    } else if (type == 2) {
+        arr->type = 6;
+    } else if (type == 3) {
+        arr->type = 7;
+    } else {
+        arr->type = type;
+    }
+    arr->degree = degree;
     return (int64_t)arr;
 }
 
@@ -412,18 +420,30 @@ void toy_write_to_arr(int64_t arr_in_ptr, int64_t value, int64_t idx, int64_t ty
         fprintf(stderr, "[ERROR] toy_write_to_arr received a null pointer");
         abort();
     }
+
     if (idx < 0) {
-        fprintf(stderr, "[ERROR] Index must be bellow 0, got %"PRId64"", idx);
+        fprintf(stderr, "[ERROR] Index must be above 0, got %"PRId64"", idx);
         abort();
     }
     if (arr_ptr->type != type) {
-        fprintf(stderr, "[ERROR] Was expecting type of %"PRId64", got %"PRId64"", arr_ptr->type ,type);
-        abort();
+        // Allow writing element types (0-3) to array types (4-7) when they match
+        if (arr_ptr->type == 4 && type == 0) {
+            // allow writing string to str[]
+        } else if (arr_ptr->type == 5 && type == 1) {
+            // allow writing bool to bool[]
+        } else if (arr_ptr->type == 6 && type == 2) {
+            // allow writing int to int[]
+        } else if (arr_ptr->type == 7 && type == 3) {
+            // allow writing float to float[]
+        } else {
+            fprintf(stderr, "[ERROR] Was expecting type of %"PRId64", got %"PRId64"\n", arr_ptr->type, type);
+            abort();
+        }
     }
     if (idx >= arr_ptr->capacity){
         int64_t new_capacity = (int64_t)(arr_ptr->capacity * 1.4);
         if (idx >= new_capacity) {
-            new_capacity = idx * 1.4;
+            new_capacity = (idx + 1) * 1.4;
         }
 
         ToyArrVal* new_data = META_MALLOC(new_capacity * sizeof(ToyArrVal));
@@ -431,19 +451,39 @@ void toy_write_to_arr(int64_t arr_in_ptr, int64_t value, int64_t idx, int64_t ty
             fprintf(stderr, "[ERROR] Failed to allocate new array buffer\n");
             abort();
         }
+        
+        // Zero initialize new buffer
+        memset(new_data, 0, new_capacity * sizeof(ToyArrVal));
+
         // Copy old arr into new arr
         memcpy(new_data, arr_ptr->arr, arr_ptr->length * sizeof(ToyArrVal));
 
-        // Free old arr - check if this is ok, might cause double free
+        // Free old arr
         free(arr_ptr->arr);
 
         // Update metadata
         arr_ptr->arr = new_data;
         arr_ptr->capacity = new_capacity;
-        arr_ptr->length = idx;
     }
+    
+    if (idx >= arr_ptr->length) {
+        arr_ptr->length = idx + 1;
+    }
+
     //If we get here everything is good so we can write the value to the array
     ToyArrVal* elem_ptr = arr_ptr->arr + idx;
+    
+    if (type == 0) {
+        // String type - need to copy and potentially free old value
+        if (elem_ptr->value != 0) {
+            toy_free((void*)elem_ptr->value);
+        }
+        char* str = (char*)value;
+        char* copy = META_MALLOC(strlen(str) + 1);
+        strcpy(copy, str);
+        value = (int64_t)copy;
+    }
+
     elem_ptr->value = value;
     elem_ptr->type = type;
 }
@@ -523,9 +563,19 @@ int64_t toy_input(int64_t i_prompt){
 void toy_free_arr(int64_t arr_ptr_int) {
     ToyArr* arr = (ToyArr*)arr_ptr_int;
     if (arr == NULL) return;
-    
-    // Free the inner buffer
+
     if (arr->arr) {
+        // Don't recursively free sub-arrays - they will be freed by their own toy_free_arr calls
+        // generated by the compiler. Only free strings (leaf values).
+        if (arr->degree == 1 && arr->type == 4) {
+            for (int64_t i = 0; i < arr->length; i++) {
+                char* str = (char*) arr->arr[i].value;
+                if (str) {
+                    toy_free((void*) str);
+                }
+            }
+        }
+        // Free the inner buffer
         toy_free(arr->arr); 
     }
     

@@ -1,0 +1,4 @@
+import std.sys;
+
+sys.panic("HELP");
+println("something is broken");

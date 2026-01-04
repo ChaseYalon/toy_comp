@@ -2,6 +2,7 @@ use crate::errors::{ToyError, ToyErrorType};
 use std::env;
 use std::path::Path;
 use std::process::Command;
+use std::fs;
 pub struct Linker {}
 pub static FILE_EXTENSION_EXE: &str = if cfg!(target_os = "windows") {
     ".exe"
@@ -12,7 +13,7 @@ impl Linker {
     pub fn new() -> Linker {
         Linker {}
     }
-    pub fn link(&mut self, files: Vec<String>, output: String) -> Result<(), ToyError> {
+    pub fn link(&mut self, files: Vec<String>, output: String, save_temps: bool) -> Result<(), ToyError> {
         //linker
         let target = env!("TARGET").replace("\"", "");
         let lib_str = format!("lib/{}/", target);
@@ -86,6 +87,20 @@ impl Linker {
         if !status.success() {
             return Err(ToyError::new(ToyErrorType::InternalLinkerFailure, None));
         }
-        Ok(())
+        if save_temps || std::env::var("TOY_DEBUG").unwrap_or("FALSE".to_string()) == "TRUE" {
+            return Ok(());
+        }
+        //kinda hacky
+        for file in &files {
+            let _ = fs::remove_file(file);
+        }
+        for file in &files {
+            if file == "program.o" {
+                continue;
+            }
+            let ll = file.replace(".o", ".ll");
+            let _ = fs::remove_file(ll);
+        }
+        return Ok(());
     }
 }

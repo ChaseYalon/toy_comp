@@ -1006,7 +1006,7 @@ impl<'a> LlvmGenerator<'a> {
         );
         self.declare_individual_function(
             "toy_malloc_arr",
-            vec![TirType::I64, TirType::I64],
+            vec![TirType::I64, TirType::I64, TirType::I64],
             TirType::I64,
         );
         self.declare_individual_function(

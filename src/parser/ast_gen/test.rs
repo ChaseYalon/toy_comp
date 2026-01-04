@@ -1991,3 +1991,21 @@ fn test_ast_gen_else_if() {
     ));
 }
 
+#[test]
+fn test_ast_gen_panic() {
+    setup_ast!(r#"import std.sys; sys.panic("HELP!!!");"#, ast);
+    assert!(compare_ast_vecs(
+        ast,
+        vec![
+            Ast::ImportStmt("std.sys".to_string(), "".to_string()),
+            Ast::FuncCall(
+                Box::new("std::sys::panic_str".to_string()),
+                vec![Ast::StringLit(
+                    Box::new("HELP!!!".to_string()),
+                    "".to_string()
+                )],
+                "".to_string()
+            )
+        ]
+    ))
+}

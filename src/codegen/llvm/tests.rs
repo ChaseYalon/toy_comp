@@ -247,3 +247,13 @@ fn test_llvm_module_import() {
     );
     assert!(output.contains("15") && !output.contains("-15"));
 }
+
+#[test]
+fn test_llvm_argv() {
+    compile_code_aot!(
+        output,
+        "import std.sys; let args = sys.argv(); println(args[0]);",
+        "argv"
+    );
+    assert!(output.contains("output_argv"));
+}
