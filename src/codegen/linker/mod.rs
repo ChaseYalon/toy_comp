@@ -73,7 +73,7 @@ impl Linker {
                 output_name.as_str(),
             ]);
             args
-        };
+    };
         let rstatus = Command::new(lib_path.join("ld.lld"))
             .args(args.clone())
             .status();

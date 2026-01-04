@@ -71,6 +71,9 @@ char* _toy_format(int64_t input, int64_t datatype, int64_t degree) {
 
             for (int64_t i = 0; i < array->length; i++) {
                 int64_t elem_type = array->arr[i].type;
+                if (elem_type >= 4 && elem_type <= 7) {
+                    elem_type -= 4; // Convert array type back to element type
+                }
                 // For 1D arrays (degree==1), the elements are primitives (0-3)
                 // For higher dim arrays, elements are arrays (4-7) and need to stay that way
                 element_strs[i] = _toy_format(array->arr[i].value, elem_type, degree - 1);

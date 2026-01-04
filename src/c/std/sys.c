@@ -57,3 +57,12 @@ int64_t toy_sys_get_core_count() {
         return (int64_t)sysconf(_SC_NPROCESSORS_ONLN);
     #endif
 }
+int64_t toy_sys_is_little_endian() {
+    uint16_t num = 0x1;
+    char* byte = (char*)&num;
+    if (byte[0] == 1) {
+        return 1; // little-endian
+    } else {
+        return 0; // big-endian
+    }
+}

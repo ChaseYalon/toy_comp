@@ -332,7 +332,6 @@ impl AstGenerator {
                 .map(|t| t.to_string())
                 .collect::<Vec<String>>()
                 .join(" ");
-            // println!("Processing kv: {:?}", kv);
             if kv.len() < 3 {
                 return Err(ToyError::new(
                     ToyErrorType::MalformedStructField,
@@ -442,10 +441,6 @@ impl AstGenerator {
                 };
                 let var_ref_type = self.lookup_var_type(&s);
                 if var_ref_type.is_none() {
-                    println!(
-                        "TypeHintNeeded for {}. Available vars: {:?}",
-                        s, self.var_type_scopes
-                    );
                     return Err(ToyError::new(
                         ToyErrorType::TypeHintNeeded,
                         Some(raw_text.clone()),

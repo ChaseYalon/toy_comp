@@ -1,6 +1,7 @@
 #pragma once
 #include <stdint.h>
 #include "hashmap.h"
+#include <stddef.h>
 
 typedef struct {
     DebugMap* Map;
