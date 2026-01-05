@@ -401,3 +401,9 @@ fn min(a: float, b: float): float {
 fn fabs(a: float): float {
     return toy_math_absf(a);
 }
+fn pi(): float {
+    return 3.14159265359;
+}
+fn e(): float{
+    return 2.71828;
+}
