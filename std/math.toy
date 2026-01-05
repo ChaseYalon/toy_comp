@@ -253,40 +253,27 @@ fn hypot(a: float, b: float): float {
     return toy_math_hypotf(a, b);
 }
 
-extern fn toy_math_ceil(a: int): int;
-extern fn toy_math_ceilf(a: float): float;
-fn ceil(a: int): int {
+extern fn toy_math_ceil(a: float): int;
+fn ceil(a: float): int {
     return toy_math_ceil(a);
 }
-fn ceil(a: float): float {
-    return toy_math_ceilf(a);
-}
 
-extern fn toy_math_floor(a: int): int;
-extern fn toy_math_floorf(a: float): float;
-fn floor(a: int): int {
+extern fn toy_math_floor(a: float): int;
+fn floor(a: float): int {
     return toy_math_floor(a);
 }
-fn floor(a: float): float {
-    return toy_math_floorf(a);
-}
-
-extern fn toy_math_trunc(a: int): int;
+extern fn toy_math_trunc(a: float): int;
 extern fn toy_math_truncf(a: float): float;
-fn trunc(a: int): int {
+fn trunc(a: float): int {
     return toy_math_trunc(a);
 }
 fn trunc(a: float): float {
     return toy_math_truncf(a);
 }
 
-extern fn toy_math_round(a: int): int;
-extern fn toy_math_roundf(a: float): float;
+extern fn toy_math_round(a: float): int;
 fn round(a: int): int {
     return toy_math_round(a);
-}
-fn round(a: float): float {
-    return toy_math_roundf(a);
 }
 
 extern fn toy_math_nearbyint(a: int): int;
