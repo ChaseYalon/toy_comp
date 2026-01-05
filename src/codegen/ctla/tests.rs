@@ -146,7 +146,6 @@ fn test_ctla_uaf_loop_bug() {
     assert!(!output.contains("FAIL_TEST"));
 }
 
-
 #[test]
 fn test_ctla_argv() {
     compile_code_aot!(

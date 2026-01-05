@@ -120,7 +120,7 @@ if os_name == "Windows":
             )
 
     def msys(cmd: str):
-        return subprocess.run([BASH_EXE, "-lc", cmd], check=True)
+        return subprocess.run([BASH_EXE, "-lc", cmd])
 
     def install_mingw_packages():
         msys("pacman -Syu --noconfirm || true")

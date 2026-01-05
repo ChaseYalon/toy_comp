@@ -9,6 +9,12 @@ use std::time::Duration;
 use std::env;
 use std::path::PathBuf;
 
+use chrono::Local;
+fn curr_month_name() -> String {
+    let now = Local::now();
+    return now.format("%B").to_string().to_lowercase();
+}
+
 fn capture_program_output(program: String) -> String {
     thread::sleep(Duration::from_millis(100));
     let output = Command::new(program)
@@ -258,9 +264,8 @@ fn test_llvm_argv() {
     assert!(output.contains("output_argv"));
 }
 
-
 #[test]
-fn test_llvm_struct_ret(){
+fn test_llvm_struct_ret() {
     compile_code_aot!(
         output,
         "struct Foo{a: int}; fn test(): Foo {return Foo{a: 3};} let x = test(); println(x.a);",
@@ -277,4 +282,26 @@ fn test_llvm_struct_arr_ret() {
         "struct_arr_ret"
     );
     assert!(output.contains("4"));
+}
+
+#[test]
+fn test_llvm_time_get_current_month_name() {
+    compile_code_aot!(
+        output,
+        "import std.time; println(time.current_month_name());",
+        "time_get_current_month_name"
+    );
+    assert!(output.to_lowercase().contains(curr_month_name().as_str()));
+}
+
+#[test]
+fn test_llvm_extern_struct_func() {
+    compile_code_aot!(
+        output,
+        "import std.time; let today = time.Date = time.current_date(); println(today.to_str());",
+        "extern_struct_func"
+    );
+    assert!(output.contains("Date{"));
+    assert!(output.contains("}"));
+    assert!(output.contains("year:"));
 }

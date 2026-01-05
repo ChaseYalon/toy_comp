@@ -1,0 +1,99 @@
+//module for time related functions
+import std.sys;
+//returns the number of milliseconds since the unix epoch
+extern fn toy_time_ms_since_unix_epoch(): int;
+fn ms_since_unix_epoch(): int {
+    return toy_time_ms_since_unix_epoch();
+}
+//alias for ms_since_unix_epoch, easier to type
+fn now(): int{
+    return ms_since_unix_epoch();
+}
+extern fn toy_time_current_year(): int;
+fn current_year(): int {
+    return toy_time_current_year();
+}
+
+extern fn toy_time_current_month(): int;
+//1 is january, 12 is december
+fn current_month(): int {
+    let res = toy_time_current_month();
+    if res < 0 || res > 12 {
+        sys.panic("[ERROR] Month " + str(res) + " is invalid.");
+    }
+    return res;
+}
+fn current_month_name(): str{
+    let month_num = current_month();
+    if month_num == 1 {
+        return "January";
+    }
+    if month_num == 2 {
+        return "February";
+    }
+    if month_num == 3 {
+        return "March";
+    }
+    if month_num == 4 {
+        return "April";
+    }
+    if month_num == 5 {
+        return "May";
+    }
+    if month_num == 6 {
+        return "June";
+    }
+    if month_num == 7 {
+        return "July";
+    }
+    if month_num == 8 {
+        return "August";
+    }
+    if month_num == 9 {
+        return "September";
+    }
+    if month_num == 10 {
+        return "October";
+    }
+    if month_num == 11 {
+        return "November";
+    }
+    if month_num == 12 {
+        return "December";
+    }
+    sys.panic("This should be unreachable");
+    return "";
+
+}
+
+extern fn toy_time_current_day(): int;
+fn current_day(): int {
+    return toy_time_current_day();
+}
+
+struct Date {
+    year: int,
+    month: int,
+    day: int,
+}
+for Date {
+    fn to_str(): str{
+        let s = "Date{\n";
+        s += ("\tyear: " + str(this.year));
+        s += ("\tmonth: "+ str(this.month));
+        s += ("\tday: " + str(this.day));
+        s += "}";
+        return s;
+    }
+}
+fn current_date(): Date {
+    return Date{
+        year: current_year(),
+        month: current_month(),
+        day: current_day(),
+    };
+}
+extern fn toy_time_sleep(ms: int);
+fn sleep(ms: int){
+    toy_time_sleep(ms);
+}

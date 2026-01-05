@@ -1,8 +1,8 @@
 use crate::errors::{ToyError, ToyErrorType};
 use std::env;
+use std::fs;
 use std::path::Path;
 use std::process::Command;
-use std::fs;
 pub struct Linker {}
 pub static FILE_EXTENSION_EXE: &str = if cfg!(target_os = "windows") {
     ".exe"
@@ -13,7 +13,12 @@ impl Linker {
     pub fn new() -> Linker {
         Linker {}
     }
-    pub fn link(&mut self, files: Vec<String>, output: String, save_temps: bool) -> Result<(), ToyError> {
+    pub fn link(
+        &mut self,
+        files: Vec<String>,
+        output: String,
+        save_temps: bool,
+    ) -> Result<(), ToyError> {
         //linker
         let target = env!("TARGET").replace("\"", "");
         let lib_str = format!("lib/{}/", target);
@@ -73,7 +78,7 @@ impl Linker {
                 output_name.as_str(),
             ]);
             args
-    };
+        };
         let rstatus = Command::new(lib_path.join("ld.lld"))
             .args(args.clone())
             .status();

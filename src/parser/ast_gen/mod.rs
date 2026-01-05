@@ -142,7 +142,8 @@ impl AstGenerator {
                             TBox::FuncDec(name_tok, params, ret_type, _, _) => {
                                 if let Some(n) = name_tok.get_var_name() {
                                     let full_name = format!("{}::{}", prefix, n);
-                                    self.func_return_type_map.insert(full_name.clone(), ret_type);
+                                    self.func_return_type_map
+                                        .insert(full_name.clone(), ret_type);
 
                                     let mut param_types = Vec::new();
                                     for p in params {

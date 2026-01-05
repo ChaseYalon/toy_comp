@@ -343,7 +343,8 @@ impl AstToIrConverter {
                     _ => unreachable!(),
                 };
                 let mut params = vec![len];
-                self.builder.inject_type_param(&ty, false, true, &mut params)?;
+                self.builder
+                    .inject_type_param(&ty, false, true, &mut params)?;
                 params.push(self.builder.iconst(degree as i64, TypeTok::Int)?);
                 let arr = self.builder.call("toy_malloc_arr".to_string(), params)?;
                 for (i, ssa_val) in ssa_vals.iter().enumerate() {
@@ -752,12 +753,20 @@ impl AstToIrConverter {
                                     | TBox::FuncDec(name_tok, _, ret_type, _, _) => {
                                         if let Some(n) = name_tok.get_var_name() {
                                             let full_name = format!("{}::{}", prefix, n);
-                                            self.builder
-                                                .register_extern(full_name, match ret_type{
-                                                    TypeTok::AnyArr(_) | TypeTok::IntArr(_)| TypeTok::BoolArr(_)| TypeTok::StrArr(_)| TypeTok::FloatArr(_)| TypeTok::StructArr(_,_)  => true,
+                                            self.builder.register_extern(
+                                                full_name,
+                                                match ret_type {
+                                                    TypeTok::AnyArr(_)
+                                                    | TypeTok::IntArr(_)
+                                                    | TypeTok::BoolArr(_)
+                                                    | TypeTok::StrArr(_)
+                                                    | TypeTok::FloatArr(_)
+                                                    | TypeTok::StructArr(_, _) => true,
                                                     TypeTok::Str => true,
                                                     _ => false,
-                                                }, ret_type);
+                                                },
+                                                ret_type,
+                                            );
                                         }
                                     }
                                     _ => {}

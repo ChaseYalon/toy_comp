@@ -25,3 +25,4 @@
   - Dont remove my comments
   - Doc comments on struct fields are a good idea especially on what is k and v for a hash/btree map, ie in a string->string map, that could be anything, specify var name to source code for example
   - Dont be shy about adding to the ToyError enum, errors should be specific
+  - When in doubt the simplest solution is probably the right one dont over engineer some complex system

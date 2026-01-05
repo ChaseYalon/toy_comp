@@ -2009,3 +2009,36 @@ fn test_ast_gen_panic() {
         ]
     ))
 }
+
+#[test]
+fn test_ast_gen_namespace_structs() {
+    setup_ast!(
+        "import std.time; let today = time.Date = time.current_date(); println(today.to_str());",
+        ast
+    );
+    assert!(compare_ast_vecs(
+        ast,
+        vec![
+            Ast::ImportStmt("std.time".to_string(), "".to_string()),
+            Ast::VarDec(
+                Box::new("today".to_string()),
+                TypeTok::Struct(BTreeMap::from([])),
+                Box::new(Ast::FuncCall(
+                    Box::new("std::time::current_date_void".to_string()),
+                    vec![],
+                    "".to_string()
+                )),
+                "".to_string()
+            ),
+            Ast::FuncCall(
+                Box::new("println".to_string()),
+                vec![Ast::FuncCall(
+                    Box::new("std::time::Date:::to_str_struct".to_string()),
+                    vec![Ast::VarRef(Box::new("today".to_string()), "".to_string())],
+                    "".to_string()
+                )],
+                "".to_string()
+            )
+        ]
+    ));
+}

@@ -61,6 +61,7 @@ add_library(runtime STATIC
     std/math.c
     std/sys.c
     stub.c
+    std/time.c
 )
 
 add_library(core STATIC
@@ -71,6 +72,7 @@ add_library(core STATIC
     llvm_stubs.c
     std/math.c
     std/sys.c
+    std/time.c
 )
 
 set_target_properties(runtime core PROPERTIES

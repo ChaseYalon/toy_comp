@@ -12,6 +12,7 @@ use crate::parser::ast::Ast;
 use crate::{codegen::ctla::CTLA, errors::ToyError};
 use inkwell::context::Context;
 use inkwell::module::Module;
+use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -48,14 +49,7 @@ impl<'a> Generator<'a> {
         Ok(())
     }
 
-    fn compile_dependency(&self, module_name: &str) -> Result<(), ToyError> {
-        // Check if the object file already exists
-        let obj_path_str = format!("{}.o", module_name);
-        let obj_path = Path::new(&obj_path_str);
-        if obj_path.exists() {
-            return Ok(());
-        }
-
+    fn compile_dependency(&self, module_name: &str) -> Result<Vec<String>, ToyError> {
         // Resolve path: replace dots with slashes
         let path_str = format!("{}.toy", module_name.replace(".", "/"));
         let path = Path::new(&path_str);
@@ -75,15 +69,6 @@ impl<'a> Generator<'a> {
         let mut parser = Parser::with_module_prefix(module_prefix);
         let ast = parser.parse(tokens)?;
 
-        let ctx = Context::create();
-        let module = ctx.create_module(module_name);
-        let mut generator = Generator::new(&ctx, module);
-
-        generator.compile_to_object(ast, module_name.to_string(), false)?;
-        Ok(())
-    }
-
-    pub fn generate(&mut self, ast: Vec<Ast>, name: String) -> Result<(), ToyError> {
         let imports: Vec<String> = ast
             .iter()
             .filter_map(|node| {
@@ -95,14 +80,59 @@ impl<'a> Generator<'a> {
             })
             .collect();
 
-        for import in &imports {
-            self.compile_dependency(import)?;
+        // Check if the object file already exists
+        let obj_path_str = format!("{}.o", module_name);
+        let obj_path = Path::new(&obj_path_str);
+        if !obj_path.exists() {
+            let ctx = Context::create();
+            let module = ctx.create_module(module_name);
+            let mut generator = Generator::new(&ctx, module);
+
+            generator.compile_to_object(ast, module_name.to_string(), false)?;
+        }
+        Ok(imports)
+    }
+
+    pub fn generate(&mut self, ast: Vec<Ast>, name: String) -> Result<(), ToyError> {
+        let mut all_imports = HashSet::new();
+        let mut queue = Vec::new();
+
+        let imports: Vec<String> = ast
+            .iter()
+            .filter_map(|node| {
+                if let Ast::ImportStmt(name, _) = node {
+                    Some(name.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        for import in imports {
+            if !all_imports.contains(&import) {
+                all_imports.insert(import.clone());
+                queue.push(import);
+            }
+        }
+
+        let mut i = 0;
+        while i < queue.len() {
+            let current_module = queue[i].clone();
+            i += 1;
+
+            let deps = self.compile_dependency(&current_module)?;
+            for dep in deps {
+                if !all_imports.contains(&dep) {
+                    all_imports.insert(dep.clone());
+                    queue.push(dep);
+                }
+            }
         }
 
         self.compile_to_object(ast, name.clone(), true)?;
 
         let mut link_files = vec![format!("{}.o", name)];
-        for import in imports {
+        for import in all_imports {
             link_files.push(format!("{}.o", import));
         }
 

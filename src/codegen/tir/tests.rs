@@ -201,12 +201,7 @@ fn compare_tir(test_name: &str, a: Vec<Function>, b: Vec<Function>) {
                     "block".blue(),
                     j.to_string().blue().bold(),
                     r_block.ins.len().to_string().green().bold(),
-                    g_block
-                        .ins
-                        .len()
-                        .to_string()
-                        .red()
-                        .bold()
+                    g_block.ins.len().to_string().red().bold()
                 );
                 panic_with_write(test_name, a.clone(), b.clone());
             }
