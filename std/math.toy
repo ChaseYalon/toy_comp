@@ -243,6 +243,12 @@ extern fn toy_math_hypotf(a: float, b: float): float;
 fn hypot(a: int, b: int): int {
     return toy_math_hypot(a, b);
 }
+fn hypot(a: int, b: float): float{
+    return toy_math_hypotf(float(a), b);
+}
+fn hypot(a: float, a: int): float {
+    return toy_math_hypotf(a, float(b));
+}
 fn hypot(a: float, b: float): float {
     return toy_math_hypotf(a, b);
 }
