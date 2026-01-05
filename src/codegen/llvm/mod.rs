@@ -142,12 +142,11 @@ impl<'a> LlvmGenerator<'a> {
                         TirType::I64 => self.ctx.i64_type().fn_type(&compiled_types, false),
                         TirType::F64 => self.ctx.f64_type().fn_type(&compiled_types, false),
                         TirType::I1 => self.ctx.bool_type().fn_type(&compiled_types, false),
-                        TirType::I8PTR => self
+                        TirType::I8PTR | TirType::StructInterface(_) => self
                             .ctx
                             .ptr_type(AddressSpace::default())
                             .fn_type(&compiled_types, false),
                         TirType::Void => self.ctx.void_type().fn_type(&compiled_types, false),
-                        _ => todo!("Chase you have not implemented this return type yet"),
                     };
 
                     self.main_module
@@ -234,12 +233,11 @@ impl<'a> LlvmGenerator<'a> {
                         TirType::I64 => self.ctx.i64_type().fn_type(&compiled_types, false),
                         TirType::F64 => self.ctx.f64_type().fn_type(&compiled_types, false),
                         TirType::I1 => self.ctx.bool_type().fn_type(&compiled_types, false),
-                        TirType::I8PTR => self
+                        TirType::I8PTR | TirType::StructInterface(_) => self
                             .ctx
                             .ptr_type(AddressSpace::default())
                             .fn_type(&compiled_types, false),
                         TirType::Void => self.ctx.void_type().fn_type(&compiled_types, false),
-                        _ => todo!("Chase you have not implemented this return type yet"),
                     };
 
                     self.main_module
@@ -938,7 +936,7 @@ impl<'a> LlvmGenerator<'a> {
                 .ctx
                 .bool_type()
                 .fn_type(&compiled_types.as_slice(), false),
-            TirType::I8PTR => self
+            TirType::I8PTR | TirType::StructInterface(_) => self
                 .ctx
                 .ptr_type(AddressSpace::default())
                 .fn_type(&compiled_types.as_slice(), false),
@@ -946,7 +944,6 @@ impl<'a> LlvmGenerator<'a> {
                 .ctx
                 .void_type()
                 .fn_type(&compiled_types.as_slice(), false),
-            _ => todo!("Chase you have not implemented this return type yet"),
         };
         self.func_map.insert(name.to_string(), func);
     }

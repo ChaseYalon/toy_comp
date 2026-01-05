@@ -257,3 +257,24 @@ fn test_llvm_argv() {
     );
     assert!(output.contains("output_argv"));
 }
+
+
+#[test]
+fn test_llvm_struct_ret(){
+    compile_code_aot!(
+        output,
+        "struct Foo{a: int}; fn test(): Foo {return Foo{a: 3};} let x = test(); println(x.a);",
+        "struct_ret"
+    );
+    assert!(output.contains("3"));
+}
+
+#[test]
+fn test_llvm_struct_arr_ret() {
+    compile_code_aot!(
+        output,
+        "struct Foo{a: int}; fn test(): Foo[] {return [Foo{a: 3}, Foo{a: 4}];} let arr = test(); println(arr[1].a);",
+        "struct_arr_ret"
+    );
+    assert!(output.contains("4"));
+}

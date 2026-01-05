@@ -1259,3 +1259,186 @@ fn test_boxer_if_else_chain() {
         )]
     ))
 }
+
+#[test]
+fn test_boxer_struct_type_annotation() {
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let toks = l.lex("struct Foo{a: int}; let x: Foo = Foo{a: 5}; let arr: Foo[] = [Foo{a: 3}, Foo{a: 4}];".to_string());
+    let boxes = b.box_toks(toks.unwrap()).unwrap();
+    assert!(compare_tbox_vecs(
+        boxes,
+        vec![
+            TBox::StructInterface(
+                Box::new("Foo".to_string()),
+                Box::new(BTreeMap::from([("a".to_string(), TypeTok::Int)])),
+                "".to_string()
+            ),
+            TBox::VarDec(
+                Token::VarName(Box::new("x".to_string())),
+                Some(TypeTok::Struct(BTreeMap::from([("a".to_string(), Box::new(TypeTok::Int))]))),
+                vec![
+                    Token::VarRef(Box::new("Foo".to_string())),
+                    Token::LBrace,
+                    Token::VarRef(Box::new("a".to_string())),
+                    Token::Colon,
+                    Token::IntLit(5),
+                    Token::RBrace,
+                ],
+                "".to_string()
+            ),
+            TBox::VarDec(
+                Token::VarName(Box::new("arr".to_string())),
+                Some(TypeTok::StructArr(BTreeMap::from([("a".to_string(), Box::new(TypeTok::Int))]), 1)),
+                vec![
+                    Token::LBrack,
+                    Token::VarRef(Box::new("Foo".to_string())),
+                    Token::LBrace,
+                    Token::VarRef(Box::new("a".to_string())),
+                    Token::Colon,
+                    Token::IntLit(3),
+                    Token::RBrace,
+                    Token::Comma,
+                    Token::VarRef(Box::new("Foo".to_string())),
+                    Token::LBrace,
+                    Token::VarRef(Box::new("a".to_string())),
+                    Token::Colon,
+                    Token::IntLit(4),
+                    Token::RBrace,
+                    Token::RBrack,
+                ],
+                "".to_string()
+            ),
+        ]
+    ))
+}
+
+#[test]
+fn test_boxer_func_struct_ret() {
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let toks = l.lex("struct Foo{a: int}; fn test(): Foo {return Foo{a: 3};} let x = test(); println(x.a);".to_string());
+    let boxes = b.box_toks(toks.unwrap()).unwrap();
+    assert!(compare_tbox_vecs(
+        boxes,
+        vec![
+            TBox::StructInterface(
+                Box::new("Foo".to_string()),
+                Box::new(BTreeMap::from([("a".to_string(), TypeTok::Int)])),
+                "".to_string()
+            ),
+            TBox::FuncDec(
+                Token::VarName(Box::new("test".to_string())),
+                vec![],
+                TypeTok::Struct(BTreeMap::from([("a".to_string(), Box::new(TypeTok::Int))])),
+                vec![TBox::Return(
+                    Box::new(TBox::Expr(
+                        vec![
+                            Token::VarRef(Box::new("Foo".to_string())),
+                            Token::LBrace,
+                            Token::VarRef(Box::new("a".to_string())),
+                            Token::Colon,
+                            Token::IntLit(3),
+                            Token::RBrace,
+                        ],
+                        "".to_string()
+                    )),
+                    "".to_string()
+                )],
+                "".to_string()
+            ),
+            TBox::VarDec(
+                Token::VarName(Box::new("x".to_string())),
+                None,
+                vec![
+                    Token::VarRef(Box::new("test".to_string())),
+                    Token::LParen,
+                    Token::RParen
+                ],
+                "".to_string()
+            ),
+            TBox::Expr(
+                vec![
+                    Token::VarRef(Box::new("println".to_string())),
+                    Token::LParen,
+                    Token::VarRef(Box::new("x".to_string())),
+                    Token::Dot,
+                    Token::VarRef(Box::new("a".to_string())),
+                    Token::RParen
+                ],
+                "".to_string()
+            )
+        ]
+    ))
+}
+
+#[test]
+fn test_boxer_func_struct_arr_ret(){
+    let mut l = Lexer::new();
+        let mut b = Boxer::new();
+        let toks = l.lex("struct Foo{a: int}; fn test(): Foo[] {return [Foo{a: 3}, Foo{a: 5}];} let x = test(); println(x[0].a);".to_string());
+        let boxes = b.box_toks(toks.unwrap()).unwrap();
+        assert!(compare_tbox_vecs(
+            boxes,
+            vec![
+                TBox::StructInterface(
+                    Box::new("Foo".to_string()),
+                    Box::new(BTreeMap::from([("a".to_string(), TypeTok::Int)])),
+                    "".to_string()
+                ),
+                TBox::FuncDec(
+                    Token::VarName(Box::new("test".to_string())),
+                    vec![],
+                    TypeTok::StructArr(BTreeMap::from([("a".to_string(), Box::new(TypeTok::Int))]), 1),
+                    vec![TBox::Return(
+                        Box::new(TBox::Expr(
+                            vec![
+                                Token::LBrack,
+                                Token::VarRef(Box::new("Foo".to_string())),
+                                Token::LBrace,
+                                Token::VarRef(Box::new("a".to_string())),
+                                Token::Colon,
+                                Token::IntLit(3),
+                                Token::RBrace,
+                                Token::Comma,
+                                Token::VarRef(Box::new("Foo".to_string())),
+                                Token::LBrace,
+                                Token::VarRef(Box::new("a".to_string())),
+                                Token::Colon,
+                                Token::IntLit(5),
+                                Token::RBrace,
+                                Token::RBrack,
+                            ],
+                            "".to_string()
+                        )),
+                        "".to_string()
+                    )],
+                    "".to_string()
+                ),
+                TBox::VarDec(
+                    Token::VarName(Box::new("x".to_string())),
+                    None,
+                    vec![
+                        Token::VarRef(Box::new("test".to_string())),
+                        Token::LParen,
+                        Token::RParen
+                    ],
+                    "".to_string()
+                ),
+                TBox::Expr(
+                    vec![
+                        Token::VarRef(Box::new("println".to_string())),
+                        Token::LParen,
+                        Token::VarRef(Box::new("x".to_string())),
+                        Token::LBrack,
+                        Token::IntLit(0),
+                        Token::RBrack,
+                        Token::Dot,
+                        Token::VarRef(Box::new("a".to_string())),
+                        Token::RParen
+                    ],
+                    "".to_string()
+                )
+            ]
+        ))
+}

@@ -959,10 +959,12 @@ impl TirBuilder {
             TypeTok::Float => TirType::F64,
             TypeTok::Void => TirType::Void,
             TypeTok::Str
+            | TypeTok::Any
             | TypeTok::StrArr(_)
             | TypeTok::BoolArr(_)
             | TypeTok::IntArr(_)
             | TypeTok::FloatArr(_)
+            | TypeTok::StructArr(_, _)
             | TypeTok::AnyArr(_) => TirType::I8PTR,
             TypeTok::Struct(i) => {
                 let mut types: Vec<TirType> = vec![];
@@ -971,7 +973,6 @@ impl TirBuilder {
                 }
                 TirType::StructInterface(types)
             }
-            _ => todo!("Chase you have not done the TypeTok -> TirType conversion for {t:?}"),
         };
     }
     ///will erase all functions saved in the builder and set current func to the indicated
