@@ -141,6 +141,13 @@ origin.print_point(); //outputs Point{x: 0.0000, y: 0.0000};
     <li> <code> bool(b: any): bool </code> will turn "true" => true, same with false and will panic for any other string, will turn 1 => true, 0 => false and wil panic otherwise, and will round a float and use do the same</li>
 </ul>
 
+<h2>Standard Library Modules</h2>
+<h3>Math</h3>
+<ul>
+    <li><code>sin(a: int|float): int|float</code> takes in an angle in RADIANS and returns its sine</li>
+    <li><code>cos(a: int|float): int|float</code> takes in an angle in RADIANS and returns its cosine</li>
+    <li><code>tan(a: int|float): int|float</code> takes in an angle in RADIANS and returns its tangent</li>
+</ul>
 <h2> Build Instructions </h2>
 If you do not have the build system setup (mys2 - clang/llvm), rust on the correct toolchain, cmake, and ninja run the following.
 <pre><code class="language-python">
