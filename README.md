@@ -147,6 +147,34 @@ origin.print_point(); //outputs Point{x: 0.0000, y: 0.0000};
     <li><code>sin(a: int|float): int|float</code> takes in an angle in RADIANS and returns its sine</li>
     <li><code>cos(a: int|float): int|float</code> takes in an angle in RADIANS and returns its cosine</li>
     <li><code>tan(a: int|float): int|float</code> takes in an angle in RADIANS and returns its tangent</li>
+    <li><code>asin(a: int|float): int|float</code> takes in an angle in RADIANS and returns its arcsine</li>
+    <li><code>acos(a: int|float): int|float</code> takes in an angle in RADIANS and returns its arccosine</li>
+    <li><code>atan(a: int|float): int|float</code> takes in an angle in RADIANS and returns its arctangent</li>
+    <li><code>atan2(y: int|float, x: int|float): int|float</code> takes in TWO angles in RADIANS and returns their arctangent. This is diffrent from regular atan because it can distinguish between comments</li>
+    <li><code>sinh(a: int|float): int|float</code> takes an argument in RADIANS and returns the hyperbolic sine</li>
+    <li><code>cosh(a: int|float): int|float</code> takes an argument in RADIANS and returns the hyperbolic cosine</li>
+    <li><code>tanh(a: int|float): int|float</code> takes an argument in RADIANS and returns the hyperbolic tangent</li>
+    <li><code>asin(a: int|float): int|float</code> takes in an angle in RADIANS and returns its hyperbolic arcsine</li>
+    <li><code>acos(a: int|float): int|float</code> takes in an angle in RADIANS and returns its hyperbolic arccosine</li>
+    <li><code>atan(a: int|float): int|float</code> takes in an angle in RADIANS and returns its hyperbolic arctangent</li>
+    <li><code>exp(x: int|float): int|float</code> returns e<sup>x</sup></li>
+    <li><code>exp2(x: int|float): int|float</code> returns 2<sup>x</sup></li>
+    <li><code>expm1(x: int|float): int|float</code> returns e<sup>x</sup>- 1</li>
+    <li><code>log(x: int|float): int|float</code> returns log<sub>e</sub>(x)</li>
+    <li><code>log10(x: int|float): int|float</code> returns log<sub>10</sub>(x)</li>
+    <li><code>log2(x: int|float): int|float</code> returns log<sub>2</sub>(x)</li>
+    <li><code>log1p(x: int|float): int|float</code> returns log<sub>10</sub>(x) - 1</li>
+    <li><code>logbase(x: int|float, y: int|float): int|float</code> returns log<sub>y</sub>(x)</li>
+    <li><code>abs(a: int|float): int|float</code> returns |x|</li>
+    <li><code>pow(x: int|float, y: int|float): int|float</code> returns x<sup>y</sup></li>
+    <li><code>sqrt(a: int|float): int|float</code> returns a<sup>1/2</sup></li>
+    <li><code>cbrt(a: int|float): int|float</code> returns a<sup>1/3</sup></li>
+    <li><code>hypot(a: int|float, b: int|float): int|float</code> sqrt(a<sup>2</sup> + b<sup>2</sup>)</li>
+    <li><code>ceil(a: float): int</code> returns the number rounded up</li>
+    <li><code>floor(a: float): int</code> returns the number rounded down</li>
+    <li><code>trunc(a: float): int</code> returns the number, ignoring the decimal portion</li>
+    <li><code>round(a: float): int</code> returns the number rounded</li>
+    <!--I dont think fmod needs documentation, modulo operator should handle it -->
 </ul>
 <h2> Build Instructions </h2>
 If you do not have the build system setup (mys2 - clang/llvm), rust on the correct toolchain, cmake, and ninja run the following.
