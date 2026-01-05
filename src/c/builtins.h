@@ -3,6 +3,8 @@
 #include "ctla/ctla.h"
 
 extern DebugHeap* DEBUG_HEAP;
+extern int64_t GLOBAL_ARGC;
+extern char** GLOBAL_ARGV;
 #define META_MALLOC(size) \
     ((getenv("TOY_DEBUG") && strcmp(getenv("TOY_DEBUG"), "TRUE") == 0) \
         ? ToyMallocDebug(size, DEBUG_HEAP) \
@@ -17,6 +19,7 @@ typedef struct {
     int64_t length;
     int64_t capacity;
     int64_t type;
+    int64_t degree;
     ToyArrVal* arr;
 } ToyArr;
 
@@ -33,7 +36,7 @@ int64_t toy_type_to_float(int64_t val, int64_t type);
 double toy_int_to_float(int64_t i);
 double toy_float_bits_to_double(int64_t f_bits);
 int64_t toy_double_to_float_bits(double d);
-int64_t toy_malloc_arr(int64_t len, int64_t type);
+int64_t toy_malloc_arr(int64_t len, int64_t type, int64_t degree);
 void toy_write_to_arr(int64_t arr_in_ptr, int64_t value, int64_t idx, int64_t type);
 int64_t toy_read_from_arr(int64_t arr_in_ptr, int64_t idx);
 int64_t toy_arrlen(int64_t arr_in_ptr);

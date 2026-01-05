@@ -34,14 +34,16 @@ void toy_free(void* buff) {
         fprintf(stderr, "[ERROR] Tried to free a null buffer\n");
         abort();
     }
-    if(strcmp(getenv("TOY_DEBUG"), "TRUE") == 0) {
-
+    if(getenv("TOY_DEBUG") && strcmp(getenv("TOY_DEBUG"), "TRUE") == 0) {
+        // Only decrement if this pointer was actually tracked (has a non-negative value)
+        int64_t value;
+        if (DebugMap_get(DEBUG_HEAP->Map, buff, &value) && value >= 0) {
+            DEBUG_HEAP->TotalLiveAllocations--;
+        }
         DebugMap_put(DEBUG_HEAP->Map, buff, -1);
-        DEBUG_HEAP->TotalLiveAllocations--;
     }
     free(buff);
 }
-
 void _PrintDebug_heap(DebugHeap* d) {
     _PrintDebug_map(d->Map);
     printf("Total Live entries remaining: %lld\n", d->TotalLiveAllocations);

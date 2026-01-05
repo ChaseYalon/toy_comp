@@ -221,7 +221,7 @@ fn test_llvm_codegen_stack_overflow() {
 #[test]
 fn test_llvm_codegen_extern_func() {
     compile_code_aot!(
-        output, 
+        output,
         "extern fn toy_println(a: int, b: int, c: int); toy_println(4, 2, 0);",
         "extern_func"
     );
@@ -229,7 +229,7 @@ fn test_llvm_codegen_extern_func() {
 }
 
 #[test]
-fn test_llvm_codegen_math (){
+fn test_llvm_codegen_math() {
     compile_code_aot!(
         output,
         "extern fn toy_math_abs(a: int): int; fn abs(a: int): int { return toy_math_abs(a); } let x = abs(-42); println(x);",
@@ -246,4 +246,35 @@ fn test_llvm_module_import() {
         "module_import"
     );
     assert!(output.contains("15") && !output.contains("-15"));
+}
+
+#[test]
+fn test_llvm_argv() {
+    compile_code_aot!(
+        output,
+        "import std.sys; let args = sys.argv(); println(args[0]);",
+        "argv"
+    );
+    assert!(output.contains("output_argv"));
+}
+
+
+#[test]
+fn test_llvm_struct_ret(){
+    compile_code_aot!(
+        output,
+        "struct Foo{a: int}; fn test(): Foo {return Foo{a: 3};} let x = test(); println(x.a);",
+        "struct_ret"
+    );
+    assert!(output.contains("3"));
+}
+
+#[test]
+fn test_llvm_struct_arr_ret() {
+    compile_code_aot!(
+        output,
+        "struct Foo{a: int}; fn test(): Foo[] {return [Foo{a: 3}, Foo{a: 4}];} let arr = test(); println(arr[1].a);",
+        "struct_arr_ret"
+    );
+    assert!(output.contains("4"));
 }

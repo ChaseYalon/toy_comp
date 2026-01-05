@@ -11,8 +11,14 @@ pub enum TBox {
     VarDec(Token, Option<TypeTok>, Vec<Token>, String),
     ///represents a reassignment of the tokens LHS to the value RHS
     Assign(Vec<Token>, Vec<Token>, String),
-    ///Cond, body, Optional else, original code
-    IfStmt(Vec<Token>, Vec<TBox>, Option<Vec<TBox>>, String),
+    ///Cond, body, Optional cond, body pairs for else if, Optional else, original code
+    IfStmt(
+        Vec<Token>,
+        Vec<TBox>,
+        Option<Vec<(Vec<Token>, Vec<TBox>)>>,
+        Option<Vec<TBox>>,
+        String,
+    ),
     ///Name, type, source code
     FuncParam(Token, TypeTok, String),
     ///Name, Params, Return Type, Body, source code
@@ -46,9 +52,9 @@ impl fmt::Display for TBox {
                 TBox::Assign(lhs, rhs, s) => {
                     format!("TBox_Assign LHS({:?}), RHS({:?}), Literal({})", lhs, rhs, s)
                 }
-                TBox::IfStmt(cond, body, alt, s) => format!(
-                    "TBox_If_Stmt Cond({:?}), Body({:?}), Alt({:?}), Literal({})",
-                    cond, body, alt, s
+                TBox::IfStmt(cond, body, alt, else_body, s) => format!(
+                    "TBox_If_Stmt Cond({:?}), Body({:?}), Alt({:?}), Else({:?}), Literal({})",
+                    cond, body, alt, else_body, s
                 ),
                 TBox::FuncParam(name, t, s) => format!(
                     "TBox_Func_Param Name({}), Type({:?}), Literal({})",
@@ -73,7 +79,8 @@ impl fmt::Display for TBox {
                     "TBox_Extern_Func_Dec Name({}), Params({:?}), ReturnType({:?}), Literal({})",
                     name, params, return_type, s
                 ),
-                TBox::ImportStmt(name, s) => format!("TBox_Import_Stmt Name({}), Literal({})", name, s),
+                TBox::ImportStmt(name, s) =>
+                    format!("TBox_Import_Stmt Name({}), Literal({})", name, s),
             }
         )
     }

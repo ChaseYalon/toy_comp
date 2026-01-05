@@ -27,8 +27,8 @@ impl Parser {
     /// The prefix should be in the form "std::<filename>" (e.g., "std::math")
     pub fn with_module_prefix(prefix: String) -> Parser {
         return Parser {
-            boxer: Boxer::with_module_prefix(prefix),
-            ast_gen: AstGenerator::new(),
+            boxer: Boxer::with_module_prefix(prefix.clone()),
+            ast_gen: AstGenerator::with_module_prefix(prefix),
         };
     }
 

@@ -28,12 +28,7 @@ impl CTLA {
             builder: TirBuilder::new(),
         };
     }
-    fn build_cfg_graph(
-        &self,
-        func: String,
-        idx: BlockId,
-        visited: &mut Vec<BlockId>,
-    ) -> CfgNode {
+    fn build_cfg_graph(&self, func: String, idx: BlockId, visited: &mut Vec<BlockId>) -> CfgNode {
         if visited.contains(&idx) {
             return CfgNode::LoopBack(idx);
         }
@@ -161,7 +156,12 @@ impl CTLA {
     }
     /// Checks if a block's return instruction returns the given allocation
     /// If so, we should NOT free it - the caller takes ownership
-    fn block_returns_allocation(&self, func: &Function, block_id: BlockId, alloc: &HeapAllocation) -> bool {
+    fn block_returns_allocation(
+        &self,
+        func: &Function,
+        block_id: BlockId,
+        alloc: &HeapAllocation,
+    ) -> bool {
         let block = func.body.iter().find(|b| b.id == block_id).unwrap();
         // Find the return instruction
         for ins in &block.ins {
@@ -190,7 +190,8 @@ impl CTLA {
             .expect("Allocation instruction not found in block");
         match alloc_ins {
             TIR::CallExternFunction(_, f_box, _, _, _) => {
-                if *f_box.to_owned() == "toy_malloc_arr".to_string() {
+                //that argv thing is hacky but I dont know how to say under the hood it calls toy_malloc_arr
+                if *f_box.to_owned() == "toy_malloc_arr".to_string() || "std::sys::argv".to_string() == *f_box.to_owned() {
                     return "toy_free_arr".to_string();
                 }
                 return "toy_free".to_string();

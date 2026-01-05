@@ -113,7 +113,6 @@ fn test_ctla_multi_alloc_return() {
     assert!(!output.contains("FAIL_TEST"));
 }
 
-
 #[test]
 fn test_ctla_uaf_loop_bug() {
     compile_code_aot!(
@@ -143,6 +142,17 @@ fn test_ctla_uaf_loop_bug() {
         }
         println(points[0].x);",
         "ctla_uaf_loop_bug"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+}
+
+
+#[test]
+fn test_ctla_argv() {
+    compile_code_aot!(
+        output,
+        "import std.sys; let args = sys.argv(); println(args[0]);",
+        "ctla_argv"
     );
     assert!(!output.contains("FAIL_TEST"));
 }

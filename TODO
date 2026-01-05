@@ -2,4 +2,4 @@ Boxer will modify expressions like foo.bar() into bar(foo) which it should not
 Lexer does some parsing shit around structs
 Add .get_literal method to ast and boxer nodes so I dont have to pattern match every time I want the literal
 Also TIR Builder assumes correctness which I am not sure I like
-Also it is embarrassing to not have leading negatives like -2.0 and else if
+Lexer is to heavily involved and will do parsing logic to resolve struct types

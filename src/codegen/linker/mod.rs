@@ -1,10 +1,9 @@
 use crate::errors::{ToyError, ToyErrorType};
-use std::path::Path;
 use std::env;
+use std::path::Path;
 use std::process::Command;
-pub struct Linker {
-
-}
+use std::fs;
+pub struct Linker {}
 pub static FILE_EXTENSION_EXE: &str = if cfg!(target_os = "windows") {
     ".exe"
 } else {
@@ -12,11 +11,9 @@ pub static FILE_EXTENSION_EXE: &str = if cfg!(target_os = "windows") {
 };
 impl Linker {
     pub fn new() -> Linker {
-        Linker {
-
-        }
+        Linker {}
     }
-    pub fn link(&mut self, files: Vec<String>, output: String) -> Result<(), ToyError> {
+    pub fn link(&mut self, files: Vec<String>, output: String, save_temps: bool) -> Result<(), ToyError> {
         //linker
         let target = env!("TARGET").replace("\"", "");
         let lib_str = format!("lib/{}/", target);
@@ -76,7 +73,7 @@ impl Linker {
                 output_name.as_str(),
             ]);
             args
-        };
+    };
         let rstatus = Command::new(lib_path.join("ld.lld"))
             .args(args.clone())
             .status();
@@ -84,12 +81,26 @@ impl Linker {
             Ok(f) => f,
             Err(_) => {
                 eprintln!("Linker args: {:#?}", args);
-                return Err(ToyError::new(ToyErrorType::InternalLinkerFailure, None))
-            },
+                return Err(ToyError::new(ToyErrorType::InternalLinkerFailure, None));
+            }
         };
         if !status.success() {
             return Err(ToyError::new(ToyErrorType::InternalLinkerFailure, None));
         }
-        Ok(())
+        if save_temps || std::env::var("TOY_DEBUG").unwrap_or("FALSE".to_string()) == "TRUE" {
+            return Ok(());
+        }
+        //kinda hacky
+        for file in &files {
+            let _ = fs::remove_file(file);
+        }
+        for file in &files {
+            if file == "program.o" {
+                continue;
+            }
+            let ll = file.replace(".o", ".ll");
+            let _ = fs::remove_file(ll);
+        }
+        return Ok(());
     }
 }

@@ -45,13 +45,15 @@ pub enum ToyErrorType {
     UndefinedVariable,
     UnknownCharacter(char),
     MalformedStructInterface,
+    MalformedType,
     MalformedFuncCall,
     ExpressionNotNumeric,
     MissingInstruction,
     LlvmError(String),
     UndefinedSSAValue,
     MalformedImportStatement,
-    MissingFile
+    MissingFile,
+    IncorrectNumberOfArguments
 }
 
 #[derive(Debug, Error)]
@@ -115,6 +117,7 @@ impl fmt::Display for ToyErrorType {
             Self::UndefinedVariable => write!(f, "Undefined Variable"),
             Self::UnknownCharacter(token) => write!(f, "Unknown Character: {:?}", token),
             Self::MalformedStructInterface => write!(f, "Malformed Struct"),
+            Self::MalformedType => write!(f, "Malformed Type"),
             Self::MalformedFuncCall => write!(f, "Malformed FuncCall"),
             Self::TypeHintNeeded => write!(f, "TypeHintNeeded"),
             Self::MissingInstruction => write!(f, "MissingInstruction"),

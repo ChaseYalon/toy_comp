@@ -1,0 +1,53 @@
+//low level module for interacting with hardware
+extern fn toy_sys_exit(code: int);
+fn exit(code: int){
+    toy_sys_exit(code);
+}
+fn abort(){
+    toy_sys_exit(-1);
+}
+fn panic(message: str){
+    println(message);
+    abort();
+}
+//gets current process ID
+extern fn toy_sys_get_pid(): int;
+fn get_pid(){
+    return toy_sys_get_pid();
+}
+
+extern fn toy_sys_get_argv(): str[];
+extern fn toy_sys_get_argc(): int;
+fn argv(): str[] {
+    let args = toy_sys_get_argv();
+    return args;
+}
+fn argc(): int {
+    return toy_sys_get_argc();
+}
+extern fn toy_sys_get_os_name(): str;
+fn os_name(): str {
+    return toy_sys_get_os_name();
+}
+
+extern fn toy_sys_get_core_count(): int;
+fn core_count(): int {
+    return toy_sys_get_core_count();
+}
+fn version(): str{
+    return "0.0.2";
+}
+fn version_info(): str{
+    //status, version, build date
+    return "ALPHA_0.02_1/4/2026";
+}
+extern fn toy_sys_is_little_endian(): int;
+fn is_little_endian(): bool{
+    if toy_sys_is_little_endian() == 1 {
+        return true;
+    }
+    return false;
+}
+fn is_big_endian(): bool {
+    return !is_little_endian();
+}

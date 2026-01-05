@@ -5,7 +5,8 @@
 #include <string.h>
 #include <stdio.h>
 extern int64_t user_main();
-
+int64_t GLOBAL_ARGC;
+char** GLOBAL_ARGV;
 //sets environment variables, everything is in debug mode by default
 void _SetDebug_env() {
     #ifdef _WIN32
@@ -16,7 +17,9 @@ void _SetDebug_env() {
     #endif
 }
 
-int main(){
+int main(int argc, char** argv) {
+    GLOBAL_ARGC = (int64_t) argc;
+    GLOBAL_ARGV = argv;
     _SetDebug_env();
     int res = (int) user_main();
     //if it is greater then 0 there is a memory leak, if it is less then 0 it is a double free, still need to detect 

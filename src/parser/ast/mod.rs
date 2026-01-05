@@ -63,7 +63,7 @@ pub enum Ast {
     ///find the inverse of a node, must be a boolean expression
     Not(Box<Ast>),
     ///Path to the module being imported from, source code
-    ImportStmt(String, String)
+    ImportStmt(String, String),
 }
 impl Ast {
     pub fn node_type(&self) -> String {
@@ -204,8 +204,7 @@ impl fmt::Display for Ast {
                     format!("MemberAccess Target({}), Member({}), Literal({})", *t, m, s),
                 Ast::Assignment(l, r, s) =>
                     format!("Assignment LHS({}), RHS({}), Literal({})", *l, *r, s),
-                Ast::ImportStmt(path, s) =>
-                    format!("ImportStmt Path({}), Literal({})", path, s),
+                Ast::ImportStmt(path, s) => format!("ImportStmt Path({}), Literal({})", path, s),
             }
         )
     }
