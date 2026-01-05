@@ -345,7 +345,6 @@ impl AstToIrConverter {
                 let mut params = vec![len];
                 self.builder.inject_type_param(&ty, false, true, &mut params)?;
                 params.push(self.builder.iconst(degree as i64, TypeTok::Int)?);
-                eprintln!("Params: {:?}", params);
                 let arr = self.builder.call("toy_malloc_arr".to_string(), params)?;
                 for (i, ssa_val) in ssa_vals.iter().enumerate() {
                     let idx = self.builder.iconst(i as i64, TypeTok::Int)?;
