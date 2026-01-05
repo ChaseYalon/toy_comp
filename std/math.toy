@@ -183,8 +183,19 @@ fn log1p(a: int): int {
 fn log1p(a: float): float {
     return toy_math_log1pf(a);
 }
-
-
+//y is base, x is val
+fn logbase(x: int, y: int): int {
+    return int(log(x) / log(y));
+}
+fn logbase(x: int, y: float): float{
+    return log(x) / log(y);
+}
+fn logbase(x: float, y: int): float{
+    return log(x) / log(y);
+}
+fn logbase(x: float, y: float): float{
+    return log(x) / log(y);
+}
 extern fn toy_math_abs(a: int): int;
 fn abs(a: int): int {
     return toy_math_abs(a);
