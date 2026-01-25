@@ -38,8 +38,9 @@ fn version(): str{
     return "0.0.2";
 }
 fn version_info(): str{
-    //status, version, build date
-    return "ALPHA_0.02_1/4/2026";
+    //status, version, name
+    //Each name is a historical figure I like, this one is Lord Gray, PM of england in the 1830s who passed the first big reform act of the 19th century
+    return "ALPHA_0.02_GRAY";
 }
 extern fn toy_sys_is_little_endian(): int;
 fn is_little_endian(): bool{

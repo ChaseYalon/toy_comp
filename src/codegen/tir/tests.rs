@@ -3,18 +3,44 @@ use crate::codegen::tir::ir::{
     Block, BoolInfixOp, Function, NumericInfixOp, SSAValue, TIR, TirType,
 };
 use crate::lexer::Lexer;
+use crate::parser::ast_gen::AstGenerator;
+use crate::driver::Driver;
 use crate::parser::Parser;
+use crate::parser::ast::Ast;
 use colored::*;
 use std::fs::File;
 use std::path::Path;
 use std::{env, fs};
+
+fn parse_test_code(code: impl ToString) -> (Vec<Ast>, Driver) {
+    let mut driver = Driver::new("test".to_string());
+    let mut ast_gen = AstGenerator::new();
+    let ast = driver
+        .compile_from_string(code.to_string(), &mut ast_gen)
+        .unwrap();
+    (ast, driver)
+}
+
 macro_rules! setup_tir {
     ($o: ident, $v:expr) => {
-        let mut l = Lexer::new();
-        let mut p = Parser::new();
+        let (ast, driver) = parse_test_code($v);
         let mut t = AstToIrConverter::new();
-        let toks = l.lex($v.to_string()).unwrap();
-        let ast = p.parse(toks).unwrap(); //I dont like .unwrap(0)
+        for (path, exports) in &driver.table.path_to_exports {
+            let module_name = path
+                .replace("/", ".")
+                .replace(".toy", "")
+                .trim_start_matches('.')
+                .to_string();
+            let prefix = module_name.replace(".", "::");
+            for export in exports {
+                if let crate::driver::ModuleExportType::Function(_params, ret) = &export.ty {
+                    let full_mangled =
+                        crate::driver::Driver::mangle_name(Some(&prefix), &export.name, &[]);
+                    t.builder
+                        .register_extern_func(full_mangled, ret.clone());
+                }
+            }
+        }
         let $o = t.convert(ast, true).unwrap();
     };
 }
@@ -2876,5 +2902,73 @@ fn test_tirgen_library_no_user_main() {
     assert!(
         has_add,
         "Library module should have the defined function 'add'"
+    );
+}
+
+#[test]
+fn test_tirgen_argv() {
+    setup_tir!(ir, "import std.sys; let args = sys.argv(); println(args);");
+    compare_tir(
+        "argv",
+        ir,
+        vec![Function {
+            params: vec![],
+            name: Box::new("user_main".to_string()),
+            body: vec![Block {
+                id: 0,
+                ins: vec![
+                    TIR::CallExternFunction(
+                        0,
+                        Box::new("std::sys::argv".to_string()),
+                        vec![],
+                        true,
+                        TirType::I8PTR,
+                    ),
+                    TIR::IConst(1, 4, TirType::I64),
+                    TIR::IConst(2, 1, TirType::I64),
+                    TIR::CallExternFunction(
+                        3,
+                        Box::new("toy_println".to_string()),
+                        vec![
+                            SSAValue {
+                                val: 0,
+                                ty: Some(TirType::I8PTR),
+                            },
+                            SSAValue {
+                                val: 1,
+                                ty: Some(TirType::I64),
+                            },
+                            SSAValue {
+                                val: 2,
+                                ty: Some(TirType::I64),
+                            },
+                        ],
+                        false,
+                        TirType::Void,
+                    ),
+                    TIR::IConst(4, 0, TirType::I64),
+                    TIR::Ret(
+                        5,
+                        SSAValue {
+                            val: 4,
+                            ty: Some(TirType::I64),
+                        },
+                    ),
+                ],
+            }],
+            ret_type: TirType::I64,
+            ins_counter: 6,
+            heap_allocations: vec![crate::codegen::tir::ir::HeapAllocation {
+                block: 0,
+                allocation_id: 0,
+                function: Box::new("user_main".to_string()),
+                refs: vec![(Box::new("user_main".to_string()), 0, 3)],
+                alloc_ins: SSAValue {
+                    val: 0,
+                    ty: Some(TirType::I64),
+                },
+            }],
+            heap_counter: 1,
+        }],
     );
 }

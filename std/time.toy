@@ -77,7 +77,7 @@ struct Date {
     day: int,
 }
 for Date {
-    fn to_str(): str{
+    export fn to_str(): str{
         let s = "Date{\n";
         s += ("\tyear: " + str(this.year));
         s += ("\tmonth: "+ str(this.month));

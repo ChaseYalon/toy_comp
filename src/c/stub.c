@@ -19,7 +19,21 @@ void _SetDebug_env() {
 
 int main(int argc, char** argv) {
     GLOBAL_ARGC = (int64_t) argc;
-    GLOBAL_ARGV = argv;
+    GLOBAL_ARGV = malloc(sizeof(char*) * argc);
+    if (!GLOBAL_ARGV) {
+        fprintf(stderr, "Failed to allocate GLOBAL_ARGV\n");
+        abort();
+    }
+
+    for (int i = 0; i < argc; i++) {
+        size_t len = strlen(argv[i]) + 1;
+        GLOBAL_ARGV[i] = malloc(len);
+        if (!GLOBAL_ARGV[i]) {
+            fprintf(stderr, "Failed to allocate argv string\n");
+            abort();
+        }
+        memcpy(GLOBAL_ARGV[i], argv[i], len);
+    }
     _SetDebug_env();
     int res = (int) user_main();
     //if it is greater then 0 there is a memory leak, if it is less then 0 it is a double free, still need to detect 

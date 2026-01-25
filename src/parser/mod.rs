@@ -5,7 +5,7 @@ use crate::{
 };
 
 pub mod ast;
-mod ast_gen;
+pub mod ast_gen;
 pub mod boxer;
 pub mod toy_box;
 

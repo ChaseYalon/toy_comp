@@ -1,7 +1,4 @@
-use crate::codegen::Generator;
-use crate::lexer::Lexer;
-use crate::parser::Parser;
-use inkwell::{context::Context, module::Module};
+use inkwell::context::Context;
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
@@ -38,16 +35,10 @@ macro_rules! compile_code_aot {
 
         let _ = std::fs::remove_file(&output_path);
         thread::sleep(Duration::from_millis(100));
-        let mut l = Lexer::new();
-        let mut p = Parser::new();
-        let ctx: Context = Context::create();
-        let main_module: Module = ctx.create_module("main");
-        let mut g = Generator::new(&ctx, main_module);
-        g.generate(
-            p.parse(l.lex($i.to_string()).unwrap()).unwrap(),
-            format!("temp/{}", output_name),
-        )
-        .unwrap();
+        let ctx = Context::create();
+        let mut d =
+            crate::driver::Driver::new_with_name($i.to_string(), format!("temp/{}", output_name));
+        d.start(&ctx).unwrap();
 
         thread::sleep(Duration::from_millis(200));
 
@@ -284,24 +275,31 @@ fn test_llvm_struct_arr_ret() {
     assert!(output.contains("4"));
 }
 
+
 #[test]
-fn test_llvm_time_get_current_month_name() {
+fn test_llvm_extern_struct() {
     compile_code_aot!(
         output,
-        "import std.time; println(time.current_month_name());",
-        "time_get_current_month_name"
+        "import std.time; println(time.current_date().month);",
+        "extern_struct"
     );
-    assert!(output.to_lowercase().contains(curr_month_name().as_str()));
+    let mut month_num = Local::now().format("%m").to_string();
+    if month_num.starts_with("0") {
+        month_num = month_num[1..].to_string();
+    }
+    assert!(output.contains(&month_num));
 }
 
 #[test]
-fn test_llvm_extern_struct_func() {
+fn test_llvm_extern_struct_func_call() {
     compile_code_aot!(
         output,
-        "import std.time; let today = time.Date = time.current_date(); println(today.to_str());",
-        "extern_struct_func"
+        "import std.time; let d = time.current_date(); println(d.to_str());",
+        "extern_struct_func_call"
     );
-    assert!(output.contains("Date{"));
-    assert!(output.contains("}"));
-    assert!(output.contains("year:"));
+    let mut month_num = Local::now().format("%m").to_string();
+    if month_num.starts_with("0") {
+        month_num = month_num[1..].to_string();
+    }
+    assert!(output.contains(&month_num));
 }

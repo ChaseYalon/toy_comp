@@ -171,7 +171,7 @@ pub struct TirBuilder {
     pub funcs: Vec<Function>,
     pub curr_func: Option<usize>, //index into self.funcs
     curr_block: Option<usize>,    //index into self.curr_func.body,
-    pub extern_funcs: HashMap<String, (bool, TirType, bool)>, //external function name to is_allocator, return_type, is_user_defined
+    pub extern_funcs: HashMap<String, (bool, TypeTok, bool)>, //external function name to is_allocator, return_type, is_user_defined
 }
 impl TirBuilder {
     pub fn new() -> TirBuilder {
@@ -216,8 +216,17 @@ impl TirBuilder {
     }
 
     pub fn register_extern_func(&mut self, name: String, ret_type: TypeTok) {
-        let tir_ret_type = self.type_tok_to_tir_type(ret_type);
-        self.extern_funcs.insert(name, (false, tir_ret_type, true));
+        //Functions returning str, str[], or any array type are allocators
+        let is_allocator = matches!(
+            ret_type,
+            TypeTok::Str
+                | TypeTok::StrArr(_)
+                | TypeTok::IntArr(_)
+                | TypeTok::FloatArr(_)
+                | TypeTok::BoolArr(_)
+        );
+        self.extern_funcs
+            .insert(name, (is_allocator, ret_type, true));
     }
 
     /// Updates the parameters of the current function
@@ -508,7 +517,8 @@ impl TirBuilder {
         name: String,
         params: Vec<SSAValue>,
     ) -> Result<SSAValue, ToyError> {
-        let (is_allocator, ret_type, _) = self.extern_funcs.get(&name).cloned().unwrap(); // parser validated
+        let (is_allocator, ret_tok, _) = self.extern_funcs.get(&name).cloned().unwrap(); // parser validated
+        let ret_type = self.type_tok_to_tir_type(ret_tok);
         let curr_func_name = self.funcs[self.curr_func.unwrap()].name.clone();
         let curr_block_idx = self.curr_block.unwrap();
         let curr_block = self.funcs[self.curr_func.unwrap()].body[curr_block_idx].id;
@@ -593,8 +603,8 @@ impl TirBuilder {
         params: Vec<SSAValue>,
     ) -> Result<(), ToyError> {
         //params should never be freed, so no need to track refs
-        let (is_allocator, ret_type, _) = self.extern_funcs.get(&name).cloned().unwrap(); // parser validated
-
+        let (is_allocator, ret_tok, _) = self.extern_funcs.get(&name).cloned().unwrap(); // parser validated
+        let ret_type = self.type_tok_to_tir_type(ret_tok);
         let id = self._next_value_id();
         let ins = TIR::CallExternFunction(id, Box::new(name), params, is_allocator, ret_type);
         self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()]
@@ -898,7 +908,7 @@ impl TirBuilder {
     pub fn register_extern(&mut self, name: String, is_allocator: bool, ret_type: TypeTok) {
         self.extern_funcs.insert(
             name,
-            (is_allocator, self.type_tok_to_tir_type(ret_type), false),
+            (is_allocator, ret_type, false),
         );
     }
     pub fn global_string(&mut self, name: String) -> Result<SSAValue, ToyError> {

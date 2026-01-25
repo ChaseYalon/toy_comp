@@ -98,16 +98,9 @@ impl AstToIrConverter {
                 "float" => Ok(TypeTok::Float),
                 "bool" => Ok(TypeTok::Bool),
                 _ => {
-                    if let Some((_, tir_ty, _)) = self.builder.extern_funcs.get(&*n.to_string()) {
-                        match tir_ty {
-                            TirType::I64 => Ok(TypeTok::Int),
-                            TirType::F64 => Ok(TypeTok::Float),
-                            TirType::I1 => Ok(TypeTok::Bool),
-                            TirType::Void => Ok(TypeTok::Void),
-                            TirType::I8PTR => Ok(TypeTok::Str),
-                            _ => Ok(TypeTok::Int),
-                        }
-                    } else if let Some(f) =
+                        if let Some((_, type_tok, _)) = self.builder.extern_funcs.get(&*n.to_string()) {
+                            Ok(type_tok.clone())
+                        } else if let Some(f) =
                         self.builder.funcs.iter().find(|f| *f.name == *n.clone())
                     {
                         match f.ret_type {
@@ -750,7 +743,7 @@ impl AstToIrConverter {
                             for b in boxes {
                                 match b {
                                     TBox::ExternFuncDec(name_tok, _, ret_type, _)
-                                    | TBox::FuncDec(name_tok, _, ret_type, _, _) => {
+                                    | TBox::FuncDec(name_tok, _, ret_type, _, _, _) => {
                                         if let Some(n) = name_tok.get_var_name() {
                                             let full_name = format!("{}::{}", prefix, n);
                                             self.builder.register_extern(

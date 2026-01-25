@@ -130,6 +130,7 @@
       "SMTO",
       "sqrtf",
       "srem",
+      "stdlib",
       "strequal",
       "tanf",
       "tanhf",

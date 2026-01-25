@@ -38,11 +38,12 @@ fn eq_tbox_ignoring_src(x: &TBox, y: &TBox) -> bool {
 
         (TBox::FuncParam(xn, xt, _), TBox::FuncParam(yn, yt, _)) => xn == yn && xt == yt,
 
-        (TBox::FuncDec(xn, xp, xr, xb, _), TBox::FuncDec(yn, yp, yr, yb, _)) => {
+        (TBox::FuncDec(xn, xp, xr, xb, _, xie), TBox::FuncDec(yn, yp, yr, yb, _, yie)) => {
             xn == yn
                 && xr == yr
                 && compare_tbox_vecs(xp.clone(), yp.clone())
                 && compare_tbox_vecs(xb.clone(), yb.clone())
+                && xie == yie
         }
 
         (TBox::Return(xv, _), TBox::Return(yv, _)) => eq_tbox_ignoring_src(xv, yv),
@@ -385,7 +386,8 @@ fn test_boxer_func_dec_and_call() {
                     )),
                     "".to_string()
                 )],
-                "".to_string()
+                "".to_string(),
+                false
             ),
             TBox::VarDec(
                 Token::VarName(Box::new("x".to_string())),
@@ -568,7 +570,8 @@ fn test_boxer_fn_loop() {
                         "".to_string()
                     )
                 ],
-                "".to_string()
+                "".to_string(),
+                false
             ),
             TBox::Expr(
                 vec![
@@ -599,7 +602,8 @@ fn test_boxer_fn_no_params() {
                     Box::new(TBox::Expr(vec![Token::IntLit(1)], "".to_string())),
                     "".to_string()
                 )],
-                "".to_string()
+                "".to_string(),
+                false
             ),
             TBox::Expr(
                 vec![
@@ -607,7 +611,7 @@ fn test_boxer_fn_no_params() {
                     Token::LParen,
                     Token::RParen
                 ],
-                "".to_string()
+                "".to_string(),
             )
         ]
     ))
@@ -1004,7 +1008,8 @@ fn test_boxer_struct_func_param() {
                     )),
                     "".to_string()
                 )],
-                "".to_string()
+                "".to_string(),
+                false
             ),
             TBox::Expr(
                 vec![
@@ -1064,7 +1069,8 @@ fn test_boxer_struct_method_conversion() {
                     ],
                     "".to_string()
                 )],
-                "".to_string()
+                "".to_string(),
+                false
             ),
             TBox::VarDec(
                 Token::VarName(Box::new("me".to_string())),
@@ -1357,7 +1363,8 @@ fn test_boxer_func_struct_ret() {
                     )),
                     "".to_string()
                 )],
-                "".to_string()
+                "".to_string(),
+                false
             ),
             TBox::VarDec(
                 Token::VarName(Box::new("x".to_string())),
@@ -1428,7 +1435,8 @@ fn test_boxer_func_struct_arr_ret() {
                     )),
                     "".to_string()
                 )],
-                "".to_string()
+                "".to_string(),
+                false
             ),
             TBox::VarDec(
                 Token::VarName(Box::new("x".to_string())),
@@ -1459,57 +1467,43 @@ fn test_boxer_func_struct_arr_ret() {
 }
 
 #[test]
-fn test_boxer_struct_from_namespace() {
+fn test_boxer_export_function() {
     let mut l = Lexer::new();
     let mut b = Boxer::new();
-    let tok = l.lex(
-        "import std.time; let today: time.Date = time.current_date(); println(today.year);"
-            .to_string(),
-    );
-    // Manually inject the interface for time.Date since Boxer doesn't load imports
-    let date_fields = BTreeMap::from([
-        ("year".to_string(), TypeTok::Int),
-        ("month".to_string(), TypeTok::Int),
-        ("day".to_string(), TypeTok::Int),
-    ]);
-    b.interfaces.insert("time.Date".to_string(), date_fields);
+    let input = "export fn add(a: int, b: int): int {return a + b;}".to_string();
+    let toks = l.lex(input).unwrap();
+    let boxes = b.box_toks(toks).unwrap();
 
-    let boxes = b.box_toks(tok.unwrap()).unwrap();
     assert!(compare_tbox_vecs(
         boxes,
-        vec![
-            TBox::ImportStmt("std.time".to_string(), "import std.time;".to_string()),
-            TBox::VarDec(
-                Token::VarName(Box::new("today".to_string())),
-                Some(TypeTok::Struct(
+        vec![TBox::FuncDec(
+            Token::VarName(Box::new("add_int_int".to_string())),
+            vec![
+                TBox::FuncParam(
+                    Token::VarRef(Box::new("a".to_string())),
+                    TypeTok::Int,
+                    "".to_string()
+                ),
+                TBox::FuncParam(
+                    Token::VarRef(Box::new("b".to_string())),
+                    TypeTok::Int,
+                    "".to_string()
+                )
+            ],
+            TypeTok::Int,
+            vec![TBox::Return(
+                Box::new(TBox::Expr(
                     vec![
-                        ("day".to_string(), Box::new(TypeTok::Int)),
-                        ("month".to_string(), Box::new(TypeTok::Int)),
-                        ("year".to_string(), Box::new(TypeTok::Int)),
-                    ]
-                    .into_iter()
-                    .collect()
+                        Token::VarRef(Box::new("a".to_string())),
+                        Token::Plus,
+                        Token::VarRef(Box::new("b".to_string())),
+                    ],
+                    "".to_string()
                 )),
-                vec![
-                    Token::VarRef(Box::new("time".to_string())),
-                    Token::Dot,
-                    Token::VarRef(Box::new("current_date".to_string())),
-                    Token::LParen,
-                    Token::RParen
-                ],
                 "".to_string()
-            ),
-            TBox::Expr(
-                vec![
-                    Token::VarRef(Box::new("println".to_string())),
-                    Token::LParen,
-                    Token::VarRef(Box::new("today".to_string())),
-                    Token::Dot,
-                    Token::VarRef(Box::new("year".to_string())),
-                    Token::RParen
-                ],
-                "".to_string()
-            )
-        ]
+            )],
+            "".to_string(),
+            true
+        )]
     ));
 }

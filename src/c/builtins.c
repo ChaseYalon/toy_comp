@@ -494,15 +494,15 @@ void toy_write_to_arr(int64_t arr_in_ptr, int64_t value, int64_t idx, int64_t ty
 int64_t toy_read_from_arr(int64_t arr_in_ptr, int64_t idx) {
     ToyArr* arr_ptr = (ToyArr*) arr_in_ptr;
     if (arr_ptr == NULL) {
-        fprintf(stderr, "[ERROR] toy_read_from_arr got a null pointer");
+        fprintf(stderr, "[ERROR] toy_read_from_arr got a null pointer\n");
         abort();
     }
     if (arr_ptr->arr == NULL) {
-        fprintf(stderr, "[ERROR] toy_read_from_arr got an array with null data pointer");
+        fprintf(stderr, "[ERROR] toy_read_from_arr got an array with null data pointer\n");
         abort();
     }
     if (idx > arr_ptr->length) {
-        fprintf(stderr, "[ERROR] Tried to read from index %"PRId64" but array is only %"PRId64" elements long", idx, arr_ptr->length);
+        fprintf(stderr, "[ERROR] Tried to read from index %"PRId64" but array is only %"PRId64" elements long\n", idx, arr_ptr->length);
         abort();
     }
     ToyArrVal* elem = arr_ptr->arr + idx;

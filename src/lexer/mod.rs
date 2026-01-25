@@ -205,6 +205,9 @@ impl Lexer {
             if self.lex_keyword("import", Token::Import) {
                 continue;
             }
+            if self.lex_keyword("export", Token::Export) {
+                continue;
+            }
             if (c.is_ascii_digit() || (c == '.' && self.num_buf.len() > 0))
                 && self.str_buf.len() == 0
             {

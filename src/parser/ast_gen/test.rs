@@ -1918,8 +1918,10 @@ fn test_ast_gen_extern_func_dec() {
 }
 
 #[test]
-fn test_ast_gen_import_stmt_resolution() {
-    let input = String::from(r#"import std.math; let x = math.abs(-5);"#);
+fn test_ast_gen_import_stmt_basic() {
+    //Import resolution (converting math.abs to std::math::abs_int) is now handled by the Driver,
+    //not the AstGenerator directly. This test just verifies the import statement is parsed correctly.
+    let input = String::from(r#"import std.math;"#);
     let mut l = Lexer::new();
     let mut b = Boxer::new();
     let mut g = AstGenerator::new();
@@ -1929,19 +1931,7 @@ fn test_ast_gen_import_stmt_resolution() {
 
     assert!(compare_ast_vecs(
         ast,
-        vec![
-            Ast::ImportStmt("std.math".to_string(), "".to_string()),
-            Ast::VarDec(
-                Box::new("x".to_string()),
-                TypeTok::Int,
-                Box::new(Ast::FuncCall(
-                    Box::new("std::math::abs_int".to_string()),
-                    vec![Ast::IntLit(-5)],
-                    "".to_string()
-                )),
-                "".to_string()
-            )
-        ]
+        vec![Ast::ImportStmt("std.math".to_string(), "".to_string()),]
     ));
 }
 
@@ -2008,37 +1998,4 @@ fn test_ast_gen_panic() {
             )
         ]
     ))
-}
-
-#[test]
-fn test_ast_gen_namespace_structs() {
-    setup_ast!(
-        "import std.time; let today = time.Date = time.current_date(); println(today.to_str());",
-        ast
-    );
-    assert!(compare_ast_vecs(
-        ast,
-        vec![
-            Ast::ImportStmt("std.time".to_string(), "".to_string()),
-            Ast::VarDec(
-                Box::new("today".to_string()),
-                TypeTok::Struct(BTreeMap::from([])),
-                Box::new(Ast::FuncCall(
-                    Box::new("std::time::current_date_void".to_string()),
-                    vec![],
-                    "".to_string()
-                )),
-                "".to_string()
-            ),
-            Ast::FuncCall(
-                Box::new("println".to_string()),
-                vec![Ast::FuncCall(
-                    Box::new("std::time::Date:::to_str_struct".to_string()),
-                    vec![Ast::VarRef(Box::new("today".to_string()), "".to_string())],
-                    "".to_string()
-                )],
-                "".to_string()
-            )
-        ]
-    ));
 }

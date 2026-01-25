@@ -1,8 +1,4 @@
-use crate::Lexer;
-use crate::Parser;
-use crate::codegen::Generator;
 use inkwell::context::Context;
-use inkwell::module::Module;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::thread;
@@ -34,16 +30,10 @@ macro_rules! compile_code_aot {
 
         let _ = std::fs::remove_file(&output_path);
         thread::sleep(Duration::from_millis(100));
-        let mut l = Lexer::new();
-        let mut p = Parser::new();
-        let ctx: Context = Context::create();
-        let main_module: Module = ctx.create_module("main");
-        let mut g = Generator::new(&ctx, main_module);
-        g.generate(
-            p.parse(l.lex($i.to_string()).unwrap()).unwrap(),
-            format!("temp/{}", output_name),
-        )
-        .unwrap();
+        let ctx = Context::create();
+        let mut d =
+            crate::driver::Driver::new_with_name($i.to_string(), format!("temp/{}", output_name));
+        d.start(&ctx).unwrap();
 
         thread::sleep(Duration::from_millis(200));
 

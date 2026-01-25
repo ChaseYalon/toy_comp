@@ -12,9 +12,9 @@ mod token;
 #[macro_use]
 mod macros;
 pub mod codegen;
+mod driver;
 mod errors;
 mod ffi;
-
 use inkwell::context::Context;
 use inkwell::module::Module;
 
@@ -28,17 +28,17 @@ pub struct Compiler<'a> {
     generator: Generator<'a>,
 }
 impl<'a> Compiler<'a> {
-    pub fn new(ctx: &'a Context, module: Module<'a>) -> Compiler<'a> {
+    pub fn new(_ctx: &'a Context, _module: Module<'a>) -> Compiler<'a> {
         Compiler::<'a> {
             lexer: Lexer::new(),
             parser: Parser::new(),
-            generator: Generator::new(ctx, module),
+            generator: Generator::new(_ctx, _module), //Generator is unused logic-wise but kept for struct field
         }
     }
     pub fn compile(&mut self, source: String) -> Result<(), ToyError> {
-        let tokens = self.lexer.lex(source)?;
-        let ast = self.parser.parse(tokens)?;
-        self.generator.generate(ast, "program".to_string())?;
+        let ctx = Context::create();
+        let mut d = driver::Driver::new(source);
+        d.start(&ctx)?;
         Ok(())
     }
 }
@@ -65,15 +65,9 @@ fn run_repl() {
 }
 
 fn compile_and_print(source: String) -> Result<(), Box<dyn std::error::Error>> {
-    let mut lexer = Lexer::new();
-    let mut parser = Parser::new();
     let ctx: Context = Context::create();
-    let main_module: Module = ctx.create_module("main");
-    let mut generator = Generator::new(&ctx, main_module);
-
-    let tokens = lexer.lex(source)?;
-    let ast = parser.parse(tokens)?;
-    generator.generate(ast, "program".to_string())?;
+    let mut driver = driver::Driver::new(source);
+    driver.start(&ctx)?;
 
     Ok(())
 }
