@@ -617,7 +617,11 @@ impl Boxer {
                 Some(raw_text.clone()),
             ));
         }
-        let func_name = self.mangle_func_name(input[1].clone());
+        let func_name = if self.current_struct.is_some() {
+            input[1].clone()
+        } else {
+            self.mangle_func_name(input[1].clone())
+        };
         if input[2].tok_type() != "LParen" {
             return Err(ToyError::new(
                 ToyErrorType::MalformedFunctionDeclaration,
@@ -809,7 +813,12 @@ impl Boxer {
 
         let this_type = TypeTok::Struct(boxed_fields.clone());
 
-        self.current_struct = Some((struct_name.clone(), this_type.clone()));
+        let prefixed_struct_name = if let Some(prefix) = &self.module_prefix {
+            format!("{}::{}", prefix, struct_name)
+        } else {
+            struct_name.clone()
+        };
+        self.current_struct = Some((prefixed_struct_name, this_type.clone()));
         let body_toks = input[3..input.len() - 1].to_vec();
         let boxed_body = self.box_group(body_toks)?;
         self.current_struct = None;

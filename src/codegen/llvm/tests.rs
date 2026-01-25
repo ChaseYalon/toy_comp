@@ -14,7 +14,7 @@ fn curr_month_name() -> String {
 
 fn capture_program_output(program: String) -> String {
     thread::sleep(Duration::from_millis(100));
-    let output = Command::new(program)
+    let output = Command::new(&program)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped()) // capture stderr too
         .spawn()
@@ -275,7 +275,6 @@ fn test_llvm_struct_arr_ret() {
     assert!(output.contains("4"));
 }
 
-
 #[test]
 fn test_llvm_extern_struct() {
     compile_code_aot!(
@@ -301,5 +300,6 @@ fn test_llvm_extern_struct_func_call() {
     if month_num.starts_with("0") {
         month_num = month_num[1..].to_string();
     }
+    println!("Output: {}", output);
     assert!(output.contains(&month_num));
 }

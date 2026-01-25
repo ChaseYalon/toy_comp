@@ -35,7 +35,7 @@ impl<'a> Generator<'a> {
         name: String,
         is_main: bool,
     ) -> Result<(), ToyError> {
-        let _ = self.converter.convert(ast, is_main)?;
+        let _ = self.converter.convert(ast, is_main, &name)?;
         let ir = self.analyzer.analyze(self.converter.builder.clone())?;
         self.generator.generate(ir, name)?;
         Ok(())

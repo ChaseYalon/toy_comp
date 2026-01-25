@@ -2,28 +2,28 @@
 import std.sys;
 //returns the number of milliseconds since the unix epoch
 extern fn toy_time_ms_since_unix_epoch(): int;
-fn ms_since_unix_epoch(): int {
+export fn ms_since_unix_epoch(): int {
     return toy_time_ms_since_unix_epoch();
 }
 //alias for ms_since_unix_epoch, easier to type
-fn now(): int{
+export fn now(): int{
     return ms_since_unix_epoch();
 }
 extern fn toy_time_current_year(): int;
-fn current_year(): int {
+export fn current_year(): int {
     return toy_time_current_year();
 }
 
 extern fn toy_time_current_month(): int;
 //1 is january, 12 is december
-fn current_month(): int {
+export fn current_month(): int {
     let res = toy_time_current_month();
     if res < 0 || res > 12 {
         sys.panic("[ERROR] Month " + str(res) + " is invalid.");
     }
     return res;
 }
-fn current_month_name(): str{
+export fn current_month_name(): str{
     let month_num = current_month();
     if month_num == 1 {
         return "January";
@@ -67,7 +67,7 @@ fn current_month_name(): str{
 }
 
 extern fn toy_time_current_day(): int;
-fn current_day(): int {
+export fn current_day(): int {
     return toy_time_current_day();
 }
 
@@ -86,7 +86,7 @@ for Date {
         return s;
     }
 }
-fn current_date(): Date {
+export fn current_date(): Date {
     return Date{
         year: current_year(),
         month: current_month(),
@@ -94,6 +94,6 @@ fn current_date(): Date {
     };
 }
 extern fn toy_time_sleep(ms: int);
-fn sleep(ms: int){
+export fn sleep(ms: int){
     toy_time_sleep(ms);
 }

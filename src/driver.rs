@@ -110,6 +110,7 @@ impl Linker {
         }
         //kinda hacky
         for file in &files {
+            //I dont really care if it failed to remove...
             let _ = fs::remove_file(file);
         }
         Ok(())
@@ -405,7 +406,7 @@ impl Driver {
                 .to_string();
             let prefix = module_name.replace(".", "::");
             for export in exports {
-                if let ModuleExportType::Function(_params, ret) = &export.ty {
+                if let ModuleExportType::Function(params, ret) = &export.ty {
                     // export.name is already mangled by Boxer (e.g., "abs_int")
                     // Only add module prefix, don't re-add params
                     let full_mangled = Driver::mangle_name(Some(&prefix), &export.name, &[]);
@@ -418,21 +419,27 @@ impl Driver {
         object_files.push(format!("{}.o", self.name));
 
         //Link
+        let args = env::args().collect::<Vec<String>>();
+        let save_temps = args.contains(&"--save-temps".to_string());
         let mut linker = Linker::new();
-        linker.link(object_files, self.name.clone(), false)?;
+        linker.link(object_files, self.name.clone(), save_temps)?;
 
         Ok(())
     }
 
-    pub fn compile_from_string(&mut self, code: String, ast_gen: &mut AstGenerator) -> Result<Vec<Ast>, ToyError> {
+    pub fn compile_from_string(
+        &mut self,
+        code: String,
+        ast_gen: &mut AstGenerator,
+    ) -> Result<Vec<Ast>, ToyError> {
         let mut l = Lexer::new();
         let toks = l.lex(code)?;
         let mut b = Boxer::new();
         let boxes = b.box_toks(toks)?;
-        
+
         self.find_and_parse_dependencies(boxes.clone())?;
         self.feed_to_ast_gen(ast_gen);
-        
+
         ast_gen.generate(boxes)
     }
 }

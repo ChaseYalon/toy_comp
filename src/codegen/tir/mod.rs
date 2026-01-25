@@ -1,5 +1,6 @@
 #![allow(unused)]
 use crate::codegen::tir::ir::{BlockId, Function, SSAValue, TirBuilder, ValueId};
+use crate::driver::Driver;
 use crate::errors::ToyErrorType;
 use crate::lexer::Lexer;
 use crate::parser::ast::InfixOp;
@@ -56,6 +57,7 @@ pub struct AstToIrConverter {
     last_val: Option<i64>,
     ///struct name -> ((Field Name -> idx), TirType::Struct)
     interfaces: HashMap<String, (HashMap<String, usize>, TirType)>,
+    main_func_name: String,
 }
 
 impl AstToIrConverter {
@@ -68,6 +70,7 @@ impl AstToIrConverter {
             })),
             last_val: None,
             interfaces: HashMap::new(),
+            main_func_name: "user_main".to_string(),
         };
     }
     fn get_expr_type(&self, node: &Ast, scope: &Rc<RefCell<Scope>>) -> Result<TypeTok, ToyError> {
@@ -98,9 +101,9 @@ impl AstToIrConverter {
                 "float" => Ok(TypeTok::Float),
                 "bool" => Ok(TypeTok::Bool),
                 _ => {
-                        if let Some((_, type_tok, _)) = self.builder.extern_funcs.get(&*n.to_string()) {
-                            Ok(type_tok.clone())
-                        } else if let Some(f) =
+                    if let Some((_, type_tok, _)) = self.builder.extern_funcs.get(&*n.to_string()) {
+                        Ok(type_tok.clone())
+                    } else if let Some(f) =
                         self.builder.funcs.iter().find(|f| *f.name == *n.clone())
                     {
                         match f.ret_type {
@@ -242,9 +245,11 @@ impl AstToIrConverter {
                             .call_extern("toy_strequal".to_string(), vec![left, right]);
                     }
                     if op == InfixOp::Plus {
-                        return self
+                        let mut res = self
                             .builder
-                            .call_extern("toy_concat".to_string(), vec![left, right]);
+                            .call_extern("toy_concat".to_string(), vec![left, right])?;
+                        res.ty = Some(TirType::I8PTR); //force type to be a pointer so subsequent calls don't think it is an int
+                        return Ok(res);
                     }
                     unreachable!()
                 };
@@ -289,10 +294,98 @@ impl AstToIrConverter {
                     if p.len() != 1 {
                         return unreachable!();
                     }
-                    final_params.push(ssa_params[0].clone());
                     let ty = self.get_expr_type(&p[0], scope)?;
-                    self.builder
-                        .inject_type_param(&ty, true, false, &mut final_params)?;
+                    let mut is_handled = false;
+
+                    if let TypeTok::Struct(fields) | TypeTok::StructArr(fields, _) = &ty {
+                        let (fields_ref, is_arr, dimension) = match &ty {
+                            TypeTok::Struct(fields) => (fields, false, 0),
+                            TypeTok::StructArr(fields, d) => (fields, true, *d),
+                            _ => unreachable!(),
+                        };
+
+                        let struct_ty = TypeTok::Struct(fields_ref.clone());
+                        let target_tir = self.builder.type_tok_to_tir_type(struct_ty);
+                        let mut struct_name = None;
+
+                        for (name, (_, tir)) in &self.interfaces {
+                            if *tir == target_tir {
+                                if fields_ref.len() == self.interfaces[name].0.len()
+                                    && fields_ref
+                                        .keys()
+                                        .all(|k| self.interfaces[name].0.contains_key(k))
+                                {
+                                    struct_name = Some(name.clone());
+                                    break;
+                                }
+                            }
+                        }
+
+                        if let Some(s_name) = struct_name {
+                            let method_base_name = format!("{}::to_str", s_name);
+                            let mangled =
+                                Driver::mangle_name(None, &method_base_name, &[]);
+                            
+                            if self.builder.funcs.iter().any(|f| *f.name == mangled)
+                                || self.builder.extern_funcs.contains_key(&mangled)
+                            {
+                                if !is_arr {
+                                    final_params.push(self.builder.call(
+                                        mangled,
+                                        vec![ssa_params[0].clone()],
+                                    )?);
+                                } else {
+                                    let s = format!("String[]([]{})", dimension);
+                                    let str_val = self.builder.global_string(s)?;
+                                    final_params.push(str_val);
+                                }
+                                self.builder.inject_type_param(
+                                    &TypeTok::Str,
+                                    true,
+                                    false,
+                                    &mut final_params,
+                                )?;
+                                is_handled = true;
+                            }
+                        }
+                    }
+
+                    if !is_handled {
+                        final_params.push(ssa_params[0].clone());
+                        match &ty {
+                            TypeTok::Int
+                            | TypeTok::Bool
+                            | TypeTok::Float
+                            | TypeTok::Str
+                            | TypeTok::IntArr(_)
+                            | TypeTok::BoolArr(_)
+                            | TypeTok::FloatArr(_)
+                            | TypeTok::StrArr(_) => {
+                                self.builder.inject_type_param(
+                                    &ty,
+                                    true,
+                                    false,
+                                    &mut final_params,
+                                )?;
+                            }
+                            TypeTok::StructArr(_, d) => {
+                                self.builder.inject_type_param(
+                                    &TypeTok::StrArr(*d),
+                                    true,
+                                    false,
+                                    &mut final_params,
+                                )?;
+                            }
+                            _ => {
+                                self.builder.inject_type_param(
+                                    &TypeTok::Int,
+                                    true,
+                                    false,
+                                    &mut final_params,
+                                )?;
+                            }
+                        }
+                    }
                 } else if !is_user_defined
                     && vec![
                         "toy_type_to_str",
@@ -313,7 +406,18 @@ impl AstToIrConverter {
                     final_params = ssa_params;
                 }
 
-                self.builder.call(name.to_string(), final_params)
+                let mut res = self.builder.call(name.to_string(), final_params)?;
+                if vec![
+                    "toy_type_to_str",
+                    "toy_concat",
+                    "toy_malloc",     //malloc returns a pointer
+                    "toy_malloc_arr", //malloc returns a pointer
+                ]
+                .contains(&name)
+                {
+                    res.ty = Some(TirType::I8PTR);
+                }
+                Ok(res)
             }
             Ast::StringLit(s, _) => {
                 let st = *s;
@@ -336,6 +440,19 @@ impl AstToIrConverter {
                     _ => unreachable!(),
                 };
                 let mut params = vec![len];
+                /*
+                if let TypeTok::StructArr(_, d) = &ty {
+                    self.builder.inject_type_param(
+                        &TypeTok::StrArr(*d),
+                        false,
+                        true,
+                        &mut params,
+                    )?;
+                } else {
+                    self.builder
+                        .inject_type_param(&ty, false, true, &mut params)?;
+                }
+                */
                 self.builder
                     .inject_type_param(&ty, false, true, &mut params)?;
                 params.push(self.builder.iconst(degree as i64, TypeTok::Int)?);
@@ -344,8 +461,29 @@ impl AstToIrConverter {
                     let idx = self.builder.iconst(i as i64, TypeTok::Int)?;
                     let x: SSAValue = ssa_val.clone();
                     let mut write_params: Vec<SSAValue> = [arr.clone(), x, idx].to_vec();
-                    self.builder
-                        .inject_type_param(&ty, false, true, &mut write_params)?;
+                    /*
+                    if let TypeTok::StructArr(_, d) = &ty {
+                        self.builder.inject_type_param(
+                            &TypeTok::StrArr(*d),
+                            false,
+                            true,
+                            &mut write_params,
+                        )?;
+                    } else {
+                        self.builder.inject_type_param(
+                            &ty,
+                            false,
+                            true,
+                            &mut write_params,
+                        )?;
+                    }
+                    */
+                    self.builder.inject_type_param(
+                        &ty,
+                        false,
+                        true,
+                        &mut write_params,
+                    )?;
                     self.builder
                         .call("toy_write_to_arr".to_string(), write_params);
                 }
@@ -626,7 +764,7 @@ impl AstToIrConverter {
             self.builder.ret(SSAValue { val: 0, ty: None });
         }
         // Switch back to user_main after compiling the function
-        self.builder.switch_fn("user_main".to_string())?;
+        self.builder.switch_fn(self.main_func_name.clone())?;
         return Ok(());
     }
     fn compile_stmt(&mut self, node: Ast, scope: &Rc<RefCell<Scope>>) -> Result<(), ToyError> {
@@ -762,6 +900,22 @@ impl AstToIrConverter {
                                             );
                                         }
                                     }
+                                    TBox::StructInterface(n, t, _) => {
+                                        let mut tir_proto: Vec<TirType> = Vec::new();
+                                        let mut key_to_idx: HashMap<String, usize> = HashMap::new();
+                                        let mut count: usize = 0;
+                                        for (key, val) in *t {
+                                            let ty = self.builder.type_tok_to_tir_type(val);
+                                            key_to_idx.insert(key, count);
+                                            count += 1;
+                                            tir_proto.push(ty);
+                                        }
+                                        let full_name = format!("{}::{}", prefix, *n);
+                                        let tir = self
+                                            .builder
+                                            .create_struct_interface(full_name.clone(), tir_proto);
+                                        self.interfaces.insert(full_name, (key_to_idx, tir));
+                                    }
                                     _ => {}
                                 }
                             }
@@ -820,10 +974,28 @@ impl AstToIrConverter {
         self.builder
             .register_extern("toy_free_arr".to_string(), false, TypeTok::Void);
     }
-    pub fn convert(&mut self, ast: Vec<Ast>, is_main: bool) -> Result<Vec<Function>, ToyError> {
+    pub fn convert(
+        &mut self,
+        ast: Vec<Ast>,
+        is_main: bool,
+        module_name: &str,
+    ) -> Result<Vec<Function>, ToyError> {
         self.register_extern_funcs();
-        self.builder
-            .new_func(Box::new("user_main".to_string()), vec![], TypeTok::Int);
+        if is_main {
+            self.main_func_name = "user_main".to_string();
+        } else {
+            let safe_name = module_name
+                .replace("/", "_")
+                .replace(".", "_")
+                .replace(":", "_");
+            self.main_func_name = format!("init_{}", safe_name);
+        }
+
+        self.builder.new_func(
+            Box::new(self.main_func_name.clone()),
+            vec![],
+            TypeTok::Int,
+        );
         let user_main_scope = Scope::new_child(&self.global_scope);
         for node in ast {
             self.compile_stmt(node, &user_main_scope)?;

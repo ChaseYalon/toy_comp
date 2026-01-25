@@ -2,11 +2,11 @@ use crate::codegen::AstToIrConverter;
 use crate::codegen::tir::ir::{
     Block, BoolInfixOp, Function, NumericInfixOp, SSAValue, TIR, TirType,
 };
-use crate::lexer::Lexer;
-use crate::parser::ast_gen::AstGenerator;
 use crate::driver::Driver;
+use crate::lexer::Lexer;
 use crate::parser::Parser;
 use crate::parser::ast::Ast;
+use crate::parser::ast_gen::AstGenerator;
 use colored::*;
 use std::fs::File;
 use std::path::Path;
@@ -36,12 +36,11 @@ macro_rules! setup_tir {
                 if let crate::driver::ModuleExportType::Function(_params, ret) = &export.ty {
                     let full_mangled =
                         crate::driver::Driver::mangle_name(Some(&prefix), &export.name, &[]);
-                    t.builder
-                        .register_extern_func(full_mangled, ret.clone());
+                    t.builder.register_extern_func(full_mangled, ret.clone());
                 }
             }
         }
-        let $o = t.convert(ast, true).unwrap();
+        let $o = t.convert(ast, true, "test").unwrap();
     };
 }
 fn panic_with_write(test_name: &str, a: Vec<Function>, b: Vec<Function>) {
@@ -2369,7 +2368,7 @@ println(points);
                                 ],
                             ),
                             TIR::IConst(13, 3, TirType::I64),
-                            TIR::IConst(14, 8, TirType::I64),
+                            TIR::IConst(14, 0, TirType::I64),
                             TIR::IConst(15, 1, TirType::I64),
                             TIR::CallExternFunction(
                                 16,
@@ -2392,7 +2391,7 @@ println(points);
                                 TirType::I64,
                             ),
                             TIR::IConst(17, 0, TirType::I64),
-                            TIR::IConst(18, 8, TirType::I64),
+                            TIR::IConst(18, 0, TirType::I64),
                             TIR::CallExternFunction(
                                 19,
                                 Box::new("toy_write_to_arr".to_string()),
@@ -2421,7 +2420,7 @@ println(points);
                                 TirType::Void,
                             ),
                             TIR::IConst(20, 1, TirType::I64),
-                            TIR::IConst(21, 8, TirType::I64),
+                            TIR::IConst(21, 0, TirType::I64),
                             TIR::CallExternFunction(
                                 22,
                                 Box::new("toy_write_to_arr".to_string()),
@@ -2450,7 +2449,7 @@ println(points);
                                 TirType::Void,
                             ),
                             TIR::IConst(23, 2, TirType::I64),
-                            TIR::IConst(24, 8, TirType::I64),
+                            TIR::IConst(24, 0, TirType::I64),
                             TIR::CallExternFunction(
                                 25,
                                 Box::new("toy_write_to_arr".to_string()),
@@ -2630,7 +2629,7 @@ println(points);
                     Block {
                         id: 4,
                         ins: vec![
-                            TIR::IConst(43, 8, TirType::I64),
+                            TIR::IConst(43, 4, TirType::I64),
                             TIR::IConst(44, 1, TirType::I64),
                             TIR::CallExternFunction(
                                 45,
@@ -2894,7 +2893,7 @@ fn test_tirgen_library_no_user_main() {
     let ast = p.parse(toks).unwrap();
 
     // Convert with is_main = false
-    let tir = t.convert(ast, false).unwrap();
+    let tir = t.convert(ast, false, "test_lib").unwrap();
     let has_user_main = tir.iter().any(|f| *f.name == "user_main");
     assert!(!has_user_main, "Library module should not have user_main");
 
@@ -2965,7 +2964,7 @@ fn test_tirgen_argv() {
                 refs: vec![(Box::new("user_main".to_string()), 0, 3)],
                 alloc_ins: SSAValue {
                     val: 0,
-                    ty: Some(TirType::I64),
+                    ty: Some(TirType::I8PTR),
                 },
             }],
             heap_counter: 1,

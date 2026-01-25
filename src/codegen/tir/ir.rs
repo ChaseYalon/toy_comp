@@ -906,10 +906,8 @@ impl TirBuilder {
             .unwrap()) // parser validated
     }
     pub fn register_extern(&mut self, name: String, is_allocator: bool, ret_type: TypeTok) {
-        self.extern_funcs.insert(
-            name,
-            (is_allocator, ret_type, false),
-        );
+        self.extern_funcs
+            .insert(name, (is_allocator, ret_type, false));
     }
     pub fn global_string(&mut self, name: String) -> Result<SSAValue, ToyError> {
         let id = self._next_value_id();
@@ -935,6 +933,7 @@ impl TirBuilder {
             });
         return Ok(val2);
     }
+    ///injects type codes, this should NOT be called for any types
     pub fn inject_type_param(
         &mut self,
         t: &TypeTok,
@@ -951,8 +950,9 @@ impl TirBuilder {
             &TypeTok::BoolArr(n) => (if use_element_type && n == 1 { 1 } else { 5 }, n),
             &TypeTok::IntArr(n) => (if use_element_type && n == 1 { 2 } else { 6 }, n),
             &TypeTok::FloatArr(n) => (if use_element_type && n == 1 { 3 } else { 7 }, n),
-            &TypeTok::StructArr(_, n) => (8, n), // struct arrays use type code 8, must have str method to be printed
-            _ => unreachable!(),                 // parser validated
+            TypeTok::Struct(_) => (0, 0),
+            TypeTok::StructArr(_, n) => (if use_element_type && *n == 1 { 0 } else { 4 }, *n),
+            _ => unreachable!(), // parser validated
         };
         let v = self.iconst(n, TypeTok::Int)?;
         param_values.push(v);

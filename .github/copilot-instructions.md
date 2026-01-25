@@ -15,7 +15,7 @@
   - Misc
     - setup_build_system.py: Is a script that is run when you first download the git repo. It downloads all the dependencies and sets things up. Is currently a little bit broken
     - /src/c: Contains All of the low level c code, builtins.c contains most of the base functions like println and builtins.h most of the structs. Stub.c contains the entry point for the produced executables /src/c/ctla contains the debug allocation tracking logic and /src/c/std contains the functions used by the standard library
-    - /std: Contains the toy lang standard library, right now only std.math and std.sys are implemented. math contains most of the LIBM functions and sys has some control stuff (exit, abort, panic) as well as system information like core count, os name, toy lang version etc....
+    - /std: Contains the toy lang standard library, right now only std.math and std.sys are complete, std.time is in progress. math contains most of the LIBM functions and sys has some control stuff (exit, abort, panic) as well as system information like core count, os name, toy lang version etc....
 3. Tests
   - Use THEM!!!! If you are ever implementing a new feature, and there is not already at least one unit test, write one BEFORE you write the code.
 

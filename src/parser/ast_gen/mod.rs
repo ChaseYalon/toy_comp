@@ -418,8 +418,8 @@ impl AstGenerator {
         return Ok((
             Ast::FuncCall(Box::new(resolved_name.clone()), vals, raw_text),
             self.func_return_type_map
-                .get(&resolved_name.clone())
-                .unwrap()
+                .get(&resolved_name)
+                .unwrap_or(&TypeTok::Void)
                 .clone(),
         ));
     }
