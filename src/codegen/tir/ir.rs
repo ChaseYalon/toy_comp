@@ -224,6 +224,7 @@ impl TirBuilder {
                 | TypeTok::IntArr(_)
                 | TypeTok::FloatArr(_)
                 | TypeTok::BoolArr(_)
+                | TypeTok::StructArr(_)
         );
         self.extern_funcs
             .insert(name, (is_allocator, ret_type, true));
