@@ -361,7 +361,7 @@ impl Driver {
     }
     ///Starts the main program compilation process
     ///Will automatically compile and build the program
-    ///Linking in all nesscary modules
+    ///Linking in all necessary modules
     pub fn start(&mut self, ctx: &Context) -> Result<(), ToyError> {
         //Lex and box main program
         let mut l = Lexer::new();
