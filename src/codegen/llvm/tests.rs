@@ -1,7 +1,4 @@
-use crate::codegen::Generator;
-use crate::lexer::Lexer;
-use crate::parser::Parser;
-use inkwell::{context::Context, module::Module};
+use inkwell::context::Context;
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
@@ -9,9 +6,10 @@ use std::time::Duration;
 use std::env;
 use std::path::PathBuf;
 
+use chrono::Local;
 fn capture_program_output(program: String) -> String {
     thread::sleep(Duration::from_millis(100));
-    let output = Command::new(program)
+    let output = Command::new(&program)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped()) // capture stderr too
         .spawn()
@@ -32,16 +30,10 @@ macro_rules! compile_code_aot {
 
         let _ = std::fs::remove_file(&output_path);
         thread::sleep(Duration::from_millis(100));
-        let mut l = Lexer::new();
-        let mut p = Parser::new();
-        let ctx: Context = Context::create();
-        let main_module: Module = ctx.create_module("main");
-        let mut g = Generator::new(&ctx, main_module);
-        g.generate(
-            p.parse(l.lex($i.to_string()).unwrap()).unwrap(),
-            format!("temp/{}", output_name),
-        )
-        .unwrap();
+        let ctx = Context::create();
+        let mut d =
+            crate::driver::Driver::new_with_name($i.to_string(), format!("temp/{}", output_name));
+        d.start(&ctx).unwrap();
 
         thread::sleep(Duration::from_millis(200));
 
@@ -258,9 +250,8 @@ fn test_llvm_argv() {
     assert!(output.contains("output_argv"));
 }
 
-
 #[test]
-fn test_llvm_struct_ret(){
+fn test_llvm_struct_ret() {
     compile_code_aot!(
         output,
         "struct Foo{a: int}; fn test(): Foo {return Foo{a: 3};} let x = test(); println(x.a);",
@@ -277,4 +268,42 @@ fn test_llvm_struct_arr_ret() {
         "struct_arr_ret"
     );
     assert!(output.contains("4"));
+}
+
+#[test]
+fn test_llvm_extern_struct() {
+    compile_code_aot!(
+        output,
+        "import std.time; println(time.current_date().month);",
+        "extern_struct"
+    );
+    let mut month_num = Local::now().format("%m").to_string();
+    if month_num.starts_with("0") {
+        month_num = month_num[1..].to_string();
+    }
+    assert!(output.contains(&month_num));
+}
+
+#[test]
+fn test_llvm_extern_struct_func_call() {
+    compile_code_aot!(
+        output,
+        "import std.time; let d = time.current_date(); println(d.to_str());",
+        "extern_struct_func_call"
+    );
+    let mut month_num = Local::now().format("%m").to_string();
+    if month_num.starts_with("0") {
+        month_num = month_num[1..].to_string();
+    }
+    assert!(output.contains(&month_num));
+}
+
+#[test]
+fn test_llvm_escape_sequence() {
+    compile_code_aot!(
+        output,
+        r#"print("\n")"#,
+        "escape_sequence"
+    );
+    assert!(!output.contains("\\"));
 }

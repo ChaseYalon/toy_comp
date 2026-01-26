@@ -12,36 +12,10 @@ mod token;
 #[macro_use]
 mod macros;
 pub mod codegen;
+mod driver;
 mod errors;
 mod ffi;
-
 use inkwell::context::Context;
-use inkwell::module::Module;
-
-use crate::codegen::Generator;
-use crate::errors::ToyError;
-use crate::lexer::Lexer;
-use crate::parser::Parser;
-pub struct Compiler<'a> {
-    lexer: Lexer,
-    parser: Parser,
-    generator: Generator<'a>,
-}
-impl<'a> Compiler<'a> {
-    pub fn new(ctx: &'a Context, module: Module<'a>) -> Compiler<'a> {
-        Compiler::<'a> {
-            lexer: Lexer::new(),
-            parser: Parser::new(),
-            generator: Generator::new(ctx, module),
-        }
-    }
-    pub fn compile(&mut self, source: String) -> Result<(), ToyError> {
-        let tokens = self.lexer.lex(source)?;
-        let ast = self.parser.parse(tokens)?;
-        self.generator.generate(ast, "program".to_string())?;
-        Ok(())
-    }
-}
 fn run_repl() {
     loop {
         print!("> ");
@@ -58,22 +32,29 @@ fn run_repl() {
             return;
         }
 
-        if let Err(e) = compile_and_print(input.to_string()) {
+        if let Err(e) = compile_and_run(input.to_string()) {
             eprintln!("{}", e);
         }
     }
 }
 
-fn compile_and_print(source: String) -> Result<(), Box<dyn std::error::Error>> {
-    let mut lexer = Lexer::new();
-    let mut parser = Parser::new();
+fn compile_and_run(source: String) -> Result<(), Box<dyn std::error::Error>> {
     let ctx: Context = Context::create();
-    let main_module: Module = ctx.create_module("main");
-    let mut generator = Generator::new(&ctx, main_module);
+    let mut driver = driver::Driver::new(source);
+    driver.start(&ctx)?;
 
-    let tokens = lexer.lex(source)?;
-    let ast = parser.parse(tokens)?;
-    generator.generate(ast, "program".to_string())?;
+    let exe_path = format!("./Program{}", driver::FILE_EXTENSION_EXE);
+    let output = process::Command::new(exe_path).output()?;
+    print!("{}", String::from_utf8_lossy(&output.stdout));
+    eprint!("{}", String::from_utf8_lossy(&output.stderr));
+
+    Ok(())
+}
+
+fn compile_and_print(source: String) -> Result<(), Box<dyn std::error::Error>> {
+    let ctx: Context = Context::create();
+    let mut driver = driver::Driver::new(source);
+    driver.start(&ctx)?;
 
     Ok(())
 }

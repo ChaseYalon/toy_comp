@@ -2,14 +2,11 @@ use ordered_float::OrderedFloat;
 
 use crate::debug;
 use crate::errors::{ToyError, ToyErrorType};
-use crate::lexer::Lexer;
 use crate::parser::ast::Ast;
-use crate::parser::boxer::Boxer;
 use crate::parser::toy_box::TBox;
 use crate::token::Token;
 use crate::token::TypeTok;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::fs;
 
 mod exprs;
 pub struct AstGenerator {
@@ -113,52 +110,14 @@ impl AstGenerator {
         generator
     }
 
-    fn load_module(&mut self, name: &str) {
-        let path = format!("{}.toy", name.replace(".", "/"));
-        if let Ok(content) = fs::read_to_string(&path) {
-            let mut l = Lexer::new();
-            if let Ok(toks) = l.lex(content) {
-                let mut b = Boxer::new();
-                if let Ok(boxes) = b.box_toks(toks) {
-                    let prefix = name.replace(".", "::");
-                    for b in boxes {
-                        match b {
-                            TBox::ExternFuncDec(name_tok, params, ret_type, _) => {
-                                if let Some(n) = name_tok.get_var_name() {
-                                    let full_name = format!("{}::{}", prefix, n);
-                                    self.func_return_type_map
-                                        .insert(full_name.clone(), ret_type);
-                                    self.extern_funcs.insert(full_name.clone());
+    pub fn register_function(&mut self, name: String, params: Vec<TypeTok>, ret: TypeTok) {
+        //The name is already mangled, don't mangle again
+        self.func_param_type_map.insert(name.clone(), params);
+        self.func_return_type_map.insert(name, ret);
+    }
 
-                                    let mut param_types = Vec::new();
-                                    for p in params {
-                                        if let TBox::FuncParam(_, ty, _) = p {
-                                            param_types.push(ty);
-                                        }
-                                    }
-                                    self.func_param_type_map.insert(full_name, param_types);
-                                }
-                            }
-                            TBox::FuncDec(name_tok, params, ret_type, _, _) => {
-                                if let Some(n) = name_tok.get_var_name() {
-                                    let full_name = format!("{}::{}", prefix, n);
-                                    self.func_return_type_map.insert(full_name.clone(), ret_type);
-
-                                    let mut param_types = Vec::new();
-                                    for p in params {
-                                        if let TBox::FuncParam(_, ty, _) = p {
-                                            param_types.push(ty);
-                                        }
-                                    }
-                                    self.func_param_type_map.insert(full_name, param_types);
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-            }
-        }
+    pub fn register_struct(&mut self, name: String, fields: BTreeMap<String, Box<TypeTok>>) {
+        self.struct_type_to_name.insert(fields, name);
     }
 
     fn push_scope(&mut self) {
@@ -365,24 +324,59 @@ impl AstGenerator {
                 }
             }
         }
-        let builtins = vec![
-            "print", "println", "len", "str", "bool", "int", "float", "input",
-        ];
-        if !builtins.contains(&name.as_str()) {
-            for (_, t) in processed_params.clone() {
-                resolved_name = format!("{}_{}", resolved_name, t.type_str().to_lowercase());
-            }
+
+        // Check for mangled name using Driver::mangle_name
+        let mut param_types = Vec::new();
+        for (_, t) in &processed_params {
+            param_types.push(t.clone());
         }
-        if types_opt.is_none() {
+        let mangled = crate::driver::Driver::mangle_name(None, &resolved_name, &param_types);
+
+        if self.func_param_type_map.contains_key(&mangled) {
+            resolved_name = mangled;
             types_opt = self.func_param_type_map.get(&resolved_name);
+        } else {
+            // If mangled name not found, check if it's a builtin or already correct
+            // (Builtins currently seem to imply exact match in the map, or specific handling logic)
+            // The original code had:
+            // let builtins = vec!["print", "println", "len", "str", "bool", "int", "float", "input"];
+            // if !builtins.contains(&name.as_str()) { ... manual mangling ... }
+            // We can respect that by checking if the UNMANGLED name is in the map if mangled isn't.
+            if self.func_param_type_map.contains_key(&resolved_name) {
+                types_opt = self.func_param_type_map.get(&resolved_name);
+            }
         }
 
         if types_opt.is_none() {
             if let Some(prefix) = &self.module_prefix {
-                let mangled_name = format!("{}::{}", prefix, resolved_name);
-                if self.func_param_type_map.contains_key(&mangled_name) {
-                    resolved_name = mangled_name;
+                // Try mangling with module prefix
+                let mangled_prefixed =
+                    crate::driver::Driver::mangle_name(Some(prefix), &name, &param_types);
+                if self.func_param_type_map.contains_key(&mangled_prefixed) {
+                    resolved_name = mangled_prefixed;
                     types_opt = self.func_param_type_map.get(&resolved_name);
+                }
+            }
+        }
+
+        //Try to resolve alias with mangling
+        if types_opt.is_none() && resolved_name.contains(".") {
+            let parts: Vec<&str> = resolved_name.split(".").collect();
+            if parts.len() == 2 {
+                if let Some(real_path) = self.imports.get(parts[0]) {
+                    //convert alias.func to real::path::func
+                    let module_path = real_path.replace("/", ".").replace(".toy", "");
+                    let alias_prefix = module_path.replace(".", "::");
+                    let mangled_alias = crate::driver::Driver::mangle_name(
+                        Some(&alias_prefix),
+                        parts[1],
+                        &param_types,
+                    );
+
+                    if self.func_param_type_map.contains_key(&mangled_alias) {
+                        resolved_name = mangled_alias;
+                        types_opt = self.func_param_type_map.get(&resolved_name);
+                    }
                 }
             }
         }
@@ -424,8 +418,8 @@ impl AstGenerator {
         return Ok((
             Ast::FuncCall(Box::new(resolved_name.clone()), vals, raw_text),
             self.func_return_type_map
-                .get(&resolved_name.clone())
-                .unwrap()
+                .get(&resolved_name)
+                .unwrap_or(&TypeTok::Void)
                 .clone(),
         ));
     }
@@ -589,8 +583,8 @@ impl AstGenerator {
     }
 
     fn parse_func_dec(&mut self, stmt: TBox, should_eat: bool) -> Result<Ast, ToyError> {
-        let (name_tok, params, return_type, box_boxy, raw_text) = match stmt {
-            TBox::FuncDec(n, p, r, b, rt) => (n, p, r, b, rt),
+        let (name_tok, params, return_type, box_boxy, raw_text, _is_export) = match stmt {
+            TBox::FuncDec(n, p, r, b, rt, ie) => (n, p, r, b, rt, ie),
             _ => unreachable!(),
         };
         let name = match name_tok {
@@ -671,7 +665,7 @@ impl AstGenerator {
             TBox::IfStmt(_, _, _, _, _) => {
                 return self.parse_if_stmt(val, should_eat);
             }
-            TBox::FuncDec(_, _, _, _, _) => return self.parse_func_dec(val, should_eat),
+            TBox::FuncDec(_, _, _, _, _, _) => return self.parse_func_dec(val, should_eat),
             TBox::ExternFuncDec(_, _, _, _) => return self.parse_extern_func_dec(val, should_eat),
             TBox::Return(val, raw_text) => {
                 let expr = match *val {
@@ -720,7 +714,6 @@ impl AstGenerator {
                         self.imports.insert(alias.to_string(), name.clone());
                     }
                 }
-                self.load_module(&name);
                 Ast::ImportStmt(name, raw_text)
             }
 

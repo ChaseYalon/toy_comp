@@ -65,12 +65,10 @@ fn main() {
     }
 
     println!("cargo:rerun-if-changed=src/c/builtins.h");
-    println!("cargo:rerun-if-changed=src/c/hashmap.h");
     println!("cargo:rerun-if-changed=src/c");
 
     let bindings = bindgen::Builder::default()
         .header("src/c/builtins.h")
-        .header("src/c/hashmap.h")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .allowlist_type("ToyArrVal")
         .allowlist_type("ToyHashMap")

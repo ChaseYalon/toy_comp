@@ -55,22 +55,22 @@ file(MAKE_DIRECTORY ${OUT_BASE})
 # Libraries
 add_library(runtime STATIC
     builtins.c
-    hashmap.c
     ctla/ctla.c
     ctla/hashmap.c
     std/math.c
     std/sys.c
     stub.c
+    std/time.c
 )
 
 add_library(core STATIC
     builtins.c
-    hashmap.c
     ctla/ctla.c
     ctla/hashmap.c
     llvm_stubs.c
     std/math.c
     std/sys.c
+    std/time.c
 )
 
 set_target_properties(runtime core PROPERTIES

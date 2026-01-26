@@ -40,7 +40,29 @@ impl Boxer {
             return Err(ToyError::new(ToyErrorType::MalformedType, None));
         }
         match &input[0] {
-            Token::Type(t) => Ok((t.clone(), 1)),
+            Token::Type(t) => {
+                let mut dim = 0;
+                let mut i = 1;
+                while i + 1 < input.len()
+                    && input[i] == Token::LBrack
+                    && input[i + 1] == Token::RBrack
+                {
+                    dim += 1;
+                    i += 2;
+                }
+                if dim == 0 {
+                    return Ok((t.clone(), 1));
+                }
+                let new_type = match t {
+                    TypeTok::Int => TypeTok::IntArr(dim),
+                    TypeTok::Bool => TypeTok::BoolArr(dim),
+                    TypeTok::Str => TypeTok::StrArr(dim),
+                    TypeTok::Float => TypeTok::FloatArr(dim),
+                    TypeTok::Any => TypeTok::AnyArr(dim),
+                    _ => return Err(ToyError::new(ToyErrorType::MalformedType, None)),
+                };
+                return Ok((new_type, i));
+            }
             Token::VarRef(v) | Token::VarName(v) => {
                 let struct_fields = self.interfaces.get(v.as_ref()).ok_or_else(|| {
                     ToyError::new(
@@ -348,21 +370,52 @@ impl Boxer {
                 i = for_end;
                 continue;
             }
-            if (ty == "Func" || ty == "Extern") && brace_depth == 0 && paren_depth == 0 {
+            if (ty == "Func" || ty == "Extern" || ty == "Export")
+                && brace_depth == 0
+                && paren_depth == 0
+            {
                 if !curr.is_empty() {
                     boxes.push(self.box_statement(curr.clone())?);
                     curr.clear();
                 }
 
-                if ty == "Extern" {
-                    let mut func_end = i + 1;
+                // Check if this is an export declaration
+                let is_export = ty == "Export";
+                let actual_start = if is_export { i + 1 } else { i };
+
+                // If export, verify the next token is Func or Extern
+                if is_export {
+                    if actual_start >= input.len() {
+                        return Err(ToyError::new(
+                            ToyErrorType::MalformedFunctionDeclaration,
+                            Some("export must be followed by fn or extern".to_string()),
+                        ));
+                    }
+                    let next_type = input[actual_start].tok_type();
+                    if next_type != "Func" && next_type != "Extern" {
+                        return Err(ToyError::new(
+                            ToyErrorType::MalformedFunctionDeclaration,
+                            Some(format!(
+                                "export must be followed by fn or extern, found {}",
+                                next_type
+                            )),
+                        ));
+                    }
+                }
+
+                if (is_export
+                    && actual_start < input.len()
+                    && input[actual_start].tok_type() == "Extern")
+                    || ty == "Extern"
+                {
+                    let mut func_end = actual_start + 1;
                     while func_end < input.len() && input[func_end].tok_type() != "Semicolon" {
                         func_end += 1;
                     }
                     if func_end >= input.len() {
                         let raw_text = format!(
                             "extern fn {}",
-                            input[i..i + 5.min(input.len() - i)]
+                            input[actual_start..actual_start + 5.min(input.len() - actual_start)]
                                 .iter()
                                 .map(|t| t.to_string())
                                 .collect::<String>()
@@ -374,17 +427,17 @@ impl Boxer {
                     }
                     // Include the semicolon
                     func_end += 1;
-                    let func_slice = input[i..func_end].to_vec();
+                    let func_slice = input[actual_start..func_end].to_vec();
                     boxes.push(self.box_extern_fn_stmt(func_slice)?);
                     i = func_end;
                     continue;
                 }
 
-                let mut func_end = i + 1;
+                let mut func_end = actual_start + 1;
                 let mut depth = 0;
                 let mut found_body = false;
 
-                for j in i..input.len() {
+                for j in actual_start..input.len() {
                     if input[j].tok_type() == "LBrace" {
                         depth = 1;
                         found_body = true;
@@ -396,7 +449,7 @@ impl Boxer {
                 if !found_body {
                     let raw_text = format!(
                         "func {}",
-                        input[i..i + 5.min(input.len() - i)]
+                        input[actual_start..actual_start + 5.min(input.len() - actual_start)]
                             .iter()
                             .map(|t| t.to_string())
                             .collect::<String>()
@@ -416,8 +469,8 @@ impl Boxer {
                     func_end += 1;
                 }
 
-                let func_slice = input[i..func_end].to_vec();
-                boxes.push(self.box_fn_stmt(func_slice)?);
+                let func_slice = input[actual_start..func_end].to_vec();
+                boxes.push(self.box_fn_stmt(func_slice, is_export)?);
                 i = func_end;
                 continue;
             }
@@ -549,7 +602,7 @@ impl Boxer {
         ));
     }
 
-    fn box_fn_stmt(&mut self, input: Vec<Token>) -> Result<TBox, ToyError> {
+    fn box_fn_stmt(&mut self, input: Vec<Token>, is_export: bool) -> Result<TBox, ToyError> {
         let raw_text = format!(
             "func {}",
             input
@@ -564,7 +617,11 @@ impl Boxer {
                 Some(raw_text.clone()),
             ));
         }
-        let func_name = self.mangle_func_name(input[1].clone());
+        let func_name = if self.current_struct.is_some() {
+            input[1].clone()
+        } else {
+            self.mangle_func_name(input[1].clone())
+        };
         if input[2].tok_type() != "LParen" {
             return Err(ToyError::new(
                 ToyErrorType::MalformedFunctionDeclaration,
@@ -642,6 +699,7 @@ impl Boxer {
             return_type,
             body_boxes,
             raw_text,
+            is_export,
         ));
     }
     fn box_struct_interface_dec(&mut self, toks: &Vec<Token>) -> Result<TBox, ToyError> {
@@ -755,7 +813,12 @@ impl Boxer {
 
         let this_type = TypeTok::Struct(boxed_fields.clone());
 
-        self.current_struct = Some((struct_name.clone(), this_type.clone()));
+        let prefixed_struct_name = if let Some(prefix) = &self.module_prefix {
+            format!("{}::{}", prefix, struct_name)
+        } else {
+            struct_name.clone()
+        };
+        self.current_struct = Some((prefixed_struct_name, this_type.clone()));
         let body_toks = input[3..input.len() - 1].to_vec();
         let boxed_body = self.box_group(body_toks)?;
         self.current_struct = None;

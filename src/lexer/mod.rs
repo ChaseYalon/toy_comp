@@ -120,6 +120,27 @@ impl Lexer {
                     self.in_str_lit = false;
                     continue;
                 }
+                if c == '\\' {
+                    if self.cp < self.chars.len() {
+                        let next_c = self.chars[self.cp];
+                        match next_c {
+                            'n' => self.str_buf.push('\n'),
+                            't' => self.str_buf.push('\t'),
+                            'r' => self.str_buf.push('\r'),
+                            '\\' => self.str_buf.push('\\'),
+                            '"' => self.str_buf.push('"'),
+                            '0' => self.str_buf.push('\0'),
+                            _ => {
+                                self.str_buf.push('\\');
+                                self.str_buf.push(next_c);
+                            }
+                        }
+                        self.eat();
+                    } else {
+                        self.str_buf.push('\\');
+                    }
+                    continue;
+                }
                 self.str_buf.push(c);
                 continue;
             }
@@ -203,6 +224,9 @@ impl Lexer {
                 continue;
             }
             if self.lex_keyword("import", Token::Import) {
+                continue;
+            }
+            if self.lex_keyword("export", Token::Export) {
                 continue;
             }
             if (c.is_ascii_digit() || (c == '.' && self.num_buf.len() > 0))

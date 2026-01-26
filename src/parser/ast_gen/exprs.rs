@@ -787,7 +787,7 @@ impl AstGenerator {
                         Some(raw_text.clone()),
                     ));
                 }
-
+                
                 let elem_type = match left_type {
                     TypeTok::IntArr(n) => {
                         if n == 1 {

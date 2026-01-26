@@ -42,8 +42,8 @@ pub enum TirType {
     ///interfaces are represented as a vec of other types, there are no field names, everything is done by position
     StructInterface(Vec<TirType>),
     Void,
-    ///represents a pointer
-    I8PTR,
+    ///represents a pointer 
+    Ptr,
 }
 impl TirType {
     pub fn to_string(&self) -> String {
@@ -59,7 +59,7 @@ impl TirType {
                 s
             }
             TirType::Void => "void".to_string(),
-            TirType::I8PTR => "i8ptr".to_string(),
+            TirType::Ptr => "ptr".to_string(),
         };
         return s;
     }
@@ -171,7 +171,7 @@ pub struct TirBuilder {
     pub funcs: Vec<Function>,
     pub curr_func: Option<usize>, //index into self.funcs
     curr_block: Option<usize>,    //index into self.curr_func.body,
-    pub extern_funcs: HashMap<String, (bool, TirType, bool)>, //external function name to is_allocator, return_type, is_user_defined
+    pub extern_funcs: HashMap<String, (bool, TypeTok, bool)>, //external function name to is_allocator, return_type, is_user_defined
 }
 impl TirBuilder {
     pub fn new() -> TirBuilder {
@@ -216,8 +216,18 @@ impl TirBuilder {
     }
 
     pub fn register_extern_func(&mut self, name: String, ret_type: TypeTok) {
-        let tir_ret_type = self.type_tok_to_tir_type(ret_type);
-        self.extern_funcs.insert(name, (false, tir_ret_type, true));
+        //Functions returning str, str[], or any array type are allocators
+        let is_allocator = matches!(
+            ret_type,
+            TypeTok::Str
+                | TypeTok::StrArr(_)
+                | TypeTok::IntArr(_)
+                | TypeTok::FloatArr(_)
+                | TypeTok::BoolArr(_)
+                | TypeTok::StructArr(_)
+        );
+        self.extern_funcs
+            .insert(name, (is_allocator, ret_type, true));
     }
 
     /// Updates the parameters of the current function
@@ -508,7 +518,8 @@ impl TirBuilder {
         name: String,
         params: Vec<SSAValue>,
     ) -> Result<SSAValue, ToyError> {
-        let (is_allocator, ret_type, _) = self.extern_funcs.get(&name).cloned().unwrap(); // parser validated
+        let (is_allocator, ret_tok, _) = self.extern_funcs.get(&name).cloned().unwrap(); // parser validated
+        let ret_type = self.type_tok_to_tir_type(ret_tok);
         let curr_func_name = self.funcs[self.curr_func.unwrap()].name.clone();
         let curr_block_idx = self.curr_block.unwrap();
         let curr_block = self.funcs[self.curr_func.unwrap()].body[curr_block_idx].id;
@@ -572,8 +583,8 @@ impl TirBuilder {
     pub fn call(&mut self, name: String, params: Vec<SSAValue>) -> Result<SSAValue, ToyError> {
         // Check if it's a local function first
         if let Some(func) = self.funcs.iter().find(|f| *f.name == name) {
-            // Function is an allocator if it returns I8PTR (heap-allocated string)
-            let is_allocator = func.ret_type == TirType::I8PTR;
+            // Function is an allocator if it returns Ptr (heap-allocated string)
+            let is_allocator = func.ret_type == TirType::Ptr;
             return self.call_local(name, params, is_allocator);
         }
 
@@ -593,8 +604,8 @@ impl TirBuilder {
         params: Vec<SSAValue>,
     ) -> Result<(), ToyError> {
         //params should never be freed, so no need to track refs
-        let (is_allocator, ret_type, _) = self.extern_funcs.get(&name).cloned().unwrap(); // parser validated
-
+        let (is_allocator, ret_tok, _) = self.extern_funcs.get(&name).cloned().unwrap(); // parser validated
+        let ret_type = self.type_tok_to_tir_type(ret_tok);
         let id = self._next_value_id();
         let ins = TIR::CallExternFunction(id, Box::new(name), params, is_allocator, ret_type);
         self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()]
@@ -896,10 +907,8 @@ impl TirBuilder {
             .unwrap()) // parser validated
     }
     pub fn register_extern(&mut self, name: String, is_allocator: bool, ret_type: TypeTok) {
-        self.extern_funcs.insert(
-            name,
-            (is_allocator, self.type_tok_to_tir_type(ret_type), false),
-        );
+        self.extern_funcs
+            .insert(name, (is_allocator, ret_type, false));
     }
     pub fn global_string(&mut self, name: String) -> Result<SSAValue, ToyError> {
         let id = self._next_value_id();
@@ -909,10 +918,10 @@ impl TirBuilder {
             .push(ins);
         let val = SSAValue {
             val: id,
-            ty: Some(TirType::I8PTR),
+            ty: Some(TirType::Ptr),
         };
         let mut val2 = self.call_extern("toy_malloc".to_string(), vec![val])?;
-        val2.ty = Some(TirType::I8PTR);
+        val2.ty = Some(TirType::Ptr);
         //we need to update the type of the allocation instruction in the heap allocation list
         //otherwise the CTLA will not be able to find the allocation
         self.funcs[self.curr_func.unwrap()]
@@ -920,11 +929,12 @@ impl TirBuilder {
             .iter_mut()
             .for_each(|alloc| {
                 if alloc.alloc_ins.val == val2.val {
-                    alloc.alloc_ins.ty = Some(TirType::I8PTR);
+                    alloc.alloc_ins.ty = Some(TirType::Ptr);
                 }
             });
         return Ok(val2);
     }
+    ///injects type codes, this should NOT be called for any types
     pub fn inject_type_param(
         &mut self,
         t: &TypeTok,
@@ -941,8 +951,9 @@ impl TirBuilder {
             &TypeTok::BoolArr(n) => (if use_element_type && n == 1 { 1 } else { 5 }, n),
             &TypeTok::IntArr(n) => (if use_element_type && n == 1 { 2 } else { 6 }, n),
             &TypeTok::FloatArr(n) => (if use_element_type && n == 1 { 3 } else { 7 }, n),
-            &TypeTok::StructArr(_, n) => (8, n), // struct arrays use type code 8, must have str method to be printed
-            _ => unreachable!(),                 // parser validated
+            TypeTok::Struct(_) => (0, 0),
+            TypeTok::StructArr(_, n) => (if use_element_type && *n == 1 { 0 } else { 4 }, *n),
+            _ => unreachable!(), // parser validated
         };
         let v = self.iconst(n, TypeTok::Int)?;
         param_values.push(v);
@@ -965,7 +976,7 @@ impl TirBuilder {
             | TypeTok::IntArr(_)
             | TypeTok::FloatArr(_)
             | TypeTok::StructArr(_, _)
-            | TypeTok::AnyArr(_) => TirType::I8PTR,
+            | TypeTok::AnyArr(_) => TirType::Ptr,
             TypeTok::Struct(i) => {
                 let mut types: Vec<TirType> = vec![];
                 for (_, ty) in i.iter() {

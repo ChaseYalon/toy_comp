@@ -22,23 +22,28 @@ typedef struct {
     int64_t degree;
     ToyArrVal* arr;
 } ToyArr;
-
-void toy_print(int64_t input, int64_t datatype, int64_t degree);
-void toy_println(int64_t input, int64_t datatype, int64_t degree);
-int64_t toy_malloc(int64_t ptr);
-int64_t toy_concat(int64_t sp1, int64_t sp2);
-int64_t toy_strequal(int64_t sp1, int64_t sp2);
-int64_t toy_strlen(int64_t sp1);
-int64_t toy_type_to_str(int64_t val, int64_t type);
+typedef int64_t ToyPtr;
+void toy_print(ToyPtr input, int64_t datatype, int64_t degree);
+void toy_println(ToyPtr input, int64_t datatype, int64_t degree);
+ToyPtr toy_malloc(ToyPtr ptr);
+ToyPtr toy_concat(ToyPtr sp1, ToyPtr sp2);
+int64_t toy_strequal(ToyPtr sp1, ToyPtr sp2);
+int64_t toy_strlen(ToyPtr sp1);
+//val could be a ToyPtr if it s a string
+ToyPtr toy_type_to_str(int64_t val, int64_t type);
+//val could be a ToyPtr if it s a string
 int64_t toy_type_to_bool(int64_t val, int64_t type);
+//val could be a ToyPtr if it s a string
 int64_t toy_type_to_int(int64_t val, int64_t type);
+//val could be a ToyPtr if it s a string
 int64_t toy_type_to_float(int64_t val, int64_t type);
 double toy_int_to_float(int64_t i);
 double toy_float_bits_to_double(int64_t f_bits);
 int64_t toy_double_to_float_bits(double d);
-int64_t toy_malloc_arr(int64_t len, int64_t type, int64_t degree);
-void toy_write_to_arr(int64_t arr_in_ptr, int64_t value, int64_t idx, int64_t type);
-int64_t toy_read_from_arr(int64_t arr_in_ptr, int64_t idx);
-int64_t toy_arrlen(int64_t arr_in_ptr);
-int64_t toy_input(int64_t i_prompt);
-void toy_free_arr(int64_t arr_ptr_int);
+ToyPtr toy_malloc_arr(int64_t len, int64_t type, int64_t degree);
+void toy_write_to_arr(ToyPtr arr_in_ptr, int64_t value, int64_t idx, int64_t type);
+//return value could be a pointer if sizeof(elem_type) > wordSize
+int64_t toy_read_from_arr(ToyPtr arr_in_ptr, int64_t idx);
+int64_t toy_arrlen(ToyPtr arr_in_ptr);
+ToyPtr toy_input(ToyPtr i_prompt);
+void toy_free_arr(ToyPtr arr_ptr_int);

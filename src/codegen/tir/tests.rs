@@ -2,20 +2,45 @@ use crate::codegen::AstToIrConverter;
 use crate::codegen::tir::ir::{
     Block, BoolInfixOp, Function, NumericInfixOp, SSAValue, TIR, TirType,
 };
+use crate::driver::Driver;
 use crate::lexer::Lexer;
 use crate::parser::Parser;
+use crate::parser::ast::Ast;
+use crate::parser::ast_gen::AstGenerator;
 use colored::*;
 use std::fs::File;
 use std::path::Path;
 use std::{env, fs};
+
+fn parse_test_code(code: impl ToString) -> (Vec<Ast>, Driver) {
+    let mut driver = Driver::new("test".to_string());
+    let mut ast_gen = AstGenerator::new();
+    let ast = driver
+        .compile_to_ast_from_str(code.to_string(), &mut ast_gen)
+        .unwrap();
+    (ast, driver)
+}
+
 macro_rules! setup_tir {
     ($o: ident, $v:expr) => {
-        let mut l = Lexer::new();
-        let mut p = Parser::new();
+        let (ast, driver) = parse_test_code($v);
         let mut t = AstToIrConverter::new();
-        let toks = l.lex($v.to_string()).unwrap();
-        let ast = p.parse(toks).unwrap(); //I dont like .unwrap(0)
-        let $o = t.convert(ast, true).unwrap();
+        for (path, exports) in &driver.table.path_to_exports {
+            let module_name = path
+                .replace("/", ".")
+                .replace(".toy", "")
+                .trim_start_matches('.')
+                .to_string();
+            let prefix = module_name.replace(".", "::");
+            for export in exports {
+                if let crate::driver::ModuleExportType::Function(_params, ret) = &export.ty {
+                    let full_mangled =
+                        crate::driver::Driver::mangle_name(Some(&prefix), &export.name, &[]);
+                    t.builder.register_extern_func(full_mangled, ret.clone());
+                }
+            }
+        }
+        let $o = t.convert(ast, true, "test").unwrap();
     };
 }
 fn panic_with_write(test_name: &str, a: Vec<Function>, b: Vec<Function>) {
@@ -201,12 +226,7 @@ fn compare_tir(test_name: &str, a: Vec<Function>, b: Vec<Function>) {
                     "block".blue(),
                     j.to_string().blue().bold(),
                     r_block.ins.len().to_string().green().bold(),
-                    g_block
-                        .ins
-                        .len()
-                        .to_string()
-                        .red()
-                        .bold()
+                    g_block.ins.len().to_string().red().bold()
                 );
                 panic_with_write(test_name, a.clone(), b.clone());
             }
@@ -1015,10 +1035,10 @@ fn test_tirgen_string_lit_concat_and_equals() {
                         Box::new("toy_malloc".to_string()),
                         vec![SSAValue {
                             val: 0,
-                            ty: Some(TirType::I8PTR),
+                            ty: Some(TirType::Ptr),
                         }],
                         true,
-                        TirType::I64,
+                        TirType::Ptr,
                     ),
                     TIR::GlobalString(2, Box::new("fee".to_string())),
                     TIR::CallExternFunction(
@@ -1026,10 +1046,10 @@ fn test_tirgen_string_lit_concat_and_equals() {
                         Box::new("toy_malloc".to_string()),
                         vec![SSAValue {
                             val: 2,
-                            ty: Some(TirType::I8PTR),
+                            ty: Some(TirType::Ptr),
                         }],
                         true,
-                        TirType::I64,
+                        TirType::Ptr,
                     ),
                     TIR::CallExternFunction(
                         4,
@@ -1037,15 +1057,15 @@ fn test_tirgen_string_lit_concat_and_equals() {
                         vec![
                             SSAValue {
                                 val: 1,
-                                ty: Some(TirType::I8PTR),
+                                ty: Some(TirType::Ptr),
                             },
                             SSAValue {
                                 val: 3,
-                                ty: Some(TirType::I8PTR),
+                                ty: Some(TirType::Ptr),
                             },
                         ],
                         true,
-                        TirType::I64,
+                        TirType::Ptr,
                     ),
                     TIR::CallExternFunction(
                         5,
@@ -1053,11 +1073,11 @@ fn test_tirgen_string_lit_concat_and_equals() {
                         vec![
                             SSAValue {
                                 val: 1,
-                                ty: Some(TirType::I8PTR),
+                                ty: Some(TirType::Ptr),
                             },
                             SSAValue {
                                 val: 3,
-                                ty: Some(TirType::I8PTR),
+                                ty: Some(TirType::Ptr),
                             },
                         ],
                         false,
@@ -1170,7 +1190,7 @@ fn test_tirgen_arr_lit_read_and_write() {
                             },
                         ],
                         true,
-                        TirType::I64,
+                        TirType::Ptr,
                     ),
                     TIR::IConst(7, 0, TirType::I64),
                     TIR::IConst(8, 2, TirType::I64),
@@ -1180,7 +1200,7 @@ fn test_tirgen_arr_lit_read_and_write() {
                         vec![
                             SSAValue {
                                 val: 6,
-                                ty: Some(TirType::I64),
+                                ty: Some(TirType::Ptr),
                             },
                             SSAValue {
                                 val: 0,
@@ -1206,7 +1226,7 @@ fn test_tirgen_arr_lit_read_and_write() {
                         vec![
                             SSAValue {
                                 val: 6,
-                                ty: Some(TirType::I64),
+                                ty: Some(TirType::Ptr),
                             },
                             SSAValue {
                                 val: 1,
@@ -1232,7 +1252,7 @@ fn test_tirgen_arr_lit_read_and_write() {
                         vec![
                             SSAValue {
                                 val: 6,
-                                ty: Some(TirType::I64),
+                                ty: Some(TirType::Ptr),
                             },
                             SSAValue {
                                 val: 2,
@@ -1259,7 +1279,7 @@ fn test_tirgen_arr_lit_read_and_write() {
                         vec![
                             SSAValue {
                                 val: 6,
-                                ty: Some(TirType::I64),
+                                ty: Some(TirType::Ptr),
                             },
                             SSAValue {
                                 val: 16,
@@ -1284,7 +1304,7 @@ fn test_tirgen_arr_lit_read_and_write() {
                         vec![
                             SSAValue {
                                 val: 6,
-                                ty: Some(TirType::I64),
+                                ty: Some(TirType::Ptr),
                             },
                             SSAValue {
                                 val: 20,
@@ -1846,7 +1866,7 @@ fn test_tirgen_print_arr_lit() {
                             },
                         ],
                         true,
-                        TirType::I64,
+                        TirType::Ptr,
                     ),
                     TIR::IConst(7, 0, TirType::I64),
                     TIR::IConst(8, 2, TirType::I64),
@@ -1856,7 +1876,7 @@ fn test_tirgen_print_arr_lit() {
                         vec![
                             SSAValue {
                                 val: 6,
-                                ty: Some(TirType::I64),
+                                ty: Some(TirType::Ptr),
                             },
                             SSAValue {
                                 val: 0,
@@ -1882,7 +1902,7 @@ fn test_tirgen_print_arr_lit() {
                         vec![
                             SSAValue {
                                 val: 6,
-                                ty: Some(TirType::I64),
+                                ty: Some(TirType::Ptr),
                             },
                             SSAValue {
                                 val: 1,
@@ -1908,7 +1928,7 @@ fn test_tirgen_print_arr_lit() {
                         vec![
                             SSAValue {
                                 val: 6,
-                                ty: Some(TirType::I64),
+                                ty: Some(TirType::Ptr),
                             },
                             SSAValue {
                                 val: 2,
@@ -1934,7 +1954,7 @@ fn test_tirgen_print_arr_lit() {
                         vec![
                             SSAValue {
                                 val: 6,
-                                ty: Some(TirType::I64),
+                                ty: Some(TirType::Ptr),
                             },
                             SSAValue {
                                 val: 16,
@@ -1989,7 +2009,7 @@ fn test_tirgen_if_no_else_return() {
                                 ty: Some(TirType::I64),
                             }],
                             true,
-                            TirType::I8PTR,
+                            TirType::Ptr,
                         ),
                         TIR::IConst(3, 0, TirType::I64),
                         TIR::IConst(4, 0, TirType::I64),
@@ -1999,7 +2019,7 @@ fn test_tirgen_if_no_else_return() {
                             vec![
                                 SSAValue {
                                     val: 2,
-                                    ty: Some(TirType::I8PTR),
+                                    ty: Some(TirType::Ptr),
                                 },
                                 SSAValue {
                                     val: 3,
@@ -2084,16 +2104,16 @@ fn test_tirgen_if_no_else_return() {
                                 Box::new("toy_malloc".to_string()),
                                 vec![SSAValue {
                                     val: 6,
-                                    ty: Some(TirType::I8PTR),
+                                    ty: Some(TirType::Ptr),
                                 }],
                                 true,
-                                TirType::I64,
+                                TirType::Ptr,
                             ),
                             TIR::Ret(
                                 8,
                                 SSAValue {
                                     val: 7,
-                                    ty: Some(TirType::I8PTR),
+                                    ty: Some(TirType::Ptr),
                                 },
                             ),
                             TIR::JumpBlockUnCond(9, 3),
@@ -2108,22 +2128,22 @@ fn test_tirgen_if_no_else_return() {
                                 Box::new("toy_malloc".to_string()),
                                 vec![SSAValue {
                                     val: 10,
-                                    ty: Some(TirType::I8PTR),
+                                    ty: Some(TirType::Ptr),
                                 }],
                                 true,
-                                TirType::I64,
+                                TirType::Ptr,
                             ),
                             TIR::Ret(
                                 12,
                                 SSAValue {
                                     val: 11,
-                                    ty: Some(TirType::I8PTR),
+                                    ty: Some(TirType::Ptr),
                                 },
                             ),
                         ],
                     },
                 ],
-                ret_type: TirType::I8PTR,
+                ret_type: TirType::Ptr,
                 ins_counter: 13,
                 heap_allocations: vec![],
                 heap_counter: 0,
@@ -2348,7 +2368,7 @@ println(points);
                                 ],
                             ),
                             TIR::IConst(13, 3, TirType::I64),
-                            TIR::IConst(14, 8, TirType::I64),
+                            TIR::IConst(14, 0, TirType::I64),
                             TIR::IConst(15, 1, TirType::I64),
                             TIR::CallExternFunction(
                                 16,
@@ -2368,17 +2388,17 @@ println(points);
                                     },
                                 ],
                                 true,
-                                TirType::I64,
+                                TirType::Ptr,
                             ),
                             TIR::IConst(17, 0, TirType::I64),
-                            TIR::IConst(18, 8, TirType::I64),
+                            TIR::IConst(18, 0, TirType::I64),
                             TIR::CallExternFunction(
                                 19,
                                 Box::new("toy_write_to_arr".to_string()),
                                 vec![
                                     SSAValue {
                                         val: 16,
-                                        ty: Some(TirType::I64),
+                                        ty: Some(TirType::Ptr),
                                     },
                                     SSAValue {
                                         val: 6,
@@ -2400,14 +2420,14 @@ println(points);
                                 TirType::Void,
                             ),
                             TIR::IConst(20, 1, TirType::I64),
-                            TIR::IConst(21, 8, TirType::I64),
+                            TIR::IConst(21, 0, TirType::I64),
                             TIR::CallExternFunction(
                                 22,
                                 Box::new("toy_write_to_arr".to_string()),
                                 vec![
                                     SSAValue {
                                         val: 16,
-                                        ty: Some(TirType::I64),
+                                        ty: Some(TirType::Ptr),
                                     },
                                     SSAValue {
                                         val: 9,
@@ -2429,14 +2449,14 @@ println(points);
                                 TirType::Void,
                             ),
                             TIR::IConst(23, 2, TirType::I64),
-                            TIR::IConst(24, 8, TirType::I64),
+                            TIR::IConst(24, 0, TirType::I64),
                             TIR::CallExternFunction(
                                 25,
                                 Box::new("toy_write_to_arr".to_string()),
                                 vec![
                                     SSAValue {
                                         val: 16,
-                                        ty: Some(TirType::I64),
+                                        ty: Some(TirType::Ptr),
                                     },
                                     SSAValue {
                                         val: 12,
@@ -2470,11 +2490,11 @@ println(points);
                                 vec![
                                     SSAValue {
                                         val: 16,
-                                        ty: Some(TirType::I64),
+                                        ty: Some(TirType::Ptr),
                                     },
                                     SSAValue {
                                         val: 28,
-                                        ty: Some(TirType::I64),
+                                        ty: Some(TirType::Ptr),
                                     },
                                 ],
                             ),
@@ -2497,7 +2517,7 @@ println(points);
                                 Box::new("toy_arrlen".to_string()),
                                 vec![SSAValue {
                                     val: 28,
-                                    ty: Some(TirType::I64),
+                                    ty: Some(TirType::Ptr),
                                 }],
                                 false,
                                 TirType::I64,
@@ -2534,7 +2554,7 @@ println(points);
                                 vec![
                                     SSAValue {
                                         val: 28,
-                                        ty: Some(TirType::I64),
+                                        ty: Some(TirType::Ptr),
                                     },
                                     SSAValue {
                                         val: 29,
@@ -2609,7 +2629,7 @@ println(points);
                     Block {
                         id: 4,
                         ins: vec![
-                            TIR::IConst(43, 8, TirType::I64),
+                            TIR::IConst(43, 4, TirType::I64),
                             TIR::IConst(44, 1, TirType::I64),
                             TIR::CallExternFunction(
                                 45,
@@ -2617,7 +2637,7 @@ println(points);
                                 vec![
                                     SSAValue {
                                         val: 28,
-                                        ty: Some(TirType::I64),
+                                        ty: Some(TirType::Ptr),
                                     },
                                     SSAValue {
                                         val: 43,
@@ -2776,17 +2796,17 @@ fn test_tirgen_extern_func_dec_and_call() {
                         Box::new("toy_malloc".to_string()),
                         vec![SSAValue {
                             val: 0,
-                            ty: Some(TirType::I8PTR),
+                            ty: Some(TirType::Ptr),
                         }],
                         true,
-                        TirType::I64,
+                        TirType::Ptr,
                     ),
                     TIR::CallExternFunction(
                         2,
                         Box::new("printf".to_string()),
                         vec![SSAValue {
                             val: 1,
-                            ty: Some(TirType::I8PTR),
+                            ty: Some(TirType::Ptr),
                         }],
                         false,
                         TirType::I64,
@@ -2810,7 +2830,7 @@ fn test_tirgen_extern_func_dec_and_call() {
                 refs: vec![(Box::new("user_main".to_string()), 0, 1)],
                 alloc_ins: SSAValue {
                     val: 1,
-                    ty: Some(TirType::I8PTR),
+                    ty: Some(TirType::Ptr),
                 },
             }],
             heap_counter: 1,
@@ -2873,7 +2893,7 @@ fn test_tirgen_library_no_user_main() {
     let ast = p.parse(toks).unwrap();
 
     // Convert with is_main = false
-    let tir = t.convert(ast, false).unwrap();
+    let tir = t.convert(ast, false, "test_lib").unwrap();
     let has_user_main = tir.iter().any(|f| *f.name == "user_main");
     assert!(!has_user_main, "Library module should not have user_main");
 
@@ -2881,5 +2901,73 @@ fn test_tirgen_library_no_user_main() {
     assert!(
         has_add,
         "Library module should have the defined function 'add'"
+    );
+}
+
+#[test]
+fn test_tirgen_argv() {
+    setup_tir!(ir, "import std.sys; let args = sys.argv(); println(args);");
+    compare_tir(
+        "argv",
+        ir,
+        vec![Function {
+            params: vec![],
+            name: Box::new("user_main".to_string()),
+            body: vec![Block {
+                id: 0,
+                ins: vec![
+                    TIR::CallExternFunction(
+                        0,
+                        Box::new("std::sys::argv".to_string()),
+                        vec![],
+                        true,
+                        TirType::Ptr,
+                    ),
+                    TIR::IConst(1, 4, TirType::I64),
+                    TIR::IConst(2, 1, TirType::I64),
+                    TIR::CallExternFunction(
+                        3,
+                        Box::new("toy_println".to_string()),
+                        vec![
+                            SSAValue {
+                                val: 0,
+                                ty: Some(TirType::Ptr),
+                            },
+                            SSAValue {
+                                val: 1,
+                                ty: Some(TirType::I64),
+                            },
+                            SSAValue {
+                                val: 2,
+                                ty: Some(TirType::I64),
+                            },
+                        ],
+                        false,
+                        TirType::Void,
+                    ),
+                    TIR::IConst(4, 0, TirType::I64),
+                    TIR::Ret(
+                        5,
+                        SSAValue {
+                            val: 4,
+                            ty: Some(TirType::I64),
+                        },
+                    ),
+                ],
+            }],
+            ret_type: TirType::I64,
+            ins_counter: 6,
+            heap_allocations: vec![crate::codegen::tir::ir::HeapAllocation {
+                block: 0,
+                allocation_id: 0,
+                function: Box::new("user_main".to_string()),
+                refs: vec![(Box::new("user_main".to_string()), 0, 3)],
+                alloc_ins: SSAValue {
+                    val: 0,
+                    ty: Some(TirType::Ptr),
+                },
+            }],
+            heap_counter: 1,
+        }],
     );
 }

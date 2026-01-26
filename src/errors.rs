@@ -53,7 +53,7 @@ pub enum ToyErrorType {
     UndefinedSSAValue,
     MalformedImportStatement,
     MissingFile,
-    IncorrectNumberOfArguments
+    IncorrectNumberOfArguments,
 }
 
 #[derive(Debug, Error)]
@@ -133,6 +133,7 @@ impl fmt::Display for ToyErrorType {
             Self::KeyNotOnStruct => write!(f, "Key Not On Struct"),
             Self::TypeMismatch => write!(f, "Type Mismatch"),
             Self::MissingFile => write!(f, "Missing File"),
+            Self::VariableNotAStruct => write!(f, "VariableNotAStruct"),
             _ => todo!("chase implement error type {:?}", self),
         }
     }

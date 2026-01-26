@@ -47,6 +47,7 @@ pub enum Token {
     For, //in the context of binding functions to structs
     Extern,
     Import,
+    Export,
 
     //Names
     VarName(Box<String>),
@@ -206,6 +207,7 @@ impl Token {
             Self::For => "For".to_string(),
             Self::Extern => "Extern".to_string(),
             Self::Import => "Import".to_string(),
+            Self::Export => "Export".to_string(),
         };
     }
     ///Is used to get value out of an int literal
@@ -289,6 +291,7 @@ impl Token {
                 Token::For => String::from("for"),
                 Token::Extern => String::from("extern"),
                 Token::Import => String::from("import"),
+                Token::Export => String::from("export"),
             }
         );
     }

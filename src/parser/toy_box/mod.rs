@@ -21,8 +21,8 @@ pub enum TBox {
     ),
     ///Name, type, source code
     FuncParam(Token, TypeTok, String),
-    ///Name, Params, Return Type, Body, source code
-    FuncDec(Token, Vec<TBox>, TypeTok, Vec<TBox>, String),
+    ///Name, Params, Return Type, Body, source code, isExport - defaults to false
+    FuncDec(Token, Vec<TBox>, TypeTok, Vec<TBox>, String, bool),
     ///Contains value to return, source code
     Return(Box<TBox>, String),
     ///Condition, body, Source code
@@ -36,6 +36,25 @@ pub enum TBox {
     ExternFuncDec(Token, Vec<TBox>, TypeTok, String),
     ///name of the module being imported, source_code
     ImportStmt(String, String),
+}
+impl TBox {
+    ///will return the types of a func param, if it is given on a func_dec node, will return nothing otherwise
+    pub fn get_func_param_types(&self) -> Vec<TypeTok> {
+        match self {
+            TBox::FuncDec(_, p, _, _, _, _) => {
+                let mut v: Vec<TypeTok> = vec![];
+                for param in p {
+                    match param {
+                        TBox::FuncParam(_, t, _) => v.push(t.clone()),
+                        _ => unreachable!(),
+                    }
+                }
+                return v;
+            }
+            _ => {}
+        }
+        return vec![];
+    }
 }
 
 impl fmt::Display for TBox {
@@ -60,9 +79,9 @@ impl fmt::Display for TBox {
                     "TBox_Func_Param Name({}), Type({:?}), Literal({})",
                     name, t, s
                 ),
-                TBox::FuncDec(name, params, return_type, body, s) => format!(
-                    "TBox_Func_Dec Name({}), Params({:?}), ReturnType({:?}, Body({:?}), Literal({})",
-                    name, params, return_type, body, s
+                TBox::FuncDec(name, params, return_type, body, s, is_export) => format!(
+                    "TBox_Func_Dec Name({}), Params({:?}), ReturnType({:?}, Body({:?}), Literal({}), IsExport({})",
+                    name, params, return_type, body, s, is_export
                 ),
                 TBox::Return(val, s) => format!("TBox_Return Val({:?}), Literal({})", val, s),
                 TBox::While(cond, body, s) => format!(
