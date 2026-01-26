@@ -62,8 +62,8 @@ impl<'a> LlvmGenerator<'a> {
         // Try alternative types for pointers/ints
         if let Some(ty) = &ssa.ty {
             let alt_ty = match ty {
-                TirType::I64 => Some(TirType::I8PTR),
-                TirType::I8PTR => Some(TirType::I64),
+                TirType::I64 => Some(TirType::Ptr),
+                TirType::Ptr => Some(TirType::I64),
                 TirType::StructInterface(_) => Some(TirType::I64),
                 _ => None,
             };
@@ -139,10 +139,12 @@ impl<'a> LlvmGenerator<'a> {
                     }
 
                     let fn_type = match ret_type {
-                        TirType::I64 => self.ctx.i64_type().fn_type(&compiled_types, false),
+                        TirType::I64 | TirType::Ptr => {
+                            self.ctx.i64_type().fn_type(&compiled_types, false)
+                        }
                         TirType::F64 => self.ctx.f64_type().fn_type(&compiled_types, false),
                         TirType::I1 => self.ctx.bool_type().fn_type(&compiled_types, false),
-                        TirType::I8PTR | TirType::StructInterface(_) => self
+                        TirType::StructInterface(_) => self
                             .ctx
                             .ptr_type(AddressSpace::default())
                             .fn_type(&compiled_types, false),
@@ -230,10 +232,12 @@ impl<'a> LlvmGenerator<'a> {
                     }
 
                     let fn_type = match ret_type {
-                        TirType::I64 => self.ctx.i64_type().fn_type(&compiled_types, false),
+                        TirType::I64 | TirType::Ptr => {
+                            self.ctx.i64_type().fn_type(&compiled_types, false)
+                        }
                         TirType::F64 => self.ctx.f64_type().fn_type(&compiled_types, false),
                         TirType::I1 => self.ctx.bool_type().fn_type(&compiled_types, false),
-                        TirType::I8PTR | TirType::StructInterface(_) => self
+                        TirType::StructInterface(_) => self
                             .ctx
                             .ptr_type(AddressSpace::default())
                             .fn_type(&compiled_types, false),
@@ -586,8 +590,8 @@ impl<'a> LlvmGenerator<'a> {
                         let mut found = false;
                         if let Some(ty) = &ssa_val.ty {
                             let alt_ty = match ty {
-                                TirType::I64 => Some(TirType::I8PTR),
-                                TirType::I8PTR => Some(TirType::I64),
+                                TirType::I64 => Some(TirType::Ptr),
+                                TirType::Ptr => Some(TirType::I64),
                                 _ => None,
                             };
                             if let Some(at) = alt_ty {
@@ -643,7 +647,7 @@ impl<'a> LlvmGenerator<'a> {
                     ptr_i64.into(),
                     SSAValue {
                         val: id,
-                        ty: Some(TirType::I8PTR),
+                        ty: Some(TirType::Ptr),
                     },
                 ))
             }
@@ -824,7 +828,7 @@ impl<'a> LlvmGenerator<'a> {
                     TirType::I64 => self.ctx.i64_type().into(),
                     TirType::F64 => self.ctx.f64_type().into(),
                     TirType::I1 => self.ctx.bool_type().into(),
-                    TirType::I8PTR => self.ctx.ptr_type(AddressSpace::default()).into(),
+                    TirType::Ptr => self.ctx.i64_type().into(),
                     TirType::StructInterface(_) => {
                         // Structs are passed as pointers for consistency with CreateStructLiteral
                         self.ctx.ptr_type(AddressSpace::default()).into()
@@ -838,10 +842,7 @@ impl<'a> LlvmGenerator<'a> {
             TirType::I64 => self.ctx.i64_type().fn_type(llvm_params.as_slice(), false),
             TirType::F64 => self.ctx.f64_type().fn_type(llvm_params.as_slice(), false),
             TirType::I1 => self.ctx.bool_type().fn_type(llvm_params.as_slice(), false),
-            TirType::I8PTR => self
-                .ctx
-                .ptr_type(AddressSpace::default())
-                .fn_type(llvm_params.as_slice(), false),
+            TirType::Ptr => self.ctx.i64_type().fn_type(llvm_params.as_slice(), false),
             TirType::StructInterface(_) => {
                 // Structs are returned as pointers for consistency
                 self.ctx
@@ -909,7 +910,7 @@ impl<'a> LlvmGenerator<'a> {
             TirType::I64 => self.ctx.i64_type().into(),
             TirType::F64 => self.ctx.f64_type().into(),
             TirType::I1 => self.ctx.bool_type().into(),
-            TirType::I8PTR => self.ctx.ptr_type(AddressSpace::default()).into(),
+            TirType::Ptr => self.ctx.i64_type().into(),
             TirType::StructInterface(_) => {
                 // Structs are passed as pointers for consistency
                 self.ctx.ptr_type(AddressSpace::default()).into()
@@ -936,7 +937,11 @@ impl<'a> LlvmGenerator<'a> {
                 .ctx
                 .bool_type()
                 .fn_type(&compiled_types.as_slice(), false),
-            TirType::I8PTR | TirType::StructInterface(_) => self
+            TirType::Ptr => self
+                .ctx
+                .i64_type()
+                .fn_type(&compiled_types.as_slice(), false),
+            TirType::StructInterface(_) => self
                 .ctx
                 .ptr_type(AddressSpace::default())
                 .fn_type(&compiled_types.as_slice(), false),

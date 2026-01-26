@@ -7,11 +7,6 @@ use std::env;
 use std::path::PathBuf;
 
 use chrono::Local;
-fn curr_month_name() -> String {
-    let now = Local::now();
-    return now.format("%B").to_string().to_lowercase();
-}
-
 fn capture_program_output(program: String) -> String {
     thread::sleep(Duration::from_millis(100));
     let output = Command::new(&program)
@@ -300,6 +295,15 @@ fn test_llvm_extern_struct_func_call() {
     if month_num.starts_with("0") {
         month_num = month_num[1..].to_string();
     }
-    println!("Output: {}", output);
     assert!(output.contains(&month_num));
+}
+
+#[test]
+fn test_llvm_escape_sequence() {
+    compile_code_aot!(
+        output,
+        r#"print("\n")"#,
+        "escape_sequence"
+    );
+    assert!(!output.contains("\\"));
 }

@@ -55,7 +55,6 @@ file(MAKE_DIRECTORY ${OUT_BASE})
 # Libraries
 add_library(runtime STATIC
     builtins.c
-    hashmap.c
     ctla/ctla.c
     ctla/hashmap.c
     std/math.c
@@ -66,7 +65,6 @@ add_library(runtime STATIC
 
 add_library(core STATIC
     builtins.c
-    hashmap.c
     ctla/ctla.c
     ctla/hashmap.c
     llvm_stubs.c

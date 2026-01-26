@@ -42,8 +42,8 @@ pub enum TirType {
     ///interfaces are represented as a vec of other types, there are no field names, everything is done by position
     StructInterface(Vec<TirType>),
     Void,
-    ///represents a pointer
-    I8PTR,
+    ///represents a pointer 
+    Ptr,
 }
 impl TirType {
     pub fn to_string(&self) -> String {
@@ -59,7 +59,7 @@ impl TirType {
                 s
             }
             TirType::Void => "void".to_string(),
-            TirType::I8PTR => "i8ptr".to_string(),
+            TirType::Ptr => "ptr".to_string(),
         };
         return s;
     }
@@ -582,8 +582,8 @@ impl TirBuilder {
     pub fn call(&mut self, name: String, params: Vec<SSAValue>) -> Result<SSAValue, ToyError> {
         // Check if it's a local function first
         if let Some(func) = self.funcs.iter().find(|f| *f.name == name) {
-            // Function is an allocator if it returns I8PTR (heap-allocated string)
-            let is_allocator = func.ret_type == TirType::I8PTR;
+            // Function is an allocator if it returns Ptr (heap-allocated string)
+            let is_allocator = func.ret_type == TirType::Ptr;
             return self.call_local(name, params, is_allocator);
         }
 
@@ -917,10 +917,10 @@ impl TirBuilder {
             .push(ins);
         let val = SSAValue {
             val: id,
-            ty: Some(TirType::I8PTR),
+            ty: Some(TirType::Ptr),
         };
         let mut val2 = self.call_extern("toy_malloc".to_string(), vec![val])?;
-        val2.ty = Some(TirType::I8PTR);
+        val2.ty = Some(TirType::Ptr);
         //we need to update the type of the allocation instruction in the heap allocation list
         //otherwise the CTLA will not be able to find the allocation
         self.funcs[self.curr_func.unwrap()]
@@ -928,7 +928,7 @@ impl TirBuilder {
             .iter_mut()
             .for_each(|alloc| {
                 if alloc.alloc_ins.val == val2.val {
-                    alloc.alloc_ins.ty = Some(TirType::I8PTR);
+                    alloc.alloc_ins.ty = Some(TirType::Ptr);
                 }
             });
         return Ok(val2);
@@ -975,7 +975,7 @@ impl TirBuilder {
             | TypeTok::IntArr(_)
             | TypeTok::FloatArr(_)
             | TypeTok::StructArr(_, _)
-            | TypeTok::AnyArr(_) => TirType::I8PTR,
+            | TypeTok::AnyArr(_) => TirType::Ptr,
             TypeTok::Struct(i) => {
                 let mut types: Vec<TirType> = vec![];
                 for (_, ty) in i.iter() {

@@ -19,7 +19,8 @@ static void _toy_init() {
 
 //datatype is 0 for string, 1 for bool, 2 for int, 3 for float, 4 for str[], 5 for bool[], 6 for int[], 7 for float[], 8 for struct[]
 //if datatype is 0 (input is string) then nput is a pointer
-char* _toy_format(int64_t input, int64_t datatype, int64_t degree) {
+//Input could be an int, if sizeof(type) > wordSize
+char* _toy_format(ToyPtr input, int64_t datatype, int64_t degree) {
     switch(datatype) {
         case 0: { // string
             if (input == 0) {
@@ -110,8 +111,8 @@ char* _toy_format(int64_t input, int64_t datatype, int64_t degree) {
     }
 }
 
-
-void toy_print(int64_t input, int64_t datatype, int64_t degree) {
+//value could be an int if type is not ptr
+void toy_print(ToyPtr input, int64_t datatype, int64_t degree) {
     if (datatype == 0) { // string type - check for use-after-free
         _CheckUseAfterFree((void*)input);
     }
@@ -120,7 +121,8 @@ void toy_print(int64_t input, int64_t datatype, int64_t degree) {
     free(buff);
 }
 
-void toy_println(int64_t input, int64_t datatype, int64_t degree) {
+//value could be an int if type is not ptr
+void toy_println(ToyPtr input, int64_t datatype, int64_t degree) {
     if (datatype == 0) { // string type - check for use-after-free
         _CheckUseAfterFree((void*)input);
     }
@@ -131,7 +133,7 @@ void toy_println(int64_t input, int64_t datatype, int64_t degree) {
 
 
 //Takes a string at value ptr and puts it in memory, returning its address
-int64_t toy_malloc(int64_t ptr) {
+ToyPtr toy_malloc(ToyPtr ptr) {
     if (ptr == 0){
         fprintf(stderr, "[ERROR] Toy malloc received a null pointer\n");
         abort();
@@ -150,7 +152,7 @@ int64_t toy_malloc(int64_t ptr) {
 }
 
 //Concats two strings together, returning a third string
-int64_t toy_concat(int64_t sp1, int64_t sp2) {
+ToyPtr toy_concat(ToyPtr sp1, ToyPtr sp2) {
     if (sp1 == 0 || sp2 == 0){
         fprintf(stderr, "[ERROR] Toy concat received a null pointer\n");
         abort();
@@ -174,8 +176,8 @@ int64_t toy_concat(int64_t sp1, int64_t sp2) {
     strcat(out, str2);
     return (int64_t) out;
 }
-
-int64_t toy_strequal(int64_t sp1, int64_t sp2) {
+//return type is actually 64 bit boolean
+int64_t toy_strequal(ToyPtr sp1, ToyPtr sp2) {
     _CheckUseAfterFree((void*)sp1);
     _CheckUseAfterFree((void*)sp2);
     char* str1 = (char*) sp1;
@@ -188,7 +190,7 @@ int64_t toy_strequal(int64_t sp1, int64_t sp2) {
     }
 }
 
-int64_t toy_strlen(int64_t sp1) {
+int64_t toy_strlen(ToyPtr sp1) {
     if (sp1 == 0) {
         fprintf(stderr, "[ERROR] toy_strlen received a null pointer\n");
         abort();
@@ -386,7 +388,7 @@ int64_t toy_double_to_float_bits(double d) {
     u.d = d;
     return u.i;
 }
-int64_t toy_malloc_arr(int64_t len, int64_t type, int64_t degree) {
+ToyPtr toy_malloc_arr(int64_t len, int64_t type, int64_t degree) {
     size_t size = (size_t)(len * 16 * 1.4); // allocate 40% more space
     ToyArrVal* arr_ptr = META_MALLOC(size);
 
@@ -413,11 +415,11 @@ int64_t toy_malloc_arr(int64_t len, int64_t type, int64_t degree) {
         arr->type = type;
     }
     arr->degree = degree;
-    return (int64_t)arr;
+    return (ToyPtr)arr;
 }
 
 //type refers to the type of the array NOT the type of its elements or the value being written
-void toy_write_to_arr(int64_t arr_in_ptr, int64_t value, int64_t idx, int64_t type) {
+void toy_write_to_arr(ToyPtr arr_in_ptr, int64_t value, int64_t idx, int64_t type) {
     ToyArr* arr_ptr = (ToyArr*) arr_in_ptr;
     if (arr_ptr == NULL){
         fprintf(stderr, "[ERROR] toy_write_to_arr received a null pointer");
@@ -491,7 +493,7 @@ void toy_write_to_arr(int64_t arr_in_ptr, int64_t value, int64_t idx, int64_t ty
     elem_ptr->type = type;
 }
 
-int64_t toy_read_from_arr(int64_t arr_in_ptr, int64_t idx) {
+int64_t toy_read_from_arr(ToyPtr arr_in_ptr, int64_t idx) {
     ToyArr* arr_ptr = (ToyArr*) arr_in_ptr;
     if (arr_ptr == NULL) {
         fprintf(stderr, "[ERROR] toy_read_from_arr got a null pointer\n");
@@ -510,7 +512,7 @@ int64_t toy_read_from_arr(int64_t arr_in_ptr, int64_t idx) {
 
 }
 
-int64_t toy_arrlen(int64_t arr_in_ptr) {
+int64_t toy_arrlen(ToyPtr arr_in_ptr) {
     ToyArr* arr_ptr = (ToyArr*) arr_in_ptr;
     return arr_ptr->length;
 }
@@ -556,14 +558,14 @@ char* _read_line() {
     buffer[len] = '\0';
     return buffer;
 }
-int64_t toy_input(int64_t i_prompt){
+ToyPtr toy_input(ToyPtr i_prompt){
     char* prompt = (char*) i_prompt;
     printf("%s", prompt);
     char* u_in = _read_line();
     return (int64_t) u_in;
 }
 
-void toy_free_arr(int64_t arr_ptr_int) {
+void toy_free_arr(ToyPtr arr_ptr_int) {
     ToyArr* arr = (ToyArr*)arr_ptr_int;
     if (arr == NULL) return;
 

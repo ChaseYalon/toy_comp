@@ -184,11 +184,6 @@ impl Driver {
         }
         return final_mangled_name;
     }
-
-    pub fn get_unmangled_name(&self, mangled: &str) -> Option<&String> {
-        self.mangled_lookup.get(mangled)
-    }
-
     pub fn new(prgm: String) -> Driver {
         return Driver {
             table: ProjectExportTable::new(),
@@ -199,6 +194,7 @@ impl Driver {
             mangled_lookup: HashMap::new(),
         };
     }
+    #[allow(unused)]
     pub fn new_with_name(prgm: String, name: String) -> Driver {
         return Driver {
             table: ProjectExportTable::new(),
@@ -406,7 +402,7 @@ impl Driver {
                 .to_string();
             let prefix = module_name.replace(".", "::");
             for export in exports {
-                if let ModuleExportType::Function(params, ret) = &export.ty {
+                if let ModuleExportType::Function(_, ret) = &export.ty {
                     // export.name is already mangled by Boxer (e.g., "abs_int")
                     // Only add module prefix, don't re-add params
                     let full_mangled = Driver::mangle_name(Some(&prefix), &export.name, &[]);
@@ -426,8 +422,8 @@ impl Driver {
 
         Ok(())
     }
-
-    pub fn compile_from_string(
+    #[allow(unused)]
+    pub fn compile_to_ast_from_str(
         &mut self,
         code: String,
         ast_gen: &mut AstGenerator,

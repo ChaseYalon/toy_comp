@@ -111,7 +111,7 @@ impl AstToIrConverter {
                             TirType::F64 => Ok(TypeTok::Float),
                             TirType::I1 => Ok(TypeTok::Bool),
                             TirType::Void => Ok(TypeTok::Void),
-                            TirType::I8PTR => Ok(TypeTok::Str),
+                            TirType::Ptr => Ok(TypeTok::Str),
                             _ => Ok(TypeTok::Int),
                         }
                     } else {
@@ -245,11 +245,9 @@ impl AstToIrConverter {
                             .call_extern("toy_strequal".to_string(), vec![left, right]);
                     }
                     if op == InfixOp::Plus {
-                        let mut res = self
+                        return self
                             .builder
-                            .call_extern("toy_concat".to_string(), vec![left, right])?;
-                        res.ty = Some(TirType::I8PTR); //force type to be a pointer so subsequent calls don't think it is an int
-                        return Ok(res);
+                            .call_extern("toy_concat".to_string(), vec![left, right]);
                     }
                     unreachable!()
                 };
@@ -406,18 +404,7 @@ impl AstToIrConverter {
                     final_params = ssa_params;
                 }
 
-                let mut res = self.builder.call(name.to_string(), final_params)?;
-                if vec![
-                    "toy_type_to_str",
-                    "toy_concat",
-                    "toy_malloc",     //malloc returns a pointer
-                    "toy_malloc_arr", //malloc returns a pointer
-                ]
-                .contains(&name)
-                {
-                    res.ty = Some(TirType::I8PTR);
-                }
-                Ok(res)
+                self.builder.call(name.to_string(), final_params)
             }
             Ast::StringLit(s, _) => {
                 let st = *s;
@@ -796,7 +783,7 @@ impl AstToIrConverter {
                         let idx = self.compile_expr(*index, scope)?;
 
                         let type_val = match val.ty {
-                            Some(TirType::I8PTR) => 0, // String element
+                            Some(TirType::Ptr) => 0, // String element
                             Some(TirType::I1) => 1,    // Bool element
                             Some(TirType::I64) => 2,   // Int element
                             Some(TirType::F64) => 3,   // Float element
@@ -935,15 +922,15 @@ impl AstToIrConverter {
         self.builder
             .register_extern("toy_println".to_string(), false, TypeTok::Void);
         self.builder
-            .register_extern("toy_malloc".to_string(), true, TypeTok::Int);
+            .register_extern("toy_malloc".to_string(), true, TypeTok::Str);
         self.builder
-            .register_extern("toy_concat".to_string(), true, TypeTok::Int);
+            .register_extern("toy_concat".to_string(), true, TypeTok::Str);
         self.builder
             .register_extern("toy_strequal".to_string(), false, TypeTok::Int);
         self.builder
             .register_extern("toy_strlen".to_string(), false, TypeTok::Int);
         self.builder
-            .register_extern("toy_type_to_str".to_string(), true, TypeTok::Int);
+            .register_extern("toy_type_to_str".to_string(), true, TypeTok::Str);
         self.builder
             .register_extern("toy_type_to_bool".to_string(), false, TypeTok::Int);
         self.builder
@@ -960,7 +947,7 @@ impl AstToIrConverter {
         self.builder
             .register_extern("toy_double_to_float_bits".to_string(), false, TypeTok::Int);
         self.builder
-            .register_extern("toy_malloc_arr".to_string(), true, TypeTok::Int);
+            .register_extern("toy_malloc_arr".to_string(), true, TypeTok::Str);
         self.builder
             .register_extern("toy_write_to_arr".to_string(), false, TypeTok::Void);
         self.builder
@@ -968,7 +955,7 @@ impl AstToIrConverter {
         self.builder
             .register_extern("toy_arrlen".to_string(), false, TypeTok::Int);
         self.builder
-            .register_extern("toy_input".to_string(), true, TypeTok::Int);
+            .register_extern("toy_input".to_string(), true, TypeTok::Str);
         self.builder
             .register_extern("toy_free".to_string(), false, TypeTok::Void); //ctla/ctla.c
         self.builder

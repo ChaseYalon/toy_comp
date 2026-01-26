@@ -78,10 +78,10 @@ struct Date {
 }
 for Date {
     export fn to_str(): str{
-        let s = "Date{\n";
-        s += ("\tyear: " + str(this.year));
-        s += ("\tmonth: "+ str(this.month));
-        s += ("\tday: " + str(this.day));
+        let s = "Date {\n";
+        s += ("\tyear: " + str(this.year) + "\n");
+        s += ("\tmonth: "+ str(this.month) + "\n");
+        s += ("\tday: " + str(this.day) + "\n");
         s += "}";
         return s;
     }

@@ -1,6 +1,5 @@
 #pragma once
 #include <stdint.h>
-
 #define INITIAL_CAPACITY 16
 #define LOAD_FACTOR 0.75
 

@@ -19,26 +19,27 @@ const _: () = {
     ["Offset of field: ToyArrVal::type_"][::std::mem::offset_of!(ToyArrVal, type_) - 8usize];
     ["Offset of field: ToyArrVal::_pad"][::std::mem::offset_of!(ToyArrVal, _pad) - 9usize];
 };
+pub type ToyPtr = i64;
 unsafe extern "C" {
-    pub fn toy_print(input: i64, datatype: i64, degree: i64);
+    pub fn toy_print(input: ToyPtr, datatype: i64, degree: i64);
 }
 unsafe extern "C" {
-    pub fn toy_println(input: i64, datatype: i64, degree: i64);
+    pub fn toy_println(input: ToyPtr, datatype: i64, degree: i64);
 }
 unsafe extern "C" {
-    pub fn toy_malloc(ptr: i64) -> i64;
+    pub fn toy_malloc(ptr: ToyPtr) -> ToyPtr;
 }
 unsafe extern "C" {
-    pub fn toy_concat(sp1: i64, sp2: i64) -> i64;
+    pub fn toy_concat(sp1: ToyPtr, sp2: ToyPtr) -> ToyPtr;
 }
 unsafe extern "C" {
-    pub fn toy_strequal(sp1: i64, sp2: i64) -> i64;
+    pub fn toy_strequal(sp1: ToyPtr, sp2: ToyPtr) -> i64;
 }
 unsafe extern "C" {
-    pub fn toy_strlen(sp1: i64) -> i64;
+    pub fn toy_strlen(sp1: ToyPtr) -> i64;
 }
 unsafe extern "C" {
-    pub fn toy_type_to_str(val: i64, type_: i64) -> i64;
+    pub fn toy_type_to_str(val: i64, type_: i64) -> ToyPtr;
 }
 unsafe extern "C" {
     pub fn toy_type_to_bool(val: i64, type_: i64) -> i64;
@@ -59,55 +60,20 @@ unsafe extern "C" {
     pub fn toy_double_to_float_bits(d: f64) -> i64;
 }
 unsafe extern "C" {
-    pub fn toy_malloc_arr(len: i64, type_: i64, degree: i64) -> i64;
+    pub fn toy_malloc_arr(len: i64, type_: i64, degree: i64) -> ToyPtr;
 }
 unsafe extern "C" {
-    pub fn toy_write_to_arr(arr_in_ptr: i64, value: i64, idx: i64, type_: i64);
+    pub fn toy_write_to_arr(arr_in_ptr: ToyPtr, value: i64, idx: i64, type_: i64);
 }
 unsafe extern "C" {
-    pub fn toy_read_from_arr(arr_in_ptr: i64, idx: i64) -> i64;
+    pub fn toy_read_from_arr(arr_in_ptr: ToyPtr, idx: i64) -> i64;
 }
 unsafe extern "C" {
-    pub fn toy_arrlen(arr_in_ptr: i64) -> i64;
+    pub fn toy_arrlen(arr_in_ptr: ToyPtr) -> i64;
 }
 unsafe extern "C" {
-    pub fn toy_input(i_prompt: i64) -> i64;
+    pub fn toy_input(i_prompt: ToyPtr) -> ToyPtr;
 }
 unsafe extern "C" {
-    pub fn toy_free_arr(arr_ptr_int: i64);
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct _Entry {
-    pub key: i64,
-    pub value: i64,
-}
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of _Entry"][::std::mem::size_of::<_Entry>() - 16usize];
-    ["Alignment of _Entry"][::std::mem::align_of::<_Entry>() - 8usize];
-    ["Offset of field: _Entry::key"][::std::mem::offset_of!(_Entry, key) - 0usize];
-    ["Offset of field: _Entry::value"][::std::mem::offset_of!(_Entry, value) - 8usize];
-};
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ToyHashMap {
-    pub entries: [*mut _Entry; 300usize],
-    pub count: ::std::os::raw::c_int,
-}
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of ToyHashMap"][::std::mem::size_of::<ToyHashMap>() - 2408usize];
-    ["Alignment of ToyHashMap"][::std::mem::align_of::<ToyHashMap>() - 8usize];
-    ["Offset of field: ToyHashMap::entries"][::std::mem::offset_of!(ToyHashMap, entries) - 0usize];
-    ["Offset of field: ToyHashMap::count"][::std::mem::offset_of!(ToyHashMap, count) - 2400usize];
-};
-unsafe extern "C" {
-    pub fn toy_put(i_map: i64, key: i64, value: i64);
-}
-unsafe extern "C" {
-    pub fn toy_get(i_map: i64, key: i64) -> i64;
-}
-unsafe extern "C" {
-    pub fn toy_create_map() -> i64;
+    pub fn toy_free_arr(arr_ptr_int: ToyPtr);
 }

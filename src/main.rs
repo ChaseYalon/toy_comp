@@ -16,32 +16,6 @@ mod driver;
 mod errors;
 mod ffi;
 use inkwell::context::Context;
-use inkwell::module::Module;
-
-use crate::codegen::Generator;
-use crate::errors::ToyError;
-use crate::lexer::Lexer;
-use crate::parser::Parser;
-pub struct Compiler<'a> {
-    lexer: Lexer,
-    parser: Parser,
-    generator: Generator<'a>,
-}
-impl<'a> Compiler<'a> {
-    pub fn new(_ctx: &'a Context, _module: Module<'a>) -> Compiler<'a> {
-        Compiler::<'a> {
-            lexer: Lexer::new(),
-            parser: Parser::new(),
-            generator: Generator::new(_ctx, _module), //Generator is unused logic-wise but kept for struct field
-        }
-    }
-    pub fn compile(&mut self, source: String) -> Result<(), ToyError> {
-        let ctx = Context::create();
-        let mut d = driver::Driver::new(source);
-        d.start(&ctx)?;
-        Ok(())
-    }
-}
 fn run_repl() {
     loop {
         print!("> ");
@@ -58,10 +32,23 @@ fn run_repl() {
             return;
         }
 
-        if let Err(e) = compile_and_print(input.to_string()) {
+        if let Err(e) = compile_and_run(input.to_string()) {
             eprintln!("{}", e);
         }
     }
+}
+
+fn compile_and_run(source: String) -> Result<(), Box<dyn std::error::Error>> {
+    let ctx: Context = Context::create();
+    let mut driver = driver::Driver::new(source);
+    driver.start(&ctx)?;
+
+    let exe_path = format!("./Program{}", driver::FILE_EXTENSION_EXE);
+    let output = process::Command::new(exe_path).output()?;
+    print!("{}", String::from_utf8_lossy(&output.stdout));
+    eprint!("{}", String::from_utf8_lossy(&output.stderr));
+
+    Ok(())
 }
 
 fn compile_and_print(source: String) -> Result<(), Box<dyn std::error::Error>> {
