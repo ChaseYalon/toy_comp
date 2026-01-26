@@ -427,19 +427,6 @@ impl AstToIrConverter {
                     _ => unreachable!(),
                 };
                 let mut params = vec![len];
-                /*
-                if let TypeTok::StructArr(_, d) = &ty {
-                    self.builder.inject_type_param(
-                        &TypeTok::StrArr(*d),
-                        false,
-                        true,
-                        &mut params,
-                    )?;
-                } else {
-                    self.builder
-                        .inject_type_param(&ty, false, true, &mut params)?;
-                }
-                */
                 self.builder
                     .inject_type_param(&ty, false, true, &mut params)?;
                 params.push(self.builder.iconst(degree as i64, TypeTok::Int)?);
@@ -447,24 +434,8 @@ impl AstToIrConverter {
                 for (i, ssa_val) in ssa_vals.iter().enumerate() {
                     let idx = self.builder.iconst(i as i64, TypeTok::Int)?;
                     let x: SSAValue = ssa_val.clone();
-                    let mut write_params: Vec<SSAValue> = [arr.clone(), x, idx].to_vec();
-                    /*
-                    if let TypeTok::StructArr(_, d) = &ty {
-                        self.builder.inject_type_param(
-                            &TypeTok::StrArr(*d),
-                            false,
-                            true,
-                            &mut write_params,
-                        )?;
-                    } else {
-                        self.builder.inject_type_param(
-                            &ty,
-                            false,
-                            true,
-                            &mut write_params,
-                        )?;
-                    }
-                    */
+                    let mut write_params: Vec<SSAValue> = vec![arr.clone(), x, idx];
+
                     self.builder.inject_type_param(
                         &ty,
                         false,
