@@ -150,7 +150,7 @@ pub struct Driver {
     pub name: String,
     ///main file path
     pub main_program: String,
-    ///represents the name of all modules that have ben parsed, to prevent stack overflows with cyclic dependencies
+    ///represents the name of all modules that have been parsed, to prevent stack overflows with cyclic dependencies
     pub parsed_modules: HashSet<String>,
     ///contains the path of a file to its generated IR
     pub file_path_to_ast: HashMap<String, Vec<Ast>>,
