@@ -52,6 +52,9 @@ string(TOLOWER "${TARGET_TRIPLE}" TARGET_TRIPLE)
 set(OUT_BASE "$ENV{CARGO_MANIFEST_DIR}/lib/${TARGET_TRIPLE}")
 file(MAKE_DIRECTORY ${OUT_BASE})
 
+#always build debug
+set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type" FORCE)
+
 # Libraries
 add_library(runtime STATIC
     builtins.c
@@ -61,6 +64,8 @@ add_library(runtime STATIC
     std/sys.c
     stub.c
     std/time.c
+    std/fs.c
+    std/net.c
 )
 
 add_library(core STATIC
@@ -71,6 +76,8 @@ add_library(core STATIC
     std/math.c
     std/sys.c
     std/time.c
+    std/fs.c
+    std/net.c
 )
 
 set_target_properties(runtime core PROPERTIES

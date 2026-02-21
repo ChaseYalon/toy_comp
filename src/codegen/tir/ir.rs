@@ -42,7 +42,7 @@ pub enum TirType {
     ///interfaces are represented as a vec of other types, there are no field names, everything is done by position
     StructInterface(Vec<TirType>),
     Void,
-    ///represents a pointer 
+    ///represents a pointer
     Ptr,
 }
 impl TirType {
@@ -169,8 +169,8 @@ pub struct Function {
 pub struct TirBuilder {
     block_counter: BlockId,
     pub funcs: Vec<Function>,
-    pub curr_func: Option<usize>, //index into self.funcs
-    curr_block: Option<usize>,    //index into self.curr_func.body,
+    pub curr_func: Option<usize>,  //index into self.funcs
+    pub curr_block: Option<usize>, //index into self.curr_func.body,
     pub extern_funcs: HashMap<String, (bool, TypeTok, bool)>, //external function name to is_allocator, return_type, is_user_defined
 }
 impl TirBuilder {
@@ -592,7 +592,7 @@ impl TirBuilder {
         if self.extern_funcs.contains_key(&name) {
             return self.call_extern(name, params);
         }
-
+        println!("Name: {name}");
         unreachable!(); // parser validated
     }
     //I dont like ths, it should be in the call_extern
@@ -767,6 +767,18 @@ impl TirBuilder {
             .ins
             .push(ins);
         return Ok(SSAValue { val: id, ty: None });
+    }
+    pub fn get_curr_block_id(&self) -> BlockId {
+        self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()].id
+    }
+    pub fn curr_block_has_terminator(&self) -> bool {
+        let block = &self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()];
+        block.ins.last().map_or(false, |ins| {
+            matches!(
+                ins,
+                TIR::Ret(_, _) | TIR::JumpCond(_, _, _, _) | TIR::JumpBlockUnCond(_, _)
+            )
+        })
     }
     /// Emit a phi node that takes values from multiple predecessor blocks
     /// block_ids: the IDs of the predecessor blocks
@@ -951,6 +963,7 @@ impl TirBuilder {
             &TypeTok::BoolArr(n) => (if use_element_type && n == 1 { 1 } else { 5 }, n),
             &TypeTok::IntArr(n) => (if use_element_type && n == 1 { 2 } else { 6 }, n),
             &TypeTok::FloatArr(n) => (if use_element_type && n == 1 { 3 } else { 7 }, n),
+            &TypeTok::AnyArr(n) => (if use_element_type && n == 1 { 0 } else { 4 }, n),
             TypeTok::Struct(_) => (0, 0),
             TypeTok::StructArr(_, n) => (if use_element_type && *n == 1 { 0 } else { 4 }, *n),
             _ => unreachable!(), // parser validated
@@ -984,6 +997,7 @@ impl TirBuilder {
                 }
                 TirType::StructInterface(types)
             }
+            _ => todo!("interfaces"),
         };
     }
     ///will erase all functions saved in the builder and set current func to the indicated

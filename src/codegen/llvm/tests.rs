@@ -300,10 +300,16 @@ fn test_llvm_extern_struct_func_call() {
 
 #[test]
 fn test_llvm_escape_sequence() {
+    compile_code_aot!(output, r#"print("\n")"#, "escape_sequence");
+    assert!(!output.contains("\\"));
+}
+
+#[test]
+fn test_llvm_codegen_break_continue() {
     compile_code_aot!(
         output,
-        r#"print("\n")"#,
-        "escape_sequence"
+        "let x = 0; while x < 10 { x++; if x == 3 { continue; } if x == 7 { break; } print(x); } print(x);",
+        "break_continue"
     );
-    assert!(!output.contains("\\"));
+    assert!(output.contains("124566"));
 }

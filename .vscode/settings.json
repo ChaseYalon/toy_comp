@@ -70,6 +70,7 @@
       "imod",
       "imul",
       "insts",
+      "ints",
       "isub",
       "LBRACK",
       "lbruntime",
@@ -166,6 +167,9 @@
     ],
   "clangd.arguments": [
       "--compile-commands-dir=${workspaceFolder}/build"
-  ]
+  ],
+  "chat.tools.terminal.autoApprove": {
+    "nm": true
+  }
 
 }

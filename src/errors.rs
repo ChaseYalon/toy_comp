@@ -75,6 +75,13 @@ impl ToyError {
             },
         };
     }
+
+    pub fn with_context(mut self, context: String) -> Self {
+        if self.offending_code == "code segment unknown" {
+            self.offending_code = context;
+        }
+        self
+    }
 }
 
 impl fmt::Display for ToyError {
@@ -132,6 +139,7 @@ impl fmt::Display for ToyErrorType {
             Self::ArrayTypeInvalid => write!(f, "Array Type Invalid"),
             Self::KeyNotOnStruct => write!(f, "Key Not On Struct"),
             Self::TypeMismatch => write!(f, "Type Mismatch"),
+            Self::InvalidOperationOnGivenType => write!(f, "Invalid Operation On Given Type"),
             Self::MissingFile => write!(f, "Missing File"),
             Self::VariableNotAStruct => write!(f, "VariableNotAStruct"),
             _ => todo!("chase implement error type {:?}", self),

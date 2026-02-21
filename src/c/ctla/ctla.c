@@ -30,6 +30,7 @@ void* ToyMallocDebug(size_t size, DebugHeap* d) {
     return buff;
 }
 void toy_free(void* buff) {
+    //maybe in the future memset the whole array to 0 for security, not sure if it is nesscary, should look at post free behavior
     if (!buff){
         fprintf(stderr, "[ERROR] Tried to free a null buffer\n");
         abort();

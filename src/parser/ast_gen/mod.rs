@@ -448,6 +448,12 @@ impl AstGenerator {
             .map(|t| t.to_string())
             .collect::<Vec<String>>()
             .join(" ");
+        let val_ast = match (&val_ast, &ret_var_type) {
+            (Ast::ArrLit(TypeTok::Any, elems, raw), _) if elems.is_empty() => {
+                Ast::ArrLit(ret_var_type.clone(), elems.clone(), raw.clone())
+            }
+            _ => val_ast,
+        };
         let node = Ast::VarDec(
             Box::new(name_str.clone()),
             ret_var_type.clone(),

@@ -1,0 +1,299 @@
+struct Node {
+	id: int,
+	label: str,
+	weight: float,
+	alive: bool
+}
+
+for Node {
+	fn tag(step: int): str {
+		let s = "Node(" + str(this.id) + "):";
+		s += this.label;
+		s += ":step=" + str(step);
+		s += ":w=" + str(this.weight);
+		s += ":alive=" + str(this.alive);
+		return s;
+	}
+}
+
+fn lcg_next(x: int): int {
+	return x * 6364136223846793005 + 1442695040888963407;
+}
+
+fn abs_i(x: int): int {
+	if x < 0 { return -x; }
+	return x;
+}
+
+fn clamp_i(x: int, lo: int, hi: int): int {
+	if x < lo { return lo; }
+	if x > hi { return hi; }
+	return x;
+}
+
+fn append_node(arr: Node[], v: Node): Node[] {
+	let out: Node[] = [];
+	let i = 0;
+	while i < len(arr) {
+		out[i] = arr[i];
+		i += 1;
+	}
+	out[i] = v;
+	return out;
+}
+
+fn append_int(arr: int[], v: int): int[] {
+	let out: int[] = [];
+	let i = 0;
+	while i < len(arr) {
+		out[i] = arr[i];
+		i += 1;
+	}
+	out[i] = v;
+	return out;
+}
+
+fn append_int_arr(arr: int[][], v: int[]): int[][] {
+	let out: int[][] = [];
+	let i = 0;
+	while i < len(arr) {
+		out[i] = arr[i];
+		i += 1;
+	}
+	out[i] = v;
+	return out;
+}
+
+fn mk_label(seed0: int, width: int): str {
+	let seed = seed0;
+	let s = "";
+	let i = 0;
+	while i < width {
+		seed = lcg_next(seed);
+		let d = abs_i(seed) % 10;
+		s += str(d);
+		if i % 5 == 0 { s += "_"; }
+		i += 1;
+	}
+	return s;
+}
+
+fn mk_nodes(n: int, seed0: int): Node[] {
+	let nodes: Node[] = [];
+	let seed = seed0;
+	let i = 0;
+	while i < n {
+		seed = lcg_next(seed);
+		let idv = abs_i(seed) % 1000000;
+		let w = float(abs_i(seed % 10000)) / 37.0;
+		let alive = (abs_i(seed) % 2) == 0;
+		let lbl = mk_label(seed, 18 + (abs_i(seed) % 10));
+		let node = Node{
+			id: idv,
+			label: lbl,
+			weight: w,
+			alive: alive
+		};
+		nodes = append_node(nodes, node);
+		i += 1;
+	}
+	return nodes;
+}
+
+fn mk_matrix(rows: int, cols: int, seed0: int): int[][] {
+	let mat: int[][] = [];
+	let seed = seed0;
+	let r = 0;
+	while r < rows {
+		let row: int[] = [];
+		let c = 0;
+		while c < cols {
+			seed = lcg_next(seed);
+			let v = seed + (r * 1315423911) - (c * 2654435761);
+			row = append_int(row, v);
+			c += 1;
+		}
+		mat = append_int_arr(mat, row);
+		r += 1;
+	}
+	return mat;
+}
+
+fn mix_matrix(mat: int[][]): int {
+	let acc = 0;
+	let r = 0;
+	while r < len(mat) {
+		let row = mat[r];
+		let c = 0;
+		while c < len(row) {
+			let v = row[c];
+			acc = acc + (v * (r * 17) * (c * 31));
+			if (c % 4) == 0 {
+				acc = acc - (v * (acc / 1));
+			} else {
+				acc = acc + (v * (acc / 1));
+			}
+			c += 1;
+		}
+		r += 1;
+	}
+	return acc;
+}
+
+fn churn_string(base: str, rounds: int): str {
+	let s = base;
+	let i = 0;
+	while i < rounds {
+		if (i % 3) == 0 {
+			s = s + "::" + str(i) + "::" + base;
+		} else {
+			s = "[" + s + "]";
+		}
+		if (i % 7) == 0 {
+			let t = s + "|tmp|" + str(i);
+			s = "u=" + t + "|" + s;
+		}
+		if (i % 11) == 0 {
+			s = base + ":" + str(i);
+		}
+		i += 1;
+	}
+	return s;
+}
+
+fn mutate(nodes: Node[], passes: int): int {
+	let seed = 6;
+	let checksum = 0;
+
+	let p = 0;
+	while p < passes {
+		let i = 0;
+		while i < len(nodes) {
+			seed = lcg_next(seed);
+			let n = nodes[i];
+
+			let tag = n.tag(p);
+			checksum = checksum + len(tag);
+
+			if (abs_i(seed) % 9) == 0 {
+				n.alive = !n.alive;
+			}
+
+			if (abs_i(seed) % 5) == 0 {
+				n.weight = n.weight + float(abs_i(seed % 1000)) / 100.0;
+			} else {
+				n.weight = n.weight - float(abs_i(seed % 1000)) / 250.0;
+			}
+
+			if (abs_i(seed) % 4) == 0 {
+				n.label = churn_string(n.label, 6 + (abs_i(seed) % 10));
+			} else {
+				n.label = "id=" + str(n.id) + ":" + n.label;
+			}
+
+			let sid = str(n.id);
+			let back = int(sid);
+			checksum = checksum + back;
+
+			nodes[i] = n;
+
+			if (i % 41) == 17 {
+				i += 1;
+				continue;
+			}
+			if (i % 97) == 29 && p > 2 {
+				break;
+			}
+
+			i += 1;
+		}
+		p += 1;
+	}
+
+	return checksum;
+}
+
+fn slice_ints(a: int[], start: int, end: int): int[] {
+	let out: int[] = [];
+	let i = clamp_i(start, 0, len(a));
+	let e = clamp_i(end, 0, len(a));
+	while i < e {
+		out = append_int(out, a[i]);
+		i += 1;
+	}
+	return out;
+}
+
+fn churn_heaps(mat: int[][], nodes: Node[]): int {
+	let seed = 9;
+	let total = 0;
+
+	let r = 0;
+	while r < len(mat) {
+		let row = mat[r];
+
+		seed = lcg_next(seed);
+		let s = abs_i(seed) % (len(row) + 1);
+		seed = lcg_next(seed);
+		let e = abs_i(seed) % (len(row) + 1);
+		if e < s {
+			let tmp = s;
+			s = e;
+			e = tmp;
+		}
+
+		let part = slice_ints(row, s, e);
+
+		let mapped: int[] = [];
+		let i = 0;
+		while i < len(part) {
+			seed = lcg_next(seed);
+			let m = (part[i] * seed) + (i * 101) - (r * 303);
+			mapped = append_int(mapped, m);
+			i += 1;
+		}
+
+		let j = 0;
+		while j < len(mapped) {
+			total = total + mapped[j];
+			j += 1;
+		}
+
+		let k = 0;
+		while k < len(nodes) {
+			if (k % 53) == 0 {
+				let s1 = nodes[k].tag(r);
+				let s2 = churn_string(s1, 4);
+				total = total + len(s2);
+			}
+			k += 1;
+		}
+
+		r += 1;
+	}
+
+	return total;
+}
+
+fn main(): void {
+	println("ToyLang memory-safety stress test (ASan friendly)");
+
+	let mat = mk_matrix(40, 35, 3);
+	let m = mix_matrix(mat);
+	print("matrix mix: ");
+	println(m);
+
+	let nodes = mk_nodes(160, 3);
+	let chk1 = mutate(nodes, 6);
+	print("mutate checksum: ");
+	println(chk1);
+
+	let chk2 = churn_heaps(mat, nodes);
+	print("heap churn checksum: ");
+	println(chk2);
+
+	let final = m + chk1 + chk2;
+	print("final: ");
+	println(final);
+}
+main();

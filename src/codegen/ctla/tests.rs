@@ -145,3 +145,13 @@ fn test_ctla_argv() {
     );
     assert!(!output.contains("FAIL_TEST"));
 }
+
+#[test]
+fn test_ctla_ret_arr(){
+    compile_code_aot!(
+        output,
+        "fn ret_arr(): int[] {return [1,2, 3];} let a = ret_arr(); println(a);",
+        "ctla_arr_ret"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+}

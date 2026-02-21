@@ -1,0 +1,4 @@
+extern fn toy_net_get_url(url: str): str;
+export fn get_url(url: str): str{
+    return toy_net_get_url(url);
+}

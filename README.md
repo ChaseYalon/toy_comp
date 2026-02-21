@@ -141,6 +141,44 @@ origin.print_point(); //outputs Point{x: 0.0000, y: 0.0000};
     <li> <code> bool(b: any): bool </code> will turn "true" => true, same with false and will panic for any other string, will turn 1 => true, 0 => false and wil panic otherwise, and will round a float and use do the same</li>
 </ul>
 
+<h2>STDLIB Functions</h2>
+<!--TODO: LIBM Docs-->
+
+<h3>std.fs</h3>
+<ul>
+    <li><code>read_file(path: str): str</code> reads all bytes from a file as a UTF-8 string</li>
+    <li><code>write_file(path: str, content: str)</code>overwrites all concent in the file with the specified value<li>
+    <li><code>append_file(path: str, content: str)</code>appends content to the back of a file</li>
+</ul>
+
+<h3>std.time</h3>
+<ul>
+    <li><code>ms_since_unix_epoch(): int</code> returns the number of milliseconds since 12:00 AM, Jan 1, 1970</li>
+    <li><code>now(): int</code> alias for <code>ms_since_unix_epoch()</code></li>
+    <li><code>current_year(): int</code> returns the current year</li>
+    <li><code>current_month(): int</code> returns 1 for january and 12 for december</li>
+    <li><code>current_month_name(): str</code> returns the name of the current month</li>
+    <li><code>current_day(): int</code> returns the current day of the month</li>
+    <li><code>current_date(): Date</code> returns a struct containing year, month, day as ints, and has a .to_str method
+    <li><code>sleep(ms: int)</code> will pause all program execution for the specified amount of tme</li>
+</ul>
+
+<h3>std.sys</h3>
+<ul>
+    <li><code>exit(code: int)</code> exits the current process with the provided exit code</li>
+    <li><code>abort()</code> immediately terminates the current process with exit code <code>-1</code></li>
+    <li><code>panic(message: str)</code> prints the message and then aborts the process</li>
+    <li><code>get_pid(): int</code> returns the current process ID</li>
+    <li><code>argv(): str[]</code> returns the process argument vector as an array of strings</li>
+    <li><code>argc(): int</code> returns the number of command line args</li>
+    <li><code>os_name(): str</code> returns the operating system name</li>
+    <li><code>core_count(): int</code> returns the number of available CPU cores</li>
+    <li><code>version(): str</code> returns the toy lang version string (currently <code>0.0.2</code>)</li>
+    <li><code>version_info(): str</code> returns the extended release tag (currently <code>ALPHA_0.02_GRAY</code>)</li>
+    <li><code>is_little_endian(): bool</code> returns true when running on a little-endian system</li>
+    <li><code>is_big_endian(): bool</code> returns true when running on a big-endian system</li>
+</ul>
+
 <h2> Build Instructions </h2>
 If you do not have the build system setup (mys2 - clang/llvm), rust on the correct toolchain, cmake, and ninja run the following.
 <pre><code class="language-python">

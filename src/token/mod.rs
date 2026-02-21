@@ -48,6 +48,8 @@ pub enum Token {
     Extern,
     Import,
     Export,
+    Interface,
+    Implements,
 
     //Names
     VarName(Box<String>),
@@ -85,6 +87,18 @@ pub enum TypeTok {
 
     Struct(BTreeMap<String, Box<TypeTok>>),
     StructArr(BTreeMap<String, Box<TypeTok>>, u64),
+
+    ///First map is field_name -> type, second is func_name -> (Param_types, return_type)
+    Interface(
+        BTreeMap<String, TypeTok>,
+        BTreeMap<String, (Vec<TypeTok>, TypeTok)>,
+    ),
+    ///First map is field_name -> type, second is func_name -> (Param_types, return_type), final field is dimetion
+    InterfaceArr(
+        BTreeMap<String, TypeTok>,
+        BTreeMap<String, (Vec<TypeTok>, TypeTok)>,
+        u64,
+    ),
 }
 
 impl Hash for TypeTok {
@@ -131,6 +145,27 @@ impl Hash for TypeTok {
                 x.hash(state);
                 n.hash(state);
             }
+            TypeTok::Interface(fields, methods) => {
+                14.hash(state);
+                let mut x: Vec<(&String, &TypeTok)> = fields.iter().collect();
+                x.sort_by(|a, b| a.0.cmp(b.0));
+
+                x.hash(state);
+                let mut y: Vec<(&String, &(Vec<TypeTok>, TypeTok))> = methods.iter().collect();
+                y.sort_by(|a, b| a.0.cmp(b.0));
+                y.hash(state);
+            }
+            TypeTok::InterfaceArr(fields, methods, n) => {
+                15.hash(state);
+                let mut x: Vec<(&String, &TypeTok)> = fields.iter().collect();
+                x.sort_by(|a, b| a.0.cmp(b.0));
+
+                x.hash(state);
+                let mut y: Vec<(&String, &(Vec<TypeTok>, TypeTok))> = methods.iter().collect();
+                y.sort_by(|a, b| a.0.cmp(b.0));
+                y.hash(state);
+                n.hash(state);
+            }
         }
     }
 }
@@ -150,6 +185,8 @@ impl TypeTok {
             Self::AnyArr(_) => "AnyArr".to_string(),
             Self::Struct(_) => "Struct".to_string(),
             Self::StructArr(_, _) => "StructArr".to_string(),
+            Self::Interface(_, _) => "Interface".to_string(),
+            Self::InterfaceArr(_, _, _) => "InterfaceArr".to_string(),
         };
     }
 }
@@ -208,6 +245,8 @@ impl Token {
             Self::Extern => "Extern".to_string(),
             Self::Import => "Import".to_string(),
             Self::Export => "Export".to_string(),
+            Self::Interface => "Interface".to_string(),
+            Self::Implements => "Implements".to_string(),
         };
     }
     ///Is used to get value out of an int literal
@@ -292,6 +331,8 @@ impl Token {
                 Token::Extern => String::from("extern"),
                 Token::Import => String::from("import"),
                 Token::Export => String::from("export"),
+                Token::Implements => String::from("implements"),
+                Token::Interface => String::from("interface"),
             }
         );
     }

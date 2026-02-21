@@ -229,6 +229,12 @@ impl Lexer {
             if self.lex_keyword("export", Token::Export) {
                 continue;
             }
+            if self.lex_keyword("interface", Token::Interface) {
+                continue;
+            }
+            if self.lex_keyword("implements", Token::Implements) {
+                continue;
+            }
             if (c.is_ascii_digit() || (c == '.' && self.num_buf.len() > 0))
                 && self.str_buf.len() == 0
             {

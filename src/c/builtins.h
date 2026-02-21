@@ -1,4 +1,6 @@
 #pragma once
+#define CURL_STATICLIB
+#include "../../lib/x86_64-pc-windows-gnu/curl_include/curl.h"
 #include <stdint.h>
 #include "ctla/ctla.h"
 
@@ -47,3 +49,8 @@ int64_t toy_read_from_arr(ToyPtr arr_in_ptr, int64_t idx);
 int64_t toy_arrlen(ToyPtr arr_in_ptr);
 ToyPtr toy_input(ToyPtr i_prompt);
 void toy_free_arr(ToyPtr arr_ptr_int);
+
+extern CURL* curl;
+extern CURLcode curlRes;
+void toy_net_init(void);
+void toy_net_shutdown(void);

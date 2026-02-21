@@ -58,9 +58,47 @@ pub struct AstToIrConverter {
     ///struct name -> ((Field Name -> idx), TirType::Struct)
     interfaces: HashMap<String, (HashMap<String, usize>, TirType)>,
     main_func_name: String,
+    loop_stack: Vec<LoopContext>,
+}
+
+#[derive(Debug, Clone)]
+struct LoopContext {
+    continue_target: BlockId,
+    break_target: BlockId,
+    tracked_vars: Vec<String>,
+    backedges: Vec<(BlockId, BTreeMap<String, SSAValue>)>,
 }
 
 impl AstToIrConverter {
+    fn has_loop_control_for_current_loop(node: &Ast) -> bool {
+        match node {
+            Ast::Break | Ast::Continue => true,
+            Ast::IfStmt(_, body, alt, _) => {
+                body.iter().any(Self::has_loop_control_for_current_loop)
+                    || alt
+                        .as_ref()
+                        .map(|a| a.iter().any(Self::has_loop_control_for_current_loop))
+                        .unwrap_or(false)
+            }
+            Ast::WhileStmt(_, _, _) => false,
+            Ast::FuncDec(_, _, _, _, _) => false,
+            _ => false,
+        }
+    }
+
+    fn snapshot_loop_vars(
+        &self,
+        scope: &Rc<RefCell<Scope>>,
+        tracked_vars: &[String],
+    ) -> Result<BTreeMap<String, SSAValue>, ToyError> {
+        let mut snapshot = BTreeMap::new();
+        for var_name in tracked_vars {
+            let val = scope.as_ref().borrow().get_var(var_name)?;
+            snapshot.insert(var_name.clone(), val);
+        }
+        Ok(snapshot)
+    }
+
     pub fn new() -> AstToIrConverter {
         return AstToIrConverter {
             builder: TirBuilder::new(),
@@ -71,6 +109,7 @@ impl AstToIrConverter {
             last_val: None,
             interfaces: HashMap::new(),
             main_func_name: "user_main".to_string(),
+            loop_stack: vec![],
         };
     }
     fn get_expr_type(&self, node: &Ast, scope: &Rc<RefCell<Scope>>) -> Result<TypeTok, ToyError> {
@@ -212,10 +251,9 @@ impl AstToIrConverter {
                 if left.ty == right.ty && left.ty == Some(TirType::I64) {}
                 return if vec![
                     InfixOp::LessThan,
-                    InfixOp::LessThan,
                     InfixOp::GreaterThan,
                     InfixOp::GreaterThanEqt,
-                    InfixOp::GreaterThan,
+                    InfixOp::LessThanEqt,
                     //can be str also InfixOp::Equals,
                     InfixOp::NotEquals, //will be str in the future
                     InfixOp::And,
@@ -321,17 +359,15 @@ impl AstToIrConverter {
 
                         if let Some(s_name) = struct_name {
                             let method_base_name = format!("{}::to_str", s_name);
-                            let mangled =
-                                Driver::mangle_name(None, &method_base_name, &[]);
-                            
+                            let mangled = Driver::mangle_name(None, &method_base_name, &[]);
+
                             if self.builder.funcs.iter().any(|f| *f.name == mangled)
                                 || self.builder.extern_funcs.contains_key(&mangled)
                             {
                                 if !is_arr {
-                                    final_params.push(self.builder.call(
-                                        mangled,
-                                        vec![ssa_params[0].clone()],
-                                    )?);
+                                    final_params.push(
+                                        self.builder.call(mangled, vec![ssa_params[0].clone()])?,
+                                    );
                                 } else {
                                     let s = format!("String[]([]{})", dimension);
                                     let str_val = self.builder.global_string(s)?;
@@ -436,12 +472,8 @@ impl AstToIrConverter {
                     let x: SSAValue = ssa_val.clone();
                     let mut write_params: Vec<SSAValue> = vec![arr.clone(), x, idx];
 
-                    self.builder.inject_type_param(
-                        &ty,
-                        false,
-                        true,
-                        &mut write_params,
-                    )?;
+                    self.builder
+                        .inject_type_param(&ty, false, true, &mut write_params)?;
                     self.builder
                         .call("toy_write_to_arr".to_string(), write_params);
                 }
@@ -587,17 +619,23 @@ impl AstToIrConverter {
         //if there is no else, then the false is the merge block
         let mut merge_id: Option<BlockId> = None;
         if alt.is_none() {
-            self.builder.jump_block_un_cond(false_id);
+            if !self.builder.curr_block_has_terminator() {
+                self.builder.jump_block_un_cond(false_id);
+            }
             self.builder.switch_block(false_id);
         } else {
             merge_id = Some(self.builder.create_block()?);
-            self.builder.jump_block_un_cond(merge_id.unwrap());
+            if !self.builder.curr_block_has_terminator() {
+                self.builder.jump_block_un_cond(merge_id.unwrap());
+            }
             self.builder.switch_block(false_id);
             let else_child = Scope::new_child(scope);
             for ast in alt.unwrap() {
                 self.compile_stmt(ast, &else_child);
             }
-            self.builder.jump_block_un_cond(merge_id.unwrap());
+            if !self.builder.curr_block_has_terminator() {
+                self.builder.jump_block_un_cond(merge_id.unwrap());
+            }
             self.builder.switch_block(merge_id.unwrap());
         }
 
@@ -615,7 +653,11 @@ impl AstToIrConverter {
 
         let pre_loop_vars: BTreeMap<String, (SSAValue, TypeTok)> =
             scope.as_ref().borrow().vars.clone();
+        let uses_loop_control = body
+            .iter()
+            .any(Self::has_loop_control_for_current_loop);
         let header_id = self.builder.create_block()?;
+        let pre_loop_block_id = self.builder.get_curr_block_id();
         self.builder.jump_block_un_cond(header_id);
         self.builder.switch_block(header_id);
 
@@ -641,6 +683,19 @@ impl AstToIrConverter {
 
         let compiled_cond = self.compile_expr(cond.clone(), scope)?;
         let (body_id, merge_id) = self.builder.jump_cond(compiled_cond)?;
+        let latch_id = if uses_loop_control {
+            Some(self.builder.create_block()?)
+        } else {
+            None
+        };
+        let continue_target = latch_id.unwrap_or(header_id);
+        self.loop_stack.push(LoopContext {
+            continue_target,
+            break_target: merge_id,
+            tracked_vars: pre_loop_vars.keys().cloned().collect(),
+            backedges: vec![],
+        });
+        let mut non_latch_backedge_block: Option<BlockId> = None;
 
         self.builder.switch_block(body_id);
         let child_scope = Scope::new_child(scope);
@@ -659,7 +714,68 @@ impl AstToIrConverter {
         let post_loop_vars: BTreeMap<String, (SSAValue, TypeTok)> =
             child_scope.as_ref().borrow().vars.clone();
 
-        self.builder.jump_block_un_cond(header_id)?;
+        if !self.builder.curr_block_has_terminator() {
+            let tracked_vars = self
+                .loop_stack
+                .last()
+                .map(|ctx| ctx.tracked_vars.clone())
+                .unwrap_or_default();
+            let snapshot = self.snapshot_loop_vars(&child_scope, &tracked_vars)?;
+            if let Some(loop_ctx) = self.loop_stack.last_mut() {
+                loop_ctx
+                    .backedges
+                    .push((self.builder.get_curr_block_id(), snapshot.clone()));
+            }
+            if latch_id.is_none() {
+                non_latch_backedge_block = Some(self.builder.get_curr_block_id());
+            }
+            self.builder.jump_block_un_cond(continue_target)?;
+        }
+
+        let mut latch_var_vals: BTreeMap<String, SSAValue> = BTreeMap::new();
+        if let Some(latch) = latch_id {
+            self.builder.switch_block(latch);
+
+            if let Some(loop_ctx) = self.loop_stack.last() {
+                for (var_name, pre_val) in &pre_loop_vars {
+                    let mut backedge_blocks = Vec::new();
+                    let mut backedge_vals = Vec::new();
+
+                    for (pred_block, snapshot) in &loop_ctx.backedges {
+                        let val = snapshot
+                            .get(var_name)
+                            .cloned()
+                            .unwrap_or_else(|| pre_val.0.clone());
+                        backedge_blocks.push(*pred_block);
+                        backedge_vals.push(val);
+                    }
+
+                    let latch_val = if backedge_vals.is_empty() {
+                        pre_val.0.clone()
+                    } else if backedge_vals.len() == 1 {
+                        backedge_vals[0].clone()
+                    } else {
+                        let phi_id = self.builder.alloc_value_id();
+                        self.builder.insert_phi(
+                            latch,
+                            phi_id,
+                            backedge_blocks,
+                            backedge_vals,
+                        )?;
+                        SSAValue {
+                            val: phi_id,
+                            ty: pre_val.0.ty.clone(),
+                        }
+                    };
+
+                    latch_var_vals.insert(var_name.clone(), latch_val);
+                }
+            }
+
+            if !self.builder.curr_block_has_terminator() {
+                self.builder.jump_block_un_cond(header_id)?;
+            }
+        }
 
         for (var_name, pre_val) in &pre_loop_vars {
             let post_val = post_loop_vars
@@ -667,15 +783,27 @@ impl AstToIrConverter {
                 .cloned()
                 .unwrap_or_else(|| pre_val.clone());
             if let Some(&phi_id) = phi_id_map.get(var_name) {
+                let (loop_backedge, loop_backedge_val) = if let Some(latch) = latch_id {
+                    (
+                        latch,
+                        latch_var_vals
+                            .get(var_name)
+                            .cloned()
+                            .unwrap_or_else(|| post_val.0.clone()),
+                    )
+                } else {
+                    (non_latch_backedge_block.unwrap_or(body_id), post_val.0.clone())
+                };
                 self.builder.insert_phi(
                     header_id,
                     phi_id,
-                    vec![0, body_id],
-                    vec![pre_val.0.clone(), post_val.0],
+                    vec![pre_loop_block_id, loop_backedge],
+                    vec![pre_val.0.clone(), loop_backedge_val],
                 )?;
             }
         }
 
+        self.loop_stack.pop();
         self.builder.switch_block(merge_id);
 
         return Ok(());
@@ -755,10 +883,10 @@ impl AstToIrConverter {
 
                         let type_val = match val.ty {
                             Some(TirType::Ptr) => 0, // String element
-                            Some(TirType::I1) => 1,    // Bool element
-                            Some(TirType::I64) => 2,   // Int element
-                            Some(TirType::F64) => 3,   // Float element
-                            _ => 2,                    // Default to Int
+                            Some(TirType::I1) => 1,  // Bool element
+                            Some(TirType::I64) => 2, // Int element
+                            Some(TirType::F64) => 3, // Float element
+                            _ => 2,                  // Default to Int
                         };
                         let type_param = self.builder.iconst(type_val, TypeTok::Int)?;
 
@@ -881,6 +1009,37 @@ impl AstToIrConverter {
                     }
                 }
             }
+            Ast::Continue => {
+                let continue_target = self
+                    .loop_stack
+                    .last()
+                    .map(|ctx| ctx.continue_target)
+                    .ok_or_else(|| {
+                        ToyError::new(ToyErrorType::InvalidLocationForContinueStatement, None)
+                    })?;
+
+                let tracked_vars = self
+                    .loop_stack
+                    .last()
+                    .map(|ctx| ctx.tracked_vars.clone())
+                    .unwrap_or_default();
+                let snapshot = self.snapshot_loop_vars(scope, &tracked_vars)?;
+                if let Some(loop_ctx) = self.loop_stack.last_mut() {
+                    loop_ctx
+                        .backedges
+                        .push((self.builder.get_curr_block_id(), snapshot));
+                }
+
+                self.builder.jump_block_un_cond(continue_target)?;
+            }
+            Ast::Break => {
+                let merge_id = self
+                    .loop_stack
+                    .last()
+                    .map(|ctx| ctx.break_target)
+                    .ok_or_else(|| ToyError::new(ToyErrorType::InvalidLocationForBreakStatement, None))?;
+                self.builder.jump_block_un_cond(merge_id)?;
+            }
 
             _ => todo!("Chase you have not implemented {} yet", node),
         };
@@ -932,6 +1091,7 @@ impl AstToIrConverter {
         self.builder
             .register_extern("toy_free_arr".to_string(), false, TypeTok::Void);
     }
+    ///ast to convert, is_main_module, and module name
     pub fn convert(
         &mut self,
         ast: Vec<Ast>,
@@ -949,11 +1109,8 @@ impl AstToIrConverter {
             self.main_func_name = format!("init_{}", safe_name);
         }
 
-        self.builder.new_func(
-            Box::new(self.main_func_name.clone()),
-            vec![],
-            TypeTok::Int,
-        );
+        self.builder
+            .new_func(Box::new(self.main_func_name.clone()), vec![], TypeTok::Int);
         let user_main_scope = Scope::new_child(&self.global_scope);
         for node in ast {
             self.compile_stmt(node, &user_main_scope)?;

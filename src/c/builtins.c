@@ -587,3 +587,28 @@ void toy_free_arr(ToyPtr arr_ptr_int) {
     // Free the struct
     toy_free(arr);
 }
+ToyPtr toy_arr_concat(ToyPtr arr1, ToyPtr arr2) {
+    if (arr1 == 0 || arr2 == 0) {
+        fprintf(stderr, "[Runtime Error] toy_arr_concat received a null pointer\n");
+        exit(1);
+    }
+    ToyArr* a1 = (ToyArr*)arr1;
+    ToyArr* a2 = (ToyArr*)arr2;
+
+    int64_t len1 = a1->length;
+    int64_t len2 = a2->length;
+    int64_t total_len = len1 + len2;
+
+    ToyPtr res_ptr = toy_malloc_arr(total_len, a1->type, a1->degree);
+    ToyArr* res = (ToyArr*)res_ptr;
+
+    if (len1 > 0 && a1->arr) {
+        memcpy(res->arr, a1->arr, len1 * 16);
+    }
+    
+    if (len2 > 0 && a2->arr) {
+        memcpy(res->arr + len1, a2->arr, len2 * 16);
+    }
+
+    return res_ptr;
+}

@@ -1999,3 +1999,106 @@ fn test_ast_gen_panic() {
         ]
     ))
 }
+
+#[test]
+fn test_ast_gen_any_arr() {
+    setup_ast!(
+        "
+    export fn concat(arr: any[], elem: any): any[]{
+        let newArr: any[] = [];
+        let i = 0;
+        while i < len(arr) {
+            newArr[i] = arr[i];
+            i++;
+        }
+        newArr[i] = elem;
+        return newArr;
+    }
+    ",
+        ast
+    );
+    assert!(compare_ast_vecs(
+        ast,
+        vec![Ast::FuncDec(
+            Box::new("concat_anyarr_any".to_string()),
+            vec![
+                Ast::FuncParam(
+                    Box::new("arr".to_string()),
+                    TypeTok::AnyArr(1),
+                    "".to_string()
+                ),
+                Ast::FuncParam(Box::new("elem".to_string()), TypeTok::Any, "".to_string()),
+            ],
+            TypeTok::AnyArr(1),
+            vec![
+                Ast::VarDec(
+                    Box::new("newArr".to_string()),
+                    TypeTok::AnyArr(1),
+                    Box::new(Ast::ArrLit(TypeTok::AnyArr(1), vec![], "".to_string())),
+                    "".to_string()
+                ),
+                Ast::VarDec(
+                    Box::new("i".to_string()),
+                    TypeTok::Int,
+                    Box::new(Ast::IntLit(0)),
+                    "".to_string()
+                ),
+                Ast::WhileStmt(
+                    Box::new(Ast::InfixExpr(
+                        Box::new(Ast::VarRef(Box::new("i".to_string()), "".to_string())),
+                        Box::new(Ast::FuncCall(
+                            Box::new("len".to_string()),
+                            vec![Ast::VarRef(Box::new("arr".to_string()), "".to_string())],
+                            "".to_string()
+                        )),
+                        InfixOp::LessThan,
+                        "".to_string()
+                    )),
+                    vec![
+                        Ast::Assignment(
+                            Box::new(Ast::IndexAccess(
+                                Box::new(Ast::VarRef(
+                                    Box::new("newArr".to_string()),
+                                    "".to_string()
+                                )),
+                                Box::new(Ast::VarRef(Box::new("i".to_string()), "".to_string())),
+                                "".to_string()
+                            )),
+                            Box::new(Ast::IndexAccess(
+                                Box::new(Ast::VarRef(Box::new("arr".to_string()), "".to_string())),
+                                Box::new(Ast::VarRef(Box::new("i".to_string()), "".to_string())),
+                                "".to_string()
+                            )),
+                            "".to_string()
+                        ),
+                        Ast::Assignment(
+                            Box::new(Ast::VarRef(Box::new("i".to_string()), "".to_string())),
+                            Box::new(Ast::InfixExpr(
+                                Box::new(Ast::VarRef(Box::new("i".to_string()), "".to_string())),
+                                Box::new(Ast::IntLit(1)),
+                                InfixOp::Plus,
+                                "".to_string()
+                            )),
+                            "".to_string()
+                        )
+                    ],
+                    "".to_string()
+                ),
+                Ast::Assignment(
+                    Box::new(Ast::IndexAccess(
+                        Box::new(Ast::VarRef(Box::new("newArr".to_string()), "".to_string())),
+                        Box::new(Ast::VarRef(Box::new("i".to_string()), "".to_string())),
+                        "".to_string()
+                    )),
+                    Box::new(Ast::VarRef(Box::new("elem".to_string()), "".to_string())),
+                    "".to_string()
+                ),
+                Ast::Return(
+                    Box::new(Ast::VarRef(Box::new("newArr".to_string()), "".to_string())),
+                    "".to_string()
+                )
+            ],
+            "".to_string()
+        )]
+    ))
+}

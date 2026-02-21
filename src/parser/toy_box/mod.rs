@@ -36,6 +36,8 @@ pub enum TBox {
     ExternFuncDec(Token, Vec<TBox>, TypeTok, String),
     ///name of the module being imported, source_code
     ImportStmt(String, String),
+    ///Interfaces just contain the TypeTok of the interface, then the source code
+    Interface(TypeTok, String),
 }
 impl TBox {
     ///will return the types of a func param, if it is given on a func_dec node, will return nothing otherwise
@@ -100,6 +102,7 @@ impl fmt::Display for TBox {
                 ),
                 TBox::ImportStmt(name, s) =>
                     format!("TBox_Import_Stmt Name({}), Literal({})", name, s),
+                TBox::Interface(ty, s) => format!("TBox_Interface Type({:#?}), Literal({})", ty, s),
             }
         )
     }

@@ -3,6 +3,7 @@ use crate::debug;
 use crate::errors::{ToyError, ToyErrorType};
 use crate::parser::ast::{Ast, InfixOp};
 use crate::token::{Token, TypeTok};
+use ordered_float::OrderedFloat;
 use std::collections::BTreeMap;
 
 impl AstGenerator {
@@ -43,10 +44,28 @@ impl AstGenerator {
             .collect::<Vec<String>>()
             .join(" ");
         let (best_idx, _, best_tok) = self.find_top_val(toks)?;
+
+        if best_idx == 0 && best_tok == Token::Minus {
+            let right = &toks[1..];
+            let (r_node, r_type) = self.parse_expr(&right.to_vec())?;
+            let lhs = if r_type == TypeTok::Float {
+                Ast::FloatLit(OrderedFloat(0.0))
+            } else {
+                Ast::IntLit(0)
+            };
+
+            return Ok((
+                Ast::InfixExpr(Box::new(lhs), Box::new(r_node), InfixOp::Minus, raw_text),
+                r_type,
+            ));
+        }
+
         let left = &toks[0..best_idx];
         let right = &toks[best_idx + 1..toks.len()];
 
-        let (l_node, l_type) = self.parse_expr(&left.to_vec())?;
+        let (l_node, l_type) = self
+            .parse_expr(&left.to_vec())
+            .map_err(|e| e.with_context(raw_text.clone()))?;
         let (r_node, r_type) = self.parse_expr(&right.to_vec())?;
 
         let res_type = if l_type == TypeTok::Float || r_type == TypeTok::Float {
@@ -261,6 +280,15 @@ impl AstGenerator {
             arr_types.push(elem_type);
         }
 
+        if arr_types.is_empty() {
+            let raw_text = toks
+                .iter()
+                .map(|t| t.to_string())
+                .collect::<Vec<String>>()
+                .join(" ");
+            return Ok((Ast::ArrLit(TypeTok::Any, arr_vals, raw_text), TypeTok::Any));
+        }
+
         let all_types_same = arr_types.windows(2).all(|w| w[0] == w[1]);
         let mut arr_type = TypeTok::Any;
         if all_types_same {
@@ -391,7 +419,10 @@ impl AstGenerator {
             .join(" ");
 
         if toks.is_empty() {
-            return Err(ToyError::new(ToyErrorType::ExpectedExpression, None));
+            return Err(ToyError::new(
+                ToyErrorType::ExpectedExpression,
+                Some(raw_text),
+            ));
         }
 
         //guard clause for not expressions
@@ -787,7 +818,7 @@ impl AstGenerator {
                         Some(raw_text.clone()),
                     ));
                 }
-                
+
                 let elem_type = match left_type {
                     TypeTok::IntArr(n) => {
                         if n == 1 {

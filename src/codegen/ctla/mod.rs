@@ -199,8 +199,47 @@ impl CTLA {
                 return "toy_free".to_string();
             }
             // For local function calls that return heap-allocated values (strings),
-            // we use toy_free since they return string pointers
-            TIR::CallLocalFunction(_, _, _, _, _) => {
+            // infer free type from the callee's returned allocation origin
+            TIR::CallLocalFunction(_, callee_name, _, _, _) => {
+                let callee = self
+                    .builder
+                    .funcs
+                    .iter()
+                    .find(|f| *f.name == **callee_name)
+                    .unwrap();
+
+                for callee_alloc in &callee.heap_allocations {
+                    let returns_this_alloc = callee
+                        .body
+                        .iter()
+                        .any(|b| self.block_returns_allocation(callee, b.id, callee_alloc));
+
+                    if !returns_this_alloc {
+                        continue;
+                    }
+
+                    let alloc_block = callee
+                        .body
+                        .iter()
+                        .find(|b| b.id == callee_alloc.block)
+                        .unwrap();
+                    let callee_alloc_ins = alloc_block
+                        .ins
+                        .iter()
+                        .find(|ins| ins.get_id() == callee_alloc.alloc_ins.val)
+                        .unwrap();
+
+                    if let TIR::CallExternFunction(_, f_box, _, _, _) = callee_alloc_ins {
+                        if *f_box.to_owned() == "toy_malloc_arr".to_string()
+                            || "std::sys::argv".to_string() == *f_box.to_owned()
+                        {
+                            return "toy_free_arr".to_string();
+                        }
+                    }
+
+                    return "toy_free".to_string();
+                }
+
                 return "toy_free".to_string();
             }
             _ => unreachable!(),
@@ -257,13 +296,16 @@ impl CTLA {
                         CfgNode::Return(id) => id,
                         CfgNode::LoopBack(id) => id,
                     };
-                    self.builder.splice_free_before(
-                        *func.name.clone(),
-                        false_block_id,
-                        0, // Insert at start of block
-                        alloc.clone().alloc_ins,
-                        self.alloc_type_to_free_func(&alloc),
-                    );
+                    if !self.block_returns_allocation(func, false_block_id, &alloc) {
+                        let idx = self.get_insertion_index(func, false_block_id);
+                        self.builder.splice_free_before(
+                            *func.name.clone(),
+                            false_block_id,
+                            idx,
+                            alloc.clone().alloc_ins,
+                            self.alloc_type_to_free_func(&alloc),
+                        );
+                    }
                     return Some(());
                 }
 
@@ -276,13 +318,16 @@ impl CTLA {
                         CfgNode::Return(id) => id,
                         CfgNode::LoopBack(id) => id,
                     };
-                    self.builder.splice_free_before(
-                        *func.name.clone(),
-                        true_block_id,
-                        0, // Insert at start of block
-                        alloc.clone().alloc_ins,
-                        self.alloc_type_to_free_func(&alloc),
-                    );
+                    if !self.block_returns_allocation(func, true_block_id, &alloc) {
+                        let idx = self.get_insertion_index(func, true_block_id);
+                        self.builder.splice_free_before(
+                            *func.name.clone(),
+                            true_block_id,
+                            idx,
+                            alloc.clone().alloc_ins,
+                            self.alloc_type_to_free_func(&alloc),
+                        );
+                    }
                     return Some(());
                 }
 

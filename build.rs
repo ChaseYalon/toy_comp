@@ -55,6 +55,7 @@ fn main() {
     if cfg!(target_os = "windows") {
         println!("cargo:rustc-link-search=native=C:/msys64/mingw64/lib");
         println!("cargo:rustc-link-search=native=C:/msys64/mingw64/bin");
+        println!("cargo:rustc-link-arg=lib/x86_64-pc-windows-gnu/cacert.o");
     } else {
         println!("cargo:rustc-link-search=native=/usr/lib/x86_64-linux-gnu");
     }
@@ -62,6 +63,7 @@ fn main() {
     println!("cargo:rustc-link-arg=-Wl,--allow-multiple-definition");
     if cfg!(target_os = "windows") {
         println!("cargo:rustc-link-arg=-lffi");
+        println!("cargo:rustc-link-arg=-lucrt");
     }
 
     println!("cargo:rerun-if-changed=src/c/builtins.h");
