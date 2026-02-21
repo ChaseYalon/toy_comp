@@ -1,3 +1,9 @@
+//this function exists to make openssl happy, hope it doesnot break something :D
+int atexit(void (*func)(void)) {
+    (void)func;
+    return 0;
+}
+
 #include "builtins.h"
 #include "ctla/ctla.h"
 #include <stdint.h>
@@ -20,9 +26,17 @@ CURL* curl = NULL;
 CURLcode curlRes = CURLE_OK;
 
 // objcopy'd bundle symbols (matches your nm output exactly)
-extern const unsigned char _binary_lib_x86_64_pc_windows_gnu_cacert_pem_start[];
-extern const unsigned char _binary_lib_x86_64_pc_windows_gnu_cacert_pem_end[];
-
+#ifdef _WIN32
+    extern const unsigned char _binary_lib_x86_64_pc_windows_gnu_cacert_pem_start[];
+    extern const unsigned char _binary_lib_x86_64_pc_windows_gnu_cacert_pem_end[];
+    #define _cert_start _binary_lib_x86_64_pc_windows_gnu_cacert_pem_start
+    #define _cert_end _binary_lib_x86_64_pc_windows_gnu_cacert_pem_end
+#else
+    extern const unsigned char _binary_cacert_pem_start[];
+    extern const unsigned char _binary_cacert_pem_end[];
+    #define _cert_start _binary_cacert_pem_start
+    #define _cert_end _binary_cacert_pem_end
+#endif
 static char g_ca_temp_path[1024];
 
 void _SetDebug_env() {
@@ -125,9 +139,8 @@ static void toy_curl_init_with_embedded_ca(void) {
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-
-    const unsigned char *start = _binary_lib_x86_64_pc_windows_gnu_cacert_pem_start;
-    const unsigned char *end   = _binary_lib_x86_64_pc_windows_gnu_cacert_pem_end;
+    const unsigned char *start = _cert_start;
+    const unsigned char *end   = _cert_end;
     size_t ca_len = (size_t)(end - start);
 
     g_ca_temp_path[0] = '\0';

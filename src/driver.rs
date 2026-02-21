@@ -143,11 +143,12 @@ impl Linker {
             for file in &files {
                 args.push(file.clone());
             }
-
+            args.push("--start-group".to_string());
             for lib in Self::collect_static_archives(lib_path) {
                 args.push(lib.to_string_lossy().into_owned());
             }
-
+            args.push("--end-group".to_string());
+            args.push(lib_path.join("cacert.o".to_string()).to_string_lossy().into());
             args.extend_from_slice(&[
                 crtn_path.to_string_lossy().into_owned(),
                 libc_path.to_string_lossy().into_owned(),

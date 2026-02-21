@@ -1,5 +1,9 @@
 #include "../builtins.h"
-#include <curl/curl.h>
+#ifdef _WIN32
+#include "../../../lib/x86_64-pc-windows-gnu/curl_include/curl.h"
+#else
+#include "../../../lib/x86_64-unknown-linux-gnu/curl_include/curl.h"
+#endif
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
