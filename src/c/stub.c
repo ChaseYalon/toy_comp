@@ -1,9 +1,3 @@
-//this function exists to make openssl happy, hope it doesnot break something :D
-int atexit(void (*func)(void)) {
-    (void)func;
-    return 0;
-}
-
 #include "builtins.h"
 #include "ctla/ctla.h"
 #include <stdint.h>
@@ -12,12 +6,19 @@ int atexit(void (*func)(void)) {
 #include <stdio.h>
 
 #ifdef _WIN32
-  #include <windows.h>
+#include <windows.h>
 #else
-  #include <unistd.h>
-  #include <fcntl.h>
+#include <unistd.h>
+#include <fcntl.h>
 #endif
 
+#ifndef _WIN32
+//this function exists to make openssl happy, hope it doesnot break something :D
+int atexit(void (*func)(void)) {
+    (void)func;
+    return 0;
+}
+#endif
 extern int64_t user_main();
 int64_t GLOBAL_ARGC;
 char** GLOBAL_ARGV;
