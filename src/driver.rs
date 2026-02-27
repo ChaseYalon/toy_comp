@@ -1,15 +1,20 @@
 use std::{
+    cell::RefCell,
     collections::{BTreeMap, HashMap, HashSet},
     env, fs,
     path::{Path, PathBuf},
     process::Command,
 };
+//this macro sucks
+thread_local! {
+    static CURRENT_FILE_PATH: RefCell<Option<String>> = const { RefCell::new(None) };
+}
 
 use inkwell::{context::Context, module::Module};
 
 use crate::{
     codegen::Generator,
-    errors::{ToyError, ToyErrorType},
+    errors::{Span, ToyError, ToyErrorType},
     lexer::Lexer,
     parser::{ast::Ast, ast_gen::AstGenerator, boxer::Boxer, toy_box::TBox},
     token::TypeTok,
@@ -168,14 +173,12 @@ impl Linker {
         let status = match rstatus {
             Ok(f) => f,
             Err(_) => {
-                eprintln!("Linker args: {:#?}", args);
-                return Err(ToyError::new(ToyErrorType::InternalLinkerFailure, None));
+                return Err(ToyError::new(ToyErrorType::InternalLinkerFailure,Span::null_span_with_msg(&format!("{:?}", args))));
             }
         };
 
         if !status.success() {
-            eprintln!("Linker args: {:#?}", args);
-            return Err(ToyError::new(ToyErrorType::InternalLinkerFailure, None));
+            return Err(ToyError::new(ToyErrorType::InternalLinkerFailure, Span::null_span_with_msg(&format!("{:?}", args))));
         }
 
         if save_temps || std::env::var("TOY_DEBUG").unwrap_or("FALSE".to_string()) == "TRUE" {
@@ -224,7 +227,7 @@ pub struct Driver {
     ///project name, for now just the name of the main file, defaults to "program"
     pub name: String,
     ///main file path
-    pub main_program: String,
+    pub main_program_path: PathBuf,
     ///represents the name of all modules that have been parsed, to prevent stack overflows with cyclic dependencies
     pub parsed_modules: HashSet<String>,
     ///contains the path of a file to its generated IR
@@ -233,6 +236,13 @@ pub struct Driver {
 }
 
 impl Driver {
+    pub fn get_current_file_path() -> Option<String> {
+        CURRENT_FILE_PATH.with(|p| p.borrow().clone())
+    }
+    
+    fn set_current_file_path(path: &str) {
+        CURRENT_FILE_PATH.with(|p| *p.borrow_mut() = Some(path.to_string()));
+    }
     pub fn mangle_name(module_prefix: Option<&str>, name: &str, params: &[TypeTok]) -> String {
         let prefixed_name = if let Some(prefix) = module_prefix {
             if prefix.is_empty() {
@@ -259,22 +269,22 @@ impl Driver {
         }
         return final_mangled_name;
     }
-    pub fn new(prgm: String) -> Driver {
+    pub fn new(prgm_path: PathBuf) -> Driver {
         return Driver {
             table: ProjectExportTable::new(),
             name: "Program".to_string(),
-            main_program: prgm,
+            main_program_path: prgm_path,
             parsed_modules: HashSet::new(),
             file_path_to_ast: HashMap::new(),
             mangled_lookup: HashMap::new(),
         };
     }
     #[allow(unused)]
-    pub fn new_with_name(prgm: String, name: String) -> Driver {
+    pub fn new_with_name(prgm_path: PathBuf, name: String) -> Driver {
         return Driver {
             table: ProjectExportTable::new(),
             name: name,
-            main_program: prgm,
+            main_program_path: prgm_path,
             parsed_modules: HashSet::new(),
             file_path_to_ast: HashMap::new(),
             mangled_lookup: HashMap::new(),
@@ -340,7 +350,7 @@ impl Driver {
             module.print_to_stderr();
             return Err(ToyError::new(
                 ToyErrorType::InternalLinkerFailure,
-                Some(format!("Module failed to verify, {:?}", e)),
+            Span::null_span_with_msg(&format!("Module failed to verify, {:?}", e)),
             ));
         }
 
@@ -353,7 +363,7 @@ impl Driver {
                 module.print_to_stderr();
                 return Err(ToyError::new(
                     ToyErrorType::InternalLinkerFailure,
-                    Some(format!("Function {:?} failed to verify", f)),
+                    Span::null_span_with_msg(&format!("Function {:?} failed to verify", f)),
                 ));
             }
         }
@@ -388,12 +398,13 @@ impl Driver {
                 Err(_) => {
                     return Err(ToyError::new(
                         ToyErrorType::MissingFile,
-                        Some(format!("Could not find file: {}", import)),
+                        Span::null_span_with_msg(&format!("Could not find file: {}", import)),
                     ));
                 }
             };
 
             //create a new lexer and boxer for each module
+            Driver::set_current_file_path(&import);
             let mut l = Lexer::new();
             let import_toks = l.lex(contents)?;
             let module_name = import
@@ -464,9 +475,20 @@ impl Driver {
     ///Will automatically compile and build the program
     ///Linking in all necessary modules
     pub fn start(&mut self, ctx: &Context) -> Result<(), ToyError> {
+        let main_program = fs::read_to_string(&self.main_program_path).map_err(|_| {
+            ToyError::new(
+                ToyErrorType::MissingFile,
+                Span::null_span_with_msg(&
+                    format!(
+                    "Could not find file: {}",
+                    self.main_program_path.to_string_lossy()
+                )),
+            )
+        })?;
+
         //Lex and box main program
         let mut l = Lexer::new();
-        let main_prgm_toks = l.lex(self.main_program.clone())?;
+        let main_prgm_toks = l.lex(main_program)?;
 
         //I am aware this defeats the purpose of the parser meta module
         let mut b = Boxer::new();
@@ -484,6 +506,7 @@ impl Driver {
         for (path, ast) in &self.file_path_to_ast {
             let module_name = path.replace(".toy", "");
 
+            Driver::set_current_file_path(path);
             let llvm_module = ctx.create_module(&module_name);
             let mut generator = Generator::new(ctx, llvm_module);
             generator.compile_to_object(ast.clone(), module_name.clone(), false)?;
@@ -512,6 +535,7 @@ impl Driver {
             }
         }
 
+        Driver::set_current_file_path(&self.main_program_path.to_string_lossy());
         generator.compile_to_object(main_ast, self.name.clone(), true)?;
         object_files.push(format!("{}.o", self.name));
 

@@ -27,12 +27,16 @@ macro_rules! compile_code_aot {
         let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let output_name = format!("output_{}", $test_name);
         let output_path = project_root.join("temp").join(&output_name);
+        let source_path = project_root
+            .join("temp")
+            .join(format!("{}.toy", output_name));
 
         let _ = std::fs::remove_file(&output_path);
+        std::fs::write(&source_path, $i).unwrap();
         thread::sleep(Duration::from_millis(100));
         let ctx = Context::create();
         let mut d =
-            crate::driver::Driver::new_with_name($i.to_string(), format!("temp/{}", output_name));
+            crate::driver::Driver::new_with_name(source_path, format!("temp/{}", output_name));
         d.start(&ctx).unwrap();
 
         thread::sleep(Duration::from_millis(200));

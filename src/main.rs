@@ -4,6 +4,7 @@
 use std::env;
 use std::fs;
 use std::io::{self, Write};
+use std::path::PathBuf;
 use std::process;
 
 mod lexer;
@@ -12,7 +13,7 @@ mod token;
 #[macro_use]
 mod macros;
 pub mod codegen;
-mod driver;
+pub(crate) mod driver;
 mod errors;
 mod ffi;
 use inkwell::context::Context;
@@ -39,8 +40,12 @@ fn run_repl() {
 }
 
 fn compile_and_run(source: String) -> Result<(), Box<dyn std::error::Error>> {
+    let repl_path = PathBuf::from("temp/repl.toy");
+    fs::create_dir_all("temp")?;
+    fs::write(&repl_path, source)?;
+
     let ctx: Context = Context::create();
-    let mut driver = driver::Driver::new(source);
+    let mut driver = driver::Driver::new(repl_path);
     driver.start(&ctx)?;
 
     let exe_path = format!("./Program{}", driver::FILE_EXTENSION_EXE);
@@ -51,17 +56,16 @@ fn compile_and_run(source: String) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn compile_and_print(source: String) -> Result<(), Box<dyn std::error::Error>> {
+fn compile_and_print(file_path: &str) -> Result<(), Box<dyn std::error::Error>> {
     let ctx: Context = Context::create();
-    let mut driver = driver::Driver::new(source);
+    let mut driver = driver::Driver::new(PathBuf::from(file_path));
     driver.start(&ctx)?;
 
     Ok(())
 }
 
 fn compile_file(filename: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let contents = fs::read_to_string(filename)?;
-    compile_and_print(contents)
+    compile_and_print(filename)
 }
 
 fn main() {

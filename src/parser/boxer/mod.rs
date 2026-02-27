@@ -1,9 +1,9 @@
 use crate::errors::{ToyError, ToyErrorType};
 use crate::parser::toy_box::TBox;
-use crate::token::{Token, TypeTok};
+use crate::token::{SpannedToken, Token, TypeTok};
 use std::collections::BTreeMap;
 pub struct Boxer {
-    toks: Vec<Token>,
+    toks: Vec<SpannedToken>,
     tp: usize, // token pointer
     interfaces: BTreeMap<String, BTreeMap<String, TypeTok>>,
     /// Optional module prefix for name mangling (e.g., "std::math")
@@ -1135,7 +1135,7 @@ impl Boxer {
     }
 
     /// Recursively box tokens into structured TBoxes (proto-AST)
-    pub fn box_toks(&mut self, input: Vec<Token>) -> Result<Vec<TBox>, ToyError> {
+    pub fn box_toks(&mut self, input: Vec<SpannedToken>) -> Result<Vec<TBox>, ToyError> {
         self.toks = input;
         //self.toks = input.clone();
         self.tp = 0;

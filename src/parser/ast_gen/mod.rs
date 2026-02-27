@@ -1,7 +1,7 @@
 use ordered_float::OrderedFloat;
 
 use crate::debug;
-use crate::errors::{ToyError, ToyErrorType};
+use crate::errors::{Span, ToyError, ToyErrorType};
 use crate::lexer::Lexer;
 use crate::parser::ast::Ast;
 use crate::parser::boxer::Boxer;
@@ -131,7 +131,10 @@ impl AstGenerator {
         if self.var_type_scopes.len() > 1 {
             self.var_type_scopes.pop();
         } else {
-            return Err(ToyError::new(ToyErrorType::InternalParserFailure, None));
+            return Err(ToyError::new(
+                ToyErrorType::InternalParserFailure,
+                Span::null_span(),
+            ));
         }
         return Ok(());
     }
@@ -174,7 +177,7 @@ impl AstGenerator {
                     if depth == 0 {
                         return Err(ToyError::new(
                             ToyErrorType::UnclosedDelimiter,
-                            Some(raw_text.clone()),
+                            Span::null_span_with_msg(&raw_text.clone()),
                         ));
                     }
                     depth -= 1;

@@ -9,11 +9,11 @@ use crate::parser::ast::Ast;
 use crate::parser::ast_gen::AstGenerator;
 use colored::*;
 use std::fs::File;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::{env, fs};
 
 fn parse_test_code(code: impl ToString) -> (Vec<Ast>, Driver) {
-    let mut driver = Driver::new("test".to_string());
+    let mut driver = Driver::new(PathBuf::from("temp/test.toy"));
     let mut ast_gen = AstGenerator::new();
     let ast = driver
         .compile_to_ast_from_str(code.to_string(), &mut ast_gen)

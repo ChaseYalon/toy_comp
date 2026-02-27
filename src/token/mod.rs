@@ -2,6 +2,8 @@ use ordered_float::OrderedFloat;
 use std::collections::BTreeMap;
 use std::fmt;
 use std::hash::{Hash, Hasher};
+
+use crate::errors::Span;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Token {
     //Lits
@@ -69,6 +71,11 @@ pub enum Token {
     LBrack,
     RBrack,
     Dot,
+}
+#[derive(Debug, Clone)]
+pub struct SpannedToken{
+    pub tok: Token,
+    pub span: Span
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeTok {
