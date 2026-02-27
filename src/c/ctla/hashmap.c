@@ -6,7 +6,7 @@
 #include <stdbool.h>
 
 int64_t _hash(void *key, int64_t capacity) {
-    return ((int64_t)key >> 3) % capacity;
+    return (int64_t)(((uintptr_t)key >> 3) % (uintptr_t)capacity);
 }
 
 DebugMap* DebugMap_create() {

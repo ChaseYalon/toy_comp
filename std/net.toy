@@ -1,4 +1,58 @@
+import std.sys;
 extern fn toy_net_get_url(url: str): str;
 export fn get_url(url: str): str{
     return toy_net_get_url(url);
+}
+
+extern fn toy_net_configure_http_server(port: int, timeout: int);
+export fn configure_http_server(port: int, timeout: int){
+    toy_net_configure_http_server(port, timeout);
+}
+
+extern fn toy_net_connection_requested(): bool;
+export fn connection_requested(): bool{
+    return toy_net_connection_requested();
+}
+extern fn toy_net_read_request(): str[];
+struct HttpRequest{
+    method: str,
+    path: str,
+    client_ip: str,
+    body: str
+}
+export fn read_request(): HttpRequest{
+    let raw = toy_net_read_request();
+    let req = HttpRequest{
+        method: raw[1],
+        path: raw[2],
+        client_ip: raw[0],
+        body: raw[3],
+    };
+    return req;
+}
+
+extern fn toy_net_close_client();
+export fn close_client(){
+    toy_net_close_client();
+}
+
+extern fn toy_net_write_response(code: int, content_type: str, body: str);
+//1 - text/plain
+//2 - text/html
+//3 - application/json
+//4 - application/javascript
+export fn write_response(code: int, content_type: int, body: str){
+    let content_type_str = "";
+    if content_type == 1{
+        content_type_str = "text/plain; charset=utf-8";
+    } else if content_type == 2{
+        content_type_str = "text/html; charset=utf-8";
+    } else if content_type == 3{
+        content_type_str = "application/json";
+    } else if content_type == 4{
+        content_type_str = "application/javascript";
+    } else {
+        sys.panic("[ERROR] Content type you requested not implemented");
+    }
+    toy_net_write_response(code, content_type_str, body);
 }

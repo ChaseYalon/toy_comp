@@ -712,8 +712,29 @@ impl<'a> LlvmGenerator<'a> {
             }
             TIR::CreateStructLiteral(id, ty, vals) => {
                 let (struct_type, interface_name) = self.struct_interfaces.get(&ty).unwrap(); // parser validated
-
-                let allocated_struct = builder.build_alloca(*struct_type, interface_name)?;
+                let struct_size = self.ctx.i64_type().const_int(vals.len() as u64 * 8, false);
+                let malloc_fn = if let Some(f) = self.main_module.get_function("toy_malloc_struct")
+                {
+                    f
+                } else {
+                    self.main_module.add_function(
+                        "toy_malloc_struct",
+                        *self.func_map.get("toy_malloc_struct").unwrap(),
+                        Some(Linkage::External),
+                    )
+                };
+                let alloc_i64 = match builder
+                    .build_call(malloc_fn, &[struct_size.into()], "struct_alloc")?
+                    .try_as_basic_value()
+                {
+                    ValueKind::Basic(v) => v.into_int_value(),
+                    _ => unreachable!(),
+                };
+                let allocated_struct = builder.build_int_to_ptr(
+                    alloc_i64,
+                    self.ctx.ptr_type(AddressSpace::default()),
+                    interface_name,
+                )?;
 
                 let zero = self.ctx.i32_type().const_int(0, false);
 
@@ -1006,6 +1027,7 @@ impl<'a> LlvmGenerator<'a> {
             TirType::Void,
         );
         self.declare_individual_function("toy_malloc", vec![TirType::I64], TirType::I64);
+        self.declare_individual_function("toy_malloc_struct", vec![TirType::I64], TirType::I64);
         self.declare_individual_function(
             "toy_concat",
             vec![TirType::I64, TirType::I64],
@@ -1090,6 +1112,7 @@ impl<'a> LlvmGenerator<'a> {
         //llvm shit
         let args: Vec<String> = env::args().collect();
         Target::initialize_x86(&InitializationConfig::default());
+        //opts can conflict with CTLA
         let opt_level =
             if args.contains(&"--repl".to_string()) || args.contains(&"--no-op".to_string()) {
                 OptimizationLevel::None

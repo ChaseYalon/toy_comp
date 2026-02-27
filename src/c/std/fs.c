@@ -1,4 +1,5 @@
 #include "../builtins.h"
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <strings.h>
@@ -59,7 +60,7 @@ ToyPtr toy_fs_read_file(ToyPtr path){
     buffer[got] = '\0';
     return (ToyPtr)buffer;
 }
-void toy_fs_write_file(ToyPtr path, ToyPtr content) {
+int64_t toy_fs_write_file(ToyPtr path, ToyPtr content) {
     const char* p = (const char*)path;
     const char* data = (const char*)content;
 
@@ -77,7 +78,7 @@ void toy_fs_write_file(ToyPtr path, ToyPtr content) {
         DWORD e = GetLastError();
         fprintf(stderr, "[ERROR] CreateFileA(write) failed '%s' (GetLastError=%lu)\n",
                 p, (unsigned long)e);
-        abort();
+        return -1;
     }
 
     DWORD written = 0;
@@ -92,6 +93,7 @@ void toy_fs_write_file(ToyPtr path, ToyPtr content) {
     }
 
     CloseHandle(h);
+    return 0;
 }
 void toy_fs_append_file(ToyPtr path, ToyPtr content) {
     const char* p = (const char*)path;

@@ -577,15 +577,9 @@ impl AstGenerator {
                 }
                 i = j + 1;
             }
-            // If we parsed the whole thing as struct literal(s), return it.
-            // But wait, what if it's StructLit followed by something?
-            // e.g. Point{x:1}.x
-            // The loop above consumes struct literals.
-            // If i == toks.len(), we consumed everything.
             if i == toks.len() {
                 return Ok((struct_dec_exprs[0].clone(), struct_dec_types[0].clone()));
             }
-            // If not, we fall through to find_top_val, which should handle it.
         }
 
         let (best_idx, _, best_val) = self.find_top_val(toks)?;

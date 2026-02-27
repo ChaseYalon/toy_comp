@@ -572,8 +572,6 @@ impl Boxer {
         let boxed_params: Vec<TBox> = self.box_params(unboxed_params)?;
 
         // Check return type
-        // After RParen, we expect Colon Type Semicolon OR Semicolon (Void)
-
         let return_type = if input[return_type_begin + 1].tok_type() == "Semicolon" {
             TypeTok::Void
         } else {

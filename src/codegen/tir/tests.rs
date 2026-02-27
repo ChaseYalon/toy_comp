@@ -2224,7 +2224,7 @@ fn test_tirgen_struct_funcs() {
                     id: 1,
                     ins: vec![
                         TIR::ReadStructLiteral(
-                            1,
+                            2,
                             SSAValue {
                                 val: 1,
                                 ty: Some(TirType::StructInterface(vec![
@@ -2234,16 +2234,12 @@ fn test_tirgen_struct_funcs() {
                             },
                             0,
                         ),
-                        TIR::IConst(2, 2, TirType::I64),
-                        TIR::IConst(3, 0, TirType::I64),
+                        TIR::IConst(3, 2, TirType::I64),
+                        TIR::IConst(4, 0, TirType::I64),
                         TIR::CallExternFunction(
-                            4,
+                            5,
                             Box::new("toy_println".to_string()),
                             vec![
-                                SSAValue {
-                                    val: 1,
-                                    ty: Some(TirType::I64),
-                                },
                                 SSAValue {
                                     val: 2,
                                     ty: Some(TirType::I64),
@@ -2252,14 +2248,18 @@ fn test_tirgen_struct_funcs() {
                                     val: 3,
                                     ty: Some(TirType::I64),
                                 },
+                                SSAValue {
+                                    val: 4,
+                                    ty: Some(TirType::I64),
+                                },
                             ],
                             false,
                             TirType::Void,
                         ),
-                        TIR::Ret(5, SSAValue { val: 0, ty: None }),
+                        TIR::Ret(6, SSAValue { val: 0, ty: None }),
                     ],
                 }],
-                ins_counter: 6,
+                ins_counter: 7,
                 ret_type: TirType::Void,
                 heap_allocations: vec![],
                 heap_counter: 0,
@@ -2684,7 +2684,7 @@ println(points);
                     id: 1,
                     ins: vec![
                         TIR::ReadStructLiteral(
-                            3,
+                            4,
                             SSAValue {
                                 val: 1,
                                 ty: Some(TirType::StructInterface(vec![
@@ -2695,9 +2695,9 @@ println(points);
                             0,
                         ),
                         TIR::NumericInfix(
-                            4,
+                            5,
                             SSAValue {
-                                val: 3,
+                                val: 4,
                                 ty: Some(TirType::F64),
                             },
                             SSAValue {
@@ -2707,7 +2707,7 @@ println(points);
                             NumericInfixOp::Plus,
                         ),
                         TIR::WriteStructLiteral(
-                            5,
+                            6,
                             SSAValue {
                                 val: 1,
                                 ty: Some(TirType::StructInterface(vec![
@@ -2717,12 +2717,12 @@ println(points);
                             },
                             0,
                             SSAValue {
-                                val: 4,
+                                val: 5,
                                 ty: Some(TirType::F64),
                             },
                         ),
                         TIR::ReadStructLiteral(
-                            6,
+                            7,
                             SSAValue {
                                 val: 1,
                                 ty: Some(TirType::StructInterface(vec![
@@ -2733,9 +2733,9 @@ println(points);
                             1,
                         ),
                         TIR::NumericInfix(
-                            7,
+                            8,
                             SSAValue {
-                                val: 6,
+                                val: 7,
                                 ty: Some(TirType::F64),
                             },
                             SSAValue {
@@ -2745,7 +2745,7 @@ println(points);
                             NumericInfixOp::Plus,
                         ),
                         TIR::WriteStructLiteral(
-                            8,
+                            9,
                             SSAValue {
                                 val: 1,
                                 ty: Some(TirType::StructInterface(vec![
@@ -2755,14 +2755,14 @@ println(points);
                             },
                             1,
                             SSAValue {
-                                val: 7,
+                                val: 8,
                                 ty: Some(TirType::F64),
                             },
                         ),
-                        TIR::Ret(9, SSAValue { val: 0, ty: None }),
+                        TIR::Ret(10, SSAValue { val: 0, ty: None }),
                     ],
                 }],
-                ins_counter: 10,
+                ins_counter: 11,
                 ret_type: TirType::Void,
                 heap_allocations: vec![],
                 heap_counter: 0,
@@ -2879,7 +2879,6 @@ fn test_tirgen_import_stmt() {
         }],
     );
 }
-
 
 #[test]
 fn test_tirgen_argv() {
@@ -3603,10 +3602,7 @@ fn test_tirgen_break_continue_lowering() {
                 body: vec![
                     Block {
                         id: 1,
-                        ins: vec![
-                            TIR::IConst(0, 0, TirType::I64),
-                            TIR::JumpBlockUnCond(1, 2),
-                        ],
+                        ins: vec![TIR::IConst(0, 0, TirType::I64), TIR::JumpBlockUnCond(1, 2)],
                     },
                     Block {
                         id: 2,

@@ -1,6 +1,8 @@
+use std::collections::HashSet;
+
 use crate::{
     codegen::{
-        Function, TIR,
+        Function, SSAValue, TIR,
         tir::ir::{HeapAllocation, TirBuilder},
     },
     errors::ToyError,
@@ -10,6 +12,8 @@ use super::tir::ir::BlockId;
 
 pub struct CTLA {
     builder: TirBuilder,
+    /// tracks (block_id, value_id) pairs that already have a free inserted to avoid duplicates from phi-merged allocs
+    freed_values: HashSet<(BlockId, usize)>,
 }
 #[derive(Debug, Clone)]
 enum CfgNode {
@@ -26,6 +30,7 @@ impl CTLA {
     pub fn new() -> CTLA {
         return CTLA {
             builder: TirBuilder::new(),
+            freed_values: HashSet::new(),
         };
     }
     fn build_cfg_graph(&self, func: String, idx: BlockId, visited: &mut Vec<BlockId>) -> CfgNode {
@@ -44,8 +49,6 @@ impl CTLA {
             .find(|b| b.id == idx)
             .unwrap();
 
-        // Find the first terminator instruction (Ret, JumpCond, or JumpBlockUnCond)
-        // This handles cases where a return is followed by unreachable code
         let terminator = block
             .ins
             .iter()
@@ -154,25 +157,50 @@ impl CTLA {
             None => block.ins.len(), // Should not happen if block is well-formed
         }
     }
-    /// Checks if a block's return instruction returns the given allocation
-    /// If so, we should NOT free it - the caller takes ownership
     fn block_returns_allocation(
         &self,
         func: &Function,
         block_id: BlockId,
         alloc: &HeapAllocation,
     ) -> bool {
+        let rep = Self::find_alloc_representative(func, alloc, block_id);
         let block = func.body.iter().find(|b| b.id == block_id).unwrap();
         // Find the return instruction
         for ins in &block.ins {
             if let TIR::Ret(_, returned_val) = ins {
-                // Check if the returned value is the allocation itself
-                if returned_val.val == alloc.alloc_ins.val {
+                // Check if the returned value is either the raw alloc or its phi representative
+                if returned_val.val == alloc.alloc_ins.val || returned_val.val == rep.val {
                     return true;
                 }
             }
         }
         return false;
+    }
+
+    /// Checks if `alloc` (or one of its refs) is an incoming value of a phi in `block_id`
+    /// specifically from predecessor `from_block`.
+    fn alloc_enters_phi_from(
+        &self,
+        func: &Function,
+        block_id: BlockId,
+        from_block: BlockId,
+        alloc: &HeapAllocation,
+    ) -> bool {
+        let block = func.body.iter().find(|b| b.id == block_id).unwrap();
+        for ins in &block.ins {
+            if let TIR::Phi(_, pred_block_ids, values) = ins {
+                for (pred_block, val) in pred_block_ids.iter().zip(values.iter()) {
+                    if *pred_block == from_block {
+                        if val.val == alloc.alloc_ins.val
+                            || alloc.refs.iter().any(|r| r.2 == val.val)
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        false
     }
     fn alloc_type_to_free_func(&self, alloc: &HeapAllocation) -> String {
         let func = self
@@ -245,6 +273,51 @@ impl CTLA {
             _ => unreachable!(),
         };
     }
+    /// When an allocation flows through a phi node, the raw alloc_ins value is only valid
+    /// in the block where it was created. In downstream blocks, the phi result is the correct
+    /// SSA representative. This finds the phi result in `block_id` that transitively references
+    /// the allocation, or falls back to alloc_ins if no phi is found.
+    fn find_alloc_representative(
+        func: &Function,
+        alloc: &HeapAllocation,
+        block_id: BlockId,
+    ) -> SSAValue {
+        let block = func.body.iter().find(|b| b.id == block_id).unwrap();
+        for ins in &block.ins {
+            if let TIR::Phi(phi_id, _, vals) = ins {
+                for v in vals {
+                    if v.val == alloc.alloc_ins.val || alloc.refs.iter().any(|r| r.2 == v.val) {
+                        return SSAValue {
+                            val: *phi_id,
+                            ty: alloc.alloc_ins.ty.clone(),
+                        };
+                    }
+                }
+            }
+        }
+        alloc.alloc_ins.clone()
+    }
+
+    /// Inserts a free call, but uses the phi representative value when the raw alloc value
+    /// is not valid in the target block, and deduplicates when multiple branch allocs
+    /// reduce to the same phi.
+    fn insert_free(&mut self, func: &Function, alloc: &HeapAllocation, block_id: BlockId) {
+        let rep = Self::find_alloc_representative(func, alloc, block_id);
+        let key = (block_id, rep.val);
+        if self.freed_values.contains(&key) {
+            return;
+        }
+        self.freed_values.insert(key);
+        let idx = self.get_insertion_index(func, block_id);
+        self.builder.splice_free_before(
+            *func.name.clone(),
+            block_id,
+            idx,
+            rep,
+            self.alloc_type_to_free_func(alloc),
+        );
+    }
+
     fn follow_cfg_graph(
         &mut self,
         alloc_node: CfgNode,
@@ -257,14 +330,7 @@ impl CTLA {
                 if self.block_returns_allocation(func, return_block_id, &alloc) {
                     return Some(());
                 }
-                let idx = self.get_insertion_index(func, return_block_id);
-                self.builder.splice_free_before(
-                    *func.name.clone(),
-                    return_block_id,
-                    idx,
-                    alloc.clone().alloc_ins,
-                    self.alloc_type_to_free_func(&alloc),
-                );
+                self.insert_free(func, &alloc, return_block_id);
                 return Some(());
             } //for now return is the end of a graph and allocations can not be passed up the call chain
             CfgNode::ConditionalJump(block_id, true_box, false_box) => {
@@ -274,19 +340,10 @@ impl CTLA {
 
                 if !true_branch_refs && !false_branch_refs {
                     // Neither branch references it, free it at the end of this block
-                    let idx = self.get_insertion_index(func, block_id);
-                    self.builder.splice_free_before(
-                        *func.name.clone(),
-                        block_id,
-                        idx,
-                        alloc.clone().alloc_ins,
-                        self.alloc_type_to_free_func(&alloc),
-                    );
+                    self.insert_free(func, &alloc, block_id);
                     return Some(());
                 }
 
-                // If only one branch references it, follow only that branch
-                // If both branches reference it, we need to free in both paths
                 if true_branch_refs && !false_branch_refs {
                     self.follow_cfg_graph(*true_box, func, alloc.clone());
                     // Free in false branch
@@ -297,14 +354,7 @@ impl CTLA {
                         CfgNode::LoopBack(id) => id,
                     };
                     if !self.block_returns_allocation(func, false_block_id, &alloc) {
-                        let idx = self.get_insertion_index(func, false_block_id);
-                        self.builder.splice_free_before(
-                            *func.name.clone(),
-                            false_block_id,
-                            idx,
-                            alloc.clone().alloc_ins,
-                            self.alloc_type_to_free_func(&alloc),
-                        );
+                        self.insert_free(func, &alloc, false_block_id);
                     }
                     return Some(());
                 }
@@ -319,14 +369,7 @@ impl CTLA {
                         CfgNode::LoopBack(id) => id,
                     };
                     if !self.block_returns_allocation(func, true_block_id, &alloc) {
-                        let idx = self.get_insertion_index(func, true_block_id);
-                        self.builder.splice_free_before(
-                            *func.name.clone(),
-                            true_block_id,
-                            idx,
-                            alloc.clone().alloc_ins,
-                            self.alloc_type_to_free_func(&alloc),
-                        );
+                        self.insert_free(func, &alloc, true_block_id);
                     }
                     return Some(());
                 }
@@ -342,15 +385,18 @@ impl CTLA {
 
                 if !next_refs {
                     // Next node doesn't reference it, free it at the end of this block
-                    let idx = self.get_insertion_index(func, block_id);
-                    self.builder.splice_free_before(
-                        *func.name.clone(),
-                        block_id,
-                        idx,
-                        alloc.clone().alloc_ins,
-                        self.alloc_type_to_free_func(&alloc),
-                    );
+                    self.insert_free(func, &alloc, block_id);
                     return Some(());
+                }
+
+                // If the next block is a Return that references the alloc only via a phi
+                // whose incoming value for THIS predecessor is a DIFFERENT alloc, then
+                // the alloc is not alive beyond this block on this path — free it here.
+                if let CfgNode::Return(return_block_id) = next.as_ref() {
+                    if !self.alloc_enters_phi_from(func, *return_block_id, block_id, &alloc) {
+                        self.insert_free(func, &alloc, block_id);
+                        return Some(());
+                    }
                 }
 
                 // Continue following if it's still referenced

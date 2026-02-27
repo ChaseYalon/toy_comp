@@ -147,11 +147,41 @@ fn test_ctla_argv() {
 }
 
 #[test]
-fn test_ctla_ret_arr(){
+fn test_ctla_ret_arr() {
     compile_code_aot!(
         output,
         "fn ret_arr(): int[] {return [1,2, 3];} let a = ret_arr(); println(a);",
         "ctla_arr_ret"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_str_reassign() {
+    compile_code_aot!(
+        output,
+        r#"
+        import std.sys;
+        export fn write_response(code: int, content_type: int, body: str): str{
+            let content_type_str = "";
+            if content_type == 1{
+                content_type_str = "text/plain; charset=utf-8";
+            } else if content_type == 2{
+                content_type_str = "text/html; charset=utf-8";
+            } else if content_type == 3{
+                content_type_str = "application/json";
+            } else if content_type == 4{
+                content_type_str = "application/javascript";
+            } else {
+                sys.panic("[ERROR] Content type you requested not implemented");
+            }
+            return content_type_str
+        }
+
+        println(write_response(1, 1, ""));
+        println(write_response(1, 2, ""));
+        "#,
+        "ctla_str_reassign"
     );
     assert!(!output.contains("FAIL_TEST"));
 }

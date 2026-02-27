@@ -2,11 +2,14 @@ use ordered_float::OrderedFloat;
 
 use crate::debug;
 use crate::errors::{ToyError, ToyErrorType};
+use crate::lexer::Lexer;
 use crate::parser::ast::Ast;
+use crate::parser::boxer::Boxer;
 use crate::parser::toy_box::TBox;
 use crate::token::Token;
 use crate::token::TypeTok;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::fs;
 
 mod exprs;
 pub struct AstGenerator {
@@ -64,7 +67,7 @@ impl AstGenerator {
 
         map.insert(Token::And.tok_type(), 1);
         map.insert(Token::Or.tok_type(), 1);
-        map.insert(Token::Not.tok_type(), 1); //we must be careful with not, it can only bind to the right
+        map.insert(Token::Not.tok_type(), 1);
 
         let mut var_type_scopes = Vec::new();
         var_type_scopes.push(HashMap::new());
@@ -336,12 +339,6 @@ impl AstGenerator {
             resolved_name = mangled;
             types_opt = self.func_param_type_map.get(&resolved_name);
         } else {
-            // If mangled name not found, check if it's a builtin or already correct
-            // (Builtins currently seem to imply exact match in the map, or specific handling logic)
-            // The original code had:
-            // let builtins = vec!["print", "println", "len", "str", "bool", "int", "float", "input"];
-            // if !builtins.contains(&name.as_str()) { ... manual mangling ... }
-            // We can respect that by checking if the UNMANGLED name is in the map if mangled isn't.
             if self.func_param_type_map.contains_key(&resolved_name) {
                 types_opt = self.func_param_type_map.get(&resolved_name);
             }
@@ -718,6 +715,32 @@ impl AstGenerator {
                     let parts: Vec<&str> = name.split('.').collect();
                     if let Some(alias) = parts.last() {
                         self.imports.insert(alias.to_string(), name.clone());
+                    }
+                }
+                // Load the module file and register its exported function signatures
+                let file_path = name.replace('.', "/") + ".toy";
+                let prefix = name.replace('.', "::");
+                if let Ok(contents) = fs::read_to_string(&file_path) {
+                    let mut l = Lexer::new();
+                    if let Ok(toks) = l.lex(contents) {
+                        let mut b = Boxer::new();
+                        if let Ok(boxes) = b.box_toks(toks) {
+                            for tbox in &boxes {
+                                match tbox {
+                                    TBox::FuncDec(fname, _params, ret_type, _, _, true) => {
+                                        let param_types = tbox.get_func_param_types();
+                                        let func_name = fname.get_var_name().unwrap();
+                                        let full_name = format!("{}::{}", prefix, func_name);
+                                        self.register_function(
+                                            full_name,
+                                            param_types,
+                                            ret_type.clone(),
+                                        );
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
                     }
                 }
                 Ast::ImportStmt(name, raw_text)

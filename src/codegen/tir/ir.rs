@@ -196,12 +196,16 @@ impl TirBuilder {
         return self.block_counter - 1;
     }
     pub fn new_func(&mut self, name: Box<String>, params: Vec<SSAValue>, ret_type: TypeTok) {
+        // The ins_counter must start past the highest param ID to avoid SSA ID collisions.
+        // Params are allocated from the caller's (parent function's) counter, so their IDs
+        // can be arbitrary. Starting at max_param_id + 1 ensures no instruction shadows a param.
+        let ins_counter_start = params.iter().map(|p| p.val + 1).max().unwrap_or(0);
         let func = Function {
             name: name,
             params: params.clone(),
             body: vec![],
             ret_type: self.type_tok_to_tir_type(ret_type),
-            ins_counter: params.len(),
+            ins_counter: ins_counter_start,
             heap_allocations: vec![],
             heap_counter: 0,
         };
@@ -934,8 +938,6 @@ impl TirBuilder {
         };
         let mut val2 = self.call_extern("toy_malloc".to_string(), vec![val])?;
         val2.ty = Some(TirType::Ptr);
-        //we need to update the type of the allocation instruction in the heap allocation list
-        //otherwise the CTLA will not be able to find the allocation
         self.funcs[self.curr_func.unwrap()]
             .heap_allocations
             .iter_mut()
@@ -964,8 +966,8 @@ impl TirBuilder {
             &TypeTok::IntArr(n) => (if use_element_type && n == 1 { 2 } else { 6 }, n),
             &TypeTok::FloatArr(n) => (if use_element_type && n == 1 { 3 } else { 7 }, n),
             &TypeTok::AnyArr(n) => (if use_element_type && n == 1 { 0 } else { 4 }, n),
-            TypeTok::Struct(_) => (0, 0),
-            TypeTok::StructArr(_, n) => (if use_element_type && *n == 1 { 0 } else { 4 }, *n),
+            TypeTok::Struct(_) => (8, 0),
+            TypeTok::StructArr(_, n) => (if use_element_type && *n == 1 { 8 } else { 8 }, *n),
             _ => unreachable!(), // parser validated
         };
         let v = self.iconst(n, TypeTok::Int)?;

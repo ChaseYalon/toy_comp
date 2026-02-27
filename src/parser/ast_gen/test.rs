@@ -2102,3 +2102,43 @@ fn test_ast_gen_any_arr() {
         )]
     ))
 }
+
+#[test]
+fn test_ast_gen_net_boolean() {
+    setup_ast!(
+        r#"import std.net; net.configure_http_server(8080, 100); while true {if net.connection_requested(){println("CConnection!");}}"#,
+        ast
+    );
+    assert!(compare_ast_vecs(
+        ast,
+        vec![
+            Ast::ImportStmt("std.net".to_string(), "".to_string()),
+            Ast::FuncCall(
+                Box::new("std::net::configure_http_server_int_int".to_string()),
+                vec![Ast::IntLit(8080), Ast::IntLit(100)],
+                "".to_string()
+            ),
+            Ast::WhileStmt(
+                Box::new(Ast::BoolLit(true)),
+                vec![Ast::IfStmt(
+                    Box::new(Ast::FuncCall(
+                        Box::new("std::net::connection_requested".to_string()),
+                        vec![],
+                        "".to_string()
+                    )),
+                    vec![Ast::FuncCall(
+                        Box::new("println".to_string()),
+                        vec![Ast::StringLit(
+                            Box::new("CConnection!".to_string()),
+                            "".to_string()
+                        )],
+                        "".to_string()
+                    )],
+                    None,
+                    "".to_string()
+                )],
+                "".to_string()
+            )
+        ]
+    ))
+}

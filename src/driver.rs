@@ -15,8 +15,11 @@ use crate::{
     token::TypeTok,
 };
 
-pub static FILE_EXTENSION_EXE: &str =
-    if cfg!(target_os = "windows") { ".exe" } else { "" };
+pub static FILE_EXTENSION_EXE: &str = if cfg!(target_os = "windows") {
+    ".exe"
+} else {
+    ""
+};
 
 pub struct Linker {}
 
@@ -69,7 +72,6 @@ impl Linker {
         output: String,
         save_temps: bool,
     ) -> Result<(), ToyError> {
-
         let target = env!("TARGET").replace("\"", "");
         let lib_str = format!("lib/{}/", target);
         let lib_path = Path::new(&lib_str);
@@ -85,7 +87,6 @@ impl Linker {
         let output_name = format!("{}{}", output, FILE_EXTENSION_EXE);
 
         let args: Vec<String> = if env::consts::OS == "windows" {
-
             let mut args: Vec<String> = vec![
                 "-m".into(),
                 "i386pep".into(),
@@ -119,12 +120,7 @@ impl Linker {
             }
 
             // force include embedded CA object
-            args.push(
-                lib_path
-                    .join("cacert.o")
-                    .to_string_lossy()
-                    .into_owned(),
-            );
+            args.push(lib_path.join("cacert.o").to_string_lossy().into_owned());
 
             args.push("--end-group".into());
 
@@ -148,7 +144,12 @@ impl Linker {
                 args.push(lib.to_string_lossy().into_owned());
             }
             args.push("--end-group".to_string());
-            args.push(lib_path.join("cacert.o".to_string()).to_string_lossy().into());
+            args.push(
+                lib_path
+                    .join("cacert.o".to_string())
+                    .to_string_lossy()
+                    .into(),
+            );
             args.extend_from_slice(&[
                 crtn_path.to_string_lossy().into_owned(),
                 libc_path.to_string_lossy().into_owned(),
@@ -162,34 +163,22 @@ impl Linker {
             args
         };
 
-        let rstatus = Command::new(lib_path.join("ld.lld"))
-            .args(&args)
-            .status();
+        let rstatus = Command::new(lib_path.join("ld.lld")).args(&args).status();
 
         let status = match rstatus {
             Ok(f) => f,
             Err(_) => {
                 eprintln!("Linker args: {:#?}", args);
-                return Err(ToyError::new(
-                    ToyErrorType::InternalLinkerFailure,
-                    None,
-                ));
+                return Err(ToyError::new(ToyErrorType::InternalLinkerFailure, None));
             }
         };
 
         if !status.success() {
             eprintln!("Linker args: {:#?}", args);
-            return Err(ToyError::new(
-                ToyErrorType::InternalLinkerFailure,
-                None,
-            ));
+            return Err(ToyError::new(ToyErrorType::InternalLinkerFailure, None));
         }
 
-        if save_temps
-            || std::env::var("TOY_DEBUG")
-                .unwrap_or("FALSE".to_string())
-                == "TRUE"
-        {
+        if save_temps || std::env::var("TOY_DEBUG").unwrap_or("FALSE".to_string()) == "TRUE" {
             return Ok(());
         }
 

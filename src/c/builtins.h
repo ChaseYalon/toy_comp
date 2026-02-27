@@ -42,6 +42,7 @@ int64_t toy_type_to_float(int64_t val, int64_t type);
 double toy_int_to_float(int64_t i);
 double toy_float_bits_to_double(int64_t f_bits);
 int64_t toy_double_to_float_bits(double d);
+ToyPtr toy_malloc_struct(int64_t size);
 ToyPtr toy_malloc_arr(int64_t len, int64_t type, int64_t degree);
 void toy_write_to_arr(ToyPtr arr_in_ptr, int64_t value, int64_t idx, int64_t type);
 //return value could be a pointer if sizeof(elem_type) > wordSize
@@ -54,3 +55,9 @@ extern CURL* curl;
 extern CURLcode curlRes;
 void toy_net_init(void);
 void toy_net_shutdown(void);
+typedef struct{
+    int acceptConnectionsOn;
+    int maxTimeoutS;
+} InternalHttpServerConfig;
+
+extern InternalHttpServerConfig* global_config;

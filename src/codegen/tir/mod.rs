@@ -276,7 +276,7 @@ impl AstToIrConverter {
                 {
                     self.builder.numeric_infix(left, right, op)
                 } else {
-                    //at this point we assume it is a string expression
+                    //at this point assume it is a string expression
                     if op == InfixOp::Equals {
                         return self
                             .builder
@@ -609,34 +609,119 @@ impl AstToIrConverter {
             Ast::IfStmt(c, b, a, _) => (*c, b, a),
             _ => unreachable!(),
         };
+
+        let pre_if_vars: BTreeMap<String, (SSAValue, TypeTok)> =
+            scope.as_ref().borrow().vars.clone();
+
         let compiled_cond = self.compile_expr(cond, scope)?;
+        let pre_if_block = self.builder.get_curr_block_id();
         let (true_id, false_id) = self.builder.jump_cond(compiled_cond)?;
+
+        // --- true branch ---
         self.builder.switch_block(true_id);
         let child_scope = Scope::new_child(scope);
-        for ast in body {
-            self.compile_stmt(ast, &child_scope);
+        for (var_name, val) in &pre_if_vars {
+            child_scope.as_ref().borrow_mut().set_var(
+                var_name.clone(),
+                val.0.clone(),
+                val.1.clone(),
+            );
         }
-        //if there is no else, then the false is the merge block
-        let mut merge_id: Option<BlockId> = None;
+        for ast in body {
+            self.compile_stmt(ast, &child_scope)?;
+        }
+        let true_end_block = self.builder.get_curr_block_id();
+        let true_branch_vars: BTreeMap<String, (SSAValue, TypeTok)> =
+            child_scope.as_ref().borrow().vars.clone();
+        let true_terminated = self.builder.curr_block_has_terminator();
+
         if alt.is_none() {
-            if !self.builder.curr_block_has_terminator() {
+            //if there is no else, then the false is the merge block
+            if !true_terminated {
                 self.builder.jump_block_un_cond(false_id);
             }
             self.builder.switch_block(false_id);
-        } else {
-            merge_id = Some(self.builder.create_block()?);
-            if !self.builder.curr_block_has_terminator() {
-                self.builder.jump_block_un_cond(merge_id.unwrap());
+
+            // insert phi nodes for variables modified in the true branch
+            for (var_name, pre_val) in &pre_if_vars {
+                if let Some(true_val) = true_branch_vars.get(var_name) {
+                    if true_val.0 != pre_val.0 && !true_terminated {
+                        let phi_id = self.builder.alloc_value_id();
+                        self.builder.insert_phi(
+                            false_id,
+                            phi_id,
+                            vec![true_end_block, pre_if_block],
+                            vec![true_val.0.clone(), pre_val.0.clone()],
+                        )?;
+                        scope.as_ref().borrow_mut().set_var(
+                            var_name.clone(),
+                            SSAValue {
+                                val: phi_id,
+                                ty: pre_val.0.ty.clone(),
+                            },
+                            pre_val.1.clone(),
+                        );
+                    }
+                }
             }
+        } else {
+            let merge_id = self.builder.create_block()?;
+            if !true_terminated {
+                self.builder.jump_block_un_cond(merge_id);
+            }
+
+            // --- false/else branch ---
             self.builder.switch_block(false_id);
             let else_child = Scope::new_child(scope);
+            for (var_name, val) in &pre_if_vars {
+                else_child.as_ref().borrow_mut().set_var(
+                    var_name.clone(),
+                    val.0.clone(),
+                    val.1.clone(),
+                );
+            }
             for ast in alt.unwrap() {
-                self.compile_stmt(ast, &else_child);
+                self.compile_stmt(ast, &else_child)?;
             }
-            if !self.builder.curr_block_has_terminator() {
-                self.builder.jump_block_un_cond(merge_id.unwrap());
+            let false_end_block = self.builder.get_curr_block_id();
+            let false_branch_vars: BTreeMap<String, (SSAValue, TypeTok)> =
+                else_child.as_ref().borrow().vars.clone();
+            let false_terminated = self.builder.curr_block_has_terminator();
+
+            if !false_terminated {
+                self.builder.jump_block_un_cond(merge_id);
             }
-            self.builder.switch_block(merge_id.unwrap());
+            self.builder.switch_block(merge_id);
+
+            // insert phi nodes for variables modified in either branch
+            for (var_name, pre_val) in &pre_if_vars {
+                let true_val = true_branch_vars
+                    .get(var_name)
+                    .map(|v| &v.0)
+                    .unwrap_or(&pre_val.0);
+                let false_val = false_branch_vars
+                    .get(var_name)
+                    .map(|v| &v.0)
+                    .unwrap_or(&pre_val.0);
+
+                if *true_val != pre_val.0 || *false_val != pre_val.0 {
+                    let phi_id = self.builder.alloc_value_id();
+                    self.builder.insert_phi(
+                        merge_id,
+                        phi_id,
+                        vec![true_end_block, false_end_block],
+                        vec![true_val.clone(), false_val.clone()],
+                    )?;
+                    scope.as_ref().borrow_mut().set_var(
+                        var_name.clone(),
+                        SSAValue {
+                            val: phi_id,
+                            ty: pre_val.0.ty.clone(),
+                        },
+                        pre_val.1.clone(),
+                    );
+                }
+            }
         }
 
         return Ok(());
@@ -653,9 +738,7 @@ impl AstToIrConverter {
 
         let pre_loop_vars: BTreeMap<String, (SSAValue, TypeTok)> =
             scope.as_ref().borrow().vars.clone();
-        let uses_loop_control = body
-            .iter()
-            .any(Self::has_loop_control_for_current_loop);
+        let uses_loop_control = body.iter().any(Self::has_loop_control_for_current_loop);
         let header_id = self.builder.create_block()?;
         let pre_loop_block_id = self.builder.get_curr_block_id();
         self.builder.jump_block_un_cond(header_id);
@@ -756,12 +839,8 @@ impl AstToIrConverter {
                         backedge_vals[0].clone()
                     } else {
                         let phi_id = self.builder.alloc_value_id();
-                        self.builder.insert_phi(
-                            latch,
-                            phi_id,
-                            backedge_blocks,
-                            backedge_vals,
-                        )?;
+                        self.builder
+                            .insert_phi(latch, phi_id, backedge_blocks, backedge_vals)?;
                         SSAValue {
                             val: phi_id,
                             ty: pre_val.0.ty.clone(),
@@ -792,7 +871,10 @@ impl AstToIrConverter {
                             .unwrap_or_else(|| post_val.0.clone()),
                     )
                 } else {
-                    (non_latch_backedge_block.unwrap_or(body_id), post_val.0.clone())
+                    (
+                        non_latch_backedge_block.unwrap_or(body_id),
+                        post_val.0.clone(),
+                    )
                 };
                 self.builder.insert_phi(
                     header_id,
@@ -1037,7 +1119,9 @@ impl AstToIrConverter {
                     .loop_stack
                     .last()
                     .map(|ctx| ctx.break_target)
-                    .ok_or_else(|| ToyError::new(ToyErrorType::InvalidLocationForBreakStatement, None))?;
+                    .ok_or_else(|| {
+                        ToyError::new(ToyErrorType::InvalidLocationForBreakStatement, None)
+                    })?;
                 self.builder.jump_block_un_cond(merge_id)?;
             }
 

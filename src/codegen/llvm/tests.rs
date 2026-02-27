@@ -313,3 +313,13 @@ fn test_llvm_codegen_break_continue() {
     );
     assert!(output.contains("124566"));
 }
+
+#[test]
+fn test_llvm_string_conditional_assignment() {
+    compile_code_aot!(
+        output,
+        r#"let s = ""; if 3 == 1{s = "a"} else if 3 == 2{ s = "b"} else {s = "c"}; println(s);"#,
+        "str_cond_ass"
+    );
+    assert!(output.contains("c"));
+}
