@@ -27,3 +27,6 @@ config.toml
 #lib stuff
 *.gz
 lib
+
+#block default elf
+Program
