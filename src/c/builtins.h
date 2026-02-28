@@ -1,6 +1,10 @@
 #pragma once
 #define CURL_STATICLIB
+#ifdef _WIN32
 #include "../../lib/x86_64-pc-windows-gnu/curl_include/curl.h"
+#else
+#include "../../lib/x86_64-unknown-linux-gnu/curl_include/curl.h"
+#endif
 #include <stdint.h>
 #include "ctla/ctla.h"
 

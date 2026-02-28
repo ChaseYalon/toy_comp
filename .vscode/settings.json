@@ -170,6 +170,7 @@
   ],
   "chat.tools.terminal.autoApprove": {
     "nm": true
-  }
+  },
+  "cmake.ignoreCMakeListsMissing": true
 
 }
