@@ -7,13 +7,40 @@ use std::fmt::*;
 use std::{fmt, fs};
 use thiserror::Error;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Span {
     pub file_path: String,
     ///number of bytes before the code in question is started. INCLUSIVE
     pub start_offset_bytes: i64,
     ///number of bytes FROM THE BEGINNING that marks the end of the span, INCLUSIVE
     pub end_offset_bytes: i64,
+}
+impl fmt::Display for Span{
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        if self.file_path == "NULL" || self.start_offset_bytes < 0 || self.end_offset_bytes < 0 {
+            return write!(f, "<no span>");
+        }
+
+        match fs::read_to_string(&self.file_path) {
+            Ok(content) => {
+                let bytes = content.as_bytes();
+                let start = self.start_offset_bytes as usize;
+                let end = self.end_offset_bytes as usize;
+
+                if start >= bytes.len() || end >= bytes.len() || start > end {
+                    return write!(f, "<invalid span for {} {}..=>{}>", self.file_path, start, end);
+                }
+
+                if let Some(slice) = content.get(start..=end) {
+                    write!(f, "{}", slice)
+                } else {
+                    let slice = &bytes[start..=end];
+                    write!(f, "{}", String::from_utf8_lossy(slice))
+                }
+            }
+            Err(_) => write!(f, "<could not read file: {}>", self.file_path),
+        }
+    }
 }
 impl Span {
     ///end_offset_bytes - number of bytes before the code in question is started. INCLUSIVE
@@ -30,18 +57,6 @@ impl Span {
     }
     pub fn null_span_with_msg(msg: &str) -> Span{
         return Span::new(msg, -1, -1);
-    }
-
-    ///SAFETY - this is considered an internal compiler function, any error in here is a compiler error that should crash
-    pub fn to_string(&self) -> String {
-        return String::from_utf8(
-            fs::read_to_string(self.file_path.clone())
-                .unwrap()
-                .as_bytes()
-                .to_vec()[self.start_offset_bytes as usize..=self.end_offset_bytes as usize]
-                .to_vec(),
-        )
-        .unwrap();
     }
     //(line, col), (line, col)
     pub fn get_line_col(&self) -> ((u64, u64), (u64, u64)) {

@@ -5,8 +5,8 @@ use std::collections::BTreeMap;
 
 fn eq_tbox_ignoring_src(x: &TBox, y: &TBox) -> bool {
     match (x, y) {
-        (TBox::Break, TBox::Break) => true,
-        (TBox::Continue, TBox::Continue) => true,
+        (TBox::Break(_), TBox::Break(_)) => true,
+        (TBox::Continue(_), TBox::Continue(_)) => true,
 
         (TBox::Expr(xv, _), TBox::Expr(yv, _)) => xv == yv,
 

@@ -72,10 +72,20 @@ pub enum Token {
     RBrack,
     Dot,
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SpannedToken{
     pub tok: Token,
     pub span: Span
+}
+impl fmt::Display for SpannedToken {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        return write!(f, "{:?}_{:?}", self.tok, self.span);
+    }
+}
+impl SpannedToken{
+    pub fn get_var_name(&self) -> Option<Box<String>>{
+        return self.tok.get_var_name()
+    }
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeTok {
