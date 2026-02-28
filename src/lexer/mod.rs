@@ -48,14 +48,17 @@ impl Lexer {
     }
     /// Push a token, recording `start_cursor` (char index) as its span start.
     fn push_tok(&mut self, tok: Token, start_cursor: usize) {
-        let start_byte = self.char_byte_offsets.get(start_cursor).copied().unwrap_or(0) as u64;
+        let start_byte = self
+            .char_byte_offsets
+            .get(start_cursor)
+            .copied()
+            .unwrap_or(0) as u64;
         self.token_start_bytes.push(start_byte);
         self.pending_tokens.push(tok);
     }
     /// Build a Span pointing at the current character for error reporting.
     fn get_error_span(&self) -> Span {
-        let file_path = Driver::get_current_file_path()
-            .unwrap_or_else(|| "<unknown>".to_string());
+        let file_path = Driver::get_current_file_path().unwrap_or_else(|| "<unknown>".to_string());
         if self.char_byte_offsets.is_empty() || self.cursor >= self.char_byte_offsets.len() {
             return Span::null_span_with_msg(&format!("near end of {}", file_path));
         }
@@ -427,7 +430,9 @@ impl Lexer {
                 if self.peek(1) == '/' {
                     self.flush();
                     //Comment, skip to end of line
-                    while self.cursor < self.source_chars.len() && self.source_chars[self.cursor] != '\n' {
+                    while self.cursor < self.source_chars.len()
+                        && self.source_chars[self.cursor] != '\n'
+                    {
                         self.eat();
                     }
                     continue;
@@ -591,8 +596,7 @@ impl Lexer {
         // flush any trailing numeric literal
         self.flush_num();
         // build SpannedTokens: each token spans [its_start, next_token_start)
-        let file_path = Driver::get_current_file_path()
-            .unwrap_or_else(|| "<unknown>".to_string());
+        let file_path = Driver::get_current_file_path().unwrap_or_else(|| "<unknown>".to_string());
         let source_end_byte = self.char_byte_offsets.last().copied().unwrap_or(0) as u64;
         let starts = self.token_start_bytes.clone();
         let spanned: Vec<SpannedToken> = self

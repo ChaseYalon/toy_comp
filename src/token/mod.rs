@@ -73,18 +73,27 @@ pub enum Token {
     Dot,
 }
 #[derive(Debug, Clone, PartialEq)]
-pub struct SpannedToken{
+pub struct SpannedToken {
     pub tok: Token,
-    pub span: Span
+    pub span: Span,
 }
 impl fmt::Display for SpannedToken {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         return write!(f, "{:?}_{:?}", self.tok, self.span);
     }
 }
-impl SpannedToken{
-    pub fn get_var_name(&self) -> Option<Box<String>>{
-        return self.tok.get_var_name()
+impl SpannedToken {
+    pub fn get_var_name(&self) -> Option<Box<String>> {
+        return self.tok.get_var_name();
+    }
+    pub fn new(tok: Token, span: Span) -> SpannedToken {
+        return SpannedToken { tok, span };
+    }
+    pub fn new_null(tok: Token) -> SpannedToken {
+        return SpannedToken {
+            tok,
+            span: Span::null_span(),
+        };
     }
 }
 #[derive(Debug, Clone, PartialEq, Eq)]

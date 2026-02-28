@@ -173,12 +173,18 @@ impl Linker {
         let status = match rstatus {
             Ok(f) => f,
             Err(_) => {
-                return Err(ToyError::new(ToyErrorType::InternalLinkerFailure,Span::null_span_with_msg(&format!("{:?}", args))));
+                return Err(ToyError::new(
+                    ToyErrorType::InternalLinkerFailure,
+                    Span::null_span_with_msg(&format!("{:?}", args)),
+                ));
             }
         };
 
         if !status.success() {
-            return Err(ToyError::new(ToyErrorType::InternalLinkerFailure, Span::null_span_with_msg(&format!("{:?}", args))));
+            return Err(ToyError::new(
+                ToyErrorType::InternalLinkerFailure,
+                Span::null_span_with_msg(&format!("{:?}", args)),
+            ));
         }
 
         if save_temps || std::env::var("TOY_DEBUG").unwrap_or("FALSE".to_string()) == "TRUE" {
@@ -239,7 +245,7 @@ impl Driver {
     pub fn get_current_file_path() -> Option<String> {
         CURRENT_FILE_PATH.with(|p| p.borrow().clone())
     }
-    
+
     fn set_current_file_path(path: &str) {
         CURRENT_FILE_PATH.with(|p| *p.borrow_mut() = Some(path.to_string()));
     }
@@ -350,7 +356,7 @@ impl Driver {
             module.print_to_stderr();
             return Err(ToyError::new(
                 ToyErrorType::InternalLinkerFailure,
-            Span::null_span_with_msg(&format!("Module failed to verify, {:?}", e)),
+                Span::null_span_with_msg(&format!("Module failed to verify, {:?}", e)),
             ));
         }
 
@@ -478,8 +484,7 @@ impl Driver {
         let main_program = fs::read_to_string(&self.main_program_path).map_err(|_| {
             ToyError::new(
                 ToyErrorType::MissingFile,
-                Span::null_span_with_msg(&
-                    format!(
+                Span::null_span_with_msg(&format!(
                     "Could not find file: {}",
                     self.main_program_path.to_string_lossy()
                 )),

@@ -10,12 +10,20 @@ fn compare_tokens(test_name: &str, got: Vec<SpannedToken>, want: Vec<Token>) {
         eprintln!(
             "{}\nExpected {} token(s), got {}",
             "[TEST ERROR]"
-                .color(Color::TrueColor { r: 255, g: 147, b: 32 })
+                .color(Color::TrueColor {
+                    r: 255,
+                    g: 147,
+                    b: 32
+                })
                 .bold(),
             want.len().to_string().green().bold(),
             got.len()
                 .to_string()
-                .color(Color::TrueColor { r: 255, g: 147, b: 32 })
+                .color(Color::TrueColor {
+                    r: 255,
+                    g: 147,
+                    b: 32
+                })
                 .bold()
         );
         panic_with_write(test_name, got.iter().map(|s| s.tok.clone()).collect(), want);
@@ -26,12 +34,20 @@ fn compare_tokens(test_name: &str, got: Vec<SpannedToken>, want: Vec<Token>) {
             eprintln!(
                 "{}\nToken [{}] — expected: {}, got: {}",
                 "[TEST ERROR]"
-                    .color(Color::TrueColor { r: 255, g: 147, b: 32 })
+                    .color(Color::TrueColor {
+                        r: 255,
+                        g: 147,
+                        b: 32
+                    })
                     .bold(),
                 i,
                 format!("{:?}", expected).green().bold(),
                 format!("{:?}", &spanned.tok)
-                    .color(Color::TrueColor { r: 255, g: 147, b: 32 })
+                    .color(Color::TrueColor {
+                        r: 255,
+                        g: 147,
+                        b: 32
+                    })
                     .bold()
             );
             panic_with_write(test_name, got.iter().map(|s| s.tok.clone()).collect(), want);
@@ -59,7 +75,11 @@ fn test_lexer_int_literals() {
 
     //"4"
     let out = l.lex(String::from("4"));
-    compare_tokens("test_lexer_int_literals", out.unwrap(), vec![Token::IntLit(4)]);
+    compare_tokens(
+        "test_lexer_int_literals",
+        out.unwrap(),
+        vec![Token::IntLit(4)],
+    );
 }
 
 #[test]
@@ -76,8 +96,8 @@ fn test_lexer_infix_ops() {
             Token::Minus,
             Token::IntLit(3),
             Token::Divide,
-            Token::IntLit(6)
-        ]
+            Token::IntLit(6),
+        ],
     );
 }
 
@@ -93,8 +113,8 @@ fn test_lexer_var_dec() {
             Token::VarName(Box::new("x".to_string())),
             Token::Assign,
             Token::IntLit(9),
-            Token::Semicolon
-        ]
+            Token::Semicolon,
+        ],
     )
 }
 
@@ -116,7 +136,7 @@ fn test_lexer_multiple_var_decs() {
             Token::Assign,
             Token::IntLit(8),
             Token::Semicolon,
-        ]
+        ],
     )
 }
 
@@ -137,7 +157,7 @@ fn test_lexer_var_ref() {
             Token::Plus,
             Token::IntLit(3),
             Token::Semicolon,
-        ]
+        ],
     )
 }
 
@@ -156,7 +176,7 @@ fn test_lexer_static_type() {
             Token::Assign,
             Token::IntLit(0),
             Token::Semicolon,
-        ]
+        ],
     )
 }
 
@@ -175,7 +195,7 @@ fn test_lexer_bool_lit() {
             Token::Assign,
             Token::BoolLit(true),
             Token::Semicolon,
-        ]
+        ],
     )
 }
 
@@ -199,7 +219,7 @@ fn test_lexer_bool_infix() {
             Token::Or,
             Token::BoolLit(false),
             Token::Semicolon,
-        ]
+        ],
     )
 }
 
@@ -235,7 +255,7 @@ fn test_lexer_misc_infix() {
             Token::LessThanEqt,
             Token::IntLit(9),
             Token::Semicolon,
-        ]
+        ],
     )
 }
 
@@ -268,7 +288,7 @@ fn test_lexer_misc_infix_2() {
             Token::Equals,
             Token::IntLit(5),
             Token::Semicolon,
-        ]
+        ],
     )
 }
 
@@ -284,7 +304,7 @@ fn test_lexer_if_stmt() {
             Token::BoolLit(true),
             Token::LBrace,
             Token::RBrace,
-        ]
+        ],
     )
 }
 
@@ -322,7 +342,7 @@ fn test_lexer_nested_if_else() {
             Token::IntLit(5),
             Token::RBrace,
             Token::Semicolon,
-        ]
+        ],
     )
 }
 
@@ -349,7 +369,7 @@ fn test_lexer_nested_parens() {
             Token::Divide,
             Token::IntLit(7),
             Token::Semicolon,
-        ]
+        ],
     )
 }
 #[test]
@@ -392,8 +412,8 @@ fn test_lexer_func() {
             Token::Comma,
             Token::IntLit(3),
             Token::RParen,
-            Token::Semicolon
-        ]
+            Token::Semicolon,
+        ],
     )
 }
 
@@ -410,7 +430,7 @@ fn test_lexer_string_lit() {
             Token::Assign,
             Token::StringLit(Box::new("hello".to_string())),
             Token::Semicolon,
-        ]
+        ],
     )
 }
 
@@ -426,8 +446,8 @@ fn test_call_builtin() {
             Token::LParen,
             Token::StringLit(Box::new("hello world".to_string())),
             Token::RParen,
-            Token::Semicolon
-        ]
+            Token::Semicolon,
+        ],
     )
 }
 #[test]
@@ -443,8 +463,8 @@ fn test_lexer_str_concat() {
             Token::Assign,
             Token::StringLit(Box::new("foo".to_string())),
             Token::Plus,
-            Token::StringLit(Box::new("bar".to_string()))
-        ]
+            Token::StringLit(Box::new("bar".to_string())),
+        ],
     )
 }
 
@@ -473,7 +493,7 @@ fn test_str_var_concat() {
             Token::Plus,
             Token::VarRef(Box::new("y".to_string())),
             Token::Semicolon,
-        ]
+        ],
     )
 }
 #[test]
@@ -489,7 +509,7 @@ fn test_lexer_print() {
             Token::IntLit(4),
             Token::RParen,
             Token::Semicolon,
-        ]
+        ],
     )
 }
 
@@ -566,8 +586,8 @@ fn test_lexer_fib() {
             Token::IntLit(5),
             Token::RParen,
             Token::RParen,
-            Token::Semicolon
-        ]
+            Token::Semicolon,
+        ],
     )
 }
 #[test]
@@ -605,7 +625,7 @@ fn test_lexer_compound_ops() {
             Token::VarRef(Box::new("x".to_string())),
             Token::MinusMinus,
             Token::Semicolon,
-        ]
+        ],
     )
 }
 
@@ -648,7 +668,7 @@ fn test_lexer_while_loop() {
             Token::PlusPlus,
             Token::Semicolon,
             Token::RBrace,
-        ]
+        ],
     )
 }
 
@@ -681,7 +701,7 @@ fn test_lexer_str_type_conv() {
             Token::VarRef(Box::new("y".to_string())),
             Token::RParen,
             Token::Semicolon,
-        ]
+        ],
     )
 }
 
@@ -697,8 +717,8 @@ fn test_lexer_empty_string() {
             Token::VarName(Box::new("x".to_string())),
             Token::Assign,
             Token::StringLit(Box::new("".to_string())),
-            Token::Semicolon
-        ]
+            Token::Semicolon,
+        ],
     )
 }
 
@@ -726,8 +746,8 @@ fn test_lexer_float() {
             Token::Type(TypeTok::Float),
             Token::Assign,
             Token::FloatLit(OrderedFloat(3.242)),
-            Token::Semicolon
-        ]
+            Token::Semicolon,
+        ],
     )
 }
 
@@ -745,8 +765,8 @@ fn test_lexer_zero_float() {
             Token::IntLit(3),
             Token::Plus,
             Token::FloatLit(OrderedFloat(0.1415)),
-            Token::Semicolon
-        ]
+            Token::Semicolon,
+        ],
     )
 }
 
@@ -777,7 +797,7 @@ fn test_lexer_arr_lit_and_index() {
             Token::IntLit(2),
             Token::RBrack,
             Token::Semicolon,
-        ]
+        ],
     )
 }
 
@@ -815,7 +835,7 @@ fn test_lexer_static_arr_types() {
             Token::IntLit(3),
             Token::RBrack,
             Token::Semicolon,
-        ]
+        ],
     )
 }
 
@@ -849,8 +869,8 @@ fn test_lexer_n_dimensional_arrays() {
             Token::IntLit(6),
             Token::RBrack,
             Token::RBrack,
-            Token::Semicolon
-        ]
+            Token::Semicolon,
+        ],
     )
 }
 
@@ -887,7 +907,7 @@ fn test_lexer_n_dimensional_arr_reassign() {
             Token::Assign,
             Token::StringLit(Box::new("hi".to_string())),
             Token::Semicolon,
-        ]
+        ],
     )
 }
 
@@ -933,8 +953,8 @@ fn test_lexer_struct_literal_and_ref() {
             Token::Dot,
             Token::VarRef(Box::new("b".to_string())),
             Token::RParen,
-            Token::Semicolon
-        ]
+            Token::Semicolon,
+        ],
     )
 }
 
@@ -980,8 +1000,8 @@ fn test_lexer_problematic_struct_dec() {
             Token::Dot,
             Token::VarRef(Box::new("x".to_string())),
             Token::RParen,
-            Token::Semicolon
-        ]
+            Token::Semicolon,
+        ],
     )
 }
 
@@ -1024,8 +1044,8 @@ fn test_lexer_nested_struct() {
             Token::BoolLit(true),
             Token::RBrace,
             Token::RBrace,
-            Token::Semicolon
-        ]
+            Token::Semicolon,
+        ],
     )
 }
 
@@ -1077,8 +1097,8 @@ fn test_lexer_nested_struct_ref() {
             Token::Dot,
             Token::VarRef(Box::new("bar".to_string())),
             Token::RParen,
-            Token::Semicolon
-        ]
+            Token::Semicolon,
+        ],
     )
 }
 
@@ -1112,8 +1132,8 @@ fn test_lexer_struct_reassign() {
             Token::VarRef(Box::new("a".to_string())),
             Token::Assign,
             Token::IntLit(4),
-            Token::Semicolon
-        ]
+            Token::Semicolon,
+        ],
     )
 }
 #[test]
@@ -1172,7 +1192,7 @@ fn test_lexer_nd_struct_reassign_variable() {
             Token::Assign,
             Token::VarRef(Box::new("fee".to_string())),
             Token::Semicolon,
-        ]
+        ],
     )
 }
 
@@ -1216,7 +1236,7 @@ fn test_lexer_nd_struct_reassign() {
             Token::Assign,
             Token::VarRef(Box::new("fee".to_string())),
             Token::Semicolon,
-        ]
+        ],
     )
 }
 
@@ -1295,7 +1315,7 @@ fn test_lexer_for_block() {
             Token::LParen,
             Token::RParen,
             Token::Semicolon,
-        ]
+        ],
     )
 }
 
@@ -1452,7 +1472,7 @@ fn test_lexer_struct_func_multi_param_bug() {
             Token::VarRef(Box::new("points".to_string())),
             Token::RParen,
             Token::Semicolon,
-        ]
+        ],
     )
 }
 
@@ -1474,7 +1494,7 @@ fn test_lexer_unary_minus_int_and_float() {
             Token::Assign,
             Token::FloatLit(OrderedFloat(-3.14)),
             Token::Semicolon,
-        ]
+        ],
     )
 }
 
@@ -1503,6 +1523,6 @@ fn test_lexer_import() {
             Token::IntLit(-3),
             Token::RParen,
             Token::Semicolon,
-        ]
+        ],
     )
 }

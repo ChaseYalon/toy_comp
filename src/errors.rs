@@ -15,7 +15,7 @@ pub struct Span {
     ///number of bytes FROM THE BEGINNING that marks the end of the span, INCLUSIVE
     pub end_offset_bytes: i64,
 }
-impl fmt::Display for Span{
+impl fmt::Display for Span {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         if self.file_path == "NULL" || self.start_offset_bytes < 0 || self.end_offset_bytes < 0 {
             return write!(f, "<no span>");
@@ -28,7 +28,11 @@ impl fmt::Display for Span{
                 let end = self.end_offset_bytes as usize;
 
                 if start >= bytes.len() || end >= bytes.len() || start > end {
-                    return write!(f, "<invalid span for {} {}..=>{}>", self.file_path, start, end);
+                    return write!(
+                        f,
+                        "<invalid span for {} {}..=>{}>",
+                        self.file_path, start, end
+                    );
                 }
 
                 if let Some(slice) = content.get(start..=end) {
@@ -52,10 +56,10 @@ impl Span {
             end_offset_bytes,
         };
     }
-    pub fn null_span() -> Span{
+    pub fn null_span() -> Span {
         return Span::new("NULL", -1, -1);
     }
-    pub fn null_span_with_msg(msg: &str) -> Span{
+    pub fn null_span_with_msg(msg: &str) -> Span {
         return Span::new(msg, -1, -1);
     }
     //(line, col), (line, col)
@@ -157,7 +161,7 @@ impl ToyError {
             offending_code: if offending_code.end_offset_bytes != -1 {
                 offending_code
             } else {
-                Span::new("FILE_NOT_SPECIFIED",-1, -1)
+                Span::new("FILE_NOT_SPECIFIED", -1, -1)
             },
         };
     }
@@ -172,7 +176,7 @@ impl ToyError {
 
 impl fmt::Display for ToyError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.offending_code.end_offset_bytes > 0{
+        if self.offending_code.end_offset_bytes > 0 {
             let ((start_l, start_c), (end_l, end_c)) = self.offending_code.get_line_col();
             write!(
                 f,

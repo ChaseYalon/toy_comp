@@ -33,11 +33,15 @@ impl Boxer {
             current_struct: None,
         }
     }
-    pub fn total_span(toks: Vec<SpannedToken>)-> Span {
+    pub fn total_span(toks: Vec<SpannedToken>) -> Span {
         let first = toks[0].span.clone();
         //SAFETY - this array should always be filled
         let last = toks.last().unwrap().span.clone();
-        return Span::new(&first.file_path, first.start_offset_bytes, last.end_offset_bytes);
+        return Span::new(
+            &first.file_path,
+            first.start_offset_bytes,
+            last.end_offset_bytes,
+        );
     }
     /// Mangle a function name with the module prefix if set
     fn parse_type(&self, input: &[SpannedToken]) -> Result<(TypeTok, usize), ToyError> {
@@ -70,7 +74,12 @@ impl Boxer {
                     TypeTok::Str => TypeTok::StrArr(dim),
                     TypeTok::Float => TypeTok::FloatArr(dim),
                     TypeTok::Any => TypeTok::AnyArr(dim),
-                    _ => return Err(ToyError::new(ToyErrorType::MalformedType, input[0].span.clone())),
+                    _ => {
+                        return Err(ToyError::new(
+                            ToyErrorType::MalformedType,
+                            input[0].span.clone(),
+                        ));
+                    }
                 };
                 return Ok((new_type, i));
             }
@@ -100,8 +109,7 @@ impl Boxer {
             }
             _ => Err(ToyError::new(
                 ToyErrorType::MalformedType,
-                cumulative_toks
-                //Some(format!("Expected type, found: {}", input[0])),
+                cumulative_toks, //Some(format!("Expected type, found: {}", input[0])),
             )),
         }
     }
@@ -257,7 +265,6 @@ impl Boxer {
                 }
 
                 if while_end >= input.len() {
-
                     return Err(ToyError::new(
                         ToyErrorType::MalformedWhileStatement,
                         cumulative_span,
@@ -341,7 +348,7 @@ impl Boxer {
                     if actual_start >= input.len() {
                         return Err(ToyError::new(
                             ToyErrorType::MalformedFunctionDeclaration,
-                            Span::null_span_with_msg("export must be followed by fn or extern")//this seems like it should have line:col info
+                            Span::null_span_with_msg("export must be followed by fn or extern"), //this seems like it should have line:col info
                         ));
                     }
                     let next_type = input[actual_start].tok.tok_type();
@@ -363,7 +370,6 @@ impl Boxer {
                         func_end += 1;
                     }
                     if func_end >= input.len() {
-
                         return Err(ToyError::new(
                             ToyErrorType::MalformedFunctionDeclaration,
                             cumulative_span,
@@ -391,7 +397,6 @@ impl Boxer {
                 }
 
                 if !found_body {
-
                     return Err(ToyError::new(
                         ToyErrorType::MalformedFunctionDeclaration,
                         cumulative_span,
@@ -440,7 +445,6 @@ impl Boxer {
             input.as_slice().split(|t| t.tok == Token::Comma).collect();
         let mut func_params: Vec<TBox> = Vec::new();
         for triple in triplets {
-
             let (param_type, _) = self.parse_type(&triple[2..])?;
             let param = TBox::FuncParam(triple[0].clone(), param_type, cumulative_span.clone());
             func_params.push(param);

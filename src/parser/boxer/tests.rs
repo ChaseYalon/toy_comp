@@ -1,5 +1,9 @@
 use super::{Boxer, TBox, Token};
-use crate::{lexer::Lexer, token::TypeTok};
+use crate::{
+    errors::Span,
+    lexer::Lexer,
+    token::{SpannedToken, TypeTok},
+};
 use ordered_float::OrderedFloat;
 use std::collections::BTreeMap;
 
@@ -81,7 +85,10 @@ fn test_boxer_int_literal() {
 
     assert!(compare_tbox_vecs(
         boxes.unwrap(),
-        vec![TBox::Expr(vec![Token::IntLit(4)], "".to_string())]
+        vec![TBox::Expr(
+            vec![SpannedToken::new_null(Token::IntLit(4))],
+            Span::null_span()
+        )]
     ))
 }
 
@@ -97,13 +104,13 @@ fn test_boxer_infix_expression() {
         boxes.unwrap(),
         vec![TBox::Expr(
             vec![
-                Token::IntLit(8),
-                Token::Minus,
-                Token::IntLit(3),
-                Token::Multiply,
-                Token::IntLit(5),
+                SpannedToken::new_null(Token::IntLit(8)),
+                SpannedToken::new_null(Token::Minus),
+                SpannedToken::new_null(Token::IntLit(3)),
+                SpannedToken::new_null(Token::Multiply),
+                SpannedToken::new_null(Token::IntLit(5)),
             ],
-            "".to_string()
+            Span::null_span()
         ),]
     ))
 }
@@ -118,10 +125,10 @@ fn test_boxer_var_dec() {
     assert!(compare_tbox_vecs(
         boxes.unwrap(),
         vec![TBox::VarDec(
-            Token::VarName(Box::new(String::from("x"))),
+            SpannedToken::new_null(Token::VarName(Box::new(String::from("x")))),
             None,
-            vec![Token::IntLit(9)],
-            "let x = 9".to_string()
+            vec![SpannedToken::new_null(Token::IntLit(9))],
+            Span::null_span()
         )]
     ))
 }
@@ -137,15 +144,15 @@ fn test_boxer_var_ref() {
         boxes.unwrap(),
         vec![
             TBox::VarDec(
-                Token::VarName(Box::new("x".to_string())),
+                SpannedToken::new_null(Token::VarName(Box::new("x".to_string()))),
                 None,
-                vec![Token::IntLit(7)],
-                "".to_string()
+                vec![SpannedToken::new_null(Token::IntLit(7))],
+                Span::null_span()
             ),
             TBox::Assign(
-                vec![Token::VarRef(Box::new("x".to_string()))],
-                vec![Token::IntLit(8)],
-                "".to_string()
+                vec![SpannedToken::new_null(Token::VarRef(Box::new("x".to_string())))],
+                vec![SpannedToken::new_null(Token::IntLit(8))],
+                Span::null_span()
             )
         ]
     ))
@@ -161,10 +168,10 @@ fn test_boxer_static_type() {
     assert!(compare_tbox_vecs(
         boxes.unwrap(),
         vec![TBox::VarDec(
-            Token::VarName(Box::new("foo".to_string())),
+            SpannedToken::new_null(Token::VarName(Box::new("foo".to_string()))),
             Some(TypeTok::Int),
-            vec![Token::IntLit(9)],
-            "".to_string()
+            vec![SpannedToken::new_null(Token::IntLit(9))],
+            Span::null_span()
         )]
     ))
 }
@@ -180,16 +187,16 @@ fn test_boxer_bool_infix() {
     assert!(compare_tbox_vecs(
         boxes.unwrap(),
         vec![TBox::VarDec(
-            Token::VarName(Box::new("x".to_string())),
+            SpannedToken::new_null(Token::VarName(Box::new("x".to_string()))),
             None,
             vec![
-                Token::IntLit(9),
-                Token::LessThanEqt,
-                Token::IntLit(4),
-                Token::Or,
-                Token::BoolLit(false)
+                SpannedToken::new_null(Token::IntLit(9)),
+                SpannedToken::new_null(Token::LessThanEqt),
+                SpannedToken::new_null(Token::IntLit(4)),
+                SpannedToken::new_null(Token::Or),
+                SpannedToken::new_null(Token::BoolLit(false))
             ],
-            "".to_string()
+            Span::null_span()
         )]
     ))
 }
@@ -204,8 +211,8 @@ fn test_boxer_return_bool() {
     assert!(compare_tbox_vecs(
         boxes.unwrap(),
         vec![TBox::Expr(
-            vec![Token::BoolLit(true), Token::Or, Token::BoolLit(false),],
-            "".to_string()
+            vec![SpannedToken::new_null(Token::BoolLit(true)), SpannedToken::new_null(Token::Or), SpannedToken::new_null(Token::BoolLit(false)),],
+            Span::null_span()
         )]
     ))
 }
@@ -222,25 +229,25 @@ fn test_boxer_if_stmt() {
         boxes.unwrap(),
         vec![
             TBox::VarDec(
-                Token::VarName(Box::new("x".to_string())),
+                SpannedToken::new_null(Token::VarName(Box::new("x".to_string()))),
                 Some(TypeTok::Int),
-                vec![Token::IntLit(5)],
-                "".to_string()
+                vec![SpannedToken::new_null(Token::IntLit(5))],
+                Span::null_span()
             ),
             TBox::IfStmt(
                 vec![
-                    Token::VarRef(Box::new("x".to_string())),
-                    Token::LessThan,
-                    Token::IntLit(9),
+                    SpannedToken::new_null(Token::VarRef(Box::new("x".to_string()))),
+                    SpannedToken::new_null(Token::LessThan),
+                    SpannedToken::new_null(Token::IntLit(9)),
                 ],
                 vec![TBox::Assign(
-                    vec![Token::VarRef(Box::new("x".to_string()))],
-                    vec![Token::IntLit(6)],
-                    "".to_string()
+                    vec![SpannedToken::new_null(Token::VarRef(Box::new("x".to_string())))],
+                    vec![SpannedToken::new_null(Token::IntLit(6))],
+                    Span::null_span()
                 )],
                 None,
                 None,
-                "".to_string()
+                Span::null_span()
             )
         ]
     ))
@@ -257,33 +264,33 @@ fn test_boxer_nested_if() {
     assert!(compare_tbox_vecs(
         boxes.unwrap(),
         vec![TBox::IfStmt(
-            vec![Token::BoolLit(true)],
+            vec![SpannedToken::new_null(Token::BoolLit(true))],
             vec![
                 TBox::VarDec(
-                    Token::VarName(Box::new("x".to_string())),
+                    SpannedToken::new_null(Token::VarName(Box::new("x".to_string()))),
                     None,
-                    vec![Token::IntLit(9)],
-                    "".to_string()
+                    vec![SpannedToken::new_null(Token::IntLit(9))],
+                    Span::null_span()
                 ),
                 TBox::IfStmt(
                     vec![
-                        Token::VarRef(Box::new("x".to_string())),
-                        Token::GreaterThan,
-                        Token::IntLit(10),
+                        SpannedToken::new_null(Token::VarRef(Box::new("x".to_string()))),
+                        SpannedToken::new_null(Token::GreaterThan),
+                        SpannedToken::new_null(Token::IntLit(10)),
                     ],
                     vec![TBox::Assign(
-                        vec![Token::VarRef(Box::new("x".to_string()))],
-                        vec![Token::IntLit(8)],
-                        "".to_string()
+                        vec![SpannedToken::new_null(Token::VarRef(Box::new("x".to_string())))],
+                        vec![SpannedToken::new_null(Token::IntLit(8))],
+                        Span::null_span()
                     )],
                     None,
                     None,
-                    "".to_string()
+                    Span::null_span()
                 )
             ],
             None,
             None,
-            "".to_string()
+            Span::null_span()
         )]
     ))
 }
@@ -299,21 +306,21 @@ fn test_boxer_if_else() {
     assert!(compare_tbox_vecs(
         boxes.unwrap(),
         vec![TBox::IfStmt(
-            vec![Token::BoolLit(true), Token::And, Token::BoolLit(false),],
+            vec![SpannedToken::new_null(Token::BoolLit(true)), SpannedToken::new_null(Token::And), SpannedToken::new_null(Token::BoolLit(false)),],
             vec![TBox::VarDec(
-                Token::VarName(Box::new("x".to_string())),
+                SpannedToken::new_null(Token::VarName(Box::new("x".to_string()))),
                 None,
-                vec![Token::IntLit(5)],
-                "".to_string()
+                vec![SpannedToken::new_null(Token::IntLit(5))],
+                Span::null_span()
             )],
             None,
             Some(vec![TBox::VarDec(
-                Token::VarName(Box::new("x".to_string())),
+                SpannedToken::new_null(Token::VarName(Box::new("x".to_string()))),
                 Some(TypeTok::Int),
-                vec![Token::IntLit(6)],
-                "".to_string()
+                vec![SpannedToken::new_null(Token::IntLit(6))],
+                Span::null_span()
             )]),
-            "".to_string()
+            Span::null_span()
         )]
     ))
 }
@@ -329,22 +336,22 @@ fn test_boxer_parens() {
     assert!(compare_tbox_vecs(
         boxes.unwrap(),
         vec![TBox::VarDec(
-            Token::VarName(Box::new("x".to_string())),
+            SpannedToken::new_null(Token::VarName(Box::new("x".to_string()))),
             Some(TypeTok::Int),
             vec![
-                Token::LParen,
-                Token::IntLit(14),
-                Token::Minus,
-                Token::IntLit(3),
-                Token::Multiply,
-                Token::LParen,
-                Token::IntLit(6),
-                Token::Divide,
-                Token::IntLit(2),
-                Token::RParen,
-                Token::RParen
+                SpannedToken::new_null(Token::LParen),
+                SpannedToken::new_null(Token::IntLit(14)),
+                SpannedToken::new_null(Token::Minus),
+                SpannedToken::new_null(Token::IntLit(3)),
+                SpannedToken::new_null(Token::Multiply),
+                SpannedToken::new_null(Token::LParen),
+                SpannedToken::new_null(Token::IntLit(6)),
+                SpannedToken::new_null(Token::Divide),
+                SpannedToken::new_null(Token::IntLit(2)),
+                SpannedToken::new_null(Token::RParen),
+                SpannedToken::new_null(Token::RParen)
             ],
-            "".to_string()
+            Span::null_span()
         )]
     ))
 }
@@ -361,46 +368,46 @@ fn test_boxer_func_dec_and_call() {
         boxes.unwrap(),
         vec![
             TBox::FuncDec(
-                Token::VarName(Box::new("add_int_int".to_string())),
+                SpannedToken::new_null(Token::VarName(Box::new("add_int_int".to_string()))),
                 vec![
                     TBox::FuncParam(
-                        Token::VarRef(Box::new("a".to_string())),
+                        SpannedToken::new_null(Token::VarRef(Box::new("a".to_string()))),
                         TypeTok::Int,
-                        "".to_string()
+                        Span::null_span()
                     ),
                     TBox::FuncParam(
-                        Token::VarRef(Box::new("b".to_string())),
+                        SpannedToken::new_null(Token::VarRef(Box::new("b".to_string()))),
                         TypeTok::Int,
-                        "".to_string()
+                        Span::null_span()
                     )
                 ],
                 TypeTok::Int,
                 vec![TBox::Return(
                     Box::new(TBox::Expr(
                         vec![
-                            Token::VarRef(Box::new("a".to_string())),
-                            Token::Plus,
-                            Token::VarRef(Box::new("b".to_string())),
+                            SpannedToken::new_null(Token::VarRef(Box::new("a".to_string()))),
+                            SpannedToken::new_null(Token::Plus),
+                            SpannedToken::new_null(Token::VarRef(Box::new("b".to_string()))),
                         ],
-                        "".to_string()
+                        Span::null_span()
                     )),
-                    "".to_string()
+                    Span::null_span()
                 )],
-                "".to_string(),
+                Span::null_span(),
                 false
             ),
             TBox::VarDec(
-                Token::VarName(Box::new("x".to_string())),
+                SpannedToken::new_null(Token::VarName(Box::new("x".to_string()))),
                 None,
                 vec![
-                    Token::VarRef(Box::new("add".to_string())),
-                    Token::LParen,
-                    Token::IntLit(2),
-                    Token::Comma,
-                    Token::IntLit(3),
-                    Token::RParen
+                    SpannedToken::new_null(Token::VarRef(Box::new("add".to_string()))),
+                    SpannedToken::new_null(Token::LParen),
+                    SpannedToken::new_null(Token::IntLit(2)),
+                    SpannedToken::new_null(Token::Comma),
+                    SpannedToken::new_null(Token::IntLit(3)),
+                    SpannedToken::new_null(Token::RParen)
                 ],
-                "".to_string()
+                Span::null_span()
             )
         ]
     ))
@@ -417,10 +424,10 @@ fn test_boxer_string_lit() {
     assert!(compare_tbox_vecs(
         boxes.unwrap(),
         vec![TBox::VarDec(
-            Token::VarName(Box::new("x".to_string())),
+            SpannedToken::new_null(Token::VarName(Box::new("x".to_string()))),
             Some(TypeTok::Str),
-            vec![Token::StringLit(Box::new("hello world".to_string()))],
-            "".to_string()
+            vec![SpannedToken::new_null(Token::StringLit(Box::new("hello world".to_string())))],
+            Span::null_span()
         )]
     ))
 }
@@ -436,55 +443,55 @@ fn test_boxer_while_loops() {
         boxes.unwrap(),
         vec![
             TBox::VarDec(
-                Token::VarName(Box::new("x".to_string())),
+                SpannedToken::new_null(Token::VarName(Box::new("x".to_string()))),
                 None,
-                vec![Token::IntLit(0)],
-                "".to_string()
+                vec![SpannedToken::new_null(Token::IntLit(0))],
+                Span::null_span()
             ),
             TBox::While(
                 vec![
-                    Token::VarRef(Box::new("x".to_string())),
-                    Token::LessThan,
-                    Token::IntLit(10)
+                    SpannedToken::new_null(Token::VarRef(Box::new("x".to_string()))),
+                    SpannedToken::new_null(Token::LessThan),
+                    SpannedToken::new_null(Token::IntLit(10))
                 ],
                 vec![
                     TBox::IfStmt(
                         vec![
-                            Token::VarRef(Box::new("x".to_string())),
-                            Token::Equals,
-                            Token::IntLit(0),
+                            SpannedToken::new_null(Token::VarRef(Box::new("x".to_string()))),
+                            SpannedToken::new_null(Token::Equals),
+                            SpannedToken::new_null(Token::IntLit(0)),
                         ],
-                        vec![TBox::Continue],
+                        vec![TBox::Continue(Span::null_span())],
                         None,
                         None,
-                        "".to_string()
+                        Span::null_span()
                     ),
                     TBox::IfStmt(
                         vec![
-                            Token::VarRef(Box::new("x".to_string())),
-                            Token::Equals,
-                            Token::IntLit(7)
+                            SpannedToken::new_null(Token::VarRef(Box::new("x".to_string()))),
+                            SpannedToken::new_null(Token::Equals),
+                            SpannedToken::new_null(Token::IntLit(7))
                         ],
-                        vec![TBox::Break],
+                        vec![TBox::Break(Span::null_span())],
                         None,
                         None,
-                        "".to_string()
+                        Span::null_span()
                     ),
                     TBox::Assign(
-                        vec![Token::VarRef(Box::new("x".to_string()))],
+                        vec![SpannedToken::new_null(Token::VarRef(Box::new("x".to_string())))],
                         vec![
-                            Token::VarRef(Box::new("x".to_string())),
-                            Token::Plus,
-                            Token::IntLit(1),
+                            SpannedToken::new_null(Token::VarRef(Box::new("x".to_string()))),
+                            SpannedToken::new_null(Token::Plus),
+                            SpannedToken::new_null(Token::IntLit(1)),
                         ],
-                        "".to_string()
+                        Span::null_span()
                     ),
                 ],
-                "".to_string()
+                Span::null_span()
             ),
             TBox::Expr(
-                vec![Token::VarRef(Box::new("x".to_string()))],
-                "".to_string()
+                vec![SpannedToken::new_null(Token::VarRef(Box::new("x".to_string())))],
+                Span::null_span()
             )
         ]
     ))
@@ -500,86 +507,86 @@ fn test_boxer_fn_loop() {
         boxes.unwrap(),
         vec![
             TBox::FuncDec(
-                Token::VarName(Box::new("loop".to_string())),
+                SpannedToken::new_null(Token::VarName(Box::new("loop".to_string()))),
                 vec![],
                 TypeTok::Int,
                 vec![
                     TBox::VarDec(
-                        Token::VarName(Box::new("x".to_string())),
+                        SpannedToken::new_null(Token::VarName(Box::new("x".to_string()))),
                         None,
-                        vec![Token::IntLit(0)],
-                        "".to_string()
+                        vec![SpannedToken::new_null(Token::IntLit(0))],
+                        Span::null_span()
                     ),
                     TBox::While(
                         vec![
-                            Token::VarRef(Box::new("x".to_string())),
-                            Token::LessThan,
-                            Token::IntLit(10)
+                            SpannedToken::new_null(Token::VarRef(Box::new("x".to_string()))),
+                            SpannedToken::new_null(Token::LessThan),
+                            SpannedToken::new_null(Token::IntLit(10))
                         ],
                         vec![
                             TBox::IfStmt(
                                 vec![
-                                    Token::VarRef(Box::new("x".to_string())),
-                                    Token::Equals,
-                                    Token::IntLit(1)
+                                    SpannedToken::new_null(Token::VarRef(Box::new("x".to_string()))),
+                                    SpannedToken::new_null(Token::Equals),
+                                    SpannedToken::new_null(Token::IntLit(1))
                                 ],
                                 vec![
                                     TBox::Assign(
-                                        vec![Token::VarRef(Box::new("x".to_string()))],
+                                        vec![SpannedToken::new_null(Token::VarRef(Box::new("x".to_string())))],
                                         vec![
-                                            Token::VarRef(Box::new("x".to_string())),
-                                            Token::Plus,
-                                            Token::IntLit(1)
+                                            SpannedToken::new_null(Token::VarRef(Box::new("x".to_string()))),
+                                            SpannedToken::new_null(Token::Plus),
+                                            SpannedToken::new_null(Token::IntLit(1))
                                         ],
-                                        "".to_string()
+                                        Span::null_span()
                                     ),
-                                    TBox::Continue
+                                    TBox::Continue(Span::null_span())
                                 ],
                                 None,
                                 None,
-                                "".to_string()
+                                Span::null_span()
                             ),
                             TBox::IfStmt(
                                 vec![
-                                    Token::VarRef(Box::new("x".to_string())),
-                                    Token::Equals,
-                                    Token::IntLit(7)
+                                    SpannedToken::new_null(Token::VarRef(Box::new("x".to_string()))),
+                                    SpannedToken::new_null(Token::Equals),
+                                    SpannedToken::new_null(Token::IntLit(7))
                                 ],
-                                vec![TBox::Break],
+                                vec![TBox::Break(Span::null_span())],
                                 None,
                                 None,
-                                "".to_string()
+                                Span::null_span()
                             ),
                             TBox::Assign(
-                                vec![Token::VarRef(Box::new("x".to_string()))],
+                                vec![SpannedToken::new_null(Token::VarRef(Box::new("x".to_string())))],
                                 vec![
-                                    Token::VarRef(Box::new("x".to_string())),
-                                    Token::Plus,
-                                    Token::IntLit(1)
+                                    SpannedToken::new_null(Token::VarRef(Box::new("x".to_string()))),
+                                    SpannedToken::new_null(Token::Plus),
+                                    SpannedToken::new_null(Token::IntLit(1))
                                 ],
-                                "".to_string()
+                                Span::null_span()
                             )
                         ],
-                        "".to_string()
+                        Span::null_span()
                     ),
                     TBox::Return(
                         Box::new(TBox::Expr(
-                            vec![Token::VarRef(Box::new("x".to_string()))],
-                            "".to_string()
+                            vec![SpannedToken::new_null(Token::VarRef(Box::new("x".to_string())))],
+                            Span::null_span()
                         )),
-                        "".to_string()
+                        Span::null_span()
                     )
                 ],
-                "".to_string(),
+                Span::null_span(),
                 false
             ),
             TBox::Expr(
                 vec![
-                    Token::VarRef(Box::new("loop".to_string())),
-                    Token::LParen,
-                    Token::RParen
+                    SpannedToken::new_null(Token::VarRef(Box::new("loop".to_string()))),
+                    SpannedToken::new_null(Token::LParen),
+                    SpannedToken::new_null(Token::RParen)
                 ],
-                "".to_string()
+                Span::null_span()
             )
         ]
     ));
@@ -595,23 +602,23 @@ fn test_boxer_fn_no_params() {
         boxes.unwrap(),
         vec![
             TBox::FuncDec(
-                Token::VarName(Box::new("foo".to_string())),
+                SpannedToken::new_null(Token::VarName(Box::new("foo".to_string()))),
                 vec![],
                 TypeTok::Int,
                 vec![TBox::Return(
-                    Box::new(TBox::Expr(vec![Token::IntLit(1)], "".to_string())),
-                    "".to_string()
+                    Box::new(TBox::Expr(vec![SpannedToken::new_null(Token::IntLit(1))], Span::null_span())),
+                    Span::null_span()
                 )],
-                "".to_string(),
+                Span::null_span(),
                 false
             ),
             TBox::Expr(
                 vec![
-                    Token::VarRef(Box::new("foo".to_string())),
-                    Token::LParen,
-                    Token::RParen
+                    SpannedToken::new_null(Token::VarRef(Box::new("foo".to_string()))),
+                    SpannedToken::new_null(Token::LParen),
+                    SpannedToken::new_null(Token::RParen)
                 ],
-                "".to_string(),
+                Span::null_span(),
             )
         ]
     ))
@@ -627,16 +634,16 @@ fn test_boxer_float() {
         boxes.unwrap(),
         vec![
             TBox::VarDec(
-                Token::VarName(Box::new("x".to_string())),
+                SpannedToken::new_null(Token::VarName(Box::new("x".to_string()))),
                 None,
-                vec![Token::FloatLit(OrderedFloat(3.14159))],
-                "".to_string()
+                vec![SpannedToken::new_null(Token::FloatLit(OrderedFloat(3.14159)))],
+                Span::null_span()
             ),
             TBox::VarDec(
-                Token::VarName(Box::new("y".to_string())),
+                SpannedToken::new_null(Token::VarName(Box::new("y".to_string()))),
                 Some(TypeTok::Float),
-                vec![Token::FloatLit(OrderedFloat(9.3))],
-                "".to_string()
+                vec![SpannedToken::new_null(Token::FloatLit(OrderedFloat(9.3)))],
+                Span::null_span()
             )
         ]
     ))
@@ -651,16 +658,16 @@ fn test_boxer_arr_lit() {
     assert!(compare_tbox_vecs(
         boxes.unwrap(),
         vec![TBox::VarDec(
-            Token::VarName(Box::new("arr".to_string())),
+            SpannedToken::new_null(Token::VarName(Box::new("arr".to_string()))),
             Some(TypeTok::StrArr(1)),
             vec![
-                Token::LBrack,
-                Token::StringLit(Box::new("foo".to_string())),
-                Token::Comma,
-                Token::StringLit(Box::new("bar".to_string())),
-                Token::RBrack
+                SpannedToken::new_null(Token::LBrack),
+                SpannedToken::new_null(Token::StringLit(Box::new("foo".to_string()))),
+                SpannedToken::new_null(Token::Comma),
+                SpannedToken::new_null(Token::StringLit(Box::new("bar".to_string()))),
+                SpannedToken::new_null(Token::RBrack)
             ],
-            "".to_string()
+            Span::null_span()
         )]
     ))
 }
@@ -675,28 +682,28 @@ fn test_boxer_arr_item_reassign() {
         boxes.unwrap(),
         vec![
             TBox::VarDec(
-                Token::VarName(Box::new("arr".to_string())),
+                SpannedToken::new_null(Token::VarName(Box::new("arr".to_string()))),
                 None,
                 vec![
-                    Token::LBrack,
-                    Token::IntLit(1),
-                    Token::Comma,
-                    Token::IntLit(2),
-                    Token::Comma,
-                    Token::IntLit(3),
-                    Token::RBrack
+                    SpannedToken::new_null(Token::LBrack),
+                    SpannedToken::new_null(Token::IntLit(1)),
+                    SpannedToken::new_null(Token::Comma),
+                    SpannedToken::new_null(Token::IntLit(2)),
+                    SpannedToken::new_null(Token::Comma),
+                    SpannedToken::new_null(Token::IntLit(3)),
+                    SpannedToken::new_null(Token::RBrack)
                 ],
-                "".to_string()
+                Span::null_span()
             ),
             TBox::Assign(
                 vec![
-                    Token::VarRef(Box::new("arr".to_string())),
-                    Token::LBrack,
-                    Token::IntLit(1),
-                    Token::RBrack
+                    SpannedToken::new_null(Token::VarRef(Box::new("arr".to_string()))),
+                    SpannedToken::new_null(Token::LBrack),
+                    SpannedToken::new_null(Token::IntLit(1)),
+                    SpannedToken::new_null(Token::RBrack)
                 ],
-                vec![Token::IntLit(4)],
-                "".to_string()
+                vec![SpannedToken::new_null(Token::IntLit(4))],
+                Span::null_span()
             )
         ]
     ))
@@ -714,41 +721,41 @@ fn test_boxer_n_dimensional_arr_reassign() {
         boxes.unwrap(),
         vec![
             TBox::VarDec(
-                Token::VarName(Box::new("arr".to_string())),
+                SpannedToken::new_null(Token::VarName(Box::new("arr".to_string()))),
                 None,
                 vec![
-                    Token::LBrack,
-                    Token::LBrack,
-                    Token::BoolLit(true),
-                    Token::Comma,
-                    Token::BoolLit(true),
-                    Token::Comma,
-                    Token::BoolLit(false),
-                    Token::RBrack,
-                    Token::Comma,
-                    Token::LBrack,
-                    Token::BoolLit(false),
-                    Token::Comma,
-                    Token::BoolLit(false),
-                    Token::Comma,
-                    Token::BoolLit(true),
-                    Token::RBrack,
-                    Token::RBrack
+                    SpannedToken::new_null(Token::LBrack),
+                    SpannedToken::new_null(Token::LBrack),
+                    SpannedToken::new_null(Token::BoolLit(true)),
+                    SpannedToken::new_null(Token::Comma),
+                    SpannedToken::new_null(Token::BoolLit(true)),
+                    SpannedToken::new_null(Token::Comma),
+                    SpannedToken::new_null(Token::BoolLit(false)),
+                    SpannedToken::new_null(Token::RBrack),
+                    SpannedToken::new_null(Token::Comma),
+                    SpannedToken::new_null(Token::LBrack),
+                    SpannedToken::new_null(Token::BoolLit(false)),
+                    SpannedToken::new_null(Token::Comma),
+                    SpannedToken::new_null(Token::BoolLit(false)),
+                    SpannedToken::new_null(Token::Comma),
+                    SpannedToken::new_null(Token::BoolLit(true)),
+                    SpannedToken::new_null(Token::RBrack),
+                    SpannedToken::new_null(Token::RBrack)
                 ],
-                "".to_string()
+                Span::null_span()
             ),
             TBox::Assign(
                 vec![
-                    Token::VarRef(Box::new("arr".to_string())),
-                    Token::LBrack,
-                    Token::IntLit(0),
-                    Token::RBrack,
-                    Token::LBrack,
-                    Token::IntLit(1),
-                    Token::RBrack
+                    SpannedToken::new_null(Token::VarRef(Box::new("arr".to_string()))),
+                    SpannedToken::new_null(Token::LBrack),
+                    SpannedToken::new_null(Token::IntLit(0)),
+                    SpannedToken::new_null(Token::RBrack),
+                    SpannedToken::new_null(Token::LBrack),
+                    SpannedToken::new_null(Token::IntLit(1)),
+                    SpannedToken::new_null(Token::RBrack)
                 ],
-                vec![Token::BoolLit(false)],
-                "".to_string()
+                vec![SpannedToken::new_null(Token::BoolLit(false))],
+                Span::null_span()
             )
         ]
     ))
@@ -772,35 +779,35 @@ fn test_boxer_struct_lit_and_ref() {
                     ("x".to_string(), TypeTok::Float),
                     ("y".to_string(), TypeTok::Float),
                 ])),
-                "".to_string()
+                Span::null_span()
             ),
             TBox::VarDec(
-                Token::VarName(Box::new("a".to_string())),
+                SpannedToken::new_null(Token::VarName(Box::new("a".to_string()))),
                 None,
                 vec![
-                    Token::VarRef(Box::new("Point".to_string())),
-                    Token::LBrace,
-                    Token::VarRef(Box::new("x".to_string())),
-                    Token::Colon,
-                    Token::FloatLit(OrderedFloat(0.0)),
-                    Token::Comma,
-                    Token::VarRef(Box::new("y".to_string())),
-                    Token::Colon,
-                    Token::FloatLit(OrderedFloat(0.0)),
-                    Token::RBrace,
+                    SpannedToken::new_null(Token::VarRef(Box::new("Point".to_string()))),
+                    SpannedToken::new_null(Token::LBrace),
+                    SpannedToken::new_null(Token::VarRef(Box::new("x".to_string()))),
+                    SpannedToken::new_null(Token::Colon),
+                    SpannedToken::new_null(Token::FloatLit(OrderedFloat(0.0))),
+                    SpannedToken::new_null(Token::Comma),
+                    SpannedToken::new_null(Token::VarRef(Box::new("y".to_string()))),
+                    SpannedToken::new_null(Token::Colon),
+                    SpannedToken::new_null(Token::FloatLit(OrderedFloat(0.0))),
+                    SpannedToken::new_null(Token::RBrace),
                 ],
-                "".to_string()
+                Span::null_span()
             ),
             TBox::Expr(
                 vec![
-                    Token::VarRef(Box::new("println".to_string())),
-                    Token::LParen,
-                    Token::VarRef(Box::new("a".to_string())),
-                    Token::Dot,
-                    Token::VarRef(Box::new("x".to_string())),
-                    Token::RParen
+                    SpannedToken::new_null(Token::VarRef(Box::new("println".to_string()))),
+                    SpannedToken::new_null(Token::LParen),
+                    SpannedToken::new_null(Token::VarRef(Box::new("a".to_string()))),
+                    SpannedToken::new_null(Token::Dot),
+                    SpannedToken::new_null(Token::VarRef(Box::new("x".to_string()))),
+                    SpannedToken::new_null(Token::RParen)
                 ],
-                "".to_string()
+                Span::null_span()
             )
         ]
     ))
@@ -821,35 +828,35 @@ fn test_boxer_struct_problematic() {
                     ("first".to_string(), TypeTok::Str),
                     ("last".to_string(), TypeTok::Str),
                 ])),
-                "".to_string()
+                Span::null_span()
             ),
             TBox::VarDec(
-                Token::VarName(Box::new("me".to_string())),
+                SpannedToken::new_null(Token::VarName(Box::new("me".to_string()))),
                 None,
                 vec![
-                    Token::VarRef(Box::new("Name".to_string())),
-                    Token::LBrace,
-                    Token::VarRef(Box::new("first".to_string())),
-                    Token::Colon,
-                    Token::StringLit(Box::new("Chase".to_string())),
-                    Token::Comma,
-                    Token::VarRef(Box::new("last".to_string())),
-                    Token::Colon,
-                    Token::StringLit(Box::new("Yalon".to_string())),
-                    Token::RBrace,
+                    SpannedToken::new_null(Token::VarRef(Box::new("Name".to_string()))),
+                    SpannedToken::new_null(Token::LBrace),
+                    SpannedToken::new_null(Token::VarRef(Box::new("first".to_string()))),
+                    SpannedToken::new_null(Token::Colon),
+                    SpannedToken::new_null(Token::StringLit(Box::new("Chase".to_string()))),
+                    SpannedToken::new_null(Token::Comma),
+                    SpannedToken::new_null(Token::VarRef(Box::new("last".to_string()))),
+                    SpannedToken::new_null(Token::Colon),
+                    SpannedToken::new_null(Token::StringLit(Box::new("Yalon".to_string()))),
+                    SpannedToken::new_null(Token::RBrace),
                 ],
-                "".to_string()
+                Span::null_span()
             ),
             TBox::Expr(
                 vec![
-                    Token::VarRef(Box::new("println".to_string())),
-                    Token::LParen,
-                    Token::VarRef(Box::new("me".to_string())),
-                    Token::Dot,
-                    Token::VarRef(Box::new("first".to_string())),
-                    Token::RParen
+                    SpannedToken::new_null(Token::VarRef(Box::new("println".to_string()))),
+                    SpannedToken::new_null(Token::LParen),
+                    SpannedToken::new_null(Token::VarRef(Box::new("me".to_string()))),
+                    SpannedToken::new_null(Token::Dot),
+                    SpannedToken::new_null(Token::VarRef(Box::new("first".to_string()))),
+                    SpannedToken::new_null(Token::RParen)
                 ],
-                "".to_string()
+                Span::null_span()
             ),
         ]
     ))
@@ -870,7 +877,7 @@ fn test_boxer_nested_structs() {
                     ("first".to_string(), TypeTok::Str),
                     ("last".to_string(), TypeTok::Str),
                 ])),
-                "".to_string()
+                Span::null_span()
             ),
             TBox::StructInterface(
                 Box::new("Person".to_string()),
@@ -884,33 +891,33 @@ fn test_boxer_nested_structs() {
                     ),
                     ("age".to_string(), TypeTok::Int),
                 ])),
-                "".to_string()
+                Span::null_span()
             ),
             TBox::VarDec(
-                Token::VarName(Box::new("me".to_string())),
+                SpannedToken::new_null(Token::VarName(Box::new("me".to_string()))),
                 None,
                 vec![
-                    Token::VarRef(Box::new("Person".to_string())),
-                    Token::LBrace,
-                    Token::VarRef(Box::new("name".to_string())),
-                    Token::Colon,
-                    Token::VarRef(Box::new("Name".to_string())),
-                    Token::LBrace,
-                    Token::VarRef(Box::new("first".to_string())),
-                    Token::Colon,
-                    Token::StringLit(Box::new("Chase".to_string())),
-                    Token::Comma,
-                    Token::VarRef(Box::new("last".to_string())),
-                    Token::Colon,
-                    Token::StringLit(Box::new("Yalon".to_string())),
-                    Token::RBrace,
-                    Token::Comma,
-                    Token::VarRef(Box::new("age".to_string())),
-                    Token::Colon,
-                    Token::IntLit(15),
-                    Token::RBrace,
+                    SpannedToken::new_null(Token::VarRef(Box::new("Person".to_string()))),
+                    SpannedToken::new_null(Token::LBrace),
+                    SpannedToken::new_null(Token::VarRef(Box::new("name".to_string()))),
+                    SpannedToken::new_null(Token::Colon),
+                    SpannedToken::new_null(Token::VarRef(Box::new("Name".to_string()))),
+                    SpannedToken::new_null(Token::LBrace),
+                    SpannedToken::new_null(Token::VarRef(Box::new("first".to_string()))),
+                    SpannedToken::new_null(Token::Colon),
+                    SpannedToken::new_null(Token::StringLit(Box::new("Chase".to_string()))),
+                    SpannedToken::new_null(Token::Comma),
+                    SpannedToken::new_null(Token::VarRef(Box::new("last".to_string()))),
+                    SpannedToken::new_null(Token::Colon),
+                    SpannedToken::new_null(Token::StringLit(Box::new("Yalon".to_string()))),
+                    SpannedToken::new_null(Token::RBrace),
+                    SpannedToken::new_null(Token::Comma),
+                    SpannedToken::new_null(Token::VarRef(Box::new("age".to_string()))),
+                    SpannedToken::new_null(Token::Colon),
+                    SpannedToken::new_null(Token::IntLit(15)),
+                    SpannedToken::new_null(Token::RBrace),
                 ],
-                "".to_string()
+                Span::null_span()
             )
         ]
     ))
@@ -930,7 +937,7 @@ fn test_boxer_struct_reassign() {
             TBox::StructInterface(
                 Box::new("Fee".to_string()),
                 Box::new(BTreeMap::from([("a".to_string(), TypeTok::Int)])),
-                "".to_string()
+                Span::null_span()
             ),
             TBox::StructInterface(
                 Box::new("Foo".to_string()),
@@ -938,37 +945,37 @@ fn test_boxer_struct_reassign() {
                     "a".to_string(),
                     TypeTok::Struct(BTreeMap::from([("a".to_string(), Box::new(TypeTok::Int))]))
                 )])),
-                "".to_string()
+                Span::null_span()
             ),
             TBox::VarDec(
-                Token::VarName(Box::new("b".to_string())),
+                SpannedToken::new_null(Token::VarName(Box::new("b".to_string()))),
                 None,
                 vec![
-                    Token::VarRef(Box::new("Foo".to_string())),
-                    Token::LBrace,
-                    Token::VarRef(Box::new("a".to_string())),
-                    Token::Colon,
-                    Token::VarRef(Box::new("Fee".to_string())),
-                    Token::LBrace,
-                    Token::IntLit(3),
-                    Token::RBrace,
-                    Token::RBrace,
+                    SpannedToken::new_null(Token::VarRef(Box::new("Foo".to_string()))),
+                    SpannedToken::new_null(Token::LBrace),
+                    SpannedToken::new_null(Token::VarRef(Box::new("a".to_string()))),
+                    SpannedToken::new_null(Token::Colon),
+                    SpannedToken::new_null(Token::VarRef(Box::new("Fee".to_string()))),
+                    SpannedToken::new_null(Token::LBrace),
+                    SpannedToken::new_null(Token::IntLit(3)),
+                    SpannedToken::new_null(Token::RBrace),
+                    SpannedToken::new_null(Token::RBrace),
                 ],
-                "".to_string()
+                Span::null_span()
             ),
             TBox::Assign(
                 vec![
-                    Token::VarRef(Box::new("b".to_string())),
-                    Token::Dot,
-                    Token::VarRef(Box::new("a".to_string()))
+                    SpannedToken::new_null(Token::VarRef(Box::new("b".to_string()))),
+                    SpannedToken::new_null(Token::Dot),
+                    SpannedToken::new_null(Token::VarRef(Box::new("a".to_string())))
                 ],
                 vec![
-                    Token::VarRef(Box::new("Fee".to_string())),
-                    Token::LBrace,
-                    Token::IntLit(9),
-                    Token::RBrace,
+                    SpannedToken::new_null(Token::VarRef(Box::new("Fee".to_string()))),
+                    SpannedToken::new_null(Token::LBrace),
+                    SpannedToken::new_null(Token::IntLit(9)),
+                    SpannedToken::new_null(Token::RBrace),
                 ],
-                "".to_string()
+                Span::null_span()
             )
         ]
     ))
@@ -987,41 +994,41 @@ fn test_boxer_struct_func_param() {
             TBox::StructInterface(
                 Box::new("Foo".to_string()),
                 Box::new(BTreeMap::from([("a".to_string(), TypeTok::Int)])),
-                "".to_string()
+                Span::null_span()
             ),
             TBox::FuncDec(
-                Token::VarName(Box::new("bar_struct".to_string())),
+                SpannedToken::new_null(Token::VarName(Box::new("bar_struct".to_string()))),
                 vec![TBox::FuncParam(
-                    Token::VarRef(Box::new("f".to_string())),
+                    SpannedToken::new_null(Token::VarRef(Box::new("f".to_string()))),
                     TypeTok::Struct(BTreeMap::from([("a".to_string(), Box::new(TypeTok::Int))])),
-                    "".to_string()
+                    Span::null_span()
                 )],
                 TypeTok::Int,
                 vec![TBox::Return(
                     Box::new(TBox::Expr(
                         vec![
-                            Token::VarRef(Box::new("f".to_string())),
-                            Token::Dot,
-                            Token::VarRef(Box::new("a".to_string())),
+                            SpannedToken::new_null(Token::VarRef(Box::new("f".to_string()))),
+                            SpannedToken::new_null(Token::Dot),
+                            SpannedToken::new_null(Token::VarRef(Box::new("a".to_string()))),
                         ],
-                        "".to_string()
+                        Span::null_span()
                     )),
-                    "".to_string()
+                    Span::null_span()
                 )],
-                "".to_string(),
+                Span::null_span(),
                 false
             ),
             TBox::Expr(
                 vec![
-                    Token::VarRef(Box::new("bar".to_string())),
-                    Token::LParen,
-                    Token::VarRef(Box::new("Foo".to_string())),
-                    Token::LBrace,
-                    Token::IntLit(1),
-                    Token::RBrace,
-                    Token::RParen
+                    SpannedToken::new_null(Token::VarRef(Box::new("bar".to_string()))),
+                    SpannedToken::new_null(Token::LParen),
+                    SpannedToken::new_null(Token::VarRef(Box::new("Foo".to_string()))),
+                    SpannedToken::new_null(Token::LBrace),
+                    SpannedToken::new_null(Token::IntLit(1)),
+                    SpannedToken::new_null(Token::RBrace),
+                    SpannedToken::new_null(Token::RParen)
                 ],
-                "".to_string()
+                Span::null_span()
             )
         ]
     ))
@@ -1045,59 +1052,59 @@ fn test_boxer_struct_method_conversion() {
                     ("x".to_string(), TypeTok::Int),
                     ("y".to_string(), TypeTok::Int),
                 ])),
-                "".to_string()
+                Span::null_span()
             ),
             TBox::FuncDec(
-                Token::VarName(Box::new("Point:::print_point_struct".to_string())),
+                SpannedToken::new_null(Token::VarName(Box::new("Point:::print_point_struct".to_string()))),
                 vec![TBox::FuncParam(
-                    Token::VarRef(Box::new("this".to_string())),
+                    SpannedToken::new_null(Token::VarRef(Box::new("this".to_string()))),
                     TypeTok::Struct(BTreeMap::from([
                         ("x".to_string(), Box::new(TypeTok::Int)),
                         ("y".to_string(), Box::new(TypeTok::Int)),
                     ])),
-                    "".to_string()
+                    Span::null_span()
                 )],
                 TypeTok::Void,
                 vec![TBox::Expr(
                     vec![
-                        Token::VarRef(Box::new("println".to_string())),
-                        Token::LParen,
-                        Token::VarRef(Box::new("this".to_string())),
-                        Token::Dot,
-                        Token::VarRef(Box::new("x".to_string())),
-                        Token::RParen,
+                        SpannedToken::new_null(Token::VarRef(Box::new("println".to_string()))),
+                        SpannedToken::new_null(Token::LParen),
+                        SpannedToken::new_null(Token::VarRef(Box::new("this".to_string()))),
+                        SpannedToken::new_null(Token::Dot),
+                        SpannedToken::new_null(Token::VarRef(Box::new("x".to_string()))),
+                        SpannedToken::new_null(Token::RParen),
                     ],
-                    "".to_string()
+                    Span::null_span()
                 )],
-                "".to_string(),
+                Span::null_span(),
                 false
             ),
             TBox::VarDec(
-                Token::VarName(Box::new("me".to_string())),
+                SpannedToken::new_null(Token::VarName(Box::new("me".to_string()))),
                 None,
                 vec![
-                    Token::VarRef(Box::new("Point".to_string())),
-                    Token::LBrace,
-                    Token::VarRef(Box::new("x".to_string())),
-                    Token::Colon,
-                    Token::IntLit(0),
-                    Token::Comma,
-                    Token::VarRef(Box::new("y".to_string())),
-                    Token::Colon,
-                    Token::IntLit(0),
-                    Token::RBrace,
+                    SpannedToken::new_null(Token::VarRef(Box::new("Point".to_string()))),
+                    SpannedToken::new_null(Token::LBrace),
+                    SpannedToken::new_null(Token::VarRef(Box::new("x".to_string()))),
+                    SpannedToken::new_null(Token::Colon),
+                    SpannedToken::new_null(Token::IntLit(0)),
+                    SpannedToken::new_null(Token::Comma),
+                    SpannedToken::new_null(Token::VarRef(Box::new("y".to_string()))),
+                    SpannedToken::new_null(Token::Colon),
+                    SpannedToken::new_null(Token::IntLit(0)),
+                    SpannedToken::new_null(Token::RBrace),
                 ],
-                "".to_string()
+                Span::null_span()
             ),
             TBox::Expr(
                 vec![
-                    Token::VarRef(Box::new("me".to_string())),
-                    Token::Dot,
-                    Token::VarRef(Box::new("print_point".to_string())),
-                    Token::LParen,
-                    Token::RParen
+                    SpannedToken::new_null(Token::VarRef(Box::new("me".to_string()))),
+                    SpannedToken::new_null(Token::Dot),
+                    SpannedToken::new_null(Token::VarRef(Box::new("print_point".to_string()))),
+                    SpannedToken::new_null(Token::LParen),
+                    SpannedToken::new_null(Token::RParen)
                 ],
-                "".to_string()
+                Span::null_span()
             )
         ]
     ))
@@ -1114,13 +1121,13 @@ fn test_boxer_compound_assignment() {
     assert!(compare_tbox_vecs(
         boxes.unwrap(),
         vec![TBox::Assign(
-            vec![Token::VarRef(Box::new("x".to_string()))],
+            vec![SpannedToken::new_null(Token::VarRef(Box::new("x".to_string())))],
             vec![
-                Token::VarRef(Box::new("x".to_string())),
-                Token::Plus,
-                Token::IntLit(1)
+                SpannedToken::new_null(Token::VarRef(Box::new("x".to_string()))),
+                SpannedToken::new_null(Token::Plus),
+                SpannedToken::new_null(Token::IntLit(1))
             ],
-            "x+=1".to_string()
+            Span::null_span()
         )]
     ))
 }
@@ -1136,13 +1143,13 @@ fn test_boxer_increment() {
     assert!(compare_tbox_vecs(
         boxes.unwrap(),
         vec![TBox::Assign(
-            vec![Token::VarRef(Box::new("x".to_string()))],
+            vec![SpannedToken::new_null(Token::VarRef(Box::new("x".to_string())))],
             vec![
-                Token::VarRef(Box::new("x".to_string())),
-                Token::Plus,
-                Token::IntLit(1)
+                SpannedToken::new_null(Token::VarRef(Box::new("x".to_string()))),
+                SpannedToken::new_null(Token::Plus),
+                SpannedToken::new_null(Token::IntLit(1))
             ],
-            "x++".to_string()
+            Span::null_span()
         )]
     ))
 }
@@ -1158,14 +1165,14 @@ fn test_boxer_extern_function_declaration() {
     assert!(compare_tbox_vecs(
         boxes.unwrap(),
         vec![TBox::ExternFuncDec(
-            Token::VarName(Box::new("printf".to_string())),
+            SpannedToken::new_null(Token::VarName(Box::new("printf".to_string()))),
             vec![TBox::FuncParam(
-                Token::VarRef(Box::new("msg".to_string())),
+                SpannedToken::new_null(Token::VarRef(Box::new("msg".to_string()))),
                 TypeTok::Str,
-                "".to_string()
+                Span::null_span()
             )],
             TypeTok::Int,
-            "extern fn printf(msg: str): int;".to_string()
+            Span::null_span()
         )]
     ))
 }
@@ -1181,14 +1188,14 @@ fn test_boxer_extern_function_declaration_void() {
     assert!(compare_tbox_vecs(
         boxes.unwrap(),
         vec![TBox::ExternFuncDec(
-            Token::VarName(Box::new("puts".to_string())),
+            SpannedToken::new_null(Token::VarName(Box::new("puts".to_string()))),
             vec![TBox::FuncParam(
-                Token::VarRef(Box::new("msg".to_string())),
+                SpannedToken::new_null(Token::VarRef(Box::new("msg".to_string()))),
                 TypeTok::Str,
-                "".to_string()
+                Span::null_span()
             )],
             TypeTok::Void,
-            "extern fn puts(msg: str): void;".to_string()
+            Span::null_span()
         )]
     ))
 }
@@ -1202,20 +1209,20 @@ fn test_boxer_import_stmt() {
     assert!(compare_tbox_vecs(
         boxes.unwrap(),
         vec![
-            TBox::ImportStmt("std.math".to_string(), "import std.math;".to_string()),
+            TBox::ImportStmt("std.math".to_string(), Span::null_span()),
             TBox::Expr(
                 vec![
-                    Token::VarRef(Box::new("println".to_string())),
-                    Token::LParen,
-                    Token::VarRef(Box::new("math".to_string())),
-                    Token::Dot,
-                    Token::VarRef(Box::new("abs".to_string())),
-                    Token::LParen,
-                    Token::IntLit(-5),
-                    Token::RParen,
-                    Token::RParen
+                    SpannedToken::new_null(Token::VarRef(Box::new("println".to_string()))),
+                    SpannedToken::new_null(Token::LParen),
+                    SpannedToken::new_null(Token::VarRef(Box::new("math".to_string()))),
+                    SpannedToken::new_null(Token::Dot),
+                    SpannedToken::new_null(Token::VarRef(Box::new("abs".to_string()))),
+                    SpannedToken::new_null(Token::LParen),
+                    SpannedToken::new_null(Token::IntLit(-5)),
+                    SpannedToken::new_null(Token::RParen),
+                    SpannedToken::new_null(Token::RParen)
                 ],
-                "".to_string()
+                Span::null_span()
             )
         ]
     ))
@@ -1232,36 +1239,36 @@ fn test_boxer_if_else_chain() {
         boxes.unwrap(),
         vec![TBox::IfStmt(
             vec![
-                Token::VarRef(Box::new("x".to_string())),
-                Token::Equals,
-                Token::IntLit(1)
+                SpannedToken::new_null(Token::VarRef(Box::new("x".to_string()))),
+                SpannedToken::new_null(Token::Equals),
+                SpannedToken::new_null(Token::IntLit(1))
             ],
             vec![TBox::VarDec(
-                Token::VarName(Box::new("y".to_string())),
+                SpannedToken::new_null(Token::VarName(Box::new("y".to_string()))),
                 None,
-                vec![Token::IntLit(2)],
-                "".to_string()
+                vec![SpannedToken::new_null(Token::IntLit(2))],
+                Span::null_span()
             )],
             Some(vec![(
                 vec![
-                    Token::VarRef(Box::new("x".to_string())),
-                    Token::Equals,
-                    Token::IntLit(2)
+                    SpannedToken::new_null(Token::VarRef(Box::new("x".to_string()))),
+                    SpannedToken::new_null(Token::Equals),
+                    SpannedToken::new_null(Token::IntLit(2))
                 ],
                 vec![TBox::VarDec(
-                    Token::VarName(Box::new("y".to_string())),
+                    SpannedToken::new_null(Token::VarName(Box::new("y".to_string()))),
                     None,
-                    vec![Token::IntLit(3)],
-                    "".to_string()
+                    vec![SpannedToken::new_null(Token::IntLit(3))],
+                    Span::null_span()
                 )]
             )]),
             Some(vec![TBox::VarDec(
-                Token::VarName(Box::new("y".to_string())),
+                SpannedToken::new_null(Token::VarName(Box::new("y".to_string()))),
                 None,
-                vec![Token::IntLit(4)],
-                "".to_string()
+                vec![SpannedToken::new_null(Token::IntLit(4))],
+                Span::null_span()
             )]),
-            "".to_string()
+            Span::null_span()
         )]
     ))
 }
@@ -1281,48 +1288,48 @@ fn test_boxer_struct_type_annotation() {
             TBox::StructInterface(
                 Box::new("Foo".to_string()),
                 Box::new(BTreeMap::from([("a".to_string(), TypeTok::Int)])),
-                "".to_string()
+                Span::null_span()
             ),
             TBox::VarDec(
-                Token::VarName(Box::new("x".to_string())),
+                SpannedToken::new_null(Token::VarName(Box::new("x".to_string()))),
                 Some(TypeTok::Struct(BTreeMap::from([(
                     "a".to_string(),
                     Box::new(TypeTok::Int)
                 )]))),
                 vec![
-                    Token::VarRef(Box::new("Foo".to_string())),
-                    Token::LBrace,
-                    Token::VarRef(Box::new("a".to_string())),
-                    Token::Colon,
-                    Token::IntLit(5),
-                    Token::RBrace,
+                    SpannedToken::new_null(Token::VarRef(Box::new("Foo".to_string()))),
+                    SpannedToken::new_null(Token::LBrace),
+                    SpannedToken::new_null(Token::VarRef(Box::new("a".to_string()))),
+                    SpannedToken::new_null(Token::Colon),
+                    SpannedToken::new_null(Token::IntLit(5)),
+                    SpannedToken::new_null(Token::RBrace),
                 ],
-                "".to_string()
+                Span::null_span()
             ),
             TBox::VarDec(
-                Token::VarName(Box::new("arr".to_string())),
+                SpannedToken::new_null(Token::VarName(Box::new("arr".to_string()))),
                 Some(TypeTok::StructArr(
                     BTreeMap::from([("a".to_string(), Box::new(TypeTok::Int))]),
                     1
                 )),
                 vec![
-                    Token::LBrack,
-                    Token::VarRef(Box::new("Foo".to_string())),
-                    Token::LBrace,
-                    Token::VarRef(Box::new("a".to_string())),
-                    Token::Colon,
-                    Token::IntLit(3),
-                    Token::RBrace,
-                    Token::Comma,
-                    Token::VarRef(Box::new("Foo".to_string())),
-                    Token::LBrace,
-                    Token::VarRef(Box::new("a".to_string())),
-                    Token::Colon,
-                    Token::IntLit(4),
-                    Token::RBrace,
-                    Token::RBrack,
+                    SpannedToken::new_null(Token::LBrack),
+                    SpannedToken::new_null(Token::VarRef(Box::new("Foo".to_string()))),
+                    SpannedToken::new_null(Token::LBrace),
+                    SpannedToken::new_null(Token::VarRef(Box::new("a".to_string()))),
+                    SpannedToken::new_null(Token::Colon),
+                    SpannedToken::new_null(Token::IntLit(3)),
+                    SpannedToken::new_null(Token::RBrace),
+                    SpannedToken::new_null(Token::Comma),
+                    SpannedToken::new_null(Token::VarRef(Box::new("Foo".to_string()))),
+                    SpannedToken::new_null(Token::LBrace),
+                    SpannedToken::new_null(Token::VarRef(Box::new("a".to_string()))),
+                    SpannedToken::new_null(Token::Colon),
+                    SpannedToken::new_null(Token::IntLit(4)),
+                    SpannedToken::new_null(Token::RBrace),
+                    SpannedToken::new_null(Token::RBrack),
                 ],
-                "".to_string()
+                Span::null_span()
             ),
         ]
     ))
@@ -1343,49 +1350,49 @@ fn test_boxer_func_struct_ret() {
             TBox::StructInterface(
                 Box::new("Foo".to_string()),
                 Box::new(BTreeMap::from([("a".to_string(), TypeTok::Int)])),
-                "".to_string()
+                Span::null_span()
             ),
             TBox::FuncDec(
-                Token::VarName(Box::new("test".to_string())),
+                SpannedToken::new_null(Token::VarName(Box::new("test".to_string()))),
                 vec![],
                 TypeTok::Struct(BTreeMap::from([("a".to_string(), Box::new(TypeTok::Int))])),
                 vec![TBox::Return(
                     Box::new(TBox::Expr(
                         vec![
-                            Token::VarRef(Box::new("Foo".to_string())),
-                            Token::LBrace,
-                            Token::VarRef(Box::new("a".to_string())),
-                            Token::Colon,
-                            Token::IntLit(3),
-                            Token::RBrace,
+                            SpannedToken::new_null(Token::VarRef(Box::new("Foo".to_string()))),
+                            SpannedToken::new_null(Token::LBrace),
+                            SpannedToken::new_null(Token::VarRef(Box::new("a".to_string()))),
+                            SpannedToken::new_null(Token::Colon),
+                            SpannedToken::new_null(Token::IntLit(3)),
+                            SpannedToken::new_null(Token::RBrace),
                         ],
-                        "".to_string()
+                        Span::null_span()
                     )),
-                    "".to_string()
+                    Span::null_span()
                 )],
-                "".to_string(),
+                Span::null_span(),
                 false
             ),
             TBox::VarDec(
-                Token::VarName(Box::new("x".to_string())),
+                SpannedToken::new_null(Token::VarName(Box::new("x".to_string()))),
                 None,
                 vec![
-                    Token::VarRef(Box::new("test".to_string())),
-                    Token::LParen,
-                    Token::RParen
+                    SpannedToken::new_null(Token::VarRef(Box::new("test".to_string()))),
+                    SpannedToken::new_null(Token::LParen),
+                    SpannedToken::new_null(Token::RParen)
                 ],
-                "".to_string()
+                Span::null_span()
             ),
             TBox::Expr(
                 vec![
-                    Token::VarRef(Box::new("println".to_string())),
-                    Token::LParen,
-                    Token::VarRef(Box::new("x".to_string())),
-                    Token::Dot,
-                    Token::VarRef(Box::new("a".to_string())),
-                    Token::RParen
+                    SpannedToken::new_null(Token::VarRef(Box::new("println".to_string()))),
+                    SpannedToken::new_null(Token::LParen),
+                    SpannedToken::new_null(Token::VarRef(Box::new("x".to_string()))),
+                    SpannedToken::new_null(Token::Dot),
+                    SpannedToken::new_null(Token::VarRef(Box::new("a".to_string()))),
+                    SpannedToken::new_null(Token::RParen)
                 ],
-                "".to_string()
+                Span::null_span()
             )
         ]
     ))
@@ -1403,10 +1410,10 @@ fn test_boxer_func_struct_arr_ret() {
             TBox::StructInterface(
                 Box::new("Foo".to_string()),
                 Box::new(BTreeMap::from([("a".to_string(), TypeTok::Int)])),
-                "".to_string()
+                Span::null_span()
             ),
             TBox::FuncDec(
-                Token::VarName(Box::new("test".to_string())),
+                SpannedToken::new_null(Token::VarName(Box::new("test".to_string()))),
                 vec![],
                 TypeTok::StructArr(
                     BTreeMap::from([("a".to_string(), Box::new(TypeTok::Int))]),
@@ -1415,52 +1422,52 @@ fn test_boxer_func_struct_arr_ret() {
                 vec![TBox::Return(
                     Box::new(TBox::Expr(
                         vec![
-                            Token::LBrack,
-                            Token::VarRef(Box::new("Foo".to_string())),
-                            Token::LBrace,
-                            Token::VarRef(Box::new("a".to_string())),
-                            Token::Colon,
-                            Token::IntLit(3),
-                            Token::RBrace,
-                            Token::Comma,
-                            Token::VarRef(Box::new("Foo".to_string())),
-                            Token::LBrace,
-                            Token::VarRef(Box::new("a".to_string())),
-                            Token::Colon,
-                            Token::IntLit(5),
-                            Token::RBrace,
-                            Token::RBrack,
+                            SpannedToken::new_null(Token::LBrack),
+                            SpannedToken::new_null(Token::VarRef(Box::new("Foo".to_string()))),
+                            SpannedToken::new_null(Token::LBrace),
+                            SpannedToken::new_null(Token::VarRef(Box::new("a".to_string()))),
+                            SpannedToken::new_null(Token::Colon),
+                            SpannedToken::new_null(Token::IntLit(3)),
+                            SpannedToken::new_null(Token::RBrace),
+                            SpannedToken::new_null(Token::Comma),
+                            SpannedToken::new_null(Token::VarRef(Box::new("Foo".to_string()))),
+                            SpannedToken::new_null(Token::LBrace),
+                            SpannedToken::new_null(Token::VarRef(Box::new("a".to_string()))),
+                            SpannedToken::new_null(Token::Colon),
+                            SpannedToken::new_null(Token::IntLit(5)),
+                            SpannedToken::new_null(Token::RBrace),
+                            SpannedToken::new_null(Token::RBrack),
                         ],
-                        "".to_string()
+                        Span::null_span()
                     )),
-                    "".to_string()
+                    Span::null_span()
                 )],
-                "".to_string(),
+                Span::null_span(),
                 false
             ),
             TBox::VarDec(
-                Token::VarName(Box::new("x".to_string())),
+                SpannedToken::new_null(Token::VarName(Box::new("x".to_string()))),
                 None,
                 vec![
-                    Token::VarRef(Box::new("test".to_string())),
-                    Token::LParen,
-                    Token::RParen
+                    SpannedToken::new_null(Token::VarRef(Box::new("test".to_string()))),
+                    SpannedToken::new_null(Token::LParen),
+                    SpannedToken::new_null(Token::RParen)
                 ],
-                "".to_string()
+                Span::null_span()
             ),
             TBox::Expr(
                 vec![
-                    Token::VarRef(Box::new("println".to_string())),
-                    Token::LParen,
-                    Token::VarRef(Box::new("x".to_string())),
-                    Token::LBrack,
-                    Token::IntLit(0),
-                    Token::RBrack,
-                    Token::Dot,
-                    Token::VarRef(Box::new("a".to_string())),
-                    Token::RParen
+                    SpannedToken::new_null(Token::VarRef(Box::new("println".to_string()))),
+                    SpannedToken::new_null(Token::LParen),
+                    SpannedToken::new_null(Token::VarRef(Box::new("x".to_string()))),
+                    SpannedToken::new_null(Token::LBrack),
+                    SpannedToken::new_null(Token::IntLit(0)),
+                    SpannedToken::new_null(Token::RBrack),
+                    SpannedToken::new_null(Token::Dot),
+                    SpannedToken::new_null(Token::VarRef(Box::new("a".to_string()))),
+                    SpannedToken::new_null(Token::RParen)
                 ],
-                "".to_string()
+                Span::null_span()
             )
         ]
     ))
@@ -1477,32 +1484,32 @@ fn test_boxer_export_function() {
     assert!(compare_tbox_vecs(
         boxes,
         vec![TBox::FuncDec(
-            Token::VarName(Box::new("add_int_int".to_string())),
+            SpannedToken::new_null(Token::VarName(Box::new("add_int_int".to_string()))),
             vec![
                 TBox::FuncParam(
-                    Token::VarRef(Box::new("a".to_string())),
+                    SpannedToken::new_null(Token::VarRef(Box::new("a".to_string()))),
                     TypeTok::Int,
-                    "".to_string()
+                    Span::null_span()
                 ),
                 TBox::FuncParam(
-                    Token::VarRef(Box::new("b".to_string())),
+                    SpannedToken::new_null(Token::VarRef(Box::new("b".to_string()))),
                     TypeTok::Int,
-                    "".to_string()
+                    Span::null_span()
                 )
             ],
             TypeTok::Int,
             vec![TBox::Return(
                 Box::new(TBox::Expr(
                     vec![
-                        Token::VarRef(Box::new("a".to_string())),
-                        Token::Plus,
-                        Token::VarRef(Box::new("b".to_string())),
+                        SpannedToken::new_null(Token::VarRef(Box::new("a".to_string()))),
+                        SpannedToken::new_null(Token::Plus),
+                        SpannedToken::new_null(Token::VarRef(Box::new("b".to_string()))),
                     ],
-                    "".to_string()
+                    Span::null_span()
                 )),
-                "".to_string()
+                Span::null_span()
             )],
-            "".to_string(),
+            Span::null_span(),
             true
         )]
     ));

@@ -1,7 +1,10 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use crate::{errors::Span, token::{SpannedToken, TypeTok}};
+use crate::{
+    errors::Span,
+    token::{SpannedToken, TypeTok},
+};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TBox {

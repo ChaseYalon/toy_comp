@@ -1,6 +1,6 @@
 use crate::errors::ToyError;
-use crate::token::SpannedToken;
 use crate::parser::{ast::Ast, ast_gen::AstGenerator, boxer::Boxer};
+use crate::token::SpannedToken;
 
 pub mod ast;
 pub mod ast_gen;
