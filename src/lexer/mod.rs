@@ -99,6 +99,21 @@ impl Lexer {
             }
         }
 
+        // don't match keywords that are part of longer identifiers
+        let prev_char = if self.cursor == 0 {
+            '\0'
+        } else {
+            self.source_chars[self.cursor - 1]
+        };
+        if prev_char.is_alphanumeric() || prev_char == '_' {
+            return Ok(false);
+        }
+
+        let next_char_after_word = self.peek(word.len());
+        if next_char_after_word.is_alphanumeric() || next_char_after_word == '_' {
+            return Ok(false);
+        }
+
         let mut dimension = 0;
         let mut scan = self.cursor + word.len();
         let source_len = self.source_chars.len();

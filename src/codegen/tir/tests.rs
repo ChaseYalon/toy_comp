@@ -2365,7 +2365,7 @@ println(points);
                                 ],
                             ),
                             TIR::IConst(13, 3, TirType::I64),
-                            TIR::IConst(14, 0, TirType::I64),
+                            TIR::IConst(14, 8, TirType::I64),
                             TIR::IConst(15, 1, TirType::I64),
                             TIR::CallExternFunction(
                                 16,
@@ -2388,7 +2388,7 @@ println(points);
                                 TirType::Ptr,
                             ),
                             TIR::IConst(17, 0, TirType::I64),
-                            TIR::IConst(18, 0, TirType::I64),
+                            TIR::IConst(18, 8, TirType::I64),
                             TIR::CallExternFunction(
                                 19,
                                 Box::new("toy_write_to_arr".to_string()),
@@ -2417,7 +2417,7 @@ println(points);
                                 TirType::Void,
                             ),
                             TIR::IConst(20, 1, TirType::I64),
-                            TIR::IConst(21, 0, TirType::I64),
+                            TIR::IConst(21, 8, TirType::I64),
                             TIR::CallExternFunction(
                                 22,
                                 Box::new("toy_write_to_arr".to_string()),
@@ -2446,7 +2446,7 @@ println(points);
                                 TirType::Void,
                             ),
                             TIR::IConst(23, 2, TirType::I64),
-                            TIR::IConst(24, 0, TirType::I64),
+                            TIR::IConst(24, 8, TirType::I64),
                             TIR::CallExternFunction(
                                 25,
                                 Box::new("toy_write_to_arr".to_string()),

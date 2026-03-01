@@ -110,3 +110,24 @@ impl fmt::Display for TBox {
         )
     }
 }
+
+impl TBox {
+    pub fn span(&self) -> Span {
+        return match self {
+            TBox::Expr(_, s) => s.clone(),
+            TBox::VarDec(_, _, _, s) => s.clone(),
+            TBox::Assign(_, _, s) => s.clone(),
+            TBox::IfStmt(_, _, _, _, s) => s.clone(),
+            TBox::FuncParam(_, _, s) => s.clone(),
+            TBox::FuncDec(_, _, _, _, s, _) => s.clone(),
+            TBox::Return(_, s) => s.clone(),
+            TBox::While(_, _, s) => s.clone(),
+            TBox::Break(s) => s.clone(),
+            TBox::Continue(s) => s.clone(),
+            TBox::StructInterface(_, _, s) => s.clone(),
+            TBox::ExternFuncDec(_, _, _, s) => s.clone(),
+            TBox::ImportStmt(_, s) => s.clone(),
+            TBox::Interface(_, s) => s.clone(),
+        };
+    }
+}

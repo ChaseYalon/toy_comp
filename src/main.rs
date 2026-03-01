@@ -40,7 +40,7 @@ fn run_repl() {
 }
 
 fn compile_and_run(source: String) -> Result<(), Box<dyn std::error::Error>> {
-    let repl_path = PathBuf::from("temp/repl.toy");
+    let repl_path = PathBuf::from("./temp/repl.toy");
     fs::create_dir_all("temp")?;
     fs::write(&repl_path, source)?;
 

@@ -481,6 +481,7 @@ impl Driver {
     ///Will automatically compile and build the program
     ///Linking in all necessary modules
     pub fn start(&mut self, ctx: &Context) -> Result<(), ToyError> {
+        Driver::set_current_file_path(&self.main_program_path.to_string_lossy());
         let main_program = fs::read_to_string(&self.main_program_path).map_err(|_| {
             ToyError::new(
                 ToyErrorType::MissingFile,

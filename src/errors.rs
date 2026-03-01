@@ -64,7 +64,10 @@ impl Span {
     }
     //(line, col), (line, col)
     pub fn get_line_col(&self) -> ((u64, u64), (u64, u64)) {
-        let content = fs::read_to_string(self.file_path.clone()).unwrap();
+        let content = match fs::read_to_string(self.file_path.clone()) {
+            Ok(c) => c,
+            Err(_) => return ((0, 0), (0, 0)),
+        };
         let mut line = 1u64;
         let mut col = 1u64;
         let mut start_line = 1u64;
@@ -180,7 +183,7 @@ impl fmt::Display for ToyError {
             let ((start_l, start_c), (end_l, end_c)) = self.offending_code.get_line_col();
             write!(
                 f,
-                "\n{}\nType: {}\nProblematic Code: {}\nLine Number: {}_{} : {}_{}\nBacktrace:\n{}",
+                "\n{}\nType: {}\nProblematic Code: {}\nLine Number: {}:{} - {}:{}\nBacktrace:\n{}",
                 "[ERROR]".red().bold(),
                 self.error_type.to_string().blue().bold(),
                 self.offending_code.to_string().magenta(),

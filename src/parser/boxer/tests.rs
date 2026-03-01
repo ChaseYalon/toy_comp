@@ -7,18 +7,25 @@ use crate::{
 use ordered_float::OrderedFloat;
 use std::collections::BTreeMap;
 
+fn eq_sp_tok_vec(a: &Vec<SpannedToken>, b: &Vec<SpannedToken>) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter().zip(b.iter()).all(|(x, y)| x.tok == y.tok)
+}
+
 fn eq_tbox_ignoring_src(x: &TBox, y: &TBox) -> bool {
     match (x, y) {
         (TBox::Break(_), TBox::Break(_)) => true,
         (TBox::Continue(_), TBox::Continue(_)) => true,
 
-        (TBox::Expr(xv, _), TBox::Expr(yv, _)) => xv == yv,
+        (TBox::Expr(xv, _), TBox::Expr(yv, _)) => eq_sp_tok_vec(xv, yv),
 
         (TBox::VarDec(xn, xt, xv, _), TBox::VarDec(yn, yt, yv, _)) => {
-            xn == yn && xt == yt && xv == yv
+            xn.tok == yn.tok && xt == yt && eq_sp_tok_vec(xv, yv)
         }
         (TBox::IfStmt(xc, xb, xe, xa, _), TBox::IfStmt(yc, yb, ye, ya, _)) => {
-            xc == yc
+            eq_sp_tok_vec(xc, yc)
                 && compare_tbox_vecs(xb.clone(), yb.clone())
                 && match (xe, ye) {
                     (Some(xev), Some(yev)) => {
@@ -26,7 +33,7 @@ fn eq_tbox_ignoring_src(x: &TBox, y: &TBox) -> bool {
                             false
                         } else {
                             xev.iter().zip(yev.iter()).all(|((xc, xb), (yc, yb))| {
-                                xc == yc && compare_tbox_vecs(xb.clone(), yb.clone())
+                                eq_sp_tok_vec(xc, yc) && compare_tbox_vecs(xb.clone(), yb.clone())
                             })
                         }
                     }
@@ -40,10 +47,10 @@ fn eq_tbox_ignoring_src(x: &TBox, y: &TBox) -> bool {
                 }
         }
 
-        (TBox::FuncParam(xn, xt, _), TBox::FuncParam(yn, yt, _)) => xn == yn && xt == yt,
+        (TBox::FuncParam(xn, xt, _), TBox::FuncParam(yn, yt, _)) => xn.tok == yn.tok && xt == yt,
 
         (TBox::FuncDec(xn, xp, xr, xb, _, xie), TBox::FuncDec(yn, yp, yr, yb, _, yie)) => {
-            xn == yn
+            xn.tok == yn.tok
                 && xr == yr
                 && compare_tbox_vecs(xp.clone(), yp.clone())
                 && compare_tbox_vecs(xb.clone(), yb.clone())
@@ -53,16 +60,17 @@ fn eq_tbox_ignoring_src(x: &TBox, y: &TBox) -> bool {
         (TBox::Return(xv, _), TBox::Return(yv, _)) => eq_tbox_ignoring_src(xv, yv),
 
         (TBox::While(xc, xb, _), TBox::While(yc, yb, _)) => {
-            xc == yc && compare_tbox_vecs(xb.clone(), yb.clone())
+            eq_sp_tok_vec(xc, yc) && compare_tbox_vecs(xb.clone(), yb.clone())
         }
-        (TBox::Assign(xl, xr, _), TBox::Assign(yl, yr, _)) => xl == yl && xr == yr,
+        (TBox::Assign(xl, xr, _), TBox::Assign(yl, yr, _)) => eq_sp_tok_vec(xl, yl) && eq_sp_tok_vec(xr, yr),
         (TBox::StructInterface(xn, xkv, _), TBox::StructInterface(yn, ykv, _)) => {
             xn == yn && xkv == ykv
         }
         (TBox::ExternFuncDec(xn, xp, xr, _), TBox::ExternFuncDec(yn, yp, yr, _)) => {
-            xn == yn && xr == yr && compare_tbox_vecs(xp.clone(), yp.clone())
+            xn.tok == yn.tok && xr == yr && compare_tbox_vecs(xp.clone(), yp.clone())
         }
         (TBox::ImportStmt(xn, _), TBox::ImportStmt(yn, _)) => xn == yn,
+        (TBox::Interface(xt, _), TBox::Interface(yt, _)) => xt == yt,
         _ => false,
     }
 }

@@ -72,7 +72,7 @@ struct LoopContext {
 impl AstToIrConverter {
     fn has_loop_control_for_current_loop(node: &Ast) -> bool {
         match node {
-            Ast::Break | Ast::Continue => true,
+            Ast::Break(_) | Ast::Continue(_) => true,
             Ast::IfStmt(_, body, alt, _) => {
                 body.iter().any(Self::has_loop_control_for_current_loop)
                     || alt
@@ -114,10 +114,10 @@ impl AstToIrConverter {
     }
     fn get_expr_type(&self, node: &Ast, scope: &Rc<RefCell<Scope>>) -> Result<TypeTok, ToyError> {
         match node {
-            Ast::IntLit(_) => Ok(TypeTok::Int),
-            Ast::BoolLit(_) => Ok(TypeTok::Bool),
+            Ast::IntLit(_, _) => Ok(TypeTok::Int),
+            Ast::BoolLit(_, _) => Ok(TypeTok::Bool),
             Ast::StringLit(_, _) => Ok(TypeTok::Str),
-            Ast::FloatLit(_) => Ok(TypeTok::Float),
+            Ast::FloatLit(_, _) => Ok(TypeTok::Float),
             Ast::VarRef(n, _) => scope.as_ref().borrow().get_var_type(n),
             Ast::InfixExpr(l, r, op, _) => match op {
                 InfixOp::Equals
@@ -201,8 +201,8 @@ impl AstToIrConverter {
                 }
             }
             Ast::StructLit(_, _, _) => Ok(TypeTok::Int),
-            Ast::Not(_) => Ok(TypeTok::Bool),
-            Ast::MemberAccess(target, field_name, _) => {
+            Ast::Not(_, _) => Ok(TypeTok::Bool),
+            Ast::MemberAccess(target, field_name, span) => {
                 let target_ty = self.get_expr_type(target, scope)?;
                 match target_ty {
                     TypeTok::Struct(fields) => {
@@ -211,20 +211,20 @@ impl AstToIrConverter {
                         } else {
                             Err(ToyError::new(
                                 ToyErrorType::KeyNotOnStruct,
-                                Some(field_name.clone()),
+                                span.clone(),
                             ))
                         }
                     }
                     _ => Err(ToyError::new(
                         ToyErrorType::VariableNotAStruct,
-                        Some(format!("{:?}", target)),
+                        node.span(),
                     )),
                 }
             }
 
             _ => Err(ToyError::new(
                 ToyErrorType::TypeIdNotAssigned,
-                Some(format!("{}", node)),
+                node.span(),
             )),
         }
     }
@@ -235,9 +235,9 @@ impl AstToIrConverter {
         scope: &Rc<RefCell<Scope>>,
     ) -> Result<SSAValue, ToyError> {
         let res = match node {
-            Ast::IntLit(v) => self.builder.iconst(v, TypeTok::Int),
-            Ast::BoolLit(b) => self.builder.iconst(if b { 1 } else { 0 }, TypeTok::Bool),
-            Ast::FloatLit(f) => self.builder.fconst(f.into()),
+            Ast::IntLit(v, _) => self.builder.iconst(v, TypeTok::Int),
+            Ast::BoolLit(b, _) => self.builder.iconst(if b { 1 } else { 0 }, TypeTok::Bool),
+            Ast::FloatLit(f, _) => self.builder.fconst(f.into()),
             Ast::InfixExpr(left_i, right_i, op, _) => {
                 let mut left = self.compile_expr(*left_i, scope)?;
                 let mut right = self.compile_expr(*right_i, scope)?;
@@ -446,13 +446,13 @@ impl AstToIrConverter {
                 let st = *s;
                 self.builder.global_string(st)
             }
-            Ast::ArrLit(ty, vals, _) => {
+            Ast::ArrLit(ref ty, ref vals, _) => {
                 let mut ssa_vals: Vec<SSAValue> = Vec::new();
                 for val in vals.clone() {
                     let compiled_val = self.compile_expr(val, scope)?;
                     ssa_vals.push(compiled_val);
                 }
-                let len = self.compile_expr(Ast::IntLit(vals.len() as i64), scope)?;
+                let len = self.compile_expr(Ast::IntLit(vals.len() as i64, node.span()), scope)?;
                 let degree = match ty {
                     TypeTok::IntArr(d) => d,
                     TypeTok::BoolArr(d) => d,
@@ -464,8 +464,8 @@ impl AstToIrConverter {
                 };
                 let mut params = vec![len];
                 self.builder
-                    .inject_type_param(&ty, false, true, &mut params)?;
-                params.push(self.builder.iconst(degree as i64, TypeTok::Int)?);
+                    .inject_type_param(ty, false, true, &mut params)?;
+                params.push(self.builder.iconst(*degree as i64, TypeTok::Int)?);
                 let arr = self.builder.call("toy_malloc_arr".to_string(), params)?;
                 for (i, ssa_val) in ssa_vals.iter().enumerate() {
                     let idx = self.builder.iconst(i as i64, TypeTok::Int)?;
@@ -581,7 +581,7 @@ impl AstToIrConverter {
                 self.builder.read_struct_literal(target_val, idx as u64, ty)
             }
 
-            Ast::Not(v) => {
+            Ast::Not(v, _) => {
                 let val = self.compile_expr(*v, scope)?;
                 self.builder.not(val)
             }
@@ -937,8 +937,8 @@ impl AstToIrConverter {
     }
     fn compile_stmt(&mut self, node: Ast, scope: &Rc<RefCell<Scope>>) -> Result<(), ToyError> {
         match node {
-            Ast::IntLit(_)
-            | Ast::BoolLit(_)
+            Ast::IntLit(_, _)
+            | Ast::BoolLit(_, _)
             | Ast::InfixExpr(_, _, _, _)
             | Ast::EmptyExpr(_, _)
             | Ast::FuncCall(_, _, _)
@@ -946,7 +946,7 @@ impl AstToIrConverter {
             | Ast::StringLit(_, _)
             | Ast::ArrLit(_, _, _)
             | Ast::StructLit(_, _, _)
-            | Ast::Not(_) => {
+            | Ast::Not(_, _) => {
                 let _ = self.compile_expr(node, scope)?;
             }
             Ast::VarDec(box_name, ty, box_val, _) => {
@@ -1009,7 +1009,7 @@ impl AstToIrConverter {
                     _ => {
                         return Err(ToyError::new(
                             ToyErrorType::MalformedVariableReassign,
-                            Some("Invalid assignment target".to_string()),
+                            lhs.span(),
                         ));
                     }
                 }
@@ -1091,13 +1091,13 @@ impl AstToIrConverter {
                     }
                 }
             }
-            Ast::Continue => {
+            Ast::Continue(span) => {
                 let continue_target = self
                     .loop_stack
                     .last()
                     .map(|ctx| ctx.continue_target)
                     .ok_or_else(|| {
-                        ToyError::new(ToyErrorType::InvalidLocationForContinueStatement, None)
+                        ToyError::new(ToyErrorType::InvalidLocationForContinueStatement, span.clone())
                     })?;
 
                 let tracked_vars = self
@@ -1114,13 +1114,13 @@ impl AstToIrConverter {
 
                 self.builder.jump_block_un_cond(continue_target)?;
             }
-            Ast::Break => {
+            Ast::Break(span) => {
                 let merge_id = self
                     .loop_stack
                     .last()
                     .map(|ctx| ctx.break_target)
                     .ok_or_else(|| {
-                        ToyError::new(ToyErrorType::InvalidLocationForBreakStatement, None)
+                        ToyError::new(ToyErrorType::InvalidLocationForBreakStatement, span.clone())
                     })?;
                 self.builder.jump_block_un_cond(merge_id)?;
             }

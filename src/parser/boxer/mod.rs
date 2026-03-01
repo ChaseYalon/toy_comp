@@ -34,6 +34,9 @@ impl Boxer {
         }
     }
     pub fn total_span(toks: Vec<SpannedToken>) -> Span {
+        if toks.is_empty() {
+            return Span::null_span();
+        }
         let first = toks[0].span.clone();
         //SAFETY - this array should always be filled
         let last = toks.last().unwrap().span.clone();
@@ -314,8 +317,17 @@ impl Boxer {
                     ));
                 }
 
-                let depth = 1;
+                let mut depth = 1;
                 for_end += 1; // Move past the opening brace
+
+                while for_end < input.len() && depth > 0 {
+                    if input[for_end].tok.tok_type() == "LBrace" {
+                        depth += 1;
+                    } else if input[for_end].tok.tok_type() == "RBrace" {
+                        depth -= 1;
+                    }
+                    for_end += 1;
+                }
 
                 if depth != 0 {
                     return Err(ToyError::new(

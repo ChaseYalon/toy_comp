@@ -6,7 +6,7 @@ use crate::lexer::Lexer;
 use crate::parser::ast::Ast;
 use crate::parser::boxer::Boxer;
 use crate::parser::toy_box::TBox;
-use crate::token::Token;
+use crate::token::{Token, SpannedToken};
 use crate::token::TypeTok;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
@@ -30,6 +30,16 @@ pub struct AstGenerator {
 }
 
 impl AstGenerator {
+    pub fn total_span(toks: Vec<SpannedToken>) -> Span {
+        let first = toks[0].span.clone();
+        //SAFETY - this array should always be filled
+        let last = toks.last().unwrap().span.clone();
+        return Span::new(
+            &first.file_path,
+            first.start_offset_bytes,
+            last.end_offset_bytes,
+        );
+    }
     pub fn new() -> AstGenerator {
         let b_vec: Vec<TBox> = Vec::new();
         let n_vec: Vec<Ast> = Vec::new();
@@ -155,10 +165,11 @@ impl AstGenerator {
         }
     }
 
-    fn find_top_val(&self, toks: &Vec<Token>) -> Result<(usize, u32, Token), ToyError> {
+    fn find_top_val(&self, toks: &Vec<SpannedToken>) -> Result<(usize, u32, SpannedToken), ToyError> {
+        let  cumulative_span = AstGenerator::total_span(toks.to_owned());
         let mut best_idx = 0_usize;
         let mut best_val: u32 = 100_000_000;
-        let mut best_tok: Token = Token::IntLit(0);
+        let mut best_tok: SpannedToken = SpannedToken::new_null(Token::IntLit(0));
 
         let mut depth = 0;
         let raw_text = toks
@@ -168,7 +179,7 @@ impl AstGenerator {
             .join(" ");
 
         for (i, t) in toks.iter().enumerate() {
-            match t.tok_type().as_str() {
+            match t.tok.tok_type().as_str() {
                 "LParen" => {
                     depth += 1;
                     continue;
@@ -191,7 +202,7 @@ impl AstGenerator {
                     if depth == 0 {
                         return Err(ToyError::new(
                             ToyErrorType::UnclosedDelimiter,
-                            Some(raw_text.clone()),
+                            cumulative_span,
                         ));
                     }
                     depth -= 1;
@@ -199,7 +210,7 @@ impl AstGenerator {
                 }
                 "LBrack" => {
                     if depth == 0 && i > 0 {
-                        let maybe_val = self.p_table.get(&t.tok_type());
+                        let maybe_val = self.p_table.get(&t.tok.tok_type());
                         if let Some(val) = maybe_val {
                             if *val <= best_val {
                                 best_val = *val;
@@ -215,7 +226,7 @@ impl AstGenerator {
                     if depth == 0 {
                         return Err(ToyError::new(
                             ToyErrorType::UnclosedDelimiter,
-                            Some(raw_text.clone()),
+                            cumulative_span,
                         ));
                     }
                     depth -= 1;
@@ -228,11 +239,11 @@ impl AstGenerator {
                 continue;
             }
 
-            let maybe_val = self.p_table.get(&t.tok_type());
+            let maybe_val = self.p_table.get(&t.tok.tok_type());
             if maybe_val.is_none() {
                 return Err(ToyError::new(
-                    ToyErrorType::UnknownSymbol(t.clone()),
-                    Some(raw_text.clone()),
+                    ToyErrorType::UnknownSymbol(t.tok.clone()),
+                    cumulative_span,
                 ));
             }
 
@@ -247,52 +258,48 @@ impl AstGenerator {
         if depth != 0 {
             return Err(ToyError::new(
                 ToyErrorType::UnclosedDelimiter,
-                Some(raw_text.clone()),
+                cumulative_span,
             ));
         }
 
         return Ok((best_idx, best_val, best_tok));
     }
 
-    fn parse_func_call(&self, toks: &Vec<Token>) -> Result<(Ast, TypeTok), ToyError> {
-        let raw_text = toks
-            .iter()
-            .map(|t| t.to_string())
-            .collect::<Vec<String>>()
-            .join(" ");
-        if toks[0].tok_type() != "VarRef" {
+    fn parse_func_call(&self, toks: &Vec<SpannedToken>) -> Result<(Ast, TypeTok), ToyError> {
+        let cumulative_span = AstGenerator::total_span(toks.clone());
+        if toks[0].tok.tok_type() != "VarRef" {
             return Err(ToyError::new(
                 ToyErrorType::MalformedFuncCall,
-                Some(raw_text.clone()),
+                cumulative_span,
             ));
         }
-        if toks[1].tok_type() != "LParen" {
+        if toks[1].tok.tok_type() != "LParen" {
             return Err(ToyError::new(
                 ToyErrorType::MalformedFuncCall,
-                Some(raw_text.clone()),
+                cumulative_span,
             ));
         }
-        if toks.last().unwrap().tok_type() != "RParen" {
+        if toks.last().unwrap().tok.tok_type() != "RParen" {
             return Err(ToyError::new(
                 ToyErrorType::MalformedFuncCall,
-                Some(raw_text.clone()),
+                cumulative_span,
             ));
         }
-        let name = match toks[0].clone() {
+        let name = match toks[0].clone().tok {
             Token::VarRef(n) => *n,
             _ => unreachable!(),
         };
         let param_toks = &toks[2..toks.len() - 1];
-        let mut unprocessed_params: Vec<Vec<Token>> = Vec::new();
+        let mut unprocessed_params: Vec<Vec<SpannedToken>> = Vec::new();
 
         if !param_toks.is_empty() {
-            let mut current_param: Vec<Token> = Vec::new();
+            let mut current_param: Vec<SpannedToken> = Vec::new();
             let mut paren_depth = 0;
             let mut brace_depth = 0;
             let mut brack_depth = 0;
 
             for t in param_toks {
-                match t {
+                match t.tok {
                     Token::LParen => paren_depth += 1,
                     Token::RParen => paren_depth -= 1,
                     Token::LBrace => brace_depth += 1,
@@ -390,13 +397,13 @@ impl AstGenerator {
         if types_opt.is_none() {
             return Err(ToyError::new(
                 ToyErrorType::UndefinedFunction,
-                Some(raw_text.clone()),
+                cumulative_span,
             ));
         }
         if types_opt.as_ref().unwrap().len() != processed_params.len() {
             return Err(ToyError::new(
                 ToyErrorType::IncorrectNumberOfArguments,
-                Some(raw_text.clone()),
+                cumulative_span,
             ));
         }
         let types = types_opt.unwrap();
@@ -404,7 +411,7 @@ impl AstGenerator {
             if type_tok != &types[i] && types[i] != TypeTok::Any {
                 return Err(ToyError::new(
                     ToyErrorType::TypeMismatch,
-                    Some(raw_text.clone()),
+                    cumulative_span,
                 ));
             }
         }
@@ -416,7 +423,7 @@ impl AstGenerator {
             })
             .collect();
         return Ok((
-            Ast::FuncCall(Box::new(resolved_name.clone()), vals, raw_text),
+            Ast::FuncCall(Box::new(resolved_name.clone()), vals, cumulative_span),
             self.func_return_type_map
                 .get(&resolved_name)
                 .unwrap_or(&TypeTok::Void)
@@ -430,8 +437,8 @@ impl AstGenerator {
 
     fn parse_var_dec(
         &mut self,
-        name: &Token,
-        val: &Vec<Token>,
+        name: &SpannedToken,
+        val: &Vec<SpannedToken>,
         var_type: Option<TypeTok>,
     ) -> Result<Ast, ToyError> {
         let name_str = *name.get_var_name().unwrap();
@@ -443,38 +450,34 @@ impl AstGenerator {
         } else {
             ret_var_type = val_type;
         }
-        let raw_text = val
-            .iter()
-            .map(|t| t.to_string())
-            .collect::<Vec<String>>()
-            .join(" ");
         let val_ast = match (&val_ast, &ret_var_type) {
             (Ast::ArrLit(TypeTok::Any, elems, raw), _) if elems.is_empty() => {
                 Ast::ArrLit(ret_var_type.clone(), elems.clone(), raw.clone())
             }
             _ => val_ast,
         };
+        let cumulative_span = AstGenerator::total_span(val.clone());
         let node = Ast::VarDec(
             Box::new(name_str.clone()),
             ret_var_type.clone(),
             Box::new(val_ast),
-            raw_text,
+            cumulative_span,
         );
         self.insert_var_type(name_str.clone(), ret_var_type.clone());
         return Ok(node);
     }
 
-    fn parse_var_ref(&self, name: &Token) -> Result<Ast, ToyError> {
+    fn parse_var_ref(&self, name: &SpannedToken) -> Result<Ast, ToyError> {
         let name_s: String;
-        match name {
+        match name.clone().tok {
             Token::VarRef(box_str) => name_s = *box_str.clone(),
             _ => unreachable!(),
         }
-        return Ok(Ast::VarRef(Box::new(name_s.clone()), name_s));
+        return Ok(Ast::VarRef(Box::new(name_s.clone()), name.span.clone()));
     }
 
     fn parse_if_stmt(&mut self, stmt: TBox, should_eat: bool) -> Result<Ast, ToyError> {
-        let (cond, body, elifs, alt, raw_text) = match stmt {
+        let (cond, body, elifs, alt, raw_text) = match stmt.clone() {
             TBox::IfStmt(c, b, ei, a, rt) => (c, b, ei, a, rt),
             _ => unreachable!(),
         };
@@ -483,7 +486,7 @@ impl AstGenerator {
         if b_type != TypeTok::Bool {
             return Err(ToyError::new(
                 ToyErrorType::ExpressionNotBoolean,
-                Some(raw_text.clone()),
+                b_cond.span(),
             ));
         }
 
@@ -512,7 +515,7 @@ impl AstGenerator {
                 if e_type != TypeTok::Bool {
                     return Err(ToyError::new(
                         ToyErrorType::ExpressionNotBoolean,
-                        Some("else if condition".to_string()),
+                        e_cond.span(),
                     ));
                 }
 
@@ -524,7 +527,7 @@ impl AstGenerator {
                 self.pop_scope()?;
 
                 let elif_stmt =
-                    Ast::IfStmt(Box::new(e_cond), e_stmts, else_val, "else if".to_string());
+                    Ast::IfStmt(Box::new(e_cond), e_stmts, else_val, stmt.span());
                 else_val = Some(vec![elif_stmt]);
             }
         }
@@ -543,7 +546,7 @@ impl AstGenerator {
             TBox::ExternFuncDec(n, p, r, rt) => (n, p, r, rt),
             _ => unreachable!(),
         };
-        let name = match name_tok {
+        let name = match name_tok.tok {
             Token::VarName(n) => *n,
             _ => unreachable!(),
         };
@@ -554,7 +557,7 @@ impl AstGenerator {
         for param in params {
             let (param_name, param_type, param_raw_text) = match param {
                 TBox::FuncParam(name, type_tok, rt) => {
-                    let n = match name {
+                    let n = match name.tok {
                         Token::VarRef(var) => *var,
                         _ => unreachable!(),
                     };
@@ -593,7 +596,7 @@ impl AstGenerator {
             TBox::FuncDec(n, p, r, b, rt, ie) => (n, p, r, b, rt, ie),
             _ => unreachable!(),
         };
-        let name = match name_tok {
+        let name = match name_tok.tok {
             Token::VarName(n) => *n,
             _ => unreachable!(),
         };
@@ -604,7 +607,7 @@ impl AstGenerator {
         for param in params {
             let (param_name, param_type, param_raw_text) = match param {
                 TBox::FuncParam(name, type_tok, rt) => {
-                    let n = match name {
+                    let n = match name.tok {
                         Token::VarRef(var) => *var,
                         _ => unreachable!(),
                     };
@@ -676,7 +679,7 @@ impl AstGenerator {
             TBox::Return(val, raw_text) => {
                 let expr = match *val {
                     TBox::Expr(ref v, _) => v,
-                    _ => return Err(ToyError::new(ToyErrorType::ExpectedExpression, None)),
+                    _ => return Err(ToyError::new(ToyErrorType::ExpectedExpression, val.span())),
                 };
 
                 let (res, _) = self.parse_expr(expr)?;
@@ -698,8 +701,8 @@ impl AstGenerator {
                     raw_text,
                 ));
             }
-            TBox::Continue => Ast::Continue,
-            TBox::Break => Ast::Break,
+            TBox::Continue(s) => Ast::Continue(s),
+            TBox::Break(s) => Ast::Break(s),
             TBox::StructInterface(name, types, raw_text) => {
                 let boxed: BTreeMap<String, Box<TypeTok>> = (*types)
                     .clone()
