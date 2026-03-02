@@ -130,7 +130,7 @@ impl<'a> LlvmGenerator<'a> {
                 ))
             }
             //I am going to rush ahead to call_extern without dealing with any other function types for debuggability purposes
-            TIR::CallExternFunction(id, name, params, _, ret_type) => {
+            TIR::CallExternFunction(id, name, params, _, ret_type, _) => {
                 let func_body = if let Some(f) = self.main_module.get_function(&name) {
                     f
                 } else if let Some(hm_func) = self.func_map.get(&*name) {

@@ -521,7 +521,7 @@ impl TirBuilder {
         &mut self,
         name: String,
         params: Vec<SSAValue>,
-        doesnt_take_ownership: bool
+        doesnt_take_ownership: bool,
     ) -> Result<SSAValue, ToyError> {
         let (is_allocator, ret_tok, _, _) = self.extern_funcs.get(&name).cloned().unwrap(); // parser validated
         let ret_type = self.type_tok_to_tir_type(ret_tok);
@@ -544,8 +544,14 @@ impl TirBuilder {
             }
         });
         let id = self._next_value_id();
-        let ins =
-            TIR::CallExternFunction(id, Box::new(name), params, is_allocator, ret_type.clone(), doesnt_take_ownership);
+        let ins = TIR::CallExternFunction(
+            id,
+            Box::new(name),
+            params,
+            is_allocator,
+            ret_type.clone(),
+            doesnt_take_ownership,
+        );
         self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()]
             .ins
             .push(ins.clone()); //SAFETY: that is the real value of the ins and the only ref later is for the ins_value in the HeapAllocation
@@ -601,11 +607,15 @@ impl TirBuilder {
         println!("Name: {name}");
         unreachable!(); // parser validated
     }
-    pub fn call_extern_void(&mut self, name: String, params: Vec<SSAValue>) -> Result<(), ToyError> {
+    pub fn call_extern_void(
+        &mut self,
+        name: String,
+        params: Vec<SSAValue>,
+    ) -> Result<(), ToyError> {
         let curr_func_name = self.funcs[self.curr_func.unwrap()].name.clone();
         let curr_block_idx = self.curr_block.unwrap();
         let curr_block = self.funcs[self.curr_func.unwrap()].body[curr_block_idx].id;
-        
+
         // track refs just like call_extern does
         self.funcs.iter_mut().for_each(|f| {
             if f.name == curr_func_name {
@@ -625,7 +635,9 @@ impl TirBuilder {
         let (_, _, _, dto) = self.extern_funcs.get(&name).unwrap();
 
         let ins = TIR::CallExternFunction(id, Box::new(name), params, false, ret_type, *dto);
-        self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()].ins.push(ins);
+        self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()]
+            .ins
+            .push(ins);
         Ok(())
     }
     pub fn create_struct_interface(&mut self, name: String, types: Vec<TirType>) -> TirType {
@@ -932,7 +944,13 @@ impl TirBuilder {
             .map(|f| f.clone().ret_type)
             .unwrap()) // parser validated
     }
-    pub fn register_extern(&mut self, name: String, is_allocator: bool, ret_type: TypeTok, is_extern: bool) {
+    pub fn register_extern(
+        &mut self,
+        name: String,
+        is_allocator: bool,
+        ret_type: TypeTok,
+        is_extern: bool,
+    ) {
         self.extern_funcs
             .insert(name, (is_allocator, ret_type, false, is_extern));
     }
@@ -946,7 +964,7 @@ impl TirBuilder {
             val: id,
             ty: Some(TirType::Ptr),
         };
-        let mut val2 = self.call_extern("toy_malloc".to_string(), vec![val],true)?;
+        let mut val2 = self.call_extern("toy_malloc".to_string(), vec![val], true)?;
         val2.ty = Some(TirType::Ptr);
         self.funcs[self.curr_func.unwrap()]
             .heap_allocations
@@ -1026,13 +1044,20 @@ impl TirBuilder {
         return allocs;
     }
     pub fn detect_unique_heap_allocations(&self) -> Vec<HeapAllocation> {
-        let mut seen: HashMap<AllocationId, HeapAllocation> = HashMap::new();
+        let mut seen: HashMap<(AllocationId, Box<String>, ValueId), HeapAllocation> = HashMap::new();
         for func in &self.funcs {
             for alloc in &func.heap_allocations {
-                seen.insert(alloc.allocation_id, alloc.clone()); // last write wins
+                seen.insert(
+                    (
+                        alloc.allocation_id,
+                        alloc.function.clone(),
+                        alloc.alloc_ins.val,
+                    ),
+                    alloc.clone(),
+                );
             }
         }
-        return seen.into_values().collect()
+        return seen.into_values().collect();
     }
     ///Will add a manually created TIR instruction before the specified instruction
     ///Will NOT move the cursor
@@ -1050,7 +1075,7 @@ impl TirBuilder {
             vec![to_free_val],
             false,
             TirType::Void,
-            false
+            false,
         );
 
         let func = self

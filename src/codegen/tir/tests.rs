@@ -36,7 +36,7 @@ macro_rules! setup_tir {
                 if let crate::driver::ModuleExportType::Function(_params, ret) = &export.ty {
                     let full_mangled =
                         crate::driver::Driver::mangle_name(Some(&prefix), &export.name, &[]);
-                    t.builder.register_extern_func(full_mangled, ret.clone());
+                    t.builder.register_extern_func(full_mangled, ret.clone(), true);//i think true is right?
                 }
             }
         }
@@ -1039,6 +1039,7 @@ fn test_tirgen_string_lit_concat_and_equals() {
                         }],
                         true,
                         TirType::Ptr,
+                        true,
                     ),
                     TIR::GlobalString(2, Box::new("fee".to_string())),
                     TIR::CallExternFunction(
@@ -1050,6 +1051,7 @@ fn test_tirgen_string_lit_concat_and_equals() {
                         }],
                         true,
                         TirType::Ptr,
+                        true,
                     ),
                     TIR::CallExternFunction(
                         4,
@@ -1066,6 +1068,7 @@ fn test_tirgen_string_lit_concat_and_equals() {
                         ],
                         true,
                         TirType::Ptr,
+                        true,
                     ),
                     TIR::CallExternFunction(
                         5,
@@ -1082,6 +1085,7 @@ fn test_tirgen_string_lit_concat_and_equals() {
                         ],
                         false,
                         TirType::I64,
+                        true,
                     ),
                     TIR::IConst(6, 0, TirType::I64),
                     TIR::Ret(
@@ -1191,6 +1195,7 @@ fn test_tirgen_arr_lit_read_and_write() {
                         ],
                         true,
                         TirType::Ptr,
+                        true,
                     ),
                     TIR::IConst(7, 0, TirType::I64),
                     TIR::IConst(8, 2, TirType::I64),
@@ -1217,6 +1222,7 @@ fn test_tirgen_arr_lit_read_and_write() {
                         ],
                         false,
                         TirType::Void,
+                        true,
                     ),
                     TIR::IConst(10, 1, TirType::I64),
                     TIR::IConst(11, 2, TirType::I64),
@@ -1243,6 +1249,7 @@ fn test_tirgen_arr_lit_read_and_write() {
                         ],
                         false,
                         TirType::Void,
+                        true,
                     ),
                     TIR::IConst(13, 2, TirType::I64),
                     TIR::IConst(14, 2, TirType::I64),
@@ -1269,6 +1276,7 @@ fn test_tirgen_arr_lit_read_and_write() {
                         ],
                         false,
                         TirType::Void,
+                        true,
                     ),
                     TIR::IConst(16, 9, TirType::I64),
                     TIR::IConst(17, 2, TirType::I64),
@@ -1296,6 +1304,7 @@ fn test_tirgen_arr_lit_read_and_write() {
                         ],
                         false,
                         TirType::Void,
+                        true,
                     ),
                     TIR::IConst(20, 1, TirType::I64),
                     TIR::CallExternFunction(
@@ -1313,6 +1322,7 @@ fn test_tirgen_arr_lit_read_and_write() {
                         ],
                         false,
                         TirType::I64,
+                        true,
                     ),
                     TIR::IConst(22, 3, TirType::I64),
                     TIR::NumericInfix(
@@ -1517,6 +1527,7 @@ fn test_tirgen_recursion_bug() {
                             ],
                             false,
                             TirType::Void,
+                            true,
                         ),
                         TIR::IConst(6, 0, TirType::I64),
                         TIR::Ret(
@@ -1753,6 +1764,7 @@ fn test_tirgen_broken_booleans() {
                         ],
                         false,
                         TirType::Void,
+                        true,
                     ),
                     TIR::IConst(7, 0, TirType::I64),
                     TIR::Ret(
@@ -1807,6 +1819,7 @@ fn test_tirgen_broken_floats() {
                         ],
                         false,
                         TirType::Void,
+                        true,
                     ),
                     TIR::IConst(4, 0, TirType::I64),
                     TIR::Ret(
@@ -1865,6 +1878,7 @@ fn test_tirgen_print_arr_lit() {
                         ],
                         true,
                         TirType::Ptr,
+                        true,
                     ),
                     TIR::IConst(7, 0, TirType::I64),
                     TIR::IConst(8, 2, TirType::I64),
@@ -1891,6 +1905,7 @@ fn test_tirgen_print_arr_lit() {
                         ],
                         false,
                         TirType::Void,
+                        true,
                     ),
                     TIR::IConst(10, 1, TirType::I64),
                     TIR::IConst(11, 2, TirType::I64),
@@ -1917,6 +1932,7 @@ fn test_tirgen_print_arr_lit() {
                         ],
                         false,
                         TirType::Void,
+                        true,
                     ),
                     TIR::IConst(13, 2, TirType::I64),
                     TIR::IConst(14, 2, TirType::I64),
@@ -1943,6 +1959,7 @@ fn test_tirgen_print_arr_lit() {
                         ],
                         false,
                         TirType::Void,
+                        true,
                     ),
                     TIR::IConst(16, 6, TirType::I64),
                     TIR::IConst(17, 1, TirType::I64),
@@ -1965,6 +1982,7 @@ fn test_tirgen_print_arr_lit() {
                         ],
                         false,
                         TirType::Void,
+                        true,
                     ),
                     TIR::IConst(19, 0, TirType::I64),
                     TIR::Ret(
@@ -2030,6 +2048,7 @@ fn test_tirgen_if_no_else_return() {
                             ],
                             false,
                             TirType::Void,
+                            true,
                         ),
                         TIR::IConst(6, 0, TirType::I64),
                         TIR::Ret(
@@ -2106,6 +2125,7 @@ fn test_tirgen_if_no_else_return() {
                                 }],
                                 true,
                                 TirType::Ptr,
+                                true,
                             ),
                             TIR::Ret(
                                 8,
@@ -2129,6 +2149,7 @@ fn test_tirgen_if_no_else_return() {
                                 }],
                                 true,
                                 TirType::Ptr,
+                                true,
                             ),
                             TIR::Ret(
                                 11,
@@ -2255,6 +2276,7 @@ fn test_tirgen_struct_funcs() {
                             ],
                             false,
                             TirType::Void,
+                            true,
                         ),
                         TIR::Ret(6, SSAValue { val: 0, ty: None }),
                     ],
@@ -2386,6 +2408,7 @@ println(points);
                                 ],
                                 true,
                                 TirType::Ptr,
+                                true,
                             ),
                             TIR::IConst(17, 0, TirType::I64),
                             TIR::IConst(18, 8, TirType::I64),
@@ -2415,6 +2438,7 @@ println(points);
                                 ],
                                 false,
                                 TirType::Void,
+                                true,
                             ),
                             TIR::IConst(20, 1, TirType::I64),
                             TIR::IConst(21, 8, TirType::I64),
@@ -2444,6 +2468,7 @@ println(points);
                                 ],
                                 false,
                                 TirType::Void,
+                                true,
                             ),
                             TIR::IConst(23, 2, TirType::I64),
                             TIR::IConst(24, 8, TirType::I64),
@@ -2473,6 +2498,7 @@ println(points);
                                 ],
                                 false,
                                 TirType::Void,
+                                true,
                             ),
                             TIR::IConst(26, 0, TirType::I64),
                             TIR::JumpBlockUnCond(27, 2),
@@ -2518,6 +2544,7 @@ println(points);
                                 }],
                                 false,
                                 TirType::I64,
+                                true,
                             ),
                             TIR::BoolInfix(
                                 31,
@@ -2560,6 +2587,7 @@ println(points);
                                 ],
                                 false,
                                 TirType::I64,
+                                true,
                             ),
                             TIR::FConst(34, 5.0, TirType::F64),
                             TIR::IConst(35, 0, TirType::I64),
@@ -2647,6 +2675,7 @@ println(points);
                                 ],
                                 false,
                                 TirType::Void,
+                                true,
                             ),
                             TIR::IConst(46, 0, TirType::I64),
                             TIR::Ret(
@@ -2797,6 +2826,7 @@ fn test_tirgen_extern_func_dec_and_call() {
                         }],
                         true,
                         TirType::Ptr,
+                        true,
                     ),
                     TIR::CallExternFunction(
                         2,
@@ -2807,6 +2837,7 @@ fn test_tirgen_extern_func_dec_and_call() {
                         }],
                         false,
                         TirType::I64,
+                        false,
                     ),
                     TIR::IConst(3, 0, TirType::I64),
                     TIR::Ret(
@@ -2861,6 +2892,7 @@ fn test_tirgen_import_stmt() {
                         }],
                         false,
                         TirType::I64,
+                        false,
                     ),
                     TIR::IConst(2, 0, TirType::I64),
                     TIR::Ret(
@@ -2898,6 +2930,7 @@ fn test_tirgen_argv() {
                         vec![],
                         true,
                         TirType::Ptr,
+                        false,
                     ),
                     TIR::IConst(1, 4, TirType::I64),
                     TIR::IConst(2, 1, TirType::I64),
@@ -2920,6 +2953,7 @@ fn test_tirgen_argv() {
                         ],
                         false,
                         TirType::Void,
+                        true,
                     ),
                     TIR::IConst(4, 0, TirType::I64),
                     TIR::Ret(
@@ -3028,6 +3062,7 @@ fn test_tirgen_weird_loop_bug() {
                                 ],
                                 true,
                                 TirType::Ptr,
+                                true,
                             ),
                             TIR::IConst(6, 0, TirType::I64),
                             TIR::JumpBlockUnCond(7, 2),
@@ -3101,6 +3136,7 @@ fn test_tirgen_weird_loop_bug() {
                                 }],
                                 false,
                                 TirType::I64,
+                                true,
                             ),
                             TIR::BoolInfix(
                                 13,
@@ -3143,6 +3179,7 @@ fn test_tirgen_weird_loop_bug() {
                                 ],
                                 false,
                                 TirType::I64,
+                                true,
                             ),
                             TIR::IConst(16, 0, TirType::I64),
                             TIR::CallExternFunction(
@@ -3168,6 +3205,7 @@ fn test_tirgen_weird_loop_bug() {
                                 ],
                                 false,
                                 TirType::Void,
+                                true,
                             ),
                             TIR::IConst(18, 1, TirType::I64),
                             TIR::NumericInfix(
@@ -3212,6 +3250,7 @@ fn test_tirgen_weird_loop_bug() {
                                 ],
                                 false,
                                 TirType::Void,
+                                true,
                             ),
                             TIR::Ret(
                                 23,
@@ -3333,6 +3372,7 @@ fn test_tirgen_nested_if() {
                             ],
                             false,
                             TirType::Void,
+                            true,
                         ),
                         TIR::JumpBlockUnCond(10, 4),
                     ],
@@ -3410,6 +3450,7 @@ fn test_tirgen_multiple_vars() {
                         ],
                         false,
                         TirType::Void,
+                        true,
                     ),
                     TIR::IConst(8, 0, TirType::I64),
                     TIR::Ret(

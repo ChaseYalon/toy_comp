@@ -140,7 +140,9 @@ impl AstToIrConverter {
                 "float" => Ok(TypeTok::Float),
                 "bool" => Ok(TypeTok::Bool),
                 _ => {
-                    if let Some((_, type_tok, _, _)) = self.builder.extern_funcs.get(&*n.to_string()) {
+                    if let Some((_, type_tok, _, _)) =
+                        self.builder.extern_funcs.get(&*n.to_string())
+                    {
                         Ok(type_tok.clone())
                     } else if let Some(f) =
                         self.builder.funcs.iter().find(|f| *f.name == *n.clone())
@@ -269,14 +271,18 @@ impl AstToIrConverter {
                 } else {
                     //at this point assume it is a string expression
                     if op == InfixOp::Equals {
-                        return self
-                            .builder
-                            .call_extern("toy_strequal".to_string(), vec![left, right], true);
+                        return self.builder.call_extern(
+                            "toy_strequal".to_string(),
+                            vec![left, right],
+                            true,
+                        );
                     }
                     if op == InfixOp::Plus {
-                        return self
-                            .builder
-                            .call_extern("toy_concat".to_string(), vec![left, right], true);
+                        return self.builder.call_extern(
+                            "toy_concat".to_string(),
+                            vec![left, right],
+                            true,
+                        );
                     }
                     unreachable!()
                 };
@@ -1056,7 +1062,7 @@ impl AstToIrConverter {
                                                     _ => false,
                                                 },
                                                 ret_type,
-                                                false
+                                                false,
                                             );
                                         }
                                     }
@@ -1141,7 +1147,7 @@ impl AstToIrConverter {
         self.builder
             .register_extern("toy_type_to_str".to_string(), true, TypeTok::Str, true);
         self.builder
-            .register_extern("toy_type_to_bool".to_string(), false, TypeTok::Int,true);
+            .register_extern("toy_type_to_bool".to_string(), false, TypeTok::Int, true);
         self.builder
             .register_extern("toy_type_to_int".to_string(), false, TypeTok::Int, true);
         self.builder
@@ -1152,10 +1158,14 @@ impl AstToIrConverter {
             "toy_float_bits_to_double".to_string(),
             false,
             TypeTok::Float,
-            true
+            true,
         );
-        self.builder
-            .register_extern("toy_double_to_float_bits".to_string(), false, TypeTok::Int, true);
+        self.builder.register_extern(
+            "toy_double_to_float_bits".to_string(),
+            false,
+            TypeTok::Int,
+            true,
+        );
         self.builder
             .register_extern("toy_malloc_arr".to_string(), true, TypeTok::Str, true);
         self.builder
