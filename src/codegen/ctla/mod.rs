@@ -1,5 +1,3 @@
-use itertools::Itertools;
-
 use crate::{
     codegen::{
         SSAValue,
@@ -150,6 +148,126 @@ impl CTLA {
             .unwrap()
             .ins[ins_idx];
     }
+    fn is_terminator_ins(&self, ins: &TIR) -> bool {
+        return matches!(ins, TIR::Ret(_, _) | TIR::JumpCond(_, _, _, _) | TIR::JumpBlockUnCond(_, _))
+    }
+    fn value_may_be_allocation_via_phi(
+        &self,
+        func: &Function,
+        value_id: ValueId,
+        alloc: &HeapAllocation,
+        visited: &mut HashSet<ValueId>,
+    ) -> bool {
+        if value_id == alloc.alloc_ins.val {
+            return true;
+        }
+        if visited.contains(&value_id) {
+            return false;
+        }
+        visited.insert(value_id);
+
+        let maybe_ins = func
+            .body
+            .iter()
+            .flat_map(|b| b.ins.iter())
+            .find(|ins| ins.get_id() == value_id);
+
+        let Some(ins) = maybe_ins else {
+            return false;
+        };
+
+        match ins {
+            TIR::Phi(_, block_ids, vals) => block_ids.iter().zip(vals.iter()).any(|(bid, v)| {
+                if self.block_has_non_returning_panic_call(func, *bid) {
+                    return false;
+                }
+                self.value_may_be_allocation_via_phi(func, v.val, alloc, visited)
+            }),
+            _ => false,
+        }
+    }
+    fn block_has_non_returning_panic_call(&self, func: &Function, block_id: BlockId) -> bool {
+        let Some(block) = func.body.iter().find(|b| b.id == block_id) else {
+            return false;
+        };
+        block.ins.iter().any(|ins| {
+            matches!(
+                ins,
+                TIR::CallExternFunction(_, name, _, _, _, _) if **name == *"std::sys::panic_str"
+            )
+        })
+    }
+    fn free_insertion_index_for_block(
+        &self,
+        func: &Function,
+        block_id: BlockId,
+        alloc: &HeapAllocation,
+    ) -> Option<usize> {
+        let block = func.body.iter().find(|b| b.id == block_id)?;
+        if block.ins.is_empty() {
+            return None;
+        }
+
+        let mut alias_ids: HashSet<ValueId> = HashSet::new();
+        alias_ids.insert(alloc.alloc_ins.val);
+        alloc
+            .refs
+            .iter()
+            .filter(|(f, _, _)| **f == *func.name)
+            .for_each(|(_, _, value_id)| {
+                alias_ids.insert(*value_id);
+            });
+
+        let last_ref_idx = block
+            .ins
+            .iter()
+            .enumerate()
+            .filter(|(_, ins)| self.instruction_uses_any_value(ins, &alias_ids))
+            .map(|(idx, _)| idx)
+            .max();
+
+        let terminator_idx = block
+            .ins
+            .last()
+            .and_then(|ins| self.is_terminator_ins(ins).then_some(block.ins.len() - 1));
+
+        let mut insertion_idx = match last_ref_idx {
+            Some(idx) => idx + 1,
+            None => terminator_idx.unwrap_or(block.ins.len()),
+        };
+
+        if let Some(term_idx) = terminator_idx {
+            if insertion_idx > term_idx {
+                insertion_idx = term_idx;
+            }
+        }
+
+        Some(insertion_idx)
+    }
+    fn instruction_uses_any_value(&self, ins: &TIR, aliases: &HashSet<ValueId>) -> bool {
+        let uses = |value: &SSAValue| aliases.contains(&value.val);
+        match ins {
+            TIR::ItoF(_, value, _) => uses(value),
+            TIR::NumericInfix(_, left, right, _) => uses(left) || uses(right),
+            TIR::BoolInfix(_, left, right, _) => uses(left) || uses(right),
+            TIR::JumpCond(_, cond, _, _) => uses(cond),
+            TIR::Ret(_, value) => uses(value),
+            TIR::CallLocalFunction(_, _, params, _, _)
+            | TIR::CallExternFunction(_, _, params, _, _, _)
+            | TIR::CreateStructLiteral(_, _, params)
+            | TIR::Phi(_, _, params) => params.iter().any(uses),
+            TIR::ReadStructLiteral(_, struct_value, _) => uses(struct_value),
+            TIR::WriteStructLiteral(_, struct_value, _, new_value) => {
+                uses(struct_value) || uses(new_value)
+            }
+            TIR::Not(_, value) => uses(value),
+            TIR::IConst(_, _, _)
+            | TIR::FConst(_, _, _)
+            | TIR::JumpBlockUnCond(_, _)
+            | TIR::CreateStructInterface(_, _, _)
+            | TIR::GlobalString(_, _) => false,
+        }
+    }
     fn allocation_escapes(&self, alloc: &HeapAllocation) -> EscapeType {
         let func = self
             .builder
@@ -165,21 +283,10 @@ impl CTLA {
 
         //alloc is returned
         for b in &func.body {
-            if let Some(TIR::Ret(ret_id, a)) = b.ins.last() {
-                if alloc
-                    .refs
-                    .iter()
-                    .any(|(_, block_id, value_id)| *block_id == b.id && *value_id == *ret_id)
-                {
+            if let Some(TIR::Ret(_, a)) = b.ins.last() {
+                let mut visited = HashSet::new();
+                if self.value_may_be_allocation_via_phi(func, a.val, alloc, &mut visited) {
                     return EscapeType::EscapesFunction;
-                }
-                if *a == alloc.alloc_ins {
-                    return EscapeType::EscapesFunction;
-                }
-                if let Some(TIR::Phi(_, _, vals)) = b.ins.iter().find(|ins| ins.get_id() == a.val) {
-                    if vals.iter().any(|v| *v == alloc.alloc_ins) {
-                        return EscapeType::EscapesFunction;
-                    }
                 }
             }
         }
@@ -363,11 +470,19 @@ impl CTLA {
         );
 
         if !has_child_refs {
-            if let Some(origin_block) = func.body.iter().find(|b| b.id == origin_block_id) {
+            let insertion_idx = if free_func == "toy_free_arr" {
+                func.body
+                    .iter()
+                    .find(|b| b.id == origin_block_id)
+                    .map(|b| b.ins.len().saturating_sub(1))
+            } else {
+                self.free_insertion_index_for_block(func, origin_block_id, alloc)
+            };
+            if let Some(insertion_idx) = insertion_idx {
                 insertion_points.push((
                     *func.name.clone(),
                     origin_block_id,
-                    origin_block.ins.len() - 1,
+                    insertion_idx,
                     alloc.alloc_ins.clone(),
                     free_func,
                 ));
@@ -379,10 +494,18 @@ impl CTLA {
         if origin_block_id == func.body[0].id {
             for block in &func.body {
                 if matches!(block.ins.last(), Some(TIR::Ret(_, _))) {
+                    let insertion_idx = if free_func == "toy_free_arr" {
+                        Some(block.ins.len().saturating_sub(1))
+                    } else {
+                        self.free_insertion_index_for_block(func, block.id, alloc)
+                    };
+                    let Some(insertion_idx) = insertion_idx else {
+                        continue;
+                    };
                     insertion_points.push((
                         *func.name.clone(),
                         block.id,
-                        block.ins.len() - 1,
+                        insertion_idx,
                         alloc.alloc_ins.clone(),
                         free_func.clone(),
                     ));
@@ -444,7 +567,6 @@ impl CTLA {
                 return "toy_free".to_string();
             }
             // For local function calls that return heap-allocated values (strings),
-            // we use toy_free since they return string pointers
             TIR::CallLocalFunction(_, callee_name, _, _, _) => {
                 if self.function_returns_array_allocation(callee_name) {
                     return "toy_free_arr".to_string();
@@ -545,6 +667,29 @@ impl CTLA {
         // in analyze, before the splice loop
         let dedup_set: HashSet<_> = insertion_points.into_iter().collect();
         insertion_points = dedup_set.into_iter().collect();
+
+        let mut coalesced: HashMap<(String, BlockId, ValueId, String), (usize, SSAValue)> =
+            HashMap::new();
+        for (name, bid, idx, val, free_name) in insertion_points {
+            let key = (name.clone(), bid, val.val, free_name.clone());
+            if let Some((existing_idx, _)) = coalesced.get(&key) {
+                if idx > *existing_idx {
+                    coalesced.insert(key, (idx, val));
+                }
+            } else {
+                coalesced.insert(key, (idx, val));
+            }
+        }
+        insertion_points = coalesced
+            .into_iter()
+            .map(|((name, bid, _, free_name), (idx, val))| (name, bid, idx, val, free_name))
+            .collect();
+
+        insertion_points.sort_by(|a, b| {
+            a.0.cmp(&b.0)
+                .then_with(|| a.1.cmp(&b.1))
+                .then_with(|| b.2.cmp(&a.2))
+        });
         for (name, bid, vid, val, free_name) in insertion_points {
             self.builder
                 .splice_free_before(name, bid, vid, val, free_name);
