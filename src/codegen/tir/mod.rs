@@ -140,7 +140,7 @@ impl AstToIrConverter {
                 "float" => Ok(TypeTok::Float),
                 "bool" => Ok(TypeTok::Bool),
                 _ => {
-                    if let Some((_, type_tok, _)) = self.builder.extern_funcs.get(&*n.to_string()) {
+                    if let Some((_, type_tok, _, _)) = self.builder.extern_funcs.get(&*n.to_string()) {
                         Ok(type_tok.clone())
                     } else if let Some(f) =
                         self.builder.funcs.iter().find(|f| *f.name == *n.clone())
@@ -209,23 +209,14 @@ impl AstToIrConverter {
                         if let Some(field_ty) = fields.get(field_name) {
                             Ok(*field_ty.clone())
                         } else {
-                            Err(ToyError::new(
-                                ToyErrorType::KeyNotOnStruct,
-                                span.clone(),
-                            ))
+                            Err(ToyError::new(ToyErrorType::KeyNotOnStruct, span.clone()))
                         }
                     }
-                    _ => Err(ToyError::new(
-                        ToyErrorType::VariableNotAStruct,
-                        node.span(),
-                    )),
+                    _ => Err(ToyError::new(ToyErrorType::VariableNotAStruct, node.span())),
                 }
             }
 
-            _ => Err(ToyError::new(
-                ToyErrorType::TypeIdNotAssigned,
-                node.span(),
-            )),
+            _ => Err(ToyError::new(ToyErrorType::TypeIdNotAssigned, node.span())),
         }
     }
 
@@ -280,12 +271,12 @@ impl AstToIrConverter {
                     if op == InfixOp::Equals {
                         return self
                             .builder
-                            .call_extern("toy_strequal".to_string(), vec![left, right]);
+                            .call_extern("toy_strequal".to_string(), vec![left, right], true);
                     }
                     if op == InfixOp::Plus {
                         return self
                             .builder
-                            .call_extern("toy_concat".to_string(), vec![left, right]);
+                            .call_extern("toy_concat".to_string(), vec![left, right], true);
                     }
                     unreachable!()
                 };
@@ -322,7 +313,7 @@ impl AstToIrConverter {
                     .builder
                     .extern_funcs
                     .get(name)
-                    .map(|(_, _, u)| *u)
+                    .map(|(_, _, u, _)| *u)
                     .unwrap_or(false);
 
                 let mut final_params = Vec::new();
@@ -899,7 +890,7 @@ impl AstToIrConverter {
             Ast::ExternFuncDec(n, p, r, _) => (*n, p, r),
             _ => unreachable!(),
         };
-        self.builder.register_extern_func(name, ret_type);
+        self.builder.register_extern_func(name, ret_type, false);
         Ok(())
     }
 
@@ -1065,6 +1056,7 @@ impl AstToIrConverter {
                                                     _ => false,
                                                 },
                                                 ret_type,
+                                                false
                                             );
                                         }
                                     }
@@ -1097,7 +1089,10 @@ impl AstToIrConverter {
                     .last()
                     .map(|ctx| ctx.continue_target)
                     .ok_or_else(|| {
-                        ToyError::new(ToyErrorType::InvalidLocationForContinueStatement, span.clone())
+                        ToyError::new(
+                            ToyErrorType::InvalidLocationForContinueStatement,
+                            span.clone(),
+                        )
                     })?;
 
                 let tracked_vars = self
@@ -1132,48 +1127,49 @@ impl AstToIrConverter {
     fn register_extern_funcs(&mut self) {
         //everything is either void, int64_t (int) or float (double/f64)
         self.builder
-            .register_extern("toy_print".to_string(), false, TypeTok::Void); //builtins.c
+            .register_extern("toy_print".to_string(), false, TypeTok::Void, true); //builtins.c
         self.builder
-            .register_extern("toy_println".to_string(), false, TypeTok::Void);
+            .register_extern("toy_println".to_string(), false, TypeTok::Void, true);
         self.builder
-            .register_extern("toy_malloc".to_string(), true, TypeTok::Str);
+            .register_extern("toy_malloc".to_string(), true, TypeTok::Str, true);
         self.builder
-            .register_extern("toy_concat".to_string(), true, TypeTok::Str);
+            .register_extern("toy_concat".to_string(), true, TypeTok::Str, true);
         self.builder
-            .register_extern("toy_strequal".to_string(), false, TypeTok::Int);
+            .register_extern("toy_strequal".to_string(), false, TypeTok::Int, true);
         self.builder
-            .register_extern("toy_strlen".to_string(), false, TypeTok::Int);
+            .register_extern("toy_strlen".to_string(), false, TypeTok::Int, true);
         self.builder
-            .register_extern("toy_type_to_str".to_string(), true, TypeTok::Str);
+            .register_extern("toy_type_to_str".to_string(), true, TypeTok::Str, true);
         self.builder
-            .register_extern("toy_type_to_bool".to_string(), false, TypeTok::Int);
+            .register_extern("toy_type_to_bool".to_string(), false, TypeTok::Int,true);
         self.builder
-            .register_extern("toy_type_to_int".to_string(), false, TypeTok::Int);
+            .register_extern("toy_type_to_int".to_string(), false, TypeTok::Int, true);
         self.builder
-            .register_extern("toy_type_to_float".to_string(), false, TypeTok::Int); //int representation of float bits, reinterpreted with union
+            .register_extern("toy_type_to_float".to_string(), false, TypeTok::Int, true); //int representation of float bits, reinterpreted with union
         self.builder
-            .register_extern("toy_int_to_float".to_string(), false, TypeTok::Float);
+            .register_extern("toy_int_to_float".to_string(), false, TypeTok::Float, true);
         self.builder.register_extern(
             "toy_float_bits_to_double".to_string(),
             false,
             TypeTok::Float,
+            true
         );
         self.builder
-            .register_extern("toy_double_to_float_bits".to_string(), false, TypeTok::Int);
+            .register_extern("toy_double_to_float_bits".to_string(), false, TypeTok::Int, true);
         self.builder
-            .register_extern("toy_malloc_arr".to_string(), true, TypeTok::Str);
+            .register_extern("toy_malloc_arr".to_string(), true, TypeTok::Str, true);
         self.builder
-            .register_extern("toy_write_to_arr".to_string(), false, TypeTok::Void);
+            .register_extern("toy_write_to_arr".to_string(), false, TypeTok::Void, true);
         self.builder
-            .register_extern("toy_read_from_arr".to_string(), false, TypeTok::Int);
+            .register_extern("toy_read_from_arr".to_string(), false, TypeTok::Int, true);
         self.builder
-            .register_extern("toy_arrlen".to_string(), false, TypeTok::Int);
+            .register_extern("toy_arrlen".to_string(), false, TypeTok::Int, true);
         self.builder
-            .register_extern("toy_input".to_string(), true, TypeTok::Str);
+            .register_extern("toy_input".to_string(), true, TypeTok::Str, true);
         self.builder
-            .register_extern("toy_free".to_string(), false, TypeTok::Void); //ctla/ctla.c
+            .register_extern("toy_free".to_string(), false, TypeTok::Void, false); //ctla/ctla.c
         self.builder
-            .register_extern("toy_free_arr".to_string(), false, TypeTok::Void);
+            .register_extern("toy_free_arr".to_string(), false, TypeTok::Void, false);
     }
     ///ast to convert, is_main_module, and module name
     pub fn convert(

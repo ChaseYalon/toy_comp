@@ -11,6 +11,7 @@ inkwell = { version = "0.7.0", features = ["llvm21-1"] }
 llvm-sys = {version = "211.0", features = ["prefer-static"]}
 colored = "3.0.0"
 chrono = "0.4.42"
+itertools = "0.14.0"
 [build-dependencies]
 cmake = "0.1.54"
 bindgen = "0.70"

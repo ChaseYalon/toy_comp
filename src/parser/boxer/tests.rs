@@ -62,7 +62,9 @@ fn eq_tbox_ignoring_src(x: &TBox, y: &TBox) -> bool {
         (TBox::While(xc, xb, _), TBox::While(yc, yb, _)) => {
             eq_sp_tok_vec(xc, yc) && compare_tbox_vecs(xb.clone(), yb.clone())
         }
-        (TBox::Assign(xl, xr, _), TBox::Assign(yl, yr, _)) => eq_sp_tok_vec(xl, yl) && eq_sp_tok_vec(xr, yr),
+        (TBox::Assign(xl, xr, _), TBox::Assign(yl, yr, _)) => {
+            eq_sp_tok_vec(xl, yl) && eq_sp_tok_vec(xr, yr)
+        }
         (TBox::StructInterface(xn, xkv, _), TBox::StructInterface(yn, ykv, _)) => {
             xn == yn && xkv == ykv
         }
@@ -158,7 +160,9 @@ fn test_boxer_var_ref() {
                 Span::null_span()
             ),
             TBox::Assign(
-                vec![SpannedToken::new_null(Token::VarRef(Box::new("x".to_string())))],
+                vec![SpannedToken::new_null(Token::VarRef(Box::new(
+                    "x".to_string()
+                )))],
                 vec![SpannedToken::new_null(Token::IntLit(8))],
                 Span::null_span()
             )
@@ -219,7 +223,11 @@ fn test_boxer_return_bool() {
     assert!(compare_tbox_vecs(
         boxes.unwrap(),
         vec![TBox::Expr(
-            vec![SpannedToken::new_null(Token::BoolLit(true)), SpannedToken::new_null(Token::Or), SpannedToken::new_null(Token::BoolLit(false)),],
+            vec![
+                SpannedToken::new_null(Token::BoolLit(true)),
+                SpannedToken::new_null(Token::Or),
+                SpannedToken::new_null(Token::BoolLit(false)),
+            ],
             Span::null_span()
         )]
     ))
@@ -249,7 +257,9 @@ fn test_boxer_if_stmt() {
                     SpannedToken::new_null(Token::IntLit(9)),
                 ],
                 vec![TBox::Assign(
-                    vec![SpannedToken::new_null(Token::VarRef(Box::new("x".to_string())))],
+                    vec![SpannedToken::new_null(Token::VarRef(Box::new(
+                        "x".to_string()
+                    )))],
                     vec![SpannedToken::new_null(Token::IntLit(6))],
                     Span::null_span()
                 )],
@@ -287,7 +297,9 @@ fn test_boxer_nested_if() {
                         SpannedToken::new_null(Token::IntLit(10)),
                     ],
                     vec![TBox::Assign(
-                        vec![SpannedToken::new_null(Token::VarRef(Box::new("x".to_string())))],
+                        vec![SpannedToken::new_null(Token::VarRef(Box::new(
+                            "x".to_string()
+                        )))],
                         vec![SpannedToken::new_null(Token::IntLit(8))],
                         Span::null_span()
                     )],
@@ -314,7 +326,11 @@ fn test_boxer_if_else() {
     assert!(compare_tbox_vecs(
         boxes.unwrap(),
         vec![TBox::IfStmt(
-            vec![SpannedToken::new_null(Token::BoolLit(true)), SpannedToken::new_null(Token::And), SpannedToken::new_null(Token::BoolLit(false)),],
+            vec![
+                SpannedToken::new_null(Token::BoolLit(true)),
+                SpannedToken::new_null(Token::And),
+                SpannedToken::new_null(Token::BoolLit(false)),
+            ],
             vec![TBox::VarDec(
                 SpannedToken::new_null(Token::VarName(Box::new("x".to_string()))),
                 None,
@@ -434,7 +450,9 @@ fn test_boxer_string_lit() {
         vec![TBox::VarDec(
             SpannedToken::new_null(Token::VarName(Box::new("x".to_string()))),
             Some(TypeTok::Str),
-            vec![SpannedToken::new_null(Token::StringLit(Box::new("hello world".to_string())))],
+            vec![SpannedToken::new_null(Token::StringLit(Box::new(
+                "hello world".to_string()
+            )))],
             Span::null_span()
         )]
     ))
@@ -486,7 +504,9 @@ fn test_boxer_while_loops() {
                         Span::null_span()
                     ),
                     TBox::Assign(
-                        vec![SpannedToken::new_null(Token::VarRef(Box::new("x".to_string())))],
+                        vec![SpannedToken::new_null(Token::VarRef(Box::new(
+                            "x".to_string()
+                        )))],
                         vec![
                             SpannedToken::new_null(Token::VarRef(Box::new("x".to_string()))),
                             SpannedToken::new_null(Token::Plus),
@@ -498,7 +518,9 @@ fn test_boxer_while_loops() {
                 Span::null_span()
             ),
             TBox::Expr(
-                vec![SpannedToken::new_null(Token::VarRef(Box::new("x".to_string())))],
+                vec![SpannedToken::new_null(Token::VarRef(Box::new(
+                    "x".to_string()
+                )))],
                 Span::null_span()
             )
         ]
@@ -534,15 +556,21 @@ fn test_boxer_fn_loop() {
                         vec![
                             TBox::IfStmt(
                                 vec![
-                                    SpannedToken::new_null(Token::VarRef(Box::new("x".to_string()))),
+                                    SpannedToken::new_null(Token::VarRef(Box::new(
+                                        "x".to_string()
+                                    ))),
                                     SpannedToken::new_null(Token::Equals),
                                     SpannedToken::new_null(Token::IntLit(1))
                                 ],
                                 vec![
                                     TBox::Assign(
-                                        vec![SpannedToken::new_null(Token::VarRef(Box::new("x".to_string())))],
+                                        vec![SpannedToken::new_null(Token::VarRef(Box::new(
+                                            "x".to_string()
+                                        )))],
                                         vec![
-                                            SpannedToken::new_null(Token::VarRef(Box::new("x".to_string()))),
+                                            SpannedToken::new_null(Token::VarRef(Box::new(
+                                                "x".to_string()
+                                            ))),
                                             SpannedToken::new_null(Token::Plus),
                                             SpannedToken::new_null(Token::IntLit(1))
                                         ],
@@ -556,7 +584,9 @@ fn test_boxer_fn_loop() {
                             ),
                             TBox::IfStmt(
                                 vec![
-                                    SpannedToken::new_null(Token::VarRef(Box::new("x".to_string()))),
+                                    SpannedToken::new_null(Token::VarRef(Box::new(
+                                        "x".to_string()
+                                    ))),
                                     SpannedToken::new_null(Token::Equals),
                                     SpannedToken::new_null(Token::IntLit(7))
                                 ],
@@ -566,9 +596,13 @@ fn test_boxer_fn_loop() {
                                 Span::null_span()
                             ),
                             TBox::Assign(
-                                vec![SpannedToken::new_null(Token::VarRef(Box::new("x".to_string())))],
+                                vec![SpannedToken::new_null(Token::VarRef(Box::new(
+                                    "x".to_string()
+                                )))],
                                 vec![
-                                    SpannedToken::new_null(Token::VarRef(Box::new("x".to_string()))),
+                                    SpannedToken::new_null(Token::VarRef(Box::new(
+                                        "x".to_string()
+                                    ))),
                                     SpannedToken::new_null(Token::Plus),
                                     SpannedToken::new_null(Token::IntLit(1))
                                 ],
@@ -579,7 +613,9 @@ fn test_boxer_fn_loop() {
                     ),
                     TBox::Return(
                         Box::new(TBox::Expr(
-                            vec![SpannedToken::new_null(Token::VarRef(Box::new("x".to_string())))],
+                            vec![SpannedToken::new_null(Token::VarRef(Box::new(
+                                "x".to_string()
+                            )))],
                             Span::null_span()
                         )),
                         Span::null_span()
@@ -614,7 +650,10 @@ fn test_boxer_fn_no_params() {
                 vec![],
                 TypeTok::Int,
                 vec![TBox::Return(
-                    Box::new(TBox::Expr(vec![SpannedToken::new_null(Token::IntLit(1))], Span::null_span())),
+                    Box::new(TBox::Expr(
+                        vec![SpannedToken::new_null(Token::IntLit(1))],
+                        Span::null_span()
+                    )),
                     Span::null_span()
                 )],
                 Span::null_span(),
@@ -644,7 +683,9 @@ fn test_boxer_float() {
             TBox::VarDec(
                 SpannedToken::new_null(Token::VarName(Box::new("x".to_string()))),
                 None,
-                vec![SpannedToken::new_null(Token::FloatLit(OrderedFloat(3.14159)))],
+                vec![SpannedToken::new_null(Token::FloatLit(OrderedFloat(
+                    3.14159
+                )))],
                 Span::null_span()
             ),
             TBox::VarDec(
@@ -1063,7 +1104,9 @@ fn test_boxer_struct_method_conversion() {
                 Span::null_span()
             ),
             TBox::FuncDec(
-                SpannedToken::new_null(Token::VarName(Box::new("Point:::print_point_struct".to_string()))),
+                SpannedToken::new_null(Token::VarName(Box::new(
+                    "Point:::print_point_struct".to_string()
+                ))),
                 vec![TBox::FuncParam(
                     SpannedToken::new_null(Token::VarRef(Box::new("this".to_string()))),
                     TypeTok::Struct(BTreeMap::from([
@@ -1129,7 +1172,9 @@ fn test_boxer_compound_assignment() {
     assert!(compare_tbox_vecs(
         boxes.unwrap(),
         vec![TBox::Assign(
-            vec![SpannedToken::new_null(Token::VarRef(Box::new("x".to_string())))],
+            vec![SpannedToken::new_null(Token::VarRef(Box::new(
+                "x".to_string()
+            )))],
             vec![
                 SpannedToken::new_null(Token::VarRef(Box::new("x".to_string()))),
                 SpannedToken::new_null(Token::Plus),
@@ -1151,7 +1196,9 @@ fn test_boxer_increment() {
     assert!(compare_tbox_vecs(
         boxes.unwrap(),
         vec![TBox::Assign(
-            vec![SpannedToken::new_null(Token::VarRef(Box::new("x".to_string())))],
+            vec![SpannedToken::new_null(Token::VarRef(Box::new(
+                "x".to_string()
+            )))],
             vec![
                 SpannedToken::new_null(Token::VarRef(Box::new("x".to_string()))),
                 SpannedToken::new_null(Token::Plus),

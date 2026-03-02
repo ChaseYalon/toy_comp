@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 
 fn eq_ast_ignoring_src(x: &Ast, y: &Ast) -> bool {
     match (x, y) {
-        (Ast::IntLit(xi, _ ), Ast::IntLit(yi, _)) => xi == yi,
+        (Ast::IntLit(xi, _), Ast::IntLit(yi, _)) => xi == yi,
         (Ast::BoolLit(xb, _), Ast::BoolLit(yb, _)) => xb == yb,
         (Ast::FloatLit(xf, _), Ast::FloatLit(yf, _)) => xf == yf,
         (Ast::Break(_), Ast::Break(_)) => true,
@@ -532,7 +532,10 @@ fn test_ast_gen_func_dec_call() {
                 TypeTok::Int,
                 Box::new(Ast::FuncCall(
                     Box::new("add_int_int".to_string()),
-                    vec![Ast::IntLit(2, Span::null_span()), Ast::IntLit(3, Span::null_span()),],
+                    vec![
+                        Ast::IntLit(2, Span::null_span()),
+                        Ast::IntLit(3, Span::null_span()),
+                    ],
                     Span::null_span()
                 )),
                 Span::null_span()
@@ -640,7 +643,10 @@ fn test_ast_gen_fibonacci() {
                             InfixOp::Equals,
                             Span::null_span()
                         )),
-                        vec![Ast::Return(Box::new(Ast::IntLit(0, Span::null_span())), Span::null_span())],
+                        vec![Ast::Return(
+                            Box::new(Ast::IntLit(0, Span::null_span())),
+                            Span::null_span()
+                        )],
                         None,
                         Span::null_span()
                     ),
@@ -651,7 +657,10 @@ fn test_ast_gen_fibonacci() {
                             InfixOp::Equals,
                             Span::null_span()
                         )),
-                        vec![Ast::Return(Box::new(Ast::IntLit(1, Span::null_span())), Span::null_span())],
+                        vec![Ast::Return(
+                            Box::new(Ast::IntLit(1, Span::null_span())),
+                            Span::null_span()
+                        )],
                         None,
                         Span::null_span()
                     ),
@@ -877,7 +886,10 @@ fn test_ast_gen_arr_reassign() {
                 TypeTok::BoolArr(1),
                 Box::new(Ast::ArrLit(
                     TypeTok::BoolArr(1),
-                    vec![Ast::BoolLit(true, Span::null_span()), Ast::BoolLit(false, Span::null_span())],
+                    vec![
+                        Ast::BoolLit(true, Span::null_span()),
+                        Ast::BoolLit(false, Span::null_span())
+                    ],
                     Span::null_span()
                 )),
                 Span::null_span()
@@ -1160,8 +1172,14 @@ fn test_ast_gen_struct_buggy() {
                 Box::new(Ast::StructLit(
                     Box::new("Foo".to_string()),
                     Box::new(BTreeMap::from([
-                        ("fee".to_string(), (Ast::IntLit(2, Span::null_span()), TypeTok::Int)),
-                        ("baz".to_string(), (Ast::BoolLit(false, Span::null_span()), TypeTok::Bool))
+                        (
+                            "fee".to_string(),
+                            (Ast::IntLit(2, Span::null_span()), TypeTok::Int)
+                        ),
+                        (
+                            "baz".to_string(),
+                            (Ast::BoolLit(false, Span::null_span()), TypeTok::Bool)
+                        )
                     ])),
                     Span::null_span()
                 )),
@@ -1258,7 +1276,10 @@ fn test_ast_gen_nested_struct() {
                                 ]))
                             )
                         ),
-                        ("age".to_string(), (Ast::IntLit(15, Span::null_span()), TypeTok::Int))
+                        (
+                            "age".to_string(),
+                            (Ast::IntLit(15, Span::null_span()), TypeTok::Int)
+                        )
                     ])),
                     Span::null_span()
                 )),
@@ -1478,7 +1499,10 @@ fn test_ast_gen_not() {
                 )),
                 vec![Ast::FuncCall(
                     Box::new("println".to_string()),
-                    vec![Ast::StringLit(Box::new("duh".to_string()), Span::null_span())],
+                    vec![Ast::StringLit(
+                        Box::new("duh".to_string()),
+                        Span::null_span()
+                    )],
                     Span::null_span()
                 )],
                 Some(vec![Ast::FuncCall(
@@ -1507,7 +1531,11 @@ fn test_ast_gen_arr_ref_bug() {
                 TypeTok::IntArr(1),
                 Box::new(Ast::ArrLit(
                     TypeTok::IntArr(1),
-                    vec![Ast::IntLit(1, Span::null_span()), Ast::IntLit(2, Span::null_span()), Ast::IntLit(3, Span::null_span())],
+                    vec![
+                        Ast::IntLit(1, Span::null_span()),
+                        Ast::IntLit(2, Span::null_span()),
+                        Ast::IntLit(3, Span::null_span())
+                    ],
                     Span::null_span()
                 )),
                 Span::null_span()
@@ -1571,7 +1599,10 @@ fn test_ast_gen_nested_func_call_bug() {
                 Box::new("println".to_string()),
                 vec![Ast::FuncCall(
                     Box::new("add_int_int".to_string()),
-                    vec![Ast::IntLit(5, Span::null_span()), Ast::IntLit(4, Span::null_span())],
+                    vec![
+                        Ast::IntLit(5, Span::null_span()),
+                        Ast::IntLit(4, Span::null_span())
+                    ],
                     Span::null_span()
                 )],
                 Span::null_span()
@@ -1638,7 +1669,10 @@ fn test_ast_gen_struct_func_call() {
                                 TypeTok::Str,
                             ),
                         ),
-                        ("age".to_string(), (Ast::IntLit(16, Span::null_span()), TypeTok::Int)),
+                        (
+                            "age".to_string(),
+                            (Ast::IntLit(16, Span::null_span()), TypeTok::Int)
+                        ),
                     ])),
                     Span::null_span()
                 )),
@@ -1734,8 +1768,14 @@ fn test_ast_gen_struct_func_call_multi_param() {
                 Box::new(Ast::StructLit(
                     Box::new("Point".to_string()),
                     Box::new(BTreeMap::from([
-                        ("x".to_string(), (Ast::IntLit(0, Span::null_span()), TypeTok::Int)),
-                        ("y".to_string(), (Ast::IntLit(0, Span::null_span()), TypeTok::Int)),
+                        (
+                            "x".to_string(),
+                            (Ast::IntLit(0, Span::null_span()), TypeTok::Int)
+                        ),
+                        (
+                            "y".to_string(),
+                            (Ast::IntLit(0, Span::null_span()), TypeTok::Int)
+                        ),
                     ])),
                     Span::null_span()
                 )),
@@ -1800,7 +1840,11 @@ fn test_ast_gen_struct_arr_func_call() {
                         )])),
                         Span::null_span()
                     ),
-                    Ast::FuncParam(Box::new("new_a".to_string()), TypeTok::Int, Span::null_span())
+                    Ast::FuncParam(
+                        Box::new("new_a".to_string()),
+                        TypeTok::Int,
+                        Span::null_span()
+                    )
                 ],
                 TypeTok::Void,
                 vec![Ast::Assignment(
@@ -1809,7 +1853,10 @@ fn test_ast_gen_struct_arr_func_call() {
                         "a".to_string(),
                         Span::null_span()
                     )),
-                    Box::new(Ast::VarRef(Box::new("new_a".to_string()), Span::null_span())),
+                    Box::new(Ast::VarRef(
+                        Box::new("new_a".to_string()),
+                        Span::null_span()
+                    )),
                     Span::null_span()
                 )],
                 Span::null_span()
@@ -1859,7 +1906,10 @@ fn test_ast_gen_struct_arr_func_call() {
                         Box::new("Foo:::set_a_struct_int".to_string()),
                         vec![
                             Ast::IndexAccess(
-                                Box::new(Ast::VarRef(Box::new("fee".to_string()), Span::null_span())),
+                                Box::new(Ast::VarRef(
+                                    Box::new("fee".to_string()),
+                                    Span::null_span()
+                                )),
                                 Box::new(Ast::VarRef(Box::new("i".to_string()), Span::null_span())),
                                 Span::null_span()
                             ),
@@ -2032,7 +2082,11 @@ fn test_ast_gen_any_arr() {
                     TypeTok::AnyArr(1),
                     Span::null_span()
                 ),
-                Ast::FuncParam(Box::new("elem".to_string()), TypeTok::Any, Span::null_span()),
+                Ast::FuncParam(
+                    Box::new("elem".to_string()),
+                    TypeTok::Any,
+                    Span::null_span()
+                ),
             ],
             TypeTok::AnyArr(1),
             vec![
@@ -2070,7 +2124,10 @@ fn test_ast_gen_any_arr() {
                                 Span::null_span()
                             )),
                             Box::new(Ast::IndexAccess(
-                                Box::new(Ast::VarRef(Box::new("arr".to_string()), Span::null_span())),
+                                Box::new(Ast::VarRef(
+                                    Box::new("arr".to_string()),
+                                    Span::null_span()
+                                )),
                                 Box::new(Ast::VarRef(Box::new("i".to_string()), Span::null_span())),
                                 Span::null_span()
                             )),
@@ -2091,7 +2148,10 @@ fn test_ast_gen_any_arr() {
                 ),
                 Ast::Assignment(
                     Box::new(Ast::IndexAccess(
-                        Box::new(Ast::VarRef(Box::new("newArr".to_string()), Span::null_span())),
+                        Box::new(Ast::VarRef(
+                            Box::new("newArr".to_string()),
+                            Span::null_span()
+                        )),
                         Box::new(Ast::VarRef(Box::new("i".to_string()), Span::null_span())),
                         Span::null_span()
                     )),
@@ -2099,7 +2159,10 @@ fn test_ast_gen_any_arr() {
                     Span::null_span()
                 ),
                 Ast::Return(
-                    Box::new(Ast::VarRef(Box::new("newArr".to_string()), Span::null_span())),
+                    Box::new(Ast::VarRef(
+                        Box::new("newArr".to_string()),
+                        Span::null_span()
+                    )),
                     Span::null_span()
                 )
             ],
@@ -2120,7 +2183,10 @@ fn test_ast_gen_net_boolean() {
             Ast::ImportStmt("std.net".to_string(), Span::null_span()),
             Ast::FuncCall(
                 Box::new("std::net::configure_http_server_int_int".to_string()),
-                vec![Ast::IntLit(8080, Span::null_span()), Ast::IntLit(100, Span::null_span())],
+                vec![
+                    Ast::IntLit(8080, Span::null_span()),
+                    Ast::IntLit(100, Span::null_span())
+                ],
                 Span::null_span()
             ),
             Ast::WhileStmt(
@@ -2147,4 +2213,3 @@ fn test_ast_gen_net_boolean() {
         ]
     ))
 }
-

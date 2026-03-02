@@ -26,7 +26,7 @@ impl<'a> Generator<'a> {
     }
 
     pub fn register_imported_func(&mut self, name: String, ret_type: TypeTok) {
-        self.converter.builder.register_extern_func(name, ret_type);
+        self.converter.builder.register_extern_func(name, ret_type, false);
     }
 
     pub fn compile_to_object(

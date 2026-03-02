@@ -6,8 +6,8 @@ use crate::lexer::Lexer;
 use crate::parser::ast::Ast;
 use crate::parser::boxer::Boxer;
 use crate::parser::toy_box::TBox;
-use crate::token::{Token, SpannedToken};
 use crate::token::TypeTok;
+use crate::token::{SpannedToken, Token};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 
@@ -165,8 +165,11 @@ impl AstGenerator {
         }
     }
 
-    fn find_top_val(&self, toks: &Vec<SpannedToken>) -> Result<(usize, u32, SpannedToken), ToyError> {
-        let  cumulative_span = AstGenerator::total_span(toks.to_owned());
+    fn find_top_val(
+        &self,
+        toks: &Vec<SpannedToken>,
+    ) -> Result<(usize, u32, SpannedToken), ToyError> {
+        let cumulative_span = AstGenerator::total_span(toks.to_owned());
         let mut best_idx = 0_usize;
         let mut best_val: u32 = 100_000_000;
         let mut best_tok: SpannedToken = SpannedToken::new_null(Token::IntLit(0));
@@ -409,10 +412,7 @@ impl AstGenerator {
         let types = types_opt.unwrap();
         for (i, (_, type_tok)) in processed_params.iter().enumerate() {
             if type_tok != &types[i] && types[i] != TypeTok::Any {
-                return Err(ToyError::new(
-                    ToyErrorType::TypeMismatch,
-                    cumulative_span,
-                ));
+                return Err(ToyError::new(ToyErrorType::TypeMismatch, cumulative_span));
             }
         }
         let vals: Vec<Ast> = processed_params
@@ -526,8 +526,7 @@ impl AstGenerator {
                 }
                 self.pop_scope()?;
 
-                let elif_stmt =
-                    Ast::IfStmt(Box::new(e_cond), e_stmts, else_val, stmt.span());
+                let elif_stmt = Ast::IfStmt(Box::new(e_cond), e_stmts, else_val, stmt.span());
                 else_val = Some(vec![elif_stmt]);
             }
         }

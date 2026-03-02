@@ -11,7 +11,10 @@ impl AstGenerator {
         let cumulate_span = AstGenerator::total_span(toks.clone());
         if toks.len() == 1 {
             if toks[0].tok.tok_type() == "IntLit" {
-                return Ok((Ast::IntLit(toks[0].tok.get_val().unwrap(), cumulate_span), TypeTok::Int));
+                return Ok((
+                    Ast::IntLit(toks[0].tok.get_val().unwrap(), cumulate_span),
+                    TypeTok::Int,
+                ));
             }
             if toks[0].tok.tok_type() == "VarRef" {
                 let name = match &toks[0].tok {
@@ -19,9 +22,9 @@ impl AstGenerator {
                     _ => unreachable!(),
                 };
 
-                let ty = self.lookup_var_type(name).ok_or_else(|| {
-                    ToyError::new(ToyErrorType::TypeHintNeeded, cumulate_span)
-                })?;
+                let ty = self
+                    .lookup_var_type(name)
+                    .ok_or_else(|| ToyError::new(ToyErrorType::TypeHintNeeded, cumulate_span))?;
                 return Ok((self.parse_var_ref(&toks[0])?, ty));
             }
             if toks[0].tok.tok_type() == "FloatLit" {
@@ -33,7 +36,10 @@ impl AstGenerator {
             }
         }
         if toks.len() == 0 {
-            return Err(ToyError::new(ToyErrorType::ExpectedExpression, cumulate_span));
+            return Err(ToyError::new(
+                ToyErrorType::ExpectedExpression,
+                cumulate_span,
+            ));
         }
 
         let (best_idx, _, best_tok) = self.find_top_val(toks)?;
@@ -44,11 +50,16 @@ impl AstGenerator {
             let lhs = if r_type == TypeTok::Float {
                 Ast::FloatLit(OrderedFloat(0.0), cumulate_span.clone())
             } else {
-                Ast::IntLit(0, cumulate_span.clone())//this looks wrong
+                Ast::IntLit(0, cumulate_span.clone()) //this looks wrong
             };
 
             return Ok((
-                Ast::InfixExpr(Box::new(lhs), Box::new(r_node), InfixOp::Minus, cumulate_span),
+                Ast::InfixExpr(
+                    Box::new(lhs),
+                    Box::new(r_node),
+                    InfixOp::Minus,
+                    cumulate_span,
+                ),
                 r_type,
             ));
         }
@@ -94,10 +105,13 @@ impl AstGenerator {
         let cumulative_span = AstGenerator::total_span(toks.clone());
         if toks.len() == 1 {
             if toks[0].tok.tok_type() == "BoolLit" {
-                return Ok(Ast::BoolLit(match toks[0].tok {
-                    Token::BoolLit(b) => b,
-                    _ => unreachable!(),
-                }, cumulative_span));
+                return Ok(Ast::BoolLit(
+                    match toks[0].tok {
+                        Token::BoolLit(b) => b,
+                        _ => unreachable!(),
+                    },
+                    cumulative_span,
+                ));
             }
             if toks[0].tok.tok_type() == "VarRef" {
                 return self.parse_var_ref(&toks[0]);
@@ -133,7 +147,6 @@ impl AstGenerator {
         ));
     }
     pub fn parse_str_expr(&self, toks: &Vec<SpannedToken>) -> Result<Ast, ToyError> {
-
         let cumulative_span = AstGenerator::total_span(toks.clone());
         if toks.len() == 1 {
             if toks[0].tok.tok_type() == "StringLit" {
@@ -167,10 +180,12 @@ impl AstGenerator {
         ));
     }
     pub fn parse_empty_expr(&self, toks: &Vec<SpannedToken>) -> Result<(Ast, TypeTok), ToyError> {
-
         let cumulative_span = AstGenerator::total_span(toks.clone());
         if toks.is_empty() {
-            return Err(ToyError::new(ToyErrorType::ExpectedExpression, cumulative_span));
+            return Err(ToyError::new(
+                ToyErrorType::ExpectedExpression,
+                cumulative_span,
+            ));
         }
 
         if toks[0].tok.tok_type() != "LParen" {
@@ -245,7 +260,11 @@ impl AstGenerator {
                 _ => {}
             }
 
-            if t.tok.tok_type() == "Comma" && bracket_nest == 0 && brace_nest == 0 && paren_nest == 0 {
+            if t.tok.tok_type() == "Comma"
+                && bracket_nest == 0
+                && brace_nest == 0
+                && paren_nest == 0
+            {
                 arr_elems.push(current.clone());
                 current.clear();
             } else {
@@ -266,8 +285,10 @@ impl AstGenerator {
         }
 
         if arr_types.is_empty() {
-
-            return Ok((Ast::ArrLit(TypeTok::Any, arr_vals, cumulative_span), TypeTok::Any));
+            return Ok((
+                Ast::ArrLit(TypeTok::Any, arr_vals, cumulative_span),
+                TypeTok::Any,
+            ));
         }
 
         let all_types_same = arr_types.windows(2).all(|w| w[0] == w[1]);
@@ -290,7 +311,10 @@ impl AstGenerator {
             };
         }
 
-        return Ok((Ast::ArrLit(arr_type.clone(), arr_vals, cumulative_span), arr_type));
+        return Ok((
+            Ast::ArrLit(arr_type.clone(), arr_vals, cumulative_span),
+            arr_type,
+        ));
     }
     pub fn parse_struct_def(
         &self,
@@ -332,7 +356,6 @@ impl AstGenerator {
 
         let mut processed_kv: BTreeMap<String, (Ast, TypeTok)> = BTreeMap::new();
         for kv in unprocessed_kv {
-
             if kv.len() < 3 {
                 return Err(ToyError::new(
                     ToyErrorType::MalformedStructField,
@@ -366,22 +389,22 @@ impl AstGenerator {
                 }
             };
             if value_type != correct_type {
-                return Err(ToyError::new(
-                    ToyErrorType::TypeMismatch,
-                    cumulative_span,
-                ));
+                return Err(ToyError::new(ToyErrorType::TypeMismatch, cumulative_span));
             }
             processed_kv.insert(key, (value, value_type));
         }
 
         Ok((
-            Ast::StructLit(Box::new(name.clone()), Box::new(processed_kv), cumulative_span),
+            Ast::StructLit(
+                Box::new(name.clone()),
+                Box::new(processed_kv),
+                cumulative_span,
+            ),
             self.lookup_var_type(&name).unwrap(),
         ))
     }
 
     pub fn parse_expr(&self, toks: &Vec<SpannedToken>) -> Result<(Ast, TypeTok), ToyError> {
-
         let cumulative_span = AstGenerator::total_span(toks.clone());
         if toks.is_empty() {
             return Err(ToyError::new(
@@ -400,13 +423,19 @@ impl AstGenerator {
                     cumulative_span,
                 ));
             }
-            return Ok((Ast::Not(Box::new(to_be_negated_val), cumulative_span), TypeTok::Bool));
+            return Ok((
+                Ast::Not(Box::new(to_be_negated_val), cumulative_span),
+                TypeTok::Bool,
+            ));
         }
 
         //guard clause for single tokens
         if toks.len() == 1 {
             if toks[0].tok.tok_type() == "IntLit" {
-                return Ok((Ast::IntLit(toks[0].tok.get_val().unwrap(), cumulative_span), TypeTok::Int));
+                return Ok((
+                    Ast::IntLit(toks[0].tok.get_val().unwrap(), cumulative_span),
+                    TypeTok::Int,
+                ));
             }
             if toks[0].tok.tok_type() == "FloatLit" {
                 let val = match toks[0].tok {
@@ -437,10 +466,7 @@ impl AstGenerator {
                 };
                 let var_ref_type = self.lookup_var_type(&s);
                 if var_ref_type.is_none() {
-                    return Err(ToyError::new(
-                        ToyErrorType::TypeHintNeeded,
-                        cumulative_span,
-                    ));
+                    return Err(ToyError::new(ToyErrorType::TypeHintNeeded, cumulative_span));
                 }
                 return Ok((self.parse_var_ref(&toks[0])?, var_ref_type.unwrap().clone()));
             }
@@ -641,7 +667,7 @@ impl AstGenerator {
                 if right.len() >= 3
                     && right[0].tok.tok_type() == "VarRef"
                     && right[1].tok.tok_type() == "LParen"
-                    && right.last().unwrap().tok. tok_type() == "RParen"
+                    && right.last().unwrap().tok.tok_type() == "RParen"
                 {
                     let method_name = match &right[0].tok {
                         Token::VarRef(n) => *n.clone(),
@@ -772,10 +798,7 @@ impl AstGenerator {
                 let (index_ast, index_type) = self.parse_num_expr(&index_toks.to_vec())?;
 
                 if index_type != TypeTok::Int {
-                    return Err(ToyError::new(
-                        ToyErrorType::TypeMismatch,
-                        cumulative_span,
-                    ));
+                    return Err(ToyError::new(ToyErrorType::TypeMismatch, cumulative_span));
                 }
 
                 let elem_type = match left_type {
