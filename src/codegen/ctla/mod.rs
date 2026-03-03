@@ -139,27 +139,13 @@ impl CTLA {
             cfg_functions: vec![],
         };
     }
-    /// Returns a reference to a given instruction given a function name, blockID and the instructions index within said block
-    fn get_ins(&self, func: String, block: BlockId, ins_idx: usize) -> &TIR {
-        return &self
-            .builder
-            .funcs
-            .iter()
-            .find(|f| *f.name == func)
-            .unwrap()
-            .body
-            .iter()
-            .find(|b| b.id == block)
-            .unwrap()
-            .ins[ins_idx];
-    }
     fn is_terminator_ins(&self, ins: &TIR) -> bool {
         return matches!(
             ins,
             TIR::Ret(_, _) | TIR::JumpCond(_, _, _, _) | TIR::JumpBlockUnCond(_, _)
         );
     }
-    ///TODO
+    ///checks whether some SSA value could refer to a specific allocation, but only by following phi chains.
     fn value_may_be_allocation_via_phi(
         &self,
         func: &Function,
@@ -208,16 +194,15 @@ impl CTLA {
             )
         })
     }
+    /// Finds the exact index in a given block where it is safe to insert a free call
+    /// Assumes the block is the correct place for the free
     fn free_insertion_index_for_block(
         &self,
         func: &Function,
         block_id: BlockId,
         alloc: &HeapAllocation,
-    ) -> Option<usize> {
-        let block = func.body.iter().find(|b| b.id == block_id)?;
-        if block.ins.is_empty() {
-            return None;
-        }
+    ) -> usize {
+        let block = func.body.iter().find(|b| b.id == block_id).unwrap();
 
         let mut alias_ids: HashSet<ValueId> = HashSet::new();
         alias_ids.insert(alloc.alloc_ins.val);
@@ -253,11 +238,12 @@ impl CTLA {
             }
         }
 
-        return Some(insertion_idx);
+        return insertion_idx;
     }
+    /// Determines if the given instruction references any of the value or any of its aliases
     fn instruction_uses_any_value(&self, ins: &TIR, aliases: &HashSet<ValueId>) -> bool {
         let uses = |value: &SSAValue| aliases.contains(&value.val);
-        match ins {
+        return match ins {
             TIR::ItoF(_, value, _) => uses(value),
             TIR::NumericInfix(_, left, right, _) => uses(left) || uses(right),
             TIR::BoolInfix(_, left, right, _) => uses(left) || uses(right),
@@ -277,8 +263,10 @@ impl CTLA {
             | TIR::JumpBlockUnCond(_, _)
             | TIR::CreateStructInterface(_, _, _)
             | TIR::GlobalString(_, _) => false,
-        }
+        };
     }
+
+    /// Determines if a given allocation escapes the function it was created in, escapes the program as a whole, or dies in the function
     fn allocation_escapes(&self, alloc: &HeapAllocation) -> EscapeType {
         let func = self
             .builder
@@ -318,36 +306,8 @@ impl CTLA {
 
         return EscapeType::DoesNotEscape;
     }
-    fn mark_if_block_or_children_must_live(
-        &self,
-        cfg_f: &CFGFunction,
-        bid: BlockId,
-        alloc: &HeapAllocation,
-        keep_alive_list: &mut Vec<BlockId>,
-        visited: &mut HashSet<BlockId>,
-    ) {
-        if visited.contains(&bid) {
-            return;
-        }
-        visited.insert(bid);
 
-        for (_, b, _) in &alloc.refs {
-            if b == &bid {
-                keep_alive_list.push(bid);
-            }
-        }
-        let cfg_block = cfg_f.cfg_blocks.iter().find(|b| b.block == bid).unwrap();
-        for child in &cfg_block.possible_output_blocks {
-            self.mark_if_block_or_children_must_live(
-                cfg_f,
-                *child,
-                alloc,
-                keep_alive_list,
-                visited,
-            );
-        }
-    }
-
+    /// determines if he block or any of its children reference the given allocation, has a cycle guard
     fn block_children_reference_allocation(
         &self,
         func: &CFGFunction,
@@ -385,12 +345,14 @@ impl CTLA {
         }
         false
     }
+    /// finds the function and the exact SSAValue where the allocation is initialized and must be freed
     fn find_owning_function(&self, alloc: &HeapAllocation) -> (String, SSAValue) {
         let mut current_func = alloc.function.clone();
         let mut current_val = alloc.alloc_ins.clone();
 
         loop {
             // find all callers that receive a value from current_func via CallLocalFunction
+            // this is ludicrous and needs to be refactored into like 5 separate things.
             let callers: Vec<(Function, Block, SSAValue)> = self
                 .builder
                 .funcs
@@ -464,6 +426,7 @@ impl CTLA {
             }
         }
     }
+    ///takes an allocation and its owning function and marks the point where the free call should be inserted.
     fn process_non_escaping_allocation(
         &self,
         cfg_func: &CFGFunction,
@@ -499,18 +462,17 @@ impl CTLA {
                     .iter()
                     .find(|b| b.id == origin_block_id)
                     .map(|b| b.ins.len().saturating_sub(1))
+                    .unwrap()
             } else {
                 self.free_insertion_index_for_block(func, origin_block_id, alloc)
             };
-            if let Some(insertion_idx) = insertion_idx {
-                insertion_points.push((
-                    *func.name.clone(),
-                    origin_block_id,
-                    insertion_idx,
-                    alloc.alloc_ins.clone(),
-                    free_func,
-                ));
-            }
+            insertion_points.push((
+                *func.name.clone(),
+                origin_block_id,
+                insertion_idx,
+                alloc.alloc_ins.clone(),
+                free_func,
+            ));
             return;
         }
 
@@ -519,13 +481,11 @@ impl CTLA {
             for block in &func.body {
                 if matches!(block.ins.last(), Some(TIR::Ret(_, _))) {
                     let insertion_idx = if free_func == "toy_free_arr" {
-                        Some(block.ins.len().saturating_sub(1))
+                        block.ins.len().saturating_sub(1)
                     } else {
                         self.free_insertion_index_for_block(func, block.id, alloc)
                     };
-                    let Some(insertion_idx) = insertion_idx else {
-                        continue;
-                    };
+
                     insertion_points.push((
                         *func.name.clone(),
                         block.id,
@@ -537,6 +497,7 @@ impl CTLA {
             }
         }
     }
+    /// determines if a given ssa value is in the given function body or parameters
     fn function_has_ssa(&self, func: &Function, value_id: ValueId) -> bool {
         if func.params.iter().any(|p| p.val == value_id) {
             return true;
@@ -545,6 +506,8 @@ impl CTLA {
             .iter()
             .any(|b| b.ins.iter().any(|ins| ins.get_id() == value_id))
     }
+
+    /// Returns the instruction at the given function, block, and value, note the inputs are id's NOT indexes
     fn get_alloc_ins(
         &self,
         function_name: &str,
@@ -558,9 +521,11 @@ impl CTLA {
             .and_then(|f| f.body.iter().find(|b| b.id == block_id))
             .and_then(|b| b.ins.iter().find(|ins| ins.get_id() == value_id))
     }
+    /// crude doubleplusungood function that tests if a given function name matches 3 known to return arrays
     fn is_array_allocation_call_name(&self, name: &str) -> bool {
-        name == "toy_malloc_arr" || name == "std::sys::argv" || name == "toy_sys_get_argv"
+        return name == "toy_malloc_arr" || name == "std::sys::argv" || name == "toy_sys_get_argv";
     }
+    /// tries to determine if a function returns an array by name, this is bad however and should in future just ask the TIRBuilder
     fn function_returns_array_allocation(&self, function_name: &str) -> bool {
         let Some(func) = self.builder.funcs.iter().find(|f| *f.name == function_name) else {
             return false;
@@ -577,8 +542,9 @@ impl CTLA {
                 }
             }
         }
-        false
+        return false;
     }
+    /// matches the allocation type to the type of free needed (regular or array), returns that function name
     fn alloc_type_to_free_func(&self, alloc: &HeapAllocation) -> String {
         let alloc_ins = self.get_alloc_ins(&alloc.function, alloc.block, alloc.alloc_ins.val);
 
@@ -604,6 +570,7 @@ impl CTLA {
             _ => unreachable!(),
         };
     }
+    /// runs the full pipeline to mark (or intentionally leak) a given allocation
     fn process_allocation(
         &self,
         alloc: HeapAllocation,
@@ -679,6 +646,7 @@ impl CTLA {
             );
         }
     }
+    /// Runs CTLA Analysis on the given Builder, returns a vec of functions containing the processed code, or an error.
     pub fn analyze(&mut self, builder: TirBuilder) -> Result<Vec<Function>, ToyError> {
         self.builder = builder;
         for f in &mut self.builder.funcs {
