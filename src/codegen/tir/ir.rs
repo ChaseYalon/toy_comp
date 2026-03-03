@@ -1044,7 +1044,8 @@ impl TirBuilder {
         return allocs;
     }
     pub fn detect_unique_heap_allocations(&self) -> Vec<HeapAllocation> {
-        let mut seen: HashMap<(AllocationId, Box<String>, ValueId), HeapAllocation> = HashMap::new();
+        let mut seen: HashMap<(AllocationId, Box<String>, ValueId), HeapAllocation> =
+            HashMap::new();
         for func in &self.funcs {
             for alloc in &func.heap_allocations {
                 seen.insert(

@@ -63,6 +63,9 @@ impl CFGFunction {
         };
     }
 
+    /// Calculates the control flow graph for a given block in the CFGFunction
+    /// Will panic if the blockID does not exist, or if the last element is not a TIR::Ret, JumpCond, or JumpUnCond
+    /// Will build the CFG for the block and all of its children, DCE happens incidentally, but the code is not eliminated until LLVM
     fn calc_block_cfg(&mut self, id: BlockId) {
         if self.visited_blocks.contains(&id) {
             return;
@@ -115,6 +118,8 @@ impl CFGFunction {
             _ => unreachable!(),
         };
     }
+
+    /// A wrapper for calc_block_cfg that starts it at the root node, and then retroactively updates the inputs after the output CFG has been calculated
     fn calc_cfg(&mut self) {
         //build base tree - DCE covered by LLVM, they will do it better than I can anyways
 
@@ -126,7 +131,7 @@ impl CFGFunction {
         }
     }
 }
-
+//COMPILE TIME LIFETIME ANALYSIS
 impl CTLA {
     pub fn new() -> CTLA {
         return CTLA {
@@ -134,7 +139,7 @@ impl CTLA {
             cfg_functions: vec![],
         };
     }
-    ///NOTE: You CANNOT mutate ths value it is a copy not the original
+    /// Returns a reference to a given instruction given a function name, blockID and the instructions index within said block
     fn get_ins(&self, func: String, block: BlockId, ins_idx: usize) -> &TIR {
         return &self
             .builder
@@ -149,8 +154,12 @@ impl CTLA {
             .ins[ins_idx];
     }
     fn is_terminator_ins(&self, ins: &TIR) -> bool {
-        return matches!(ins, TIR::Ret(_, _) | TIR::JumpCond(_, _, _, _) | TIR::JumpBlockUnCond(_, _))
+        return matches!(
+            ins,
+            TIR::Ret(_, _) | TIR::JumpCond(_, _, _, _) | TIR::JumpBlockUnCond(_, _)
+        );
     }
+    ///TODO
     fn value_may_be_allocation_via_phi(
         &self,
         func: &Function,
@@ -178,6 +187,7 @@ impl CTLA {
 
         match ins {
             TIR::Phi(_, block_ids, vals) => block_ids.iter().zip(vals.iter()).any(|(bid, v)| {
+                //if it panics, not an allocation
                 if self.block_has_non_returning_panic_call(func, *bid) {
                     return false;
                 }
@@ -186,6 +196,7 @@ impl CTLA {
             _ => false,
         }
     }
+    ///just tests if the block contains a call to panic
     fn block_has_non_returning_panic_call(&self, func: &Function, block_id: BlockId) -> bool {
         let Some(block) = func.body.iter().find(|b| b.id == block_id) else {
             return false;
@@ -242,7 +253,7 @@ impl CTLA {
             }
         }
 
-        Some(insertion_idx)
+        return Some(insertion_idx);
     }
     fn instruction_uses_any_value(&self, ins: &TIR, aliases: &HashSet<ValueId>) -> bool {
         let uses = |value: &SSAValue| aliases.contains(&value.val);
@@ -345,20 +356,29 @@ impl CTLA {
         visited: &mut HashSet<BlockId>,
         is_root: bool,
     ) -> bool {
-        if visited.contains(&cfg_b.block) { return false; }
+        if visited.contains(&cfg_b.block) {
+            return false;
+        }
         visited.insert(cfg_b.block);
-        if cfg_b.possible_output_blocks.is_empty() { return false; }
-        
+        if cfg_b.possible_output_blocks.is_empty() {
+            return false;
+        }
+
         // only check refs in non-root blocks (successors, not the candidate block itself)
         if !is_root {
             for (_, b, _) in &alloc.refs {
-                if b == &cfg_b.block { return true; }
+                if b == &cfg_b.block {
+                    return true;
+                }
             }
         }
-        
+
         for possible_output_block in &cfg_b.possible_output_blocks {
-            let child = func.cfg_blocks.iter()
-                .find(|b| b.block == *possible_output_block).unwrap();
+            let child = func
+                .cfg_blocks
+                .iter()
+                .find(|b| b.block == *possible_output_block)
+                .unwrap();
             if self.block_children_reference_allocation(func, child, alloc, visited, false) {
                 return true;
             }
@@ -456,7 +476,11 @@ impl CTLA {
         }
         let free_func = self.alloc_type_to_free_func(alloc);
         let origin_block_id = alloc.block;
-        let Some(origin_cfg_block) = cfg_func.cfg_blocks.iter().find(|b| b.block == origin_block_id) else {
+        let Some(origin_cfg_block) = cfg_func
+            .cfg_blocks
+            .iter()
+            .find(|b| b.block == origin_block_id)
+        else {
             return;
         };
 
@@ -521,7 +545,12 @@ impl CTLA {
             .iter()
             .any(|b| b.ins.iter().any(|ins| ins.get_id() == value_id))
     }
-    fn get_alloc_ins(&self, function_name: &str, block_id: BlockId, value_id: ValueId) -> Option<&TIR> {
+    fn get_alloc_ins(
+        &self,
+        function_name: &str,
+        block_id: BlockId,
+        value_id: ValueId,
+    ) -> Option<&TIR> {
         self.builder
             .funcs
             .iter()
@@ -551,8 +580,7 @@ impl CTLA {
         false
     }
     fn alloc_type_to_free_func(&self, alloc: &HeapAllocation) -> String {
-        let alloc_ins = self
-            .get_alloc_ins(&alloc.function, alloc.block, alloc.alloc_ins.val);
+        let alloc_ins = self.get_alloc_ins(&alloc.function, alloc.block, alloc.alloc_ins.val);
 
         let Some(alloc_ins) = alloc_ins else {
             return "toy_free".to_string();
@@ -590,7 +618,7 @@ impl CTLA {
             .iter()
             .find(|f| *f.name == *alloc.function)
             .unwrap();
-        
+
         let is_param = func.params.iter().any(|p| p.val == alloc.alloc_ins.val);
         if is_param {
             return;
@@ -663,7 +691,6 @@ impl CTLA {
         for a in unique_allocations {
             self.process_allocation(a, &mut insertion_points);
         }
-        eprintln!("[DEBUG] {:?}", insertion_points);
         // in analyze, before the splice loop
         let dedup_set: HashSet<_> = insertion_points.into_iter().collect();
         insertion_points = dedup_set.into_iter().collect();
