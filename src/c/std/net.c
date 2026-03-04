@@ -1,5 +1,4 @@
 #include "../builtins.h"
-#include <psdk_inc/_socket_types.h>
 #include <stdint.h>
 
 #ifdef _WIN32
@@ -319,7 +318,11 @@ static char* dup_slice_as_cstr(const char* p, int n) {
     out[n] = '\0';
     return out;
 }
+#ifdef _WIN32
 static SOCKET global_socket_bodge = 0;
+#else
+static unsigned long long global_socket_bodge = 0;
+#endif
 ToyArr* toy_net_read_request() {
 #ifdef _WIN32
     if (listen_sock == INVALID_SOCKET) {

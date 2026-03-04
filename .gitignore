@@ -30,3 +30,6 @@ lib
 
 #block default elf
 Program
+
+#core dumps
+core.*
