@@ -189,3 +189,19 @@ fn test_ctla_str_reassign() {
     );
     assert!(!output.contains("FAIL_TEST"));
 }
+
+#[test]
+fn test_ctla_aliasing() {
+    compile_code_aot!(
+        output,
+        r#"
+        let a = "hi";
+        let b = "bye";
+        let arr = [a, b]
+        println(a);
+        println(len(arr));
+        "#,
+        "ctla_aliasing"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+}

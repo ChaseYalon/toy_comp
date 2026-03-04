@@ -3805,3 +3805,148 @@ fn test_tirgen_break_continue_lowering() {
         ],
     );
 }
+
+#[test]
+fn test_tirgen_ins_elimination_bug() {
+    setup_tir!(
+        ir,
+        r#"
+        let a = "hi";
+        let b = "bye";
+        let arr = [a, b]
+        println(a);
+        println(len(arr));
+        "#
+    );
+    compare_tir(
+        "tir_ins_elimination_bug",
+        ir,
+        vec![Function {
+            name: Box::new("user_main".to_string()),
+            params: vec![],
+            ret_type: TirType::I64,
+            heap_allocations: vec![],
+            heap_counter: 0,
+            body: vec![Block {
+                id: 0,
+                ins: vec![
+                    TIR::GlobalString(0, Box::new("hi".to_string())),
+                    TIR::GlobalString(1, Box::new("bye".to_string())),
+                    TIR::IConst(2, 2, TirType::I64),
+                    TIR::IConst(3, 2, TirType::I64),
+                    TIR::IConst(4, 1, TirType::I64),
+                    TIR::CallExternFunction(
+                        5,
+                        Box::new("toy_malloc_arr".to_string()),
+                        vec![
+                            SSAValue {
+                                val: 2,
+                                ty: Some(TirType::I64),
+                            },
+                            SSAValue {
+                                val: 3,
+                                ty: Some(TirType::I64),
+                            },
+                            SSAValue {
+                                val: 4,
+                                ty: Some(TirType::I64),
+                            },
+                        ],
+                        true,
+                        TirType::Ptr,
+                        true,
+                    ),
+                    TIR::IConst(6, 0, TirType::I64),
+                    TIR::IConst(7, 2, TirType::I64),
+                    TIR::CallExternFunction(
+                        8,
+                        Box::new("toy_write_to_arr".to_string()),
+                        vec![
+                            SSAValue {
+                                val: 5,
+                                ty: Some(TirType::Ptr),
+                            },
+                            SSAValue {
+                                val: 0,
+                                ty: Some(TirType::Ptr),
+                            },
+                            SSAValue {
+                                val: 6,
+                                ty: Some(TirType::I64),
+                            },
+                            SSAValue {
+                                val: 7,
+                                ty: Some(TirType::I64),
+                            },
+                        ],
+                        false,
+                        TirType::Void,
+                        true,
+                    ),
+                    TIR::IConst(8, 0, TirType::I64),
+                    TIR::IConst(9, 2, TirType::I64),
+                    TIR::CallExternFunction(
+                        10,
+                        Box::new("toy_write_to_arr".to_string()),
+                        vec![
+                            SSAValue {
+                                val: 5,
+                                ty: Some(TirType::Ptr),
+                            },
+                            SSAValue {
+                                val: 1,
+                                ty: Some(TirType::Ptr),
+                            },
+                            SSAValue {
+                                val: 8,
+                                ty: Some(TirType::I64),
+                            },
+                            SSAValue {
+                                val: 9,
+                                ty: Some(TirType::I64),
+                            },
+                        ],
+                        false,
+                        TirType::Void,
+                        true,
+                    ),
+                    TIR::IConst(11, 6, TirType::I64),
+                    TIR::IConst(12, 1, TirType::I64),
+                    TIR::CallExternFunction(
+                        13,
+                        Box::new("toy_println".to_string()),
+                        vec![
+                            SSAValue {
+                                val: 5,
+                                ty: Some(TirType::Ptr),
+                            },
+                            SSAValue {
+                                val: 12,
+                                ty: Some(TirType::I64),
+                            },
+                            SSAValue {
+                                val: 12,
+                                ty: Some(TirType::I64),
+                            },
+                        ],
+                        false,
+                        TirType::Void,
+                        true,
+                    ),
+                    TIR::CallExternFunction(
+                        14,
+                        Box::new("toy_arrlen".to_string()),
+                        vec![SSAValue {
+                            val: 5,
+                            ty: Some(TirType::Ptr),
+                        }],
+                        false,
+                        TirType::I64,
+                        true,
+                    ),
+                ],
+            }],
+            ins_counter: 14,
+        }],
+    )
+}
