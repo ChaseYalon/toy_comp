@@ -466,7 +466,7 @@ impl AstGenerator {
                 };
                 let var_ref_type = self.lookup_var_type(&s);
                 if var_ref_type.is_none() {
-                    return Err(ToyError::new(ToyErrorType::TypeHintNeeded, cumulative_span));
+                    return Err(ToyError::new(ToyErrorType::UndefinedVariable, cumulative_span));
                 }
                 return Ok((self.parse_var_ref(&toks[0])?, var_ref_type.unwrap().clone()));
             }
