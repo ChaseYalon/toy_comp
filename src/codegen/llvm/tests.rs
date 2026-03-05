@@ -285,7 +285,7 @@ fn test_llvm_extern_struct() {
     if month_num.starts_with("0") {
         month_num = month_num[1..].to_string();
     }
-    assert!(output.contains(&month_num));
+    assert!(output.contains(&month_num), "[DEBUG] Output was {output}");
 }
 
 #[test]
@@ -299,7 +299,7 @@ fn test_llvm_extern_struct_func_call() {
     if month_num.starts_with("0") {
         month_num = month_num[1..].to_string();
     }
-    assert!(output.contains(&month_num));
+    assert!(output.contains(&month_num), "[DEBUG] output was {output}");
 }
 
 #[test]

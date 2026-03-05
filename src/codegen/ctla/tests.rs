@@ -1,4 +1,5 @@
 use inkwell::context::Context;
+use chrono::Local;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::thread;
@@ -204,4 +205,18 @@ fn test_ctla_aliasing() {
         "ctla_aliasing"
     );
     assert!(!output.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_extern_struct_func_call() {
+    compile_code_aot!(
+        output,
+        "import std.time; let d = time.current_date(); println(d.to_str());",
+        "ctla_extern_struct_func_call"
+    );
+    let mut month_num = Local::now().format("%m").to_string();
+    if month_num.starts_with("0") {
+        month_num = month_num[1..].to_string();
+    }
+    assert!(output.contains(&month_num), "[DEBUG] output was {output}");
 }

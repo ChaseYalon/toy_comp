@@ -240,6 +240,47 @@ impl CTLA {
 
         return insertion_idx;
     }
+    fn block_returns_allocation_or_alias(
+        &self,
+        func: &Function,
+        block_id: BlockId,
+        alloc: &HeapAllocation,
+    ) -> bool {
+        let Some(block) = func.body.iter().find(|b| b.id == block_id) else {
+            return false;
+        };
+        let Some(TIR::Ret(_, ret_val)) = block.ins.last() else {
+            return false;
+        };
+
+        let alias_ids: HashSet<ValueId> = std::iter::once(alloc.alloc_ins.val)
+            .chain(
+                alloc
+                    .refs
+                    .iter()
+                    .filter(|(f, _, _)| **f == *func.name)
+                    .map(|(_, _, value_id)| *value_id),
+            )
+            .collect();
+
+        if ret_val.val == alloc.alloc_ins.val {
+            return true;
+        }
+
+        if alias_ids.contains(&ret_val.val) {
+            let ret_is_phi = func
+                .body
+                .iter()
+                .flat_map(|b| b.ins.iter())
+                .any(|ins| ins.get_id() == ret_val.val && matches!(ins, TIR::Phi(_, _, _)));
+            if !ret_is_phi {
+                return true;
+            }
+        }
+
+        let mut visited = HashSet::new();
+        self.value_may_be_allocation_via_phi(func, ret_val.val, alloc, &mut visited)
+    }
     /// Determines if the given instruction references any of the value or any of its aliases
     fn instruction_uses_any_value(&self, ins: &TIR, aliases: &HashSet<ValueId>) -> bool {
         let uses = |value: &SSAValue| aliases.contains(&value.val);
@@ -274,6 +315,15 @@ impl CTLA {
             .iter()
             .find(|f| *f.name == *alloc.function)
             .unwrap();
+        let alias_ids: HashSet<ValueId> = std::iter::once(alloc.alloc_ins.val)
+            .chain(
+                alloc
+                    .refs
+                    .iter()
+                    .filter(|(f, _, _)| **f == *func.name)
+                    .map(|(_, _, value_id)| *value_id),
+            )
+            .collect();
         let is_param = func.params.iter().any(|p| p.val == alloc.alloc_ins.val);
         //params always freed by the caller
         if is_param {
@@ -283,6 +333,19 @@ impl CTLA {
         //alloc is returned
         for b in &func.body {
             if let Some(TIR::Ret(_, a)) = b.ins.last() {
+                if a.val == alloc.alloc_ins.val {
+                    return EscapeType::EscapesFunction;
+                }
+                if alias_ids.contains(&a.val) {
+                    let ret_is_phi = func
+                        .body
+                        .iter()
+                        .flat_map(|b| b.ins.iter())
+                        .any(|ins| ins.get_id() == a.val && matches!(ins, TIR::Phi(_, _, _)));
+                    if !ret_is_phi {
+                        return EscapeType::EscapesFunction;
+                    }
+                }
                 let mut visited = HashSet::new();
                 if self.value_may_be_allocation_via_phi(func, a.val, alloc, &mut visited) {
                     return EscapeType::EscapesFunction;
@@ -457,6 +520,9 @@ impl CTLA {
         );
 
         if !has_child_refs {
+            if self.block_returns_allocation_or_alias(func, origin_block_id, alloc) {
+                return;
+            }
             let insertion_idx = if free_func == "toy_free_arr" {
                 func.body
                     .iter()
@@ -480,6 +546,9 @@ impl CTLA {
         if origin_block_id == func.body[0].id {
             for block in &func.body {
                 if matches!(block.ins.last(), Some(TIR::Ret(_, _))) {
+                    if self.block_returns_allocation_or_alias(func, block.id, alloc) {
+                        continue;
+                    }
                     let insertion_idx = if free_func == "toy_free_arr" {
                         block.ins.len().saturating_sub(1)
                     } else {
