@@ -5,7 +5,7 @@ use crate::{
     },
     errors::ToyError,
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use super::tir::ir::BlockId;
 
@@ -472,6 +472,8 @@ impl CTLA {
                         .cloned()
                         .collect(),
                     allocation_id: alloc.allocation_id,
+                    aliases: BTreeSet::new(), //temp
+                    encapsulators: BTreeSet::new(), //temp
                 };
                 if self.allocation_escapes(&test_alloc) == EscapeType::DoesNotEscape {
                     return ((*caller_func.name).clone(), new_val);
@@ -699,6 +701,8 @@ impl CTLA {
                     .filter(|(f, _, _)| **f == owning_func_name)
                     .cloned()
                     .collect(),
+                aliases: BTreeSet::new(), //temp
+                encapsulators:  BTreeSet::new(),
             };
 
             let owning_cfg_func = self

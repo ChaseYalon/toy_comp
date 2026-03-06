@@ -1180,6 +1180,7 @@ impl AstToIrConverter {
             .register_extern("toy_free".to_string(), false, TypeTok::Void, false); //ctla/ctla.c
         self.builder
             .register_extern("toy_free_arr".to_string(), false, TypeTok::Void, false);
+        self.builder.register_extern("toy_malloc_struct".to_string(), true, TypeTok::Any, false);
     }
     ///ast to convert, is_main_module, and module name
     pub fn convert(

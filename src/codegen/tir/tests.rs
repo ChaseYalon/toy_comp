@@ -2851,16 +2851,7 @@ fn test_tirgen_extern_func_dec_and_call() {
             }],
             ins_counter: 5,
             ret_type: TirType::I64,
-            heap_allocations: vec![crate::codegen::tir::ir::HeapAllocation {
-                block: 0,
-                allocation_id: 0,
-                function: Box::new("user_main".to_string()),
-                refs: vec![(Box::new("user_main".to_string()), 0, 1)],
-                alloc_ins: SSAValue {
-                    val: 1,
-                    ty: Some(TirType::Ptr),
-                },
-            }],
+            heap_allocations: vec![],
             heap_counter: 1,
         }],
     );
@@ -2967,16 +2958,7 @@ fn test_tirgen_argv() {
             }],
             ret_type: TirType::I64,
             ins_counter: 6,
-            heap_allocations: vec![crate::codegen::tir::ir::HeapAllocation {
-                block: 0,
-                allocation_id: 0,
-                function: Box::new("user_main".to_string()),
-                refs: vec![(Box::new("user_main".to_string()), 0, 3)],
-                alloc_ins: SSAValue {
-                    val: 0,
-                    ty: Some(TirType::Ptr),
-                },
-            }],
+            heap_allocations: vec![],
             heap_counter: 1,
         }],
     );

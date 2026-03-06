@@ -1,6 +1,6 @@
 #![allow(unused)]
 use itertools::Itertools;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 type AllocationId = u64;
 use crate::{
     errors::{ToyError, ToyErrorType},
@@ -152,6 +152,12 @@ pub struct HeapAllocation {
     ///a vec representing every ssa value that references the allocation
     ///The string is the function name where the ref occurs, BlockId is self explanatory, ValueId is the id of the instruction where the ref occurs
     pub refs: Vec<(Box<String>, BlockId, ValueId)>,
+
+   ///Takes all the different aliases of the allocation. References to the allocations are put into the res vec. 
+    pub aliases: BTreeSet<(String, BlockId, ValueId)>,
+
+    ///Encapsulators are heap allocations which reference within them this allocation. An allocation MUST not be freed until all its encapsulators are freed.
+    pub encapsulators: BTreeSet<(String, BlockId, ValueId)>
 }
 #[derive(Clone, PartialEq, Debug)]
 pub struct Function {
@@ -495,6 +501,8 @@ impl TirBuilder {
                 function: self.funcs[self.curr_func.unwrap()].name.clone(),
                 refs: vec![],
                 alloc_ins: ret_ins.clone(),
+                aliases: BTreeSet::new(),
+                encapsulators: BTreeSet::new()
             };
             self.funcs[self.curr_func.unwrap()]
                 .heap_allocations
@@ -568,6 +576,8 @@ impl TirBuilder {
                 function: self.funcs[self.curr_func.unwrap()].name.clone(),
                 refs: vec![],
                 alloc_ins: val.clone(),
+                aliases: BTreeSet::new(),
+                encapsulators: BTreeSet::new(),
             };
             self.funcs[self.curr_func.unwrap()]
                 .heap_allocations
@@ -809,6 +819,7 @@ impl TirBuilder {
     /// Emit a phi node that takes values from multiple predecessor blocks
     /// block_ids: the IDs of the predecessor blocks
     /// values: the SSA values from each predecessor block (must match order of block_ids)
+    /// Will create a NEW PHI
     pub fn emit_phi(
         &mut self,
         block_ids: Vec<BlockId>,
@@ -852,6 +863,7 @@ impl TirBuilder {
         // Use the type from the first value
         return Ok(ret_val);
     }
+    ///Uses an OLD PHI
     pub fn insert_phi(
         &mut self,
         block_id: BlockId,
@@ -1012,6 +1024,7 @@ impl TirBuilder {
             TypeTok::Bool => TirType::I1,
             TypeTok::Float => TirType::F64,
             TypeTok::Void => TirType::Void,
+            TypeTok::Any => TirType::Ptr,
             TypeTok::Str
             | TypeTok::Any
             | TypeTok::StrArr(_)
