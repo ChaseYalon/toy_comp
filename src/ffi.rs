@@ -60,7 +60,7 @@ unsafe extern "C" {
     pub fn toy_double_to_float_bits(d: f64) -> i64;
 }
 unsafe extern "C" {
-    pub fn toy_malloc_struct(size: i64) -> ToyPtr;
+    pub fn toy_malloc_struct(size: i64, toy_struct: ToyPtr) -> ToyPtr;
 }
 unsafe extern "C" {
     pub fn toy_malloc_arr(len: i64, type_: i64, degree: i64) -> ToyPtr;

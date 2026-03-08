@@ -40,6 +40,8 @@ impl CFGBlock {
 }
 struct CFGFunction {
     func: Function,
+    /// parameter indexes whose value may be returned (possibly via phi chains)
+    returns_alias_of_parameter: Vec<usize>,
     ///block id -> index in funcs.block
     block_id_to_index: HashMap<BlockId, usize>,
     cfg_blocks: Vec<CFGBlock>,
@@ -56,6 +58,7 @@ impl CFGFunction {
 
         return CFGFunction {
             func,
+            returns_alias_of_parameter: vec![],
             block_id_to_index: id_to_idx,
             cfg_blocks: vec![],
             block_id_to_inputs: HashMap::new(),
@@ -145,6 +148,131 @@ impl CTLA {
             TIR::Ret(_, _) | TIR::JumpCond(_, _, _, _) | TIR::JumpBlockUnCond(_, _)
         );
     }
+    /// checks whether a value may alias a given parameter by walking phi nodes and call-return summaries
+    fn value_may_alias_param_with_summaries(
+        func: &Function,
+        value_id: ValueId,
+        param_value_id: ValueId,
+        visited: &mut HashSet<ValueId>,
+        summary_by_func: &HashMap<String, Vec<usize>>,
+    ) -> bool {
+        if value_id == param_value_id {
+            return true;
+        }
+        if visited.contains(&value_id) {
+            return false;
+        }
+        visited.insert(value_id);
+
+        let maybe_ins = func
+            .body
+            .iter()
+            .flat_map(|b| b.ins.iter())
+            .find(|ins| ins.get_id() == value_id);
+
+        let Some(ins) = maybe_ins else {
+            return false;
+        };
+
+        match ins {
+            TIR::Phi(_, _, vals) => vals.iter().any(|v| {
+                CTLA::value_may_alias_param_with_summaries(
+                    func,
+                    v.val,
+                    param_value_id,
+                    visited,
+                    summary_by_func,
+                )
+            }),
+            TIR::CallLocalFunction(_, callee_name, params, _, _)
+            | TIR::CallExternFunction(_, callee_name, params, _, _, _) => {
+                let Some(return_alias_param_indexes) = summary_by_func.get(callee_name.as_ref())
+                else {
+                    return false;
+                };
+
+                return_alias_param_indexes.iter().any(|arg_idx| {
+                    params.get(*arg_idx).is_some_and(|arg| {
+                        CTLA::value_may_alias_param_with_summaries(
+                            func,
+                            arg.val,
+                            param_value_id,
+                            visited,
+                            summary_by_func,
+                        )
+                    })
+                })
+            }
+            _ => false,
+        }
+    }
+    /// computes which parameter indexes in this function may flow to a return value
+    fn find_return_alias_parameter_indexes_with_summaries(
+        func: &Function,
+        summary_by_func: &HashMap<String, Vec<usize>>,
+    ) -> Vec<usize> {
+        let return_values: Vec<ValueId> = func
+            .body
+            .iter()
+            .filter_map(|b| match b.ins.last() {
+                Some(TIR::Ret(_, ret_val)) => Some(ret_val.val),
+                _ => None,
+            })
+            .collect();
+
+        let mut alias_param_indexes = vec![];
+        for (idx, param) in func.params.iter().enumerate() {
+            let param_is_returned_or_aliased = return_values.iter().any(|ret_val| {
+                let mut visited = HashSet::new();
+                CTLA::value_may_alias_param_with_summaries(
+                    func,
+                    *ret_val,
+                    param.val,
+                    &mut visited,
+                    summary_by_func,
+                )
+            });
+            if param_is_returned_or_aliased {
+                alias_param_indexes.push(idx);
+            }
+        }
+
+        alias_param_indexes
+    }
+    /// repeatedly recomputes return alias summaries for all cfg functions until a fixed point is reached
+    fn populate_return_alias_parameter_summaries(&mut self) {
+        loop {
+            let summary_snapshot: HashMap<String, Vec<usize>> = self
+                .cfg_functions
+                .iter()
+                .map(|cfg_f| {
+                    (
+                        (*cfg_f.func.name).clone(),
+                        cfg_f.returns_alias_of_parameter.clone(),
+                    )
+                })
+                .collect();
+
+            let mut changed = false;
+            for cfg_f in &mut self.cfg_functions {
+                let mut new_summary = CTLA::find_return_alias_parameter_indexes_with_summaries(
+                    &cfg_f.func,
+                    &summary_snapshot,
+                );
+                new_summary.sort_unstable();
+                new_summary.dedup();
+
+                if cfg_f.returns_alias_of_parameter != new_summary {
+                    cfg_f.returns_alias_of_parameter = new_summary;
+                    changed = true;
+                }
+            }
+
+            if !changed {
+                break;
+            }
+        }
+    }
     ///checks whether some SSA value could refer to a specific allocation, but only by following phi chains.
     fn value_may_be_allocation_via_phi(
         &self,
@@ -153,7 +281,17 @@ impl CTLA {
         alloc: &HeapAllocation,
         visited: &mut HashSet<ValueId>,
     ) -> bool {
-        if value_id == alloc.alloc_ins.val {
+        let seeds = HashSet::from([alloc.alloc_ins.val]);
+        self.value_may_match_seed_via_phi(func, value_id, &seeds, visited)
+    }
+    fn value_may_match_seed_via_phi(
+        &self,
+        func: &Function,
+        value_id: ValueId,
+        seeds: &HashSet<ValueId>,
+        visited: &mut HashSet<ValueId>,
+    ) -> bool {
+        if seeds.contains(&value_id) {
             return true;
         }
         if visited.contains(&value_id) {
@@ -173,14 +311,87 @@ impl CTLA {
 
         match ins {
             TIR::Phi(_, block_ids, vals) => block_ids.iter().zip(vals.iter()).any(|(bid, v)| {
-                //if it panics, not an allocation
                 if self.block_has_non_returning_panic_call(func, *bid) {
                     return false;
                 }
-                self.value_may_be_allocation_via_phi(func, v.val, alloc, visited)
+                self.value_may_match_seed_via_phi(func, v.val, seeds, visited)
             }),
             _ => false,
         }
+    }
+    fn allocation_protected_values_in_function(
+        &self,
+        alloc: &HeapAllocation,
+        function_name: &str,
+    ) -> HashSet<ValueId> {
+        let mut protected_ids: HashSet<ValueId> = HashSet::new();
+
+        if alloc.function.as_ref() == function_name {
+            protected_ids.insert(alloc.alloc_ins.val);
+        }
+
+        alloc
+            .refs
+            .iter()
+            .filter(|(f, _, _)| f.as_ref() == function_name)
+            .for_each(|(_, _, value_id)| {
+                protected_ids.insert(*value_id);
+            });
+
+        alloc
+            .aliases
+            .iter()
+            .filter(|(f, _, _)| f.as_str() == function_name)
+            .for_each(|(_, _, value_id)| {
+                protected_ids.insert(*value_id);
+            });
+
+        alloc
+            .encapsulators
+            .iter()
+            .filter(|(f, _, _)| f.as_str() == function_name)
+            .for_each(|(_, _, value_id)| {
+                protected_ids.insert(*value_id);
+            });
+
+        protected_ids
+    }
+    fn allocation_tracked_blocks_in_function(
+        &self,
+        alloc: &HeapAllocation,
+        function_name: &str,
+    ) -> HashSet<BlockId> {
+        let mut tracked_blocks: HashSet<BlockId> = HashSet::new();
+
+        if alloc.function.as_ref() == function_name {
+            tracked_blocks.insert(alloc.block);
+        }
+
+        alloc
+            .refs
+            .iter()
+            .filter(|(f, _, _)| f.as_ref() == function_name)
+            .for_each(|(_, b, _)| {
+                tracked_blocks.insert(*b);
+            });
+
+        alloc
+            .aliases
+            .iter()
+            .filter(|(f, _, _)| f.as_str() == function_name)
+            .for_each(|(_, b, _)| {
+                tracked_blocks.insert(*b);
+            });
+
+        alloc
+            .encapsulators
+            .iter()
+            .filter(|(f, _, _)| f.as_str() == function_name)
+            .for_each(|(_, b, _)| {
+                tracked_blocks.insert(*b);
+            });
+
+        tracked_blocks
     }
     ///just tests if the block contains a call to panic
     fn block_has_non_returning_panic_call(&self, func: &Function, block_id: BlockId) -> bool {
@@ -203,22 +414,13 @@ impl CTLA {
         alloc: &HeapAllocation,
     ) -> usize {
         let block = func.body.iter().find(|b| b.id == block_id).unwrap();
-
-        let mut alias_ids: HashSet<ValueId> = HashSet::new();
-        alias_ids.insert(alloc.alloc_ins.val);
-        alloc
-            .refs
-            .iter()
-            .filter(|(f, _, _)| **f == *func.name)
-            .for_each(|(_, _, value_id)| {
-                alias_ids.insert(*value_id);
-            });
+        let protected_ids = self.allocation_protected_values_in_function(alloc, func.name.as_ref());
 
         let last_ref_idx = block
             .ins
             .iter()
             .enumerate()
-            .filter(|(_, ins)| self.instruction_uses_any_value(ins, &alias_ids))
+            .filter(|(_, ins)| self.instruction_uses_any_value(ins, &protected_ids))
             .map(|(idx, _)| idx)
             .max();
 
@@ -231,6 +433,14 @@ impl CTLA {
             Some(idx) => idx + 1,
             None => terminator_idx.unwrap_or(block.ins.len()),
         };
+
+        let has_same_func_encapsulator = alloc
+            .encapsulators
+            .iter()
+            .any(|(f, _, _)| *f == *func.name);
+        if has_same_func_encapsulator {
+            insertion_idx = terminator_idx.unwrap_or(block.ins.len());
+        }
 
         if let Some(term_idx) = terminator_idx {
             if insertion_idx > term_idx {
@@ -253,21 +463,8 @@ impl CTLA {
             return false;
         };
 
-        let alias_ids: HashSet<ValueId> = std::iter::once(alloc.alloc_ins.val)
-            .chain(
-                alloc
-                    .refs
-                    .iter()
-                    .filter(|(f, _, _)| **f == *func.name)
-                    .map(|(_, _, value_id)| *value_id),
-            )
-            .collect();
-
-        if ret_val.val == alloc.alloc_ins.val {
-            return true;
-        }
-
-        if alias_ids.contains(&ret_val.val) {
+        let protected_ids = self.allocation_protected_values_in_function(alloc, func.name.as_ref());
+        if protected_ids.contains(&ret_val.val) {
             let ret_is_phi = func
                 .body
                 .iter()
@@ -315,15 +512,7 @@ impl CTLA {
             .iter()
             .find(|f| *f.name == *alloc.function)
             .unwrap();
-        let alias_ids: HashSet<ValueId> = std::iter::once(alloc.alloc_ins.val)
-            .chain(
-                alloc
-                    .refs
-                    .iter()
-                    .filter(|(f, _, _)| **f == *func.name)
-                    .map(|(_, _, value_id)| *value_id),
-            )
-            .collect();
+        let protected_ids = self.allocation_protected_values_in_function(alloc, func.name.as_ref());
         let is_param = func.params.iter().any(|p| p.val == alloc.alloc_ins.val);
         //params always freed by the caller
         if is_param {
@@ -336,7 +525,7 @@ impl CTLA {
                 if a.val == alloc.alloc_ins.val {
                     return EscapeType::EscapesFunction;
                 }
-                if alias_ids.contains(&a.val) {
+                if protected_ids.contains(&a.val) {
                     let ret_is_phi = func
                         .body
                         .iter()
@@ -358,7 +547,13 @@ impl CTLA {
                 match i {
                     //only extern func calls are considered escapes because in regular func calls, everything s passed by reference.
                     TIR::CallExternFunction(_, _, p, _, _, false) => {
-                        if p.contains(&alloc.alloc_ins) {
+                        if p.iter().any(|arg| {
+                            if protected_ids.contains(&arg.val) {
+                                return true;
+                            }
+                            let mut visited = HashSet::new();
+                            self.value_may_be_allocation_via_phi(func, arg.val, alloc, &mut visited)
+                        }) {
                             return EscapeType::EscapesProgram;
                         }
                     }
@@ -376,6 +571,7 @@ impl CTLA {
         func: &CFGFunction,
         cfg_b: &CFGBlock,
         alloc: &HeapAllocation,
+        tracked_blocks: &HashSet<BlockId>,
         visited: &mut HashSet<BlockId>,
         is_root: bool,
     ) -> bool {
@@ -389,10 +585,8 @@ impl CTLA {
 
         // only check refs in non-root blocks (successors, not the candidate block itself)
         if !is_root {
-            for (_, b, _) in &alloc.refs {
-                if b == &cfg_b.block {
-                    return true;
-                }
+            if tracked_blocks.contains(&cfg_b.block) {
+                return true;
             }
         }
 
@@ -402,7 +596,14 @@ impl CTLA {
                 .iter()
                 .find(|b| b.block == *possible_output_block)
                 .unwrap();
-            if self.block_children_reference_allocation(func, child, alloc, visited, false) {
+            if self.block_children_reference_allocation(
+                func,
+                child,
+                alloc,
+                tracked_blocks,
+                visited,
+                false,
+            ) {
                 return true;
             }
         }
@@ -513,10 +714,12 @@ impl CTLA {
         };
 
         let mut visited: HashSet<BlockId> = HashSet::new();
+        let tracked_blocks = self.allocation_tracked_blocks_in_function(alloc, func.name.as_ref());
         let has_child_refs = self.block_children_reference_allocation(
             cfg_func,
             origin_cfg_block,
             alloc,
+            &tracked_blocks,
             &mut visited,
             true,
         );
@@ -641,22 +844,227 @@ impl CTLA {
             _ => unreachable!(),
         };
     }
+    /// finds all aliases and encapsulators for an allocation, including transitive alias<->encapsulator closure
+    fn find_aliases_and_encapsulators(&self, alloc: &mut HeapAllocation) {
+        let summary_by_func: HashMap<String, Vec<usize>> = self
+            .cfg_functions
+            .iter()
+            .map(|cfg_f| {
+                (
+                    (*cfg_f.func.name).clone(),
+                    cfg_f.returns_alias_of_parameter.clone(),
+                )
+            })
+            .collect();
+
+        let mut value_to_block: HashMap<(String, ValueId), BlockId> = HashMap::new();
+        for f in &self.builder.funcs {
+            let function_name = (*f.name).clone();
+            for block in &f.body {
+                for ins in &block.ins {
+                    value_to_block.insert((function_name.clone(), ins.get_id()), block.id);
+                }
+            }
+        }
+
+        let mut alias_values: HashSet<(String, ValueId)> = HashSet::new();
+        alias_values.insert(((*alloc.function).clone(), alloc.alloc_ins.val));
+        for (function_name, _, value_id) in &alloc.refs {
+            alias_values.insert((function_name.as_ref().clone(), *value_id));
+        }
+
+        let mut encapsulator_values: HashSet<(String, ValueId)> = HashSet::new();
+
+        loop {
+            let mut changed = false;
+
+            let mut new_aliases = alias_values.clone();
+            for f in &self.builder.funcs {
+                let function_name = (*f.name).clone();
+                for block in &f.body {
+                    for ins in &block.ins {
+                        match ins {
+                            TIR::Phi(out_id, block_ids, vals) => {
+                                if block_ids.iter().zip(vals.iter()).any(|(bid, v)| {
+                                    if self.block_has_non_returning_panic_call(f, *bid) {
+                                        return false;
+                                    }
+                                    alias_values.contains(&(function_name.clone(), v.val))
+                                }) {
+                                    if new_aliases.insert((function_name.clone(), *out_id)) {
+                                        changed = true;
+                                    }
+                                }
+                            }
+                            TIR::CallLocalFunction(out_id, callee_name, params, _, _)
+                            | TIR::CallExternFunction(out_id, callee_name, params, _, _, _) => {
+                                let Some(return_alias_param_indexes) =
+                                    summary_by_func.get(callee_name.as_ref())
+                                else {
+                                    continue;
+                                };
+
+                                if return_alias_param_indexes.iter().any(|arg_idx| {
+                                    params.get(*arg_idx).is_some_and(|arg| {
+                                        alias_values.contains(&(function_name.clone(), arg.val))
+                                    })
+                                }) {
+                                    if new_aliases.insert((function_name.clone(), *out_id)) {
+                                        changed = true;
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            alias_values = new_aliases;
+
+            let mut new_encapsulators = encapsulator_values.clone();
+            for f in &self.builder.funcs {
+                let function_name = (*f.name).clone();
+                for block in &f.body {
+                    for ins in &block.ins {
+                        match ins {
+                            TIR::WriteStructLiteral(_, struct_value, _, new_value) => {
+                                if alias_values.contains(&(function_name.clone(), new_value.val)) {
+                                    if new_encapsulators
+                                        .insert((function_name.clone(), struct_value.val))
+                                    {
+                                        changed = true;
+                                    }
+                                }
+                            }
+                            TIR::CallExternFunction(_, callee_name, params, _, _, _)
+                                if callee_name.as_ref() == "toy_write_to_arr" =>
+                            {
+                                if params.len() >= 2
+                                    && alias_values
+                                        .contains(&(function_name.clone(), params[1].val))
+                                {
+                                    if new_encapsulators
+                                        .insert((function_name.clone(), params[0].val))
+                                    {
+                                        changed = true;
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+
+            let mut enc_alias_closure = new_encapsulators.clone();
+            for f in &self.builder.funcs {
+                let function_name = (*f.name).clone();
+                for block in &f.body {
+                    for ins in &block.ins {
+                        match ins {
+                            TIR::Phi(out_id, block_ids, vals) => {
+                                if block_ids.iter().zip(vals.iter()).any(|(bid, v)| {
+                                    if self.block_has_non_returning_panic_call(f, *bid) {
+                                        return false;
+                                    }
+                                    new_encapsulators.contains(&(function_name.clone(), v.val))
+                                }) {
+                                    if enc_alias_closure.insert((function_name.clone(), *out_id)) {
+                                        changed = true;
+                                    }
+                                }
+                            }
+                            TIR::CallLocalFunction(out_id, callee_name, params, _, _)
+                            | TIR::CallExternFunction(out_id, callee_name, params, _, _, _) => {
+                                let Some(return_alias_param_indexes) =
+                                    summary_by_func.get(callee_name.as_ref())
+                                else {
+                                    continue;
+                                };
+
+                                if return_alias_param_indexes.iter().any(|arg_idx| {
+                                    params.get(*arg_idx).is_some_and(|arg| {
+                                        new_encapsulators
+                                            .contains(&(function_name.clone(), arg.val))
+                                    })
+                                }) {
+                                    if enc_alias_closure.insert((function_name.clone(), *out_id)) {
+                                        changed = true;
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+
+            encapsulator_values = enc_alias_closure;
+
+            if !changed {
+                break;
+            }
+        }
+
+        alloc.aliases.clear();
+        for (function_name, value_id) in &alias_values {
+            if function_name == alloc.function.as_ref() && *value_id == alloc.alloc_ins.val {
+                continue;
+            }
+
+            let block_id = value_to_block
+                .get(&(function_name.clone(), *value_id))
+                .copied()
+                .or_else(|| {
+                    alloc.refs.iter().find_map(|(f, b, v)| {
+                        if f.as_ref() == function_name && *v == *value_id {
+                            Some(*b)
+                        } else {
+                            None
+                        }
+                    })
+                });
+
+            if let Some(block_id) = block_id {
+                alloc.aliases
+                    .insert((function_name.clone(), block_id, *value_id));
+            }
+        }
+
+        alloc.encapsulators.clear();
+        for (function_name, value_id) in &encapsulator_values {
+            let block_id = value_to_block
+                .get(&(function_name.clone(), *value_id))
+                .copied()
+                .or_else(|| {
+                    alloc.refs.iter().find_map(|(f, b, v)| {
+                        if f.as_ref() == function_name && *v == *value_id {
+                            Some(*b)
+                        } else {
+                            None
+                        }
+                    })
+                });
+
+            if let Some(block_id) = block_id {
+                alloc.encapsulators
+                    .insert((function_name.clone(), block_id, *value_id));
+            }
+        }
+    }
     /// runs the full pipeline to mark (or intentionally leak) a given allocation
     fn process_allocation(
-        &self,
-        alloc: HeapAllocation,
+        &mut self,
+        alloc: &mut HeapAllocation,
         insertion_points: &mut Vec<(String, BlockId, ValueId, SSAValue, String)>,
     ) {
-        if *alloc.function == "std::sys::argv" {
-            return;
-        }
         let func = self
             .builder
             .funcs
             .iter()
             .find(|f| *f.name == *alloc.function)
             .unwrap();
-
+        self.find_aliases_and_encapsulators(alloc);
         let is_param = func.params.iter().any(|p| p.val == alloc.alloc_ins.val);
         if is_param {
             return;
@@ -701,8 +1109,18 @@ impl CTLA {
                     .filter(|(f, _, _)| **f == owning_func_name)
                     .cloned()
                     .collect(),
-                aliases: BTreeSet::new(), //temp
-                encapsulators:  BTreeSet::new(),
+                aliases: alloc
+                    .aliases
+                    .iter()
+                    .filter(|(f, _, _)| *f == owning_func_name)
+                    .cloned()
+                    .collect(),
+                encapsulators: alloc
+                    .encapsulators
+                    .iter()
+                    .filter(|(f, _, _)| *f == owning_func_name)
+                    .cloned()
+                    .collect(),
             };
 
             let owning_cfg_func = self
@@ -722,14 +1140,16 @@ impl CTLA {
     /// Runs CTLA Analysis on the given Builder, returns a vec of functions containing the processed code, or an error.
     pub fn analyze(&mut self, builder: TirBuilder) -> Result<Vec<Function>, ToyError> {
         self.builder = builder;
+        self.cfg_functions.clear();
         for f in &mut self.builder.funcs {
             let mut cfg_f = CFGFunction::new(f.to_owned());
             cfg_f.calc_cfg();
             self.cfg_functions.push(cfg_f);
         }
-        let unique_allocations = self.builder.detect_unique_heap_allocations();
+        self.populate_return_alias_parameter_summaries();
+        let mut unique_allocations = self.builder.detect_unique_heap_allocations();
         let mut insertion_points: Vec<(String, BlockId, ValueId, SSAValue, String)> = vec![];
-        for a in unique_allocations {
+        for a in &mut unique_allocations {
             self.process_allocation(a, &mut insertion_points);
         }
         // in analyze, before the splice loop
@@ -753,10 +1173,19 @@ impl CTLA {
             .map(|((name, bid, _, free_name), (idx, val))| (name, bid, idx, val, free_name))
             .collect();
 
+        let free_sort_rank = |free_name: &str| {
+            if free_name == "toy_free_arr" {
+                1usize
+            } else {
+                0usize
+            }
+        };
         insertion_points.sort_by(|a, b| {
             a.0.cmp(&b.0)
                 .then_with(|| a.1.cmp(&b.1))
                 .then_with(|| b.2.cmp(&a.2))
+                .then_with(|| free_sort_rank(a.4.as_str()).cmp(&free_sort_rank(b.4.as_str())))
+                .then_with(|| a.3.val.cmp(&b.3.val))
         });
         for (name, bid, vid, val, free_name) in insertion_points {
             self.builder

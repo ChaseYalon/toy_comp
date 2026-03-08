@@ -177,7 +177,7 @@ pub struct TirBuilder {
     pub funcs: Vec<Function>,
     pub curr_func: Option<usize>,  //index into self.funcs
     pub curr_block: Option<usize>, //index into self.curr_func.body,
-    pub extern_funcs: HashMap<String, (bool, TypeTok, bool, bool)>, //external function name to is_allocator, return_type, does'nt_take_ownership, is_read_only - only for builtin functions now
+    pub extern_funcs: HashMap<String, (bool, TypeTok, bool, bool)>, //external function name to is_allocator, return_type, doesnt_take_ownership, is_read_only
 }
 impl TirBuilder {
     pub fn new() -> TirBuilder {
@@ -237,7 +237,7 @@ impl TirBuilder {
                 | TypeTok::StructArr(_, _)
         );
         self.extern_funcs
-            .insert(name, (is_allocator, ret_type, true, is_read_only));
+            .insert(name, (is_allocator, ret_type, false, is_read_only));
     }
 
     /// Updates the parameters of the current function
@@ -611,8 +611,8 @@ impl TirBuilder {
 
         // Otherwise, try extern
         if self.extern_funcs.contains_key(&name) {
-            let (_, _, _, dto) = self.extern_funcs.get(&name).unwrap();
-            return self.call_extern(name, params, *dto);
+            let (_, _, doesnt_take_ownership, _) = self.extern_funcs.get(&name).unwrap();
+            return self.call_extern(name, params, *doesnt_take_ownership);
         }
         println!("Name: {name}");
         unreachable!(); // parser validated
@@ -642,9 +642,16 @@ impl TirBuilder {
         let (_, ret_tok, _, _) = self.extern_funcs.get(&name).cloned().unwrap();
         let ret_type = self.type_tok_to_tir_type(ret_tok);
         let id = self._next_value_id();
-        let (_, _, _, dto) = self.extern_funcs.get(&name).unwrap();
+        let (_, _, doesnt_take_ownership, _) = self.extern_funcs.get(&name).unwrap();
 
-        let ins = TIR::CallExternFunction(id, Box::new(name), params, false, ret_type, *dto);
+        let ins = TIR::CallExternFunction(
+            id,
+            Box::new(name),
+            params,
+            false,
+            ret_type,
+            *doesnt_take_ownership,
+        );
         self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()]
             .ins
             .push(ins);
@@ -961,10 +968,11 @@ impl TirBuilder {
         name: String,
         is_allocator: bool,
         ret_type: TypeTok,
+        doesnt_take_ownership: bool,
         is_extern: bool,
     ) {
         self.extern_funcs
-            .insert(name, (is_allocator, ret_type, false, is_extern));
+            .insert(name, (is_allocator, ret_type, doesnt_take_ownership, is_extern));
     }
     pub fn global_string(&mut self, name: String) -> Result<SSAValue, ToyError> {
         let id = self._next_value_id();

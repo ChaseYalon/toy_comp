@@ -31,8 +31,7 @@ ToyPtr toy_sys_get_argv() {
     }
     for (int64_t i = 0; i < GLOBAL_ARGC; i++) {
         char* c_str = GLOBAL_ARGV[i];
-        int64_t heap_str = toy_malloc((int64_t)c_str);
-        toy_write_to_arr(arr, heap_str, i, 4);
+        toy_write_to_arr(arr, (int64_t)c_str, i, 4);
     }
     return arr;
 }

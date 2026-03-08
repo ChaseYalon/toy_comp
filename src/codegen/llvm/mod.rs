@@ -60,15 +60,15 @@ impl<'a> LlvmGenerator<'a> {
         if let Some(v) = self.tir_to_val.get(&(func_name.to_string(), ssa.clone())) {
             return *v;
         }
-        // Try alternative types for pointers/ints
+        // Try alternative type views for the same SSA ID
         if let Some(ty) = &ssa.ty {
-            let alt_ty = match ty {
-                TirType::I64 => Some(TirType::Ptr),
-                TirType::Ptr => Some(TirType::I64),
-                TirType::StructInterface(_) => Some(TirType::I64),
-                _ => None,
+            let alt_tys: Vec<TirType> = match ty {
+                TirType::I64 => vec![TirType::Ptr],
+                TirType::Ptr => vec![TirType::I64],
+                TirType::StructInterface(_) => vec![TirType::Ptr, TirType::I64],
+                _ => vec![],
             };
-            if let Some(at) = alt_ty {
+            for at in alt_tys {
                 let alt_ssa = SSAValue {
                     val: ssa.val,
                     ty: Some(at),
@@ -350,9 +350,28 @@ impl<'a> LlvmGenerator<'a> {
                         SSAValue { val: id, ty: None },
                     ))
                 } else {
-                    let val = self.get_ssa_val(&curr_func_name, v.clone());
+                    let mut val = self.get_ssa_val(&curr_func_name, v.clone());
+                    if let Some(ret_ty) = self.curr_func.unwrap().get_type().get_return_type() {
+                        if ret_ty.is_pointer_type() && val.is_int_value() {
+                            val = builder
+                                .build_int_to_ptr(
+                                    val.into_int_value(),
+                                    ret_ty.into_pointer_type(),
+                                    "ret_i64_to_ptr",
+                                )?
+                                .into();
+                        } else if ret_ty.is_int_type() && val.is_pointer_value() {
+                            val = builder
+                                .build_ptr_to_int(
+                                    val.into_pointer_value(),
+                                    ret_ty.into_int_type(),
+                                    "ret_ptr_to_i64",
+                                )?
+                                .into();
+                        }
+                    }
                     builder.build_return(Some(&val))?;
-                    Some((val.to_owned(), v))
+                    Some((val, v))
                 }
             }
             TIR::NumericInfix(id, l, r, op) => {
@@ -712,29 +731,7 @@ impl<'a> LlvmGenerator<'a> {
             }
             TIR::CreateStructLiteral(id, ty, vals) => {
                 let (struct_type, interface_name) = self.struct_interfaces.get(&ty).unwrap(); // parser validated
-                let struct_size = self.ctx.i64_type().const_int(vals.len() as u64 * 8, false);
-                let malloc_fn = if let Some(f) = self.main_module.get_function("toy_malloc_struct")
-                {
-                    f
-                } else {
-                    self.main_module.add_function(
-                        "toy_malloc_struct",
-                        *self.func_map.get("toy_malloc_struct").unwrap(),
-                        Some(Linkage::External),
-                    )
-                };
-                let alloc_i64 = match builder
-                    .build_call(malloc_fn, &[struct_size.into()], "struct_alloc")?
-                    .try_as_basic_value()
-                {
-                    ValueKind::Basic(v) => v.into_int_value(),
-                    _ => unreachable!(),
-                };
-                let allocated_struct = builder.build_int_to_ptr(
-                    alloc_i64,
-                    self.ctx.ptr_type(AddressSpace::default()),
-                    interface_name,
-                )?;
+                let allocated_struct = builder.build_alloca(*struct_type, interface_name)?;
 
                 let zero = self.ctx.i32_type().const_int(0, false);
 
@@ -1027,7 +1024,11 @@ impl<'a> LlvmGenerator<'a> {
             TirType::Void,
         );
         self.declare_individual_function("toy_malloc", vec![TirType::I64], TirType::I64);
-        self.declare_individual_function("toy_malloc_struct", vec![TirType::I64], TirType::I64);
+        self.declare_individual_function(
+            "toy_malloc_struct",
+            vec![TirType::I64, TirType::I64],
+            TirType::I64,
+        );
         self.declare_individual_function(
             "toy_concat",
             vec![TirType::I64, TirType::I64],
