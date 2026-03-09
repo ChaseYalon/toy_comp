@@ -927,6 +927,17 @@ impl CTLA {
                 for block in &f.body {
                     for ins in &block.ins {
                         match ins {
+                            TIR::CreateStructLiteral(out_id, _, params) => {
+                                if params.iter().any(|param| {
+                                    alias_values.contains(&(function_name.clone(), param.val))
+                                }) {
+                                    if new_encapsulators
+                                        .insert((function_name.clone(), *out_id))
+                                    {
+                                        changed = true;
+                                    }
+                                }
+                            }
                             TIR::WriteStructLiteral(_, struct_value, _, new_value) => {
                                 if alias_values.contains(&(function_name.clone(), new_value.val)) {
                                     if new_encapsulators

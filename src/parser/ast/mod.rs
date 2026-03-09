@@ -3,7 +3,8 @@ use std::fmt::{self};
 use crate::{errors::Span, token::TypeTok};
 use ordered_float::OrderedFloat;
 use std::collections::BTreeMap;
-#[derive(Clone, Debug, PartialEq)]
+use serde::{Serialize, Deserialize};
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Ast {
     IntLit(i64, Span),
     BoolLit(bool, Span),
@@ -127,7 +128,7 @@ impl Ast {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum InfixOp {
     Plus,
     Minus,

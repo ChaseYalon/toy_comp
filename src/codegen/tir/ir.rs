@@ -2,12 +2,13 @@
 use itertools::Itertools;
 use std::collections::{BTreeSet, HashMap, HashSet};
 type AllocationId = u64;
+use serde::{Serialize, Deserialize};
 use crate::{
     errors::{ToyError, ToyErrorType},
     parser::ast::InfixOp,
     token::TypeTok,
 };
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 
 pub enum NumericInfixOp {
     Plus,
@@ -16,7 +17,7 @@ pub enum NumericInfixOp {
     Divide,
     Modulo,
 }
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 
 pub enum BoolInfixOp {
     GreaterThan,
@@ -31,7 +32,7 @@ pub enum BoolInfixOp {
 ///randomly generated "handle" that points to an ssa node
 pub type ValueId = usize;
 pub type BlockId = usize;
-#[derive(PartialEq, Debug, Clone, Hash, Eq)]
+#[derive(PartialEq, Debug, Clone, Hash, Eq, Deserialize, Serialize)]
 pub enum TirType {
     ///used for integers
     I64,
@@ -64,13 +65,12 @@ impl TirType {
         return s;
     }
 }
-#[derive(PartialEq, Debug, Clone, Hash, Eq)]
-
+#[derive(PartialEq, Debug, Clone, Hash, Eq, Serialize, Deserialize)]
 pub struct SSAValue {
     pub val: ValueId,
     pub ty: Option<TirType>,
 }
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub enum TIR {
     ///value as i64, regardless of weather it is an i64 or i1, and TirType to specify that
     IConst(ValueId, i64, TirType),
@@ -135,12 +135,12 @@ impl TIR {
         }
     }
 }
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub struct Block {
     pub id: BlockId,
     pub ins: Vec<TIR>,
 }
-#[derive(PartialEq, Clone, Debug, Eq, Hash)]
+#[derive(PartialEq, Clone, Debug, Eq, Hash, Serialize, Deserialize)]
 pub struct HeapAllocation {
     pub block: BlockId,
     ///functions are detected by name
@@ -159,7 +159,7 @@ pub struct HeapAllocation {
     ///Encapsulators are heap allocations which reference within them this allocation. An allocation MUST not be freed until all its encapsulators are freed.
     pub encapsulators: BTreeSet<(String, BlockId, ValueId)>
 }
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct Function {
     ///the ssa values where the params can be referenced
     pub params: Vec<SSAValue>,

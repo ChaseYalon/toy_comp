@@ -6,7 +6,6 @@ pub mod ast;
 pub mod ast_gen;
 pub mod boxer;
 pub mod toy_box;
-
 ///Wrapper struct around boxer and generator sub modules
 pub struct Parser {
     boxer: Boxer,
@@ -33,6 +32,7 @@ impl Parser {
     pub fn parse(&mut self, input: Vec<SpannedToken>) -> Result<Vec<Ast>, ToyError> {
         let boxes = self.boxer.box_toks(input)?;
         let ast = self.ast_gen.generate(boxes)?;
+
         return Ok(ast);
     }
 }

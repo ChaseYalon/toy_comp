@@ -1142,7 +1142,10 @@ impl<'a> LlvmGenerator<'a> {
         target_machine.write_to_file(&self.main_module, FileType::Object, obj_path)?;
         let ll_file = format!("{}.ll", prgm_name);
         self.main_module.print_to_file(Path::new(&ll_file))?;
-
+        let args: Vec<String> = env::args().collect();
+        if args.contains(&"--debug-llvm".to_string()) || args.contains(&"--debug-ALL".to_string()){
+            self.main_module.print_to_file("./debug/LLVM.ll")?;
+        }
         return Ok(());
     }
 }

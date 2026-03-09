@@ -6,8 +6,8 @@ use std::backtrace::Backtrace;
 use std::fmt::*;
 use std::{fmt, fs};
 use thiserror::Error;
-
-#[derive(Debug, Clone, PartialEq)]
+use serde::{Serialize, Deserialize};
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Span {
     pub file_path: String,
     ///number of bytes before the code in question is started. INCLUSIVE
@@ -147,6 +147,7 @@ pub enum ToyErrorType {
     MalformedImportStatement,
     MissingFile,
     IncorrectNumberOfArguments,
+    SerializationError
 }
 
 #[derive(Debug, Error)]

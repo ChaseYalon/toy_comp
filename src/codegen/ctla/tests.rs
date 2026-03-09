@@ -220,3 +220,13 @@ fn test_ctla_extern_struct_func_call() {
     }
     assert!(output.contains(&month_num), "[DEBUG] output was {output}");
 }
+
+#[test]
+fn test_ctla_struct_aliasing_and_encapsulation(){
+    compile_code_aot!(
+        output,
+        r#"struct Test {x: str}; let s = "hello world";let m = Test{x: s}; let n = m; println(n.x);"#,
+        "ctla_struct_aliasing_and_encapsulation"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+}

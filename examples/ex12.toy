@@ -1,0 +1,7 @@
+import std.sys; 
+import std.fs;
+let f = "\"temp.txt\""; 
+let s = "\"hello world\""; 
+fs.write_file("input.toy", "import std.fs; fs.write_file(" + f + ", " + s + ");");
+let args: str[] = ["input.toy", "--name", "output"]; 
+sys.invoke("./toy_comp.exe", args);

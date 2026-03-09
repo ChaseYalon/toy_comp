@@ -2,7 +2,7 @@ use ordered_float::OrderedFloat;
 use std::collections::BTreeMap;
 use std::fmt;
 use std::hash::{Hash, Hasher};
-
+use serde::{Serialize, Deserialize};
 use crate::errors::Span;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Token {
@@ -96,7 +96,7 @@ impl SpannedToken {
         };
     }
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TypeTok {
     Int,
     Bool,
