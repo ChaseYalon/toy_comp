@@ -1,0 +1,14 @@
+//TEST_NAME=String arrays
+let s = "hello";
+let arr = [s, "world", "my", "name", "is", "chase"];
+
+fn print_arr(arr: str[]): void{
+    let i = 0;
+    print("[");
+    while i < len(arr){
+        print(arr[i] + ", ");
+        i++;
+    }
+    println("]");
+}
+print_arr(arr);

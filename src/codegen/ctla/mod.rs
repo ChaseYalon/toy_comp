@@ -6,22 +6,22 @@ use crate::{
     errors::ToyError,
 };
 use std::collections::{BTreeSet, HashMap, HashSet};
-
+use serde::{Serialize, Deserialize};
 use super::tir::ir::BlockId;
 
 pub struct CTLA {
     builder: TirBuilder,
     cfg_functions: Vec<CFGFunction>,
 }
-#[derive(Debug, Clone, PartialEq)]
-enum EscapeType {
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum EscapeType {
     EscapesProgram,
     EscapesFunction,
     DoesNotEscape,
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 ///will ALWAYS share a block id with its internal block
-struct CFGBlock {
+pub struct CFGBlock {
     block: BlockId,
     ///id of all the blocks that could cause the block to run
     possible_input_blocks: Vec<BlockId>,
@@ -38,7 +38,8 @@ impl CFGBlock {
         };
     }
 }
-struct CFGFunction {
+#[derive(Serialize, Deserialize)]
+pub struct CFGFunction {
     func: Function,
     /// parameter indexes whose value may be returned (possibly via phi chains)
     returns_alias_of_parameter: Vec<usize>,
@@ -141,6 +142,9 @@ impl CTLA {
             builder: TirBuilder::new(),
             cfg_functions: vec![],
         };
+    }
+    pub fn cfg_functions(&self) -> &Vec<CFGFunction> {
+        &self.cfg_functions
     }
     fn is_terminator_ins(&self, ins: &TIR) -> bool {
         return matches!(

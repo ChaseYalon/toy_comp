@@ -6,6 +6,7 @@
 typedef struct {
     DebugMap* Map;
     int64_t TotalLiveAllocations;
+    int64_t TotalAllocations;
 } DebugHeap;
 
 DebugHeap* DebugHeap_create();

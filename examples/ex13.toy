@@ -1,0 +1,6 @@
+let i = 0;
+let arr = [1, 2, 3];
+while i < len(arr){
+	println(arr[i]);
+	i++
+}

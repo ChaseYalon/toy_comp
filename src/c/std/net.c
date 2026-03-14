@@ -319,9 +319,9 @@ static char* dup_slice_as_cstr(const char* p, int n) {
     return out;
 }
 #ifdef _WIN32
-static SOCKET global_socket_bodge = 0;
+static int64_t global_socket_bodge = -1;
 #else
-static unsigned long long global_socket_bodge = 0;
+static int64_t global_socket_bodge = -1;
 #endif
 ToyArr* toy_net_read_request() {
 #ifdef _WIN32
@@ -332,11 +332,11 @@ ToyArr* toy_net_read_request() {
     struct sockaddr_in client_addr;
     int addr_len = sizeof(client_addr);
     SOCKET client = accept(listen_sock, (struct sockaddr*)&client_addr, &addr_len);
-    global_socket_bodge = client;
     if (client == INVALID_SOCKET) {
         _sock_perror("accept");
         abort();
     }
+    global_socket_bodge = (int64_t)client;
 #else
     if (listen_sock < 0) {
         fprintf(stderr, "[ERROR] HTTP-Unconfigured\n");
@@ -349,6 +349,7 @@ ToyArr* toy_net_read_request() {
         _sock_perror("accept");
         abort();
     }
+    global_socket_bodge = (int64_t)client;
 #endif
 
     char inputBuffer[8192];
@@ -426,17 +427,33 @@ ToyArr* toy_net_read_request() {
 fail_close:
 #ifdef _WIN32
     closesocket(client);
+    global_socket_bodge = -1;
 #else
     close(client);
+    global_socket_bodge = -1;
 #endif
-    return NULL;
+    {
+        char* empty = dup_slice_as_cstr("", 0);
+        ToyArr* arr = (ToyArr*)toy_malloc_arr(4, 0, 1);
+        toy_write_to_arr((ToyPtr)arr, (ToyPtr)empty, 0, 0);
+        toy_write_to_arr((ToyPtr)arr, (ToyPtr)empty, 1, 0);
+        toy_write_to_arr((ToyPtr)arr, (ToyPtr)empty, 2, 0);
+        toy_write_to_arr((ToyPtr)arr, (ToyPtr)empty, 3, 0);
+        return arr;
+    }
 }
 
 void toy_net_close_client() {
 #ifdef _WIN32
-    if ((SOCKET)global_socket_bodge != INVALID_SOCKET) closesocket((SOCKET)global_socket_bodge);
+    if ((SOCKET)global_socket_bodge != INVALID_SOCKET) {
+        closesocket((SOCKET)global_socket_bodge);
+        global_socket_bodge = -1;
+    }
 #else
-    if ((int)global_socket_bodge >= 0) close((int)global_socket_bodge);
+    if ((int)global_socket_bodge >= 0) {
+        close((int)global_socket_bodge);
+        global_socket_bodge = -1;
+    }
 #endif
 }
 
@@ -490,25 +507,28 @@ static const char* _http_reason_phrase(int status) {
     }
 }
 
-void toy_net_write_response(int64_t status_code, ToyPtr content_type, ToyPtr body) {
-    const char* ct = content_type ? (const char*)content_type : "text/plain; charset=utf-8";
-    const char* b  = body ? (const char*)body : "";
-    int status = (int)status_code;
+void toy_net_write_bytes(int64_t status_code, ToyPtr content_type, ToyPtr data, int64_t size) {
+#ifdef _WIN32
+    if ((SOCKET)global_socket_bodge == INVALID_SOCKET) return;
+#else
+    if ((int)global_socket_bodge < 0) return;
+#endif
 
-    // If your Toy strings can contain NUL bytes, you need a length parameter instead of strlen().
-    int body_len = (int)strlen(b);
+    const char* ct = content_type ? (const char*)content_type : "application/octet-stream";
+    int status = (int)status_code;
 
     char header[1024];
     int header_len = snprintf(
         header, sizeof(header),
         "HTTP/1.1 %d %s\r\n"
         "Content-Type: %s\r\n"
-        "Content-Length: %d\r\n"
+        "Access-Control-Allow-Origin: *\r\n"
+        "Content-Length: %lld\r\n"
         "Connection: close\r\n"
         "\r\n",
         status, _http_reason_phrase(status),
         ct,
-        body_len
+        (long long)size
     );
 
     if (header_len < 0 || header_len >= (int)sizeof(header)) {
@@ -517,7 +537,13 @@ void toy_net_write_response(int64_t status_code, ToyPtr content_type, ToyPtr bod
     }
 
     if (_send_all_client(global_socket_bodge, header, header_len) != 0) return;
-    if (body_len > 0) {
-        if (_send_all_client(global_socket_bodge, b, body_len) != 0) return;
+    if (size > 0 && data) {
+        _send_all_client(global_socket_bodge, (const char*)data, (int)size);
     }
+}
+
+void toy_net_write_response(int64_t status_code, ToyPtr content_type, ToyPtr body) {
+    const char* ct = content_type ? (const char*)content_type : "text/plain; charset=utf-8";
+    const char* b  = body ? (const char*)body : "";
+    toy_net_write_bytes(status_code, (ToyPtr)ct, (ToyPtr)b, (int64_t)strlen(b));
 }

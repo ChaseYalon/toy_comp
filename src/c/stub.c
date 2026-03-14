@@ -187,6 +187,9 @@ int main(int argc, char** argv) {
         _PrintDebug_heap(DEBUG_HEAP);
         printf("\nFAIL_TEST\n");
     }
+    if (getenv("TOY_TEST") != NULL && strcmp(getenv("TOY_DEBUG"), "TRUE") == 0){
+        _PrintDebug_heap(DEBUG_HEAP);
+    }
 
     if (curl) {
         curl_easy_cleanup(curl);

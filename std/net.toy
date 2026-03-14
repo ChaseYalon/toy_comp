@@ -36,23 +36,41 @@ export fn close_client(){
     toy_net_close_client();
 }
 
+extern fn toy_net_write_bytes(code: int, content_type: str, data: str, size: int);
 extern fn toy_net_write_response(code: int, content_type: str, body: str);
+
 //1 - text/plain
 //2 - text/html
 //3 - application/json
 //4 - application/javascript
-export fn write_response(code: int, content_type: int, body: str){
-    let content_type_str = "";
+//5 - text/css
+//6 - image/png
+//7 - image/jpeg
+fn resolve_content_type(content_type: int): str {
     if content_type == 1{
-        content_type_str = "text/plain; charset=utf-8";
+        return "text/plain; charset=utf-8";
     } else if content_type == 2{
-        content_type_str = "text/html; charset=utf-8";
+        return "text/html; charset=utf-8";
     } else if content_type == 3{
-        content_type_str = "application/json";
+        return "application/json";
     } else if content_type == 4{
-        content_type_str = "application/javascript";
+        return "application/javascript";
+    } else if content_type == 5{
+        return "text/css; charset=utf-8";
+    } else if content_type == 6{
+        return "image/png";
+    } else if content_type == 7 {
+        return "image/jpeg";
     } else {
         sys.panic("[ERROR] Content type you requested not implemented");
     }
-    toy_net_write_response(code, content_type_str, body);
+    return "";
+}
+export fn write_bytes(code: int, content_type: int, data: str, size: int){
+    let ct = resolve_content_type(content_type);
+    toy_net_write_bytes(code, ct, data, size);
+}
+export fn write_response(code: int, content_type: int, body: str){
+    let ct = resolve_content_type(content_type);
+    toy_net_write_response(code, ct, body);
 }

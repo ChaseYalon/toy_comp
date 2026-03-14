@@ -1,0 +1,11 @@
+//TEST_NAME=Function pass and return
+let my_name = "chase yalon";
+let sister = "ella yalon";
+fn test_name(name: str): str{
+    if name == "chase yalon"{
+        return "is awesome"
+    }
+    return name + " sucks";
+}
+println(test_name(my_name));
+println(test_name(sister));

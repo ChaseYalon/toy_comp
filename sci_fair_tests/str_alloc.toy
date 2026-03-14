@@ -1,0 +1,3 @@
+//TEST_NAME=String allocation
+let my_name = "Chase Yalon";
+println(my_name);

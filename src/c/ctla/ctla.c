@@ -11,6 +11,7 @@ DebugHeap* DebugHeap_create() {
     DebugHeap* d = malloc(sizeof(DebugHeap));
     d->Map = m;
     d->TotalLiveAllocations = 0;
+    d->TotalAllocations = 0;
     return d;
 }
 
@@ -27,6 +28,7 @@ void* ToyMallocDebug(size_t size, DebugHeap* d) {
     void* buff = malloc(size);
     DebugMap_put(d->Map, buff, size);
     d->TotalLiveAllocations++;
+    d->TotalAllocations++;
     return buff;
 }
 void toy_free(void* buff) {
@@ -47,6 +49,7 @@ void toy_free(void* buff) {
 }
 void _PrintDebug_heap(DebugHeap* d) {
     _PrintDebug_map(d->Map);
+    printf("Total allocations: %lld\n", d->TotalAllocations);
     printf("Total Live entries remaining: %lld\n", d->TotalLiveAllocations);
 
 }

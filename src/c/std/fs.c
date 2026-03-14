@@ -5,9 +5,25 @@
 #include <strings.h>
 #ifdef _WIN32
 #include <windows.h>
-ToyPtr toy_fs_read_file(ToyPtr path){
-    const char* p = (const char*)path;
+#include "../builtins.h"
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <errno.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <string.h>
+#endif
 
+// ---------------------------
+// Cross-platform read file
+// ---------------------------
+ToyPtr toy_fs_read_file(ToyPtr path) {
+    const char *p = (const char*)path;
+#ifdef _WIN32
     HANDLE h = CreateFileA(
         p,
         GENERIC_READ,
@@ -17,7 +33,6 @@ ToyPtr toy_fs_read_file(ToyPtr path){
         FILE_ATTRIBUTE_NORMAL,
         NULL
     );
-
     if (h == INVALID_HANDLE_VALUE) {
         DWORD e = GetLastError();
         fprintf(stderr, "[ERROR] CreateFileA failed for '%s' (GetLastError=%lu)\n", p, (unsigned long)e);
@@ -40,11 +55,7 @@ ToyPtr toy_fs_read_file(ToyPtr path){
 
     size_t size = (size_t)sz.QuadPart;
     char* buffer = META_MALLOC(size + 1);
-    if (!buffer) {
-        fprintf(stderr, "[ERROR] alloc failed (%zu bytes)\n", size + 1);
-        CloseHandle(h);
-        abort();
-    }
+    if (!buffer) { CloseHandle(h); abort(); }
 
     DWORD got = 0;
     if (size > 0) {
@@ -55,10 +66,39 @@ ToyPtr toy_fs_read_file(ToyPtr path){
             abort();
         }
     }
-
     CloseHandle(h);
+
+    // Null-terminate after all bytes are read
     buffer[got] = '\0';
     return (ToyPtr)buffer;
+
+#else
+    FILE* f = fopen(p, "rb");
+    if (!f) {
+        fprintf(stderr, "[ERROR] fopen failed for '%s' (errno=%d: %s)\n", p, errno, strerror(errno));
+        abort();
+    }
+
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    rewind(f);
+
+    if (size < 0) {
+        fclose(f);
+        fprintf(stderr, "[ERROR] ftell failed for '%s'\n", p);
+        abort();
+    }
+
+    char* buffer = META_MALLOC((size_t)size + 1);
+    if (!buffer) { fclose(f); abort(); }
+
+    size_t read = fread(buffer, 1, (size_t)size, f);
+    fclose(f);
+
+    // Null-terminate after all bytes are read
+    buffer[read] = '\0';
+    return (ToyPtr)buffer;
+#endif
 }
 int64_t toy_fs_write_file(ToyPtr path, ToyPtr content) {
     const char* p = (const char*)path;
@@ -128,6 +168,19 @@ void toy_fs_append_file(ToyPtr path, ToyPtr content) {
     }
 
     CloseHandle(h);
+}
+int64_t toy_fs_file_size(ToyPtr path) {
+    const char* p = (const char*)path;
+    HANDLE h = CreateFileA(
+        p, GENERIC_READ,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL
+    );
+    if (h == INVALID_HANDLE_VALUE) return -1;
+    LARGE_INTEGER sz;
+    if (!GetFileSizeEx(h, &sz)) { CloseHandle(h); return -1; }
+    CloseHandle(h);
+    return (int64_t)sz.QuadPart;
 }
 #else
 #include <string.h>
@@ -214,5 +267,14 @@ ToyPtr toy_fs_append_file(ToyPtr path, ToyPtr content) {
     }
 
     return 0;
+}
+int64_t toy_fs_file_size(ToyPtr path) {
+    const char* p = (const char*)path;
+    FILE* f = fopen(p, "rb");
+    if (!f) return -1;
+    fseek(f, 0, SEEK_END);
+    long sz = ftell(f);
+    fclose(f);
+    return (int64_t)sz;
 }
 #endif

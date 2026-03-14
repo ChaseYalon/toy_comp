@@ -10,6 +10,7 @@ use inkwell::context::Context;
 use inkwell::module::Module;
 use tir::AstToIrConverter;
 pub use tir::ir::{Block, Function, SSAValue, TIR, TirType};
+use ctla::CFGFunction;
 use std::env;
 use std::fs;
 use serde_json;
@@ -42,6 +43,16 @@ impl<'a> Generator<'a> {
 
         };
     }
+    fn pretty_print_cfg(cfg: &Vec<CFGFunction>) -> Result<String, ToyError> {
+        let res = serde_json::to_string(cfg);
+        match res {
+            Ok(s) => Ok(s),
+            Err(_) => Err(ToyError::new(
+                ToyErrorType::SerializationError,
+                Span::null_span(),
+            )),
+        }
+    }
     pub fn compile_to_object(
         &mut self,
         ast: Vec<Ast>,
@@ -55,6 +66,10 @@ impl<'a> Generator<'a> {
             fs::write("./debug/TIR.json", s).unwrap();//rly should be an io error -> toy error conversion
         }
         let ir = self.analyzer.analyze(self.converter.builder.clone())?;
+        if args.contains(&"--debug-cfg".to_string()) || args.contains(&"--debug-ALL".to_string()) {
+            let s = Generator::pretty_print_cfg(self.analyzer.cfg_functions())?;
+            fs::write("./debug/CFG.json", s).unwrap(); //rly should be an io error -> toy error conversion
+        }
         self.generator.generate(ir, name)?;
         Ok(())
     }
