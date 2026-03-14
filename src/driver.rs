@@ -1,14 +1,20 @@
-use inkwell::context::Context;
 use std::{
+    cell::RefCell,
     collections::{BTreeMap, HashMap, HashSet},
     env, fs,
-    path::Path,
+    path::{Path, PathBuf},
     process::Command,
 };
+//this macro sucks
+thread_local! {
+    static CURRENT_FILE_PATH: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+use inkwell::{context::Context, module::Module};
 
 use crate::{
     codegen::Generator,
-    errors::{ToyError, ToyErrorType},
+    errors::{Span, ToyError, ToyErrorType},
     lexer::Lexer,
     parser::{ast::Ast, ast_gen::AstGenerator, boxer::Boxer, toy_box::TBox},
     token::TypeTok,
@@ -26,93 +32,169 @@ impl Linker {
     pub fn new() -> Linker {
         Linker {}
     }
+
+    fn collect_static_archives(dir: &Path) -> Vec<PathBuf> {
+        let mut libs = Vec::new();
+
+        let rd = match fs::read_dir(dir) {
+            Ok(r) => r,
+            Err(_) => return libs,
+        };
+
+        for entry in rd.flatten() {
+            let p = entry.path();
+            if p.is_file() {
+                if let Some(ext) = p.extension() {
+                    if ext == "a" {
+                        libs.push(p);
+                    }
+                }
+            }
+        }
+
+        libs.sort_by(|a, b| {
+            let a_name = a.file_name().unwrap().to_string_lossy();
+            let b_name = b.file_name().unwrap().to_string_lossy();
+
+            let a_is_ours = a_name == "libruntime.a" || a_name == "libcore.a";
+            let b_is_ours = b_name == "libruntime.a" || b_name == "libcore.a";
+
+            if a_is_ours && !b_is_ours {
+                std::cmp::Ordering::Less
+            } else if !a_is_ours && b_is_ours {
+                std::cmp::Ordering::Greater
+            } else {
+                a_name.cmp(&b_name)
+            }
+        });
+
+        libs
+    }
+
     pub fn link(
         &mut self,
         files: Vec<String>,
         output: String,
         save_temps: bool,
     ) -> Result<(), ToyError> {
-        //linker
         let target = env!("TARGET").replace("\"", "");
         let lib_str = format!("lib/{}/", target);
         let lib_path = Path::new(&lib_str);
+
         let crt2_path = lib_path.join("crt2.o");
         let crtbegin_path = lib_path.join("crtbegin.o");
         let crt1_path = lib_path.join("crt1.o");
         let crti_path = lib_path.join("crti.o");
-        let lbruntime_path = lib_path.join("libruntime.a");
         let crtn_path = lib_path.join("crtn.o");
         let libc_path = lib_path.join("libc.so.6");
         let libm_path = lib_path.join("libm.so.6");
+
         let output_name = format!("{}{}", output, FILE_EXTENSION_EXE);
-        let args: Vec<&str> = if env::consts::OS == "windows" {
-            let mut args = vec![
-                "-m",
-                "i386pep",
-                crt2_path.to_str().unwrap(),
-                crtbegin_path.to_str().unwrap(),
+
+        let args: Vec<String> = if env::consts::OS == "windows" {
+            let mut args: Vec<String> = vec![
+                "-m".into(),
+                "i386pep".into(),
+                "--subsystem".into(),
+                "console".into(),
+                "--entry".into(),
+                "mainCRTStartup".into(),
+                crt2_path.to_string_lossy().into_owned(),
+                crtbegin_path.to_string_lossy().into_owned(),
             ];
+
+            // object files
             for file in &files {
-                args.push(file.as_str());
+                args.push(file.clone());
             }
-            args.extend_from_slice(&[
-                "-L",
-                lib_path.to_str().unwrap(),
-                "-lruntime",
-                "-lmingw32",
-                "-lmingwex",
-                "-lmsvcrt",
-                "-lkernel32",
-                "-luser32",
-                "-lshell32",
-                "-lgcc",
-                "-o",
-                output_name.as_str(),
-            ]);
+
+            args.push("-L".into());
+            args.push(lib_path.to_string_lossy().into_owned());
+
+            args.push("--start-group".into());
+
+            // all static archives
+            for lib in Self::collect_static_archives(lib_path) {
+                let stem = lib
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+
+                let name = stem.strip_prefix("lib").unwrap_or(&stem).to_string();
+                args.push(format!("-l{}", name));
+            }
+
+            // force include embedded CA object
+            args.push(lib_path.join("cacert.o").to_string_lossy().into_owned());
+
+            args.push("--end-group".into());
+
+            args.push("-o".into());
+            args.push(output_name.clone());
+
             args
         } else {
-            let mut args = vec![
-                "-m",
-                "elf_x86_64",
-                crt1_path.to_str().unwrap(),
-                crti_path.to_str().unwrap(),
+            let mut args: Vec<String> = vec![
+                "-m".into(),
+                "elf_x86_64".into(),
+                crt1_path.to_string_lossy().into_owned(),
+                crti_path.to_string_lossy().into_owned(),
             ];
+
             for file in &files {
-                args.push(file.as_str());
+                args.push(file.clone());
             }
+            args.push("--start-group".to_string());
+            for lib in Self::collect_static_archives(lib_path) {
+                args.push(lib.to_string_lossy().into_owned());
+            }
+            args.push("--end-group".to_string());
+            args.push(
+                lib_path
+                    .join("cacert.o".to_string())
+                    .to_string_lossy()
+                    .into(),
+            );
             args.extend_from_slice(&[
-                lbruntime_path.to_str().unwrap(),
-                crtn_path.to_str().unwrap(),
-                libc_path.to_str().unwrap(),
-                libm_path.to_str().unwrap(),
-                "-dynamic-linker",
-                "/lib64/ld-linux-x86-64.so.2",
-                "-o",
-                output_name.as_str(),
+                crtn_path.to_string_lossy().into_owned(),
+                libc_path.to_string_lossy().into_owned(),
+                libm_path.to_string_lossy().into_owned(),
+                "-dynamic-linker".into(),
+                "/lib64/ld-linux-x86-64.so.2".into(),
+                "-o".into(),
+                output_name.clone(),
             ]);
+
             args
         };
-        let rstatus = Command::new(lib_path.join("ld.lld"))
-            .args(args.clone())
-            .status();
+
+        let rstatus = Command::new(lib_path.join("ld.lld")).args(&args).status();
+
         let status = match rstatus {
             Ok(f) => f,
             Err(_) => {
-                eprintln!("Linker args: {:#?}", args);
-                return Err(ToyError::new(ToyErrorType::InternalLinkerFailure, None));
+                return Err(ToyError::new(
+                    ToyErrorType::InternalLinkerFailure,
+                    Span::null_span_with_msg(&format!("{:?}", args)),
+                ));
             }
         };
+
         if !status.success() {
-            return Err(ToyError::new(ToyErrorType::InternalLinkerFailure, None));
+            return Err(ToyError::new(
+                ToyErrorType::InternalLinkerFailure,
+                Span::null_span_with_msg(&format!("{:?}", args)),
+            ));
         }
+
         if save_temps || std::env::var("TOY_DEBUG").unwrap_or("FALSE".to_string()) == "TRUE" {
             return Ok(());
         }
-        //kinda hacky
+
         for file in &files {
-            //I dont really care if it failed to remove...
             let _ = fs::remove_file(file);
         }
+
         Ok(())
     }
 }
@@ -121,6 +203,8 @@ pub enum ModuleExportType {
     Function(Vec<TypeTok>, TypeTok),
     ///this is for struct interfaces and it contains the TypeTok for the interface
     Struct(TypeTok),
+    ///contains a type tok of type interface
+    Interface(TypeTok),
 }
 pub struct ModuleExport {
     pub name: String,
@@ -149,7 +233,7 @@ pub struct Driver {
     ///project name, for now just the name of the main file, defaults to "program"
     pub name: String,
     ///main file path
-    pub main_program: String,
+    pub main_program_path: PathBuf,
     ///represents the name of all modules that have been parsed, to prevent stack overflows with cyclic dependencies
     pub parsed_modules: HashSet<String>,
     ///contains the path of a file to its generated IR
@@ -158,6 +242,13 @@ pub struct Driver {
 }
 
 impl Driver {
+    pub fn get_current_file_path() -> Option<String> {
+        CURRENT_FILE_PATH.with(|p| p.borrow().clone())
+    }
+
+    fn set_current_file_path(path: &str) {
+        CURRENT_FILE_PATH.with(|p| *p.borrow_mut() = Some(path.to_string()));
+    }
     pub fn mangle_name(module_prefix: Option<&str>, name: &str, params: &[TypeTok]) -> String {
         let prefixed_name = if let Some(prefix) = module_prefix {
             if prefix.is_empty() {
@@ -184,22 +275,22 @@ impl Driver {
         }
         return final_mangled_name;
     }
-    pub fn new(prgm: String) -> Driver {
+    pub fn new(prgm_path: PathBuf) -> Driver {
         return Driver {
             table: ProjectExportTable::new(),
             name: "Program".to_string(),
-            main_program: prgm,
+            main_program_path: prgm_path,
             parsed_modules: HashSet::new(),
             file_path_to_ast: HashMap::new(),
             mangled_lookup: HashMap::new(),
         };
     }
     #[allow(unused)]
-    pub fn new_with_name(prgm: String, name: String) -> Driver {
+    pub fn new_with_name(prgm_path: PathBuf, name: String) -> Driver {
         return Driver {
             table: ProjectExportTable::new(),
             name: name,
-            main_program: prgm,
+            main_program_path: prgm_path,
             parsed_modules: HashSet::new(),
             file_path_to_ast: HashMap::new(),
             mangled_lookup: HashMap::new(),
@@ -250,6 +341,7 @@ impl Driver {
                             ast_gen.register_struct(full_name, fields.clone());
                         }
                     }
+                    _ => todo!("interface exports not yet supported"),
                 }
             }
         }
@@ -257,7 +349,32 @@ impl Driver {
             self.mangled_lookup.insert(k, v);
         }
     }
+    pub fn verify_module(module: &Module) -> Result<(), ToyError> {
+        if let Err(e) = module.verify() {
+            eprintln!("=== LLVM module verify failed ===");
+            eprintln!("{e}");
+            module.print_to_stderr();
+            return Err(ToyError::new(
+                ToyErrorType::InternalLinkerFailure,
+                Span::null_span_with_msg(&format!("Module failed to verify, {:?}", e)),
+            ));
+        }
 
+        for f in module.get_functions() {
+            if !f.verify(true) {
+                eprintln!(
+                    "=== LLVM function verify failed: {} ===",
+                    f.get_name().to_string_lossy()
+                );
+                module.print_to_stderr();
+                return Err(ToyError::new(
+                    ToyErrorType::InternalLinkerFailure,
+                    Span::null_span_with_msg(&format!("Function {:?} failed to verify", f)),
+                ));
+            }
+        }
+        return Ok(());
+    }
     ///Finds and parses all dependencies from a list of TBoxes
     ///Returns a list of paths to import
     fn find_and_parse_dependencies(&mut self, boxes: Vec<TBox>) -> Result<(), ToyError> {
@@ -287,12 +404,13 @@ impl Driver {
                 Err(_) => {
                     return Err(ToyError::new(
                         ToyErrorType::MissingFile,
-                        Some(format!("Could not find file: {}", import)),
+                        Span::null_span_with_msg(&format!("Could not find file: {}", import)),
                     ));
                 }
             };
 
             //create a new lexer and boxer for each module
+            Driver::set_current_file_path(&import);
             let mut l = Lexer::new();
             let import_toks = l.lex(contents)?;
             let module_name = import
@@ -363,9 +481,20 @@ impl Driver {
     ///Will automatically compile and build the program
     ///Linking in all necessary modules
     pub fn start(&mut self, ctx: &Context) -> Result<(), ToyError> {
+        Driver::set_current_file_path(&self.main_program_path.to_string_lossy());
+        let main_program = fs::read_to_string(&self.main_program_path).map_err(|_| {
+            ToyError::new(
+                ToyErrorType::MissingFile,
+                Span::null_span_with_msg(&format!(
+                    "Could not find file: {}",
+                    self.main_program_path.to_string_lossy()
+                )),
+            )
+        })?;
+
         //Lex and box main program
         let mut l = Lexer::new();
-        let main_prgm_toks = l.lex(self.main_program.clone())?;
+        let main_prgm_toks = l.lex(main_program)?;
 
         //I am aware this defeats the purpose of the parser meta module
         let mut b = Boxer::new();
@@ -383,6 +512,7 @@ impl Driver {
         for (path, ast) in &self.file_path_to_ast {
             let module_name = path.replace(".toy", "");
 
+            Driver::set_current_file_path(path);
             let llvm_module = ctx.create_module(&module_name);
             let mut generator = Generator::new(ctx, llvm_module);
             generator.compile_to_object(ast.clone(), module_name.clone(), false)?;
@@ -411,6 +541,7 @@ impl Driver {
             }
         }
 
+        Driver::set_current_file_path(&self.main_program_path.to_string_lossy());
         generator.compile_to_object(main_ast, self.name.clone(), true)?;
         object_files.push(format!("{}.o", self.name));
 

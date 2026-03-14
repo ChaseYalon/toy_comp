@@ -1,0 +1,20 @@
+extern fn toy_fs_read_file(path: str): str;
+
+export fn read_file(path: str): str{
+    return toy_fs_read_file(path);
+}
+
+extern fn toy_fs_write_file(path: str, content: str): int;
+export fn write_file(path: str, content: str): int{
+    return toy_fs_write_file(path, content);
+}
+
+extern fn toy_fs_append_file(path: str, content: str);
+export fn append_file(path: str, content: str){
+    toy_fs_append_file(path, content);
+}
+
+extern fn toy_fs_file_size(path: str): int;
+export fn file_size(path: str): int{
+    return toy_fs_file_size(path);
+}

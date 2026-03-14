@@ -4,15 +4,16 @@
 use std::env;
 use std::fs;
 use std::io::{self, Write};
+use std::path::PathBuf;
 use std::process;
-
+use crate::driver::Driver;
 mod lexer;
 pub mod parser;
 mod token;
 #[macro_use]
 mod macros;
 pub mod codegen;
-mod driver;
+pub(crate) mod driver;
 mod errors;
 mod ffi;
 use inkwell::context::Context;
@@ -39,10 +40,13 @@ fn run_repl() {
 }
 
 fn compile_and_run(source: String) -> Result<(), Box<dyn std::error::Error>> {
-    let ctx: Context = Context::create();
-    let mut driver = driver::Driver::new(source);
-    driver.start(&ctx)?;
+    let repl_path = PathBuf::from("./temp/repl.toy");
+    fs::create_dir_all("temp")?;
+    fs::write(&repl_path, source)?;
 
+    let ctx: Context = Context::create();
+    let mut driver = driver::Driver::new(repl_path);
+    driver.start(&ctx)?;
     let exe_path = format!("./Program{}", driver::FILE_EXTENSION_EXE);
     let output = process::Command::new(exe_path).output()?;
     print!("{}", String::from_utf8_lossy(&output.stdout));
@@ -51,17 +55,22 @@ fn compile_and_run(source: String) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn compile_and_print(source: String) -> Result<(), Box<dyn std::error::Error>> {
+fn compile_and_print(file_path: &str) -> Result<(), Box<dyn std::error::Error>> {
     let ctx: Context = Context::create();
-    let mut driver = driver::Driver::new(source);
+    let args: Vec<String> = env::args().collect();
+    let name = if args.iter().position(|a| a == &"--name".to_string()).is_some(){
+        args[args.iter().position(|a| a == &"--name".to_string()).unwrap() + 1].clone()
+    } else {
+        "program".to_string()
+    };
+    let mut driver = Driver::new_with_name(PathBuf::from(file_path), name);
     driver.start(&ctx)?;
 
     Ok(())
 }
 
 fn compile_file(filename: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let contents = fs::read_to_string(filename)?;
-    compile_and_print(contents)
+    compile_and_print(filename)
 }
 
 fn main() {

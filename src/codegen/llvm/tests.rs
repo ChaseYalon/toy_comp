@@ -27,12 +27,16 @@ macro_rules! compile_code_aot {
         let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let output_name = format!("output_{}", $test_name);
         let output_path = project_root.join("temp").join(&output_name);
+        let source_path = project_root
+            .join("temp")
+            .join(format!("{}.toy", output_name));
 
         let _ = std::fs::remove_file(&output_path);
+        std::fs::write(&source_path, $i).unwrap();
         thread::sleep(Duration::from_millis(100));
         let ctx = Context::create();
         let mut d =
-            crate::driver::Driver::new_with_name($i.to_string(), format!("temp/{}", output_name));
+            crate::driver::Driver::new_with_name(source_path, format!("temp/{}", output_name));
         d.start(&ctx).unwrap();
 
         thread::sleep(Duration::from_millis(200));
@@ -281,7 +285,7 @@ fn test_llvm_extern_struct() {
     if month_num.starts_with("0") {
         month_num = month_num[1..].to_string();
     }
-    assert!(output.contains(&month_num));
+    assert!(output.contains(&month_num), "[DEBUG] Output was {output}");
 }
 
 #[test]
@@ -295,15 +299,31 @@ fn test_llvm_extern_struct_func_call() {
     if month_num.starts_with("0") {
         month_num = month_num[1..].to_string();
     }
-    assert!(output.contains(&month_num));
+    assert!(output.contains(&month_num), "[DEBUG] output was {output}");
 }
 
 #[test]
 fn test_llvm_escape_sequence() {
+    compile_code_aot!(output, r#"print("\n")"#, "escape_sequence");
+    assert!(!output.contains("\\"));
+}
+
+#[test]
+fn test_llvm_codegen_break_continue() {
     compile_code_aot!(
         output,
-        r#"print("\n")"#,
-        "escape_sequence"
+        "let x = 0; while x < 10 { x++; if x == 3 { continue; } if x == 7 { break; } print(x); } print(x);",
+        "break_continue"
     );
-    assert!(!output.contains("\\"));
+    assert!(output.contains("124566"));
+}
+
+#[test]
+fn test_llvm_string_conditional_assignment() {
+    compile_code_aot!(
+        output,
+        r#"let s = ""; if 3 == 1{s = "a"} else if 3 == 2{ s = "b"} else {s = "c"}; println(s);"#,
+        "str_cond_ass"
+    );
+    assert!(output.contains("c"));
 }

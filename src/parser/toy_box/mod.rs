@@ -1,41 +1,46 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use crate::token::{Token, TypeTok};
+use crate::{
+    errors::Span,
+    token::{SpannedToken, TypeTok},
+};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TBox {
     ///tokens in the expr, original code for that expression
-    Expr(Vec<Token>, String),
+    Expr(Vec<SpannedToken>, Span),
     ///Var name, Var type, Var val, source code for that expression
-    VarDec(Token, Option<TypeTok>, Vec<Token>, String),
+    VarDec(SpannedToken, Option<TypeTok>, Vec<SpannedToken>, Span),
     ///represents a reassignment of the tokens LHS to the value RHS
-    Assign(Vec<Token>, Vec<Token>, String),
+    Assign(Vec<SpannedToken>, Vec<SpannedToken>, Span),
     ///Cond, body, Optional cond, body pairs for else if, Optional else, original code
     IfStmt(
-        Vec<Token>,
+        Vec<SpannedToken>,
         Vec<TBox>,
-        Option<Vec<(Vec<Token>, Vec<TBox>)>>,
+        Option<Vec<(Vec<SpannedToken>, Vec<TBox>)>>,
         Option<Vec<TBox>>,
-        String,
+        Span,
     ),
     ///Name, type, source code
-    FuncParam(Token, TypeTok, String),
+    FuncParam(SpannedToken, TypeTok, Span),
     ///Name, Params, Return Type, Body, source code, isExport - defaults to false
-    FuncDec(Token, Vec<TBox>, TypeTok, Vec<TBox>, String, bool),
+    FuncDec(SpannedToken, Vec<TBox>, TypeTok, Vec<TBox>, Span, bool),
     ///Contains value to return, source code
-    Return(Box<TBox>, String),
+    Return(Box<TBox>, Span),
     ///Condition, body, Source code
-    While(Vec<Token>, Vec<TBox>, String),
-    Break,
-    Continue,
+    While(Vec<SpannedToken>, Vec<TBox>, Span),
+    Break(Span),
+    Continue(Span),
     ///Name, types, Source code
-    StructInterface(Box<String>, Box<BTreeMap<String, TypeTok>>, String),
+    StructInterface(Box<String>, Box<BTreeMap<String, TypeTok>>, Span),
     ///used for extern function declarations, those functions are called like any other
     ///Name, Params, Return Type, source code
-    ExternFuncDec(Token, Vec<TBox>, TypeTok, String),
+    ExternFuncDec(SpannedToken, Vec<TBox>, TypeTok, Span),
     ///name of the module being imported, source_code
-    ImportStmt(String, String),
+    ImportStmt(String, Span),
+    ///Interfaces just contain the TypeTok of the interface, then the source code
+    Interface(TypeTok, Span),
 }
 impl TBox {
     ///will return the types of a func param, if it is given on a func_dec node, will return nothing otherwise
@@ -88,8 +93,8 @@ impl fmt::Display for TBox {
                     "TBox_While Cond({:?}), Body({:?}), Literal({})",
                     cond, body, s
                 ),
-                TBox::Break => "TBox_break".to_string(),
-                TBox::Continue => "TBox_continue".to_string(),
+                TBox::Break(_) => "TBox_break".to_string(),
+                TBox::Continue(_) => "TBox_continue".to_string(),
                 TBox::StructInterface(n, kv, s) => format!(
                     "TBox_Struct_Interface Name({}), KV({:?}), Literal({})",
                     *n, *kv, s
@@ -100,7 +105,29 @@ impl fmt::Display for TBox {
                 ),
                 TBox::ImportStmt(name, s) =>
                     format!("TBox_Import_Stmt Name({}), Literal({})", name, s),
+                TBox::Interface(ty, s) => format!("TBox_Interface Type({:#?}), Literal({})", ty, s),
             }
         )
+    }
+}
+
+impl TBox {
+    pub fn span(&self) -> Span {
+        return match self {
+            TBox::Expr(_, s) => s.clone(),
+            TBox::VarDec(_, _, _, s) => s.clone(),
+            TBox::Assign(_, _, s) => s.clone(),
+            TBox::IfStmt(_, _, _, _, s) => s.clone(),
+            TBox::FuncParam(_, _, s) => s.clone(),
+            TBox::FuncDec(_, _, _, _, s, _) => s.clone(),
+            TBox::Return(_, s) => s.clone(),
+            TBox::While(_, _, s) => s.clone(),
+            TBox::Break(s) => s.clone(),
+            TBox::Continue(s) => s.clone(),
+            TBox::StructInterface(_, _, s) => s.clone(),
+            TBox::ExternFuncDec(_, _, _, s) => s.clone(),
+            TBox::ImportStmt(_, s) => s.clone(),
+            TBox::Interface(_, s) => s.clone(),
+        };
     }
 }

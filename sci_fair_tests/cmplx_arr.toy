@@ -1,0 +1,16 @@
+
+let s = "hello";
+let arr = [s, "h"];
+let arrc: str[] = [];
+let arrb = [arr, arrc];
+
+println(arrb[0]);
+
+let i = 0;
+while i < len(arrb[0]) {
+    println(arrb[0][i]);
+    i++;
+}
+
+let a = "dadsfasdkfasdf";
+arrc[2] = a;

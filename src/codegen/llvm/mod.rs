@@ -20,6 +20,7 @@ use crate::{
         Block, Function, SSAValue, TIR, TirType,
         tir::ir::{BlockId, BoolInfixOp, NumericInfixOp},
     },
+    driver::Driver,
     errors::ToyError,
 };
 use inkwell::{
@@ -59,15 +60,15 @@ impl<'a> LlvmGenerator<'a> {
         if let Some(v) = self.tir_to_val.get(&(func_name.to_string(), ssa.clone())) {
             return *v;
         }
-        // Try alternative types for pointers/ints
+        // Try alternative type views for the same SSA ID
         if let Some(ty) = &ssa.ty {
-            let alt_ty = match ty {
-                TirType::I64 => Some(TirType::Ptr),
-                TirType::Ptr => Some(TirType::I64),
-                TirType::StructInterface(_) => Some(TirType::I64),
-                _ => None,
+            let alt_tys: Vec<TirType> = match ty {
+                TirType::I64 => vec![TirType::Ptr],
+                TirType::Ptr => vec![TirType::I64],
+                TirType::StructInterface(_) => vec![TirType::Ptr, TirType::I64],
+                _ => vec![],
             };
-            if let Some(at) = alt_ty {
+            for at in alt_tys {
                 let alt_ssa = SSAValue {
                     val: ssa.val,
                     ty: Some(at),
@@ -88,10 +89,17 @@ impl<'a> LlvmGenerator<'a> {
         let res = match inst {
             //this will cause bugs not accounting for bools
             TIR::IConst(id, val, ty) => Some((
-                self.ctx
-                    .i64_type()
-                    .const_int((val as i64) as u64, true)
-                    .as_basic_value_enum(),
+                if ty == TirType::I1 {
+                    self.ctx
+                        .i64_type()
+                        .const_int((val as i64) as u64, false)
+                        .as_basic_value_enum()
+                } else {
+                    self.ctx
+                        .i64_type()
+                        .const_int((val as i64) as u64, true)
+                        .as_basic_value_enum()
+                },
                 SSAValue {
                     val: id,
                     ty: Some(ty),
@@ -122,7 +130,7 @@ impl<'a> LlvmGenerator<'a> {
                 ))
             }
             //I am going to rush ahead to call_extern without dealing with any other function types for debuggability purposes
-            TIR::CallExternFunction(id, name, params, _, ret_type) => {
+            TIR::CallExternFunction(id, name, params, _, ret_type, _) => {
                 let func_body = if let Some(f) = self.main_module.get_function(&name) {
                     f
                 } else if let Some(hm_func) = self.func_map.get(&*name) {
@@ -143,7 +151,7 @@ impl<'a> LlvmGenerator<'a> {
                             self.ctx.i64_type().fn_type(&compiled_types, false)
                         }
                         TirType::F64 => self.ctx.f64_type().fn_type(&compiled_types, false),
-                        TirType::I1 => self.ctx.bool_type().fn_type(&compiled_types, false),
+                        TirType::I1 => self.ctx.i64_type().fn_type(&compiled_types, false),
                         TirType::StructInterface(_) => self
                             .ctx
                             .ptr_type(AddressSpace::default())
@@ -176,6 +184,33 @@ impl<'a> LlvmGenerator<'a> {
                                     v.into_int_value(),
                                     expected_type.into_pointer_type(),
                                     "i64_to_ptr",
+                                )
+                                .unwrap()
+                                .into()
+                        } else if expected_type.is_float_type() && v.is_int_value() {
+                            builder
+                                .build_bit_cast(
+                                    v.into_int_value(),
+                                    self.ctx.f64_type(),
+                                    "i64_to_double_bitcast",
+                                )
+                                .unwrap()
+                                .into()
+                        } else if expected_type.is_float_type() && v.is_int_value() {
+                            builder
+                                .build_bit_cast(
+                                    v.into_int_value(),
+                                    self.ctx.f64_type(),
+                                    "i64_to_double_bitcast",
+                                )
+                                .unwrap()
+                                .into()
+                        } else if expected_type.is_float_type() && v.is_int_value() {
+                            builder
+                                .build_bit_cast(
+                                    v.into_int_value(),
+                                    self.ctx.f64_type(),
+                                    "i64_to_double_bitcast",
                                 )
                                 .unwrap()
                                 .into()
@@ -236,7 +271,7 @@ impl<'a> LlvmGenerator<'a> {
                             self.ctx.i64_type().fn_type(&compiled_types, false)
                         }
                         TirType::F64 => self.ctx.f64_type().fn_type(&compiled_types, false),
-                        TirType::I1 => self.ctx.bool_type().fn_type(&compiled_types, false),
+                        TirType::I1 => self.ctx.i64_type().fn_type(&compiled_types, false),
                         TirType::StructInterface(_) => self
                             .ctx
                             .ptr_type(AddressSpace::default())
@@ -315,9 +350,28 @@ impl<'a> LlvmGenerator<'a> {
                         SSAValue { val: id, ty: None },
                     ))
                 } else {
-                    let val = self.get_ssa_val(&curr_func_name, v.clone());
+                    let mut val = self.get_ssa_val(&curr_func_name, v.clone());
+                    if let Some(ret_ty) = self.curr_func.unwrap().get_type().get_return_type() {
+                        if ret_ty.is_pointer_type() && val.is_int_value() {
+                            val = builder
+                                .build_int_to_ptr(
+                                    val.into_int_value(),
+                                    ret_ty.into_pointer_type(),
+                                    "ret_i64_to_ptr",
+                                )?
+                                .into();
+                        } else if ret_ty.is_int_type() && val.is_pointer_value() {
+                            val = builder
+                                .build_ptr_to_int(
+                                    val.into_pointer_value(),
+                                    ret_ty.into_int_type(),
+                                    "ret_ptr_to_i64",
+                                )?
+                                .into();
+                        }
+                    }
                     builder.build_return(Some(&val))?;
-                    Some((val.to_owned(), v))
+                    Some((val, v))
                 }
             }
             TIR::NumericInfix(id, l, r, op) => {
@@ -420,7 +474,7 @@ impl<'a> LlvmGenerator<'a> {
             TIR::BoolInfix(id, l, r, op) => {
                 let lhs = self.get_ssa_val(&curr_func_name, l.clone());
                 let rhs = self.get_ssa_val(&curr_func_name, r.clone());
-                let res = match op {
+                let res_i64 = match op {
                     BoolInfixOp::And => {
                         builder.build_and(lhs.into_int_value(), rhs.into_int_value(), "and_res")?
                     }
@@ -428,7 +482,7 @@ impl<'a> LlvmGenerator<'a> {
                         builder.build_or(lhs.into_int_value(), rhs.into_int_value(), "or_res")?
                     }
                     _ => {
-                        if l.ty.unwrap() == TirType::F64 {
+                        let res = if l.ty.unwrap() == TirType::F64 {
                             match op {
                                 BoolInfixOp::Equals => builder.build_float_compare(
                                     FloatPredicate::OEQ,
@@ -508,9 +562,11 @@ impl<'a> LlvmGenerator<'a> {
                                 )?,
                                 _ => unreachable!(),
                             }
-                        }
+                        };
+                        builder.build_int_z_extend(res, self.ctx.i64_type(), "bool_to_i64")?
                     }
                 };
+
                 self.tir_to_val.insert(
                     (
                         curr_func_name.clone(),
@@ -519,10 +575,10 @@ impl<'a> LlvmGenerator<'a> {
                             ty: Some(TirType::I1),
                         },
                     ),
-                    res.into(),
+                    res_i64.into(),
                 );
                 Some((
-                    res.into(),
+                    res_i64.into(),
                     SSAValue {
                         val: id,
                         ty: Some(TirType::I1),
@@ -534,7 +590,7 @@ impl<'a> LlvmGenerator<'a> {
                     .get_ssa_val(&curr_func_name, v.clone())
                     .into_int_value();
 
-                let one = self.ctx.bool_type().const_int(1, false);
+                let one = self.ctx.i64_type().const_int(1, false);
 
                 let res = builder.build_xor(val, one, "not_res")?;
 
@@ -547,7 +603,12 @@ impl<'a> LlvmGenerator<'a> {
                 ))
             }
             TIR::JumpCond(_, cond, if_true, if_false) => {
-                let compiled_cond = self.get_ssa_val(&curr_func_name, cond).into_int_value();
+                let val = self.get_ssa_val(&curr_func_name, cond).into_int_value();
+                let compiled_cond = if val.get_type().get_bit_width() == 64 {
+                    builder.build_int_truncate(val, self.ctx.bool_type(), "cond_trunc")?
+                } else {
+                    val
+                };
                 let true_block = self.block_id_to_block.get(&if_true).unwrap();
                 let false_block = self.block_id_to_block.get(&if_false).unwrap();
                 builder.build_conditional_branch(compiled_cond, *true_block, *false_block)?;
@@ -670,7 +731,6 @@ impl<'a> LlvmGenerator<'a> {
             }
             TIR::CreateStructLiteral(id, ty, vals) => {
                 let (struct_type, interface_name) = self.struct_interfaces.get(&ty).unwrap(); // parser validated
-
                 let allocated_struct = builder.build_alloca(*struct_type, interface_name)?;
 
                 let zero = self.ctx.i32_type().const_int(0, false);
@@ -827,7 +887,7 @@ impl<'a> LlvmGenerator<'a> {
                 Some(t) => match t {
                     TirType::I64 => self.ctx.i64_type().into(),
                     TirType::F64 => self.ctx.f64_type().into(),
-                    TirType::I1 => self.ctx.bool_type().into(),
+                    TirType::I1 => self.ctx.i64_type().into(),
                     TirType::Ptr => self.ctx.i64_type().into(),
                     TirType::StructInterface(_) => {
                         // Structs are passed as pointers for consistency with CreateStructLiteral
@@ -841,7 +901,7 @@ impl<'a> LlvmGenerator<'a> {
         let fn_type = match func.ret_type {
             TirType::I64 => self.ctx.i64_type().fn_type(llvm_params.as_slice(), false),
             TirType::F64 => self.ctx.f64_type().fn_type(llvm_params.as_slice(), false),
-            TirType::I1 => self.ctx.bool_type().fn_type(llvm_params.as_slice(), false),
+            TirType::I1 => self.ctx.i64_type().fn_type(llvm_params.as_slice(), false),
             TirType::Ptr => self.ctx.i64_type().fn_type(llvm_params.as_slice(), false),
             TirType::StructInterface(_) => {
                 // Structs are returned as pointers for consistency
@@ -909,7 +969,7 @@ impl<'a> LlvmGenerator<'a> {
         return match t {
             TirType::I64 => self.ctx.i64_type().into(),
             TirType::F64 => self.ctx.f64_type().into(),
-            TirType::I1 => self.ctx.bool_type().into(),
+            TirType::I1 => self.ctx.i64_type().into(),
             TirType::Ptr => self.ctx.i64_type().into(),
             TirType::StructInterface(_) => {
                 // Structs are passed as pointers for consistency
@@ -935,7 +995,7 @@ impl<'a> LlvmGenerator<'a> {
                 .fn_type(&compiled_types.as_slice(), false),
             TirType::I1 => self
                 .ctx
-                .bool_type()
+                .i64_type()
                 .fn_type(&compiled_types.as_slice(), false),
             TirType::Ptr => self
                 .ctx
@@ -964,6 +1024,11 @@ impl<'a> LlvmGenerator<'a> {
             TirType::Void,
         );
         self.declare_individual_function("toy_malloc", vec![TirType::I64], TirType::I64);
+        self.declare_individual_function(
+            "toy_malloc_struct",
+            vec![TirType::I64, TirType::I64],
+            TirType::I64,
+        );
         self.declare_individual_function(
             "toy_concat",
             vec![TirType::I64, TirType::I64],
@@ -1021,11 +1086,7 @@ impl<'a> LlvmGenerator<'a> {
             vec![TirType::I64, TirType::I64],
             TirType::I64,
         );
-        self.declare_individual_function(
-            "toy_arrlen",
-            vec![TirType::I64, TirType::I64],
-            TirType::I64,
-        );
+        self.declare_individual_function("toy_arrlen", vec![TirType::I64], TirType::I64);
         self.declare_individual_function(
             "toy_input",
             vec![TirType::I64, TirType::I64],
@@ -1052,6 +1113,7 @@ impl<'a> LlvmGenerator<'a> {
         //llvm shit
         let args: Vec<String> = env::args().collect();
         Target::initialize_x86(&InitializationConfig::default());
+        //opts can conflict with CTLA
         let opt_level =
             if args.contains(&"--repl".to_string()) || args.contains(&"--no-op".to_string()) {
                 OptimizationLevel::None
@@ -1074,13 +1136,16 @@ impl<'a> LlvmGenerator<'a> {
         self.main_module.set_triple(&triple);
         self.main_module
             .set_data_layout(&target_machine.get_target_data().get_data_layout());
-
+        Driver::verify_module(&self.main_module)?;
         let obj_file = format!("{}.o", prgm_name);
         let obj_path: &Path = Path::new(&obj_file);
         target_machine.write_to_file(&self.main_module, FileType::Object, obj_path)?;
         let ll_file = format!("{}.ll", prgm_name);
         self.main_module.print_to_file(Path::new(&ll_file))?;
-
+        let args: Vec<String> = env::args().collect();
+        if args.contains(&"--debug-llvm".to_string()) || args.contains(&"--debug-ALL".to_string()){
+            self.main_module.print_to_file("./debug/LLVM.ll")?;
+        }
         return Ok(());
     }
 }

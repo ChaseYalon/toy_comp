@@ -1,152 +1,195 @@
 use crate::debug;
-use crate::errors::{ToyError, ToyErrorType};
-use crate::token::{Token, TypeTok};
+use crate::driver::Driver;
+use crate::errors::{Span, ToyError, ToyErrorType};
+use crate::token::{SpannedToken, Token, TypeTok};
 use ordered_float::OrderedFloat;
 
 #[derive(Debug)]
 pub struct Lexer {
-    chars: Vec<char>,
-    cp: usize, //Char pointer
-    num_buf: Vec<char>,
-    str_buf: Vec<char>,
-    toks: Vec<Token>,
-    in_str_lit: bool,
+    /// The source text decoded into individual chars
+    source_chars: Vec<char>,
+    /// Current position in `source_chars`
+    cursor: usize,
+    /// Accumulator for numeric literals (int / float)
+    number_buffer: Vec<char>,
+    /// Accumulator for identifier / string literal chars
+    string_buffer: Vec<char>,
+    /// Tokens produced so far (parallel to `token_start_bytes`)
+    pending_tokens: Vec<Token>,
+    /// Whether we are currently inside a string literal
+    in_string_literal: bool,
+    /// Maps char index → byte offset in the original UTF-8 source
+    char_byte_offsets: Vec<usize>,
+    /// Byte offset where each pending token started (parallel to `pending_tokens`)
+    token_start_bytes: Vec<u64>,
+    /// Char index where the current number/string buffer started accumulating
+    buffer_start_cursor: usize,
 }
 impl Lexer {
     pub fn new() -> Lexer {
-        let c_vec: Vec<char> = Vec::new();
-        let n_vec: Vec<char> = Vec::new();
-        let t_vec: Vec<Token> = Vec::new();
-        let s_vec: Vec<char> = Vec::new();
         return Lexer {
-            chars: c_vec,
-            cp: 0usize,
-            num_buf: n_vec,
-            str_buf: s_vec,
-            toks: t_vec,
-            in_str_lit: false,
+            source_chars: Vec::new(),
+            cursor: 0,
+            number_buffer: Vec::new(),
+            string_buffer: Vec::new(),
+            pending_tokens: Vec::new(),
+            in_string_literal: false,
+            char_byte_offsets: Vec::new(),
+            token_start_bytes: Vec::new(),
+            buffer_start_cursor: 0,
         };
     }
-    pub fn peek(&self, i: usize) -> char {
-        if self.cp + i >= self.chars.len() {
-            //Not sure what to do hereP
+    pub fn peek(&self, offset: usize) -> char {
+        if self.cursor + offset >= self.source_chars.len() {
             return '\0';
         }
-        debug!(targets: ["lexer", "lexer_verbose"], i, self.cp, &self.chars);
-        return self.chars[self.cp + i];
+        debug!(targets: ["lexer", "lexer_verbose"], offset, self.cursor, &self.source_chars);
+        return self.source_chars[self.cursor + offset];
     }
-    /// Get a snippet of text around the current position for error reporting
-    fn get_error_context(&self) -> String {
-        let start = self.cp.saturating_sub(10);
-        let end = (self.cp + 10).min(self.chars.len());
-        self.chars[start..end].iter().collect()
+    /// Push a token, recording `start_cursor` (char index) as its span start.
+    fn push_tok(&mut self, tok: Token, start_cursor: usize) {
+        let start_byte = self
+            .char_byte_offsets
+            .get(start_cursor)
+            .copied()
+            .unwrap_or(0) as u64;
+        self.token_start_bytes.push(start_byte);
+        self.pending_tokens.push(tok);
+    }
+    /// Build a Span pointing at the current character for error reporting.
+    fn get_error_span(&self) -> Span {
+        let file_path = Driver::get_current_file_path().unwrap_or_else(|| "<unknown>".to_string());
+        if self.char_byte_offsets.is_empty() || self.cursor >= self.char_byte_offsets.len() {
+            return Span::null_span_with_msg(&format!("near end of {}", file_path));
+        }
+        let byte = self.char_byte_offsets[self.cursor] as i64;
+        Span::new(&file_path, byte, byte)
     }
     fn lex_keyword(&mut self, word: &str, tok: Token) -> bool {
+        let start_cursor = self.cursor;
         for (i, c) in word.char_indices() {
             if self.peek(i) != c {
                 return false;
             }
         }
-        //next char must flush buffer
         let next_char = self.peek(word.len());
         // don't match keywords that are part of longer identifiers
-        // previous char must not be alphanumeric or '_'
-        let prev_char = if self.cp == 0 {
+        let prev_char = if self.cursor == 0 {
             '\0'
         } else {
-            self.chars[self.cp - 1]
+            self.source_chars[self.cursor - 1]
         };
         if prev_char.is_alphanumeric() || prev_char == '_' {
             return false;
         }
-        // lparen is not alphanumeric but otherwise int will match print()
+        // lparen is not alphanumeric but otherwise `int` would match `print()`
         if (next_char.is_alphanumeric() || next_char == '_') || next_char == '(' {
             return false;
         }
 
-        self.cp += word.len();
-        self.toks.push(tok);
+        self.cursor += word.len();
+        self.push_tok(tok, start_cursor);
         return true;
     }
     fn lex_arr_def(&mut self, word: &str, base_type: TypeTok) -> Result<bool, ToyError> {
+        let start_cursor = self.cursor;
         for (i, c) in word.char_indices() {
             if self.peek(i) != c {
                 return Ok(false);
             }
         }
 
-        let mut arr_count = 0;
-        let mut i = self.cp + word.len();
-        let len = self.chars.len();
-
-        while i + 1 < len && self.chars[i] == '[' && self.chars[i + 1] == ']' {
-            arr_count += 1;
-            i += 2;
+        // don't match keywords that are part of longer identifiers
+        let prev_char = if self.cursor == 0 {
+            '\0'
+        } else {
+            self.source_chars[self.cursor - 1]
+        };
+        if prev_char.is_alphanumeric() || prev_char == '_' {
+            return Ok(false);
         }
 
-        if arr_count == 0 {
+        let next_char_after_word = self.peek(word.len());
+        if next_char_after_word.is_alphanumeric() || next_char_after_word == '_' {
+            return Ok(false);
+        }
+
+        let mut dimension = 0;
+        let mut scan = self.cursor + word.len();
+        let source_len = self.source_chars.len();
+
+        while scan + 1 < source_len
+            && self.source_chars[scan] == '['
+            && self.source_chars[scan + 1] == ']'
+        {
+            dimension += 1;
+            scan += 2;
+        }
+
+        if dimension == 0 {
             return Ok(false);
         }
 
         let arr_type = match base_type {
-            TypeTok::Int => TypeTok::IntArr(arr_count),
-            TypeTok::Bool => TypeTok::BoolArr(arr_count),
-            TypeTok::Str => TypeTok::StrArr(arr_count),
-            TypeTok::Float => TypeTok::FloatArr(arr_count),
-            TypeTok::Any => TypeTok::AnyArr(arr_count),
+            TypeTok::Int => TypeTok::IntArr(dimension),
+            TypeTok::Bool => TypeTok::BoolArr(dimension),
+            TypeTok::Str => TypeTok::StrArr(dimension),
+            TypeTok::Float => TypeTok::FloatArr(dimension),
+            TypeTok::Any => TypeTok::AnyArr(dimension),
             _ => {
                 return Err(ToyError::new(
                     ToyErrorType::ArrayTypeInvalid,
-                    Some(self.get_error_context()),
+                    self.get_error_span(),
                 ));
             }
         };
 
-        self.toks.push(Token::Type(arr_type));
-        self.cp = i;
+        self.push_tok(Token::Type(arr_type), start_cursor);
+        self.cursor = scan;
         return Ok(true);
     }
 
-    pub fn lex(&mut self, input: String) -> Result<Vec<Token>, ToyError> {
-        self.chars = input.chars().collect();
-        self.cp = 0;
+    pub fn lex(&mut self, input: String) -> Result<Vec<SpannedToken>, ToyError> {
+        self.char_byte_offsets = input.char_indices().map(|(byte_pos, _)| byte_pos).collect();
+        self.source_chars = input.chars().collect();
+        self.cursor = 0;
 
-        while self.cp < self.chars.len() {
-            let c = self.chars[self.cp];
-            if self.in_str_lit {
+        while self.cursor < self.source_chars.len() {
+            let c = self.source_chars[self.cursor];
+            let tok_start = self.cursor;
+            if self.in_string_literal {
                 self.eat();
                 if c == '"' {
                     self.flush();
-                    self.in_str_lit = false;
+                    self.in_string_literal = false;
                     continue;
                 }
                 if c == '\\' {
-                    if self.cp < self.chars.len() {
-                        let next_c = self.chars[self.cp];
+                    if self.cursor < self.source_chars.len() {
+                        let next_c = self.source_chars[self.cursor];
                         match next_c {
-                            'n' => self.str_buf.push('\n'),
-                            't' => self.str_buf.push('\t'),
-                            'r' => self.str_buf.push('\r'),
-                            '\\' => self.str_buf.push('\\'),
-                            '"' => self.str_buf.push('"'),
-                            '0' => self.str_buf.push('\0'),
+                            'n' => self.string_buffer.push('\n'),
+                            't' => self.string_buffer.push('\t'),
+                            'r' => self.string_buffer.push('\r'),
+                            '\\' => self.string_buffer.push('\\'),
+                            '"' => self.string_buffer.push('"'),
+                            '0' => self.string_buffer.push('\0'),
                             _ => {
-                                self.str_buf.push('\\');
-                                self.str_buf.push(next_c);
+                                self.string_buffer.push('\\');
+                                self.string_buffer.push(next_c);
                             }
                         }
                         self.eat();
                     } else {
-                        self.str_buf.push('\\');
+                        self.string_buffer.push('\\');
                     }
                     continue;
                 }
-                self.str_buf.push(c);
+                self.string_buffer.push(c);
                 continue;
             }
-            debug!(targets: ["lexer_verbose"], c);
-            debug!(targets: ["lexer_verbose"], self.cp);
-            if (c == ' ' || c == '\t' || c == '\n' || c == '\r') && !self.in_str_lit {
+            let _ = tok_start;
+            if (c == ' ' || c == '\t' || c == '\n' || c == '\r') && !self.in_string_literal {
                 self.eat();
                 continue;
             }
@@ -229,59 +272,74 @@ impl Lexer {
             if self.lex_keyword("export", Token::Export) {
                 continue;
             }
-            if (c.is_ascii_digit() || (c == '.' && self.num_buf.len() > 0))
-                && self.str_buf.len() == 0
+            if self.lex_keyword("interface", Token::Interface) {
+                continue;
+            }
+            if self.lex_keyword("implements", Token::Implements) {
+                continue;
+            }
+            if (c.is_ascii_digit() || (c == '.' && self.number_buffer.len() > 0))
+                && self.string_buffer.len() == 0
             {
                 debug!(targets: ["lexer_verbose"], "In ascii print");
-                self.num_buf.push(c);
+                if self.number_buffer.is_empty() {
+                    self.buffer_start_cursor = self.cursor;
+                }
+                self.number_buffer.push(c);
                 self.eat();
                 continue;
             }
             if c == '.' {
-                if self.num_buf.len() > 0 {
-                    self.num_buf.push(c);
+                if self.number_buffer.len() > 0 {
+                    self.number_buffer.push(c);
                     self.eat();
                     continue;
                 }
                 self.flush();
-                if self.toks.len() == 0 {
+                if self.pending_tokens.len() == 0 {
                     return Err(ToyError::new(
                         ToyErrorType::MalformedFieldName,
-                        Some(self.get_error_context()),
+                        self.get_error_span(),
                     ));
                 }
-                match self.toks.last().unwrap() {
+                match self.pending_tokens.last().unwrap() {
                     Token::VarName(_) | Token::VarRef(_) | Token::RBrack | Token::RParen => {}
                     _ => {
                         return Err(ToyError::new(
                             ToyErrorType::MalformedFieldName,
-                            Some(self.get_error_context()),
+                            self.get_error_span(),
                         ));
                     }
                 }
-                let len = self.chars.len();
+                let source_len = self.source_chars.len();
                 loop {
-                    self.cp += 1;
+                    self.cursor += 1;
                     let mut field_name = String::new();
 
-                    while self.cp < self.chars.len()
-                        && (self.chars[self.cp].is_alphanumeric() || self.chars[self.cp] == '_')
+                    while self.cursor < self.source_chars.len()
+                        && (self.source_chars[self.cursor].is_alphanumeric()
+                            || self.source_chars[self.cursor] == '_')
                     {
-                        field_name.push(self.chars[self.cp]);
-                        self.cp += 1;
+                        field_name.push(self.source_chars[self.cursor]);
+                        self.cursor += 1;
                     }
 
                     if field_name.is_empty() {
                         return Err(ToyError::new(
                             ToyErrorType::MalformedFieldName,
-                            Some(self.get_error_context()),
+                            self.get_error_span(),
                         ));
                     }
 
-                    self.toks.push(Token::Dot);
-                    self.toks.push(Token::VarRef(Box::new(field_name)));
+                    let dot_cursor = self.cursor - field_name.len() - 1;
+                    let field_start_cursor = dot_cursor + 1;
+                    let dot_byte =
+                        self.char_byte_offsets.get(dot_cursor).copied().unwrap_or(0) as u64;
+                    self.token_start_bytes.push(dot_byte);
+                    self.pending_tokens.push(Token::Dot);
+                    self.push_tok(Token::VarRef(Box::new(field_name)), field_start_cursor);
 
-                    if self.cp < len && self.chars[self.cp] == '.' {
+                    if self.cursor < source_len && self.source_chars[self.cursor] == '.' {
                         continue;
                     } else {
                         break;
@@ -294,38 +352,38 @@ impl Lexer {
             if c == '+' {
                 if self.peek(1) == '=' {
                     self.flush();
-                    self.toks.push(Token::CompoundPlus);
-                    self.cp += 2;
+                    self.push_tok(Token::CompoundPlus, tok_start);
+                    self.cursor += 2;
                     continue;
                 }
                 if self.peek(1) == '+' {
                     self.flush();
-                    self.toks.push(Token::PlusPlus);
-                    self.cp += 2;
+                    self.push_tok(Token::PlusPlus, tok_start);
+                    self.cursor += 2;
                     continue;
                 }
                 self.flush();
-                self.toks.push(Token::Plus);
+                self.push_tok(Token::Plus, tok_start);
                 self.eat();
                 continue;
             }
             if c == '-' {
                 if self.peek(1) == '=' {
                     self.flush();
-                    self.toks.push(Token::CompoundMinus);
-                    self.cp += 2;
+                    self.push_tok(Token::CompoundMinus, tok_start);
+                    self.cursor += 2;
                     continue;
                 }
                 if self.peek(1) == '-' {
                     self.flush();
-                    self.toks.push(Token::MinusMinus);
-                    self.cp += 2;
+                    self.push_tok(Token::MinusMinus, tok_start);
+                    self.cursor += 2;
                     continue;
                 }
                 self.flush();
                 if self.peek(1).is_ascii_digit() {
-                    let is_unary = self.toks.is_empty() || {
-                        match self.toks.last().unwrap() {
+                    let is_unary = self.pending_tokens.is_empty() || {
+                        match self.pending_tokens.last().unwrap() {
                             Token::Assign
                             | Token::LParen
                             | Token::LBrack
@@ -358,25 +416,28 @@ impl Lexer {
                         }
                     };
                     if is_unary {
-                        self.num_buf.push('-');
+                        if self.number_buffer.is_empty() {
+                            self.buffer_start_cursor = self.cursor;
+                        }
+                        self.number_buffer.push('-');
                         self.eat();
                         continue;
                     }
                 }
                 self.flush();
-                self.toks.push(Token::Minus);
+                self.push_tok(Token::Minus, tok_start);
                 self.eat();
                 continue;
             }
             if c == '*' {
                 if self.peek(1) == '=' {
                     self.flush();
-                    self.toks.push(Token::CompoundMultiply);
-                    self.cp += 2;
+                    self.push_tok(Token::CompoundMultiply, tok_start);
+                    self.cursor += 2;
                     continue;
                 }
                 self.flush();
-                self.toks.push(Token::Multiply);
+                self.push_tok(Token::Multiply, tok_start);
                 self.eat();
                 continue;
             }
@@ -384,92 +445,95 @@ impl Lexer {
                 if self.peek(1) == '/' {
                     self.flush();
                     //Comment, skip to end of line
-                    while self.cp < self.chars.len() && self.chars[self.cp] != '\n' {
+                    while self.cursor < self.source_chars.len()
+                        && self.source_chars[self.cursor] != '\n'
+                    {
                         self.eat();
                     }
                     continue;
                 }
                 if self.peek(1) == '=' {
                     self.flush();
-                    self.toks.push(Token::CompoundDivide);
-                    self.cp += 2;
+                    self.push_tok(Token::CompoundDivide, tok_start);
+                    self.cursor += 2;
                     continue;
                 }
                 self.flush();
-                self.toks.push(Token::Divide);
+                self.push_tok(Token::Divide, tok_start);
                 self.eat();
                 continue;
             }
             if c == '(' {
                 self.flush();
-                self.toks.push(Token::LParen);
+                self.push_tok(Token::LParen, tok_start);
                 self.eat();
                 continue;
             }
             if c == ')' {
                 self.flush();
-                self.toks.push(Token::RParen);
+                self.push_tok(Token::RParen, tok_start);
                 self.eat();
                 continue;
             }
             if c == '%' {
                 self.flush();
-                self.toks.push(Token::Modulo);
+                self.push_tok(Token::Modulo, tok_start);
                 self.eat();
                 continue;
             }
             if c == '&' && self.peek(1) == '&' {
                 self.flush();
-                self.toks.push(Token::And);
-                self.cp += 2;
+                self.push_tok(Token::And, tok_start);
+                self.cursor += 2;
                 continue;
             }
             if c == '|' && self.peek(1) == '|' {
                 self.flush();
-                self.toks.push(Token::Or);
-                self.cp += 2;
+                self.push_tok(Token::Or, tok_start);
+                self.cursor += 2;
                 continue;
             }
             if c == '<' {
                 self.flush();
                 if self.peek(1) == '=' {
-                    self.toks.push(Token::LessThanEqt);
-                    self.cp += 2;
+                    self.push_tok(Token::LessThanEqt, tok_start);
+                    self.cursor += 2;
                     continue;
                 }
-                self.toks.push(Token::LessThan);
+                self.push_tok(Token::LessThan, tok_start);
                 self.eat();
                 continue;
             }
             if c == '>' {
                 self.flush();
                 if self.peek(1) == '=' {
-                    self.toks.push(Token::GreaterThanEqt);
-                    self.cp += 2;
+                    self.push_tok(Token::GreaterThanEqt, tok_start);
+                    self.cursor += 2;
                     continue;
                 }
-                self.toks.push(Token::GreaterThan);
+                self.push_tok(Token::GreaterThan, tok_start);
                 self.eat();
                 continue;
             }
             if c == '=' {
                 self.flush();
                 if self.peek(1) == '=' {
-                    self.toks.push(Token::Equals);
-                    self.cp += 2;
+                    self.push_tok(Token::Equals, tok_start);
+                    self.cursor += 2;
                     continue;
                 }
-                self.toks.push(Token::Assign);
+                self.push_tok(Token::Assign, tok_start);
                 self.eat();
                 continue;
             }
             if c == '"' {
-                if self.in_str_lit {
+                if self.in_string_literal {
                     self.flush_str();
-                    self.in_str_lit = false;
+                    self.in_string_literal = false;
                 } else {
                     self.flush();
-                    self.in_str_lit = true;
+                    self.buffer_start_cursor = self.cursor;
+                    self.in_string_literal = true;
                 }
                 self.eat();
                 continue;
@@ -477,147 +541,164 @@ impl Lexer {
             if c == '!' {
                 self.flush();
                 if self.peek(1) == '=' {
-                    self.toks.push(Token::NotEquals);
-                    self.cp += 2;
+                    self.push_tok(Token::NotEquals, tok_start);
+                    self.cursor += 2;
                     continue;
                 }
-                self.toks.push(Token::Not);
+                self.push_tok(Token::Not, tok_start);
                 self.eat();
                 continue;
             }
             if c == '{' {
                 self.flush();
-                self.toks.push(Token::LBrace);
+                self.push_tok(Token::LBrace, tok_start);
                 self.eat();
                 continue;
             }
             if c == '}' {
                 self.flush();
-                self.toks.push(Token::RBrace);
+                self.push_tok(Token::RBrace, tok_start);
                 self.eat();
                 continue;
             }
             if c == ';' {
                 self.flush();
-                self.toks.push(Token::Semicolon);
+                self.push_tok(Token::Semicolon, tok_start);
                 self.eat();
                 continue;
             }
             if c == ':' {
                 self.flush();
-                self.toks.push(Token::Colon);
+                self.push_tok(Token::Colon, tok_start);
                 self.eat();
                 continue;
             }
             if c == ',' {
                 self.flush();
-                self.toks.push(Token::Comma);
+                self.push_tok(Token::Comma, tok_start);
                 self.eat();
                 continue;
             }
             if c == '[' {
                 self.flush();
-                self.toks.push(Token::LBrack);
+                self.push_tok(Token::LBrack, tok_start);
                 self.eat();
                 continue;
             }
             if c == ']' {
                 self.flush();
-                self.toks.push(Token::RBrack);
+                self.push_tok(Token::RBrack, tok_start);
                 self.eat();
                 continue;
             }
             if c.is_ascii() {
                 self.flush_num();
-                self.str_buf.push(c);
+                if self.string_buffer.is_empty() {
+                    self.buffer_start_cursor = self.cursor;
+                }
+                self.string_buffer.push(c);
                 self.eat();
                 continue;
             }
 
             return Err(ToyError::new(
                 ToyErrorType::UnknownCharacter(c),
-                Some(self.get_error_context()),
+                self.get_error_span(),
             ));
         }
-        debug!(targets: ["lexer_verbose"], self.toks.clone());
+        debug!(targets: ["lexer_verbose"], self.pending_tokens.clone());
 
-        //Catch any trailing its
+        // flush any trailing numeric literal
         self.flush_num();
-        let to_ret = self.toks.clone();
+        // build SpannedTokens: each token spans [its_start, next_token_start)
+        let file_path = Driver::get_current_file_path().unwrap_or_else(|| "<unknown>".to_string());
+        let source_end_byte = self.char_byte_offsets.last().copied().unwrap_or(0) as u64;
+        let starts = self.token_start_bytes.clone();
+        let spanned: Vec<SpannedToken> = self
+            .pending_tokens
+            .iter()
+            .enumerate()
+            .map(|(i, tok)| {
+                let start = starts[i] as i64;
+                let end = starts.get(i + 1).copied().unwrap_or(source_end_byte) as i64;
+                SpannedToken {
+                    tok: tok.clone(),
+                    span: Span::new(&file_path, start, end.max(start)),
+                }
+            })
+            .collect();
         self.clean_up();
-        return Ok(to_ret);
+        return Ok(spanned);
     }
     fn eat(&mut self) {
-        self.cp += 1;
+        self.cursor += 1;
     }
     fn flush(&mut self) {
         self.flush_num();
         self.flush_str();
     }
     fn flush_num(&mut self) {
-        if self.num_buf.len() == 0 {
+        if self.number_buffer.is_empty() {
             return;
         }
-        let proto_output: String = self.num_buf.clone().into_iter().collect();
-        if proto_output.contains('.') {
-            let output: f64 = proto_output.parse().unwrap();
-            self.num_buf = Vec::new();
-            self.toks.push(Token::FloatLit(OrderedFloat(output)));
-            return;
+        let raw: String = self.number_buffer.iter().collect();
+        let start = self.buffer_start_cursor;
+        self.number_buffer = Vec::new();
+        if raw.contains('.') {
+            let value: f64 = raw.parse().unwrap();
+            self.push_tok(Token::FloatLit(OrderedFloat(value)), start);
+        } else {
+            let value: i64 = raw.parse().unwrap();
+            self.push_tok(Token::IntLit(value), start);
         }
-        let output: i64 = proto_output.parse().unwrap();
-
-        self.num_buf = Vec::new();
-        self.toks.push(Token::IntLit(output));
     }
     fn flush_str(&mut self) {
-        if self.in_str_lit {
-            let proto_output: String = self.str_buf.clone().into_iter().collect();
-            self.toks.push(Token::StringLit(Box::new(proto_output)));
-            self.str_buf = Vec::new();
+        if self.in_string_literal {
+            let text: String = self.string_buffer.iter().collect();
+            self.push_tok(Token::StringLit(Box::new(text)), self.buffer_start_cursor);
+            self.string_buffer = Vec::new();
             return;
         }
 
-        if self.str_buf.len() == 0 {
+        if self.string_buffer.is_empty() {
             return;
         }
 
-        if !(self.toks.len() == 0)
-            && self.toks.last().unwrap() == &Token::Struct(Box::new("".to_string()))
+        let start = self.buffer_start_cursor;
+        let text: String = self.string_buffer.iter().collect();
+        self.string_buffer = Vec::new();
+
+        // Struct keyword was just pushed with an empty name — fill it in
+        if !self.pending_tokens.is_empty()
+            && self.pending_tokens.last().unwrap() == &Token::Struct(Box::new("".to_string()))
         {
-            let proto_output: String = self.str_buf.clone().into_iter().collect();
-            let len = self.toks.clone().len();
-            self.toks[len - 1] = Token::Struct(Box::new(proto_output));
-            self.str_buf = Vec::new();
+            let last = self.pending_tokens.len() - 1;
+            self.pending_tokens[last] = Token::Struct(Box::new(text));
+            // span slot was already reserved by push_tok for the Struct token
             return;
         }
 
-        if self.toks.len() == 0 {
-            let proto_output: String = self.str_buf.clone().into_iter().collect();
-            self.toks.push(Token::VarRef(Box::new(proto_output)));
-            self.str_buf = Vec::new();
+        if self.pending_tokens.is_empty() {
+            self.push_tok(Token::VarRef(Box::new(text)), start);
             return;
         }
-        if self.toks.last().unwrap().tok_type() == "Let"
-            || self.toks.last().unwrap().tok_type() == "Func"
-            || self.toks.last().unwrap().tok_type() == "Import"
-        {
-            let proto_output: String = self.str_buf.clone().into_iter().collect();
-            self.toks.push(Token::VarName(Box::new(proto_output)));
-            self.str_buf = Vec::new();
+
+        let last_type = self.pending_tokens.last().unwrap().tok_type();
+        if last_type == "Let" || last_type == "Func" || last_type == "Import" {
+            self.push_tok(Token::VarName(Box::new(text)), start);
         } else {
-            let proto_output: String = self.str_buf.clone().into_iter().collect();
-            self.toks.push(Token::VarRef(Box::new(proto_output)));
-            self.str_buf = Vec::new();
+            self.push_tok(Token::VarRef(Box::new(text)), start);
         }
     }
 
     fn clean_up(&mut self) {
-        self.chars = Vec::new();
-        self.cp = 0;
-        self.num_buf = Vec::new();
-        self.str_buf = Vec::new();
-        self.toks = Vec::new();
+        self.source_chars = Vec::new();
+        self.cursor = 0;
+        self.number_buffer = Vec::new();
+        self.string_buffer = Vec::new();
+        self.pending_tokens = Vec::new();
+        self.token_start_bytes = Vec::new();
+        self.buffer_start_cursor = 0;
     }
 }
 

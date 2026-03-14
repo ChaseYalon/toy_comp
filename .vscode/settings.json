@@ -42,8 +42,11 @@
       "dimenstion",
       "dimf",
       "DLLVM",
+      "doesnt",
+      "doubleplusungood",
       "dylib",
       "elems",
+      "encapsulators",
       "expf",
       "expm",
       "fabs",
@@ -70,6 +73,7 @@
       "imod",
       "imul",
       "insts",
+      "ints",
       "isub",
       "LBRACK",
       "lbruntime",
@@ -141,6 +145,7 @@
       "trunc",
       "truncf",
       "uextend",
+      "uncond",
       "vecs",
       "winget",
       "worldfalse",
@@ -166,6 +171,10 @@
     ],
   "clangd.arguments": [
       "--compile-commands-dir=${workspaceFolder}/build"
-  ]
+  ],
+  "chat.tools.terminal.autoApprove": {
+    "nm": true
+  },
+  "cmake.ignoreCMakeListsMissing": true
 
 }

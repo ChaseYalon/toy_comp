@@ -1,4 +1,4 @@
-//ths file makes he linker happy, found it on a random forum, don ask me what it does
+//this file makes he linker happy, found it on a random forum, dont ask me what it does
 #include <stdlib.h>
 
 typedef struct LLVMOpaqueValue *LLVMValueRef;

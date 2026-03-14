@@ -1,13 +1,14 @@
 #![allow(unused)]
-
-use std::collections::HashMap;
+use itertools::Itertools;
+use std::collections::{BTreeSet, HashMap, HashSet};
 type AllocationId = u64;
+use serde::{Serialize, Deserialize};
 use crate::{
     errors::{ToyError, ToyErrorType},
     parser::ast::InfixOp,
     token::TypeTok,
 };
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 
 pub enum NumericInfixOp {
     Plus,
@@ -16,7 +17,7 @@ pub enum NumericInfixOp {
     Divide,
     Modulo,
 }
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 
 pub enum BoolInfixOp {
     GreaterThan,
@@ -31,7 +32,7 @@ pub enum BoolInfixOp {
 ///randomly generated "handle" that points to an ssa node
 pub type ValueId = usize;
 pub type BlockId = usize;
-#[derive(PartialEq, Debug, Clone, Hash, Eq)]
+#[derive(PartialEq, Debug, Clone, Hash, Eq, Deserialize, Serialize)]
 pub enum TirType {
     ///used for integers
     I64,
@@ -42,7 +43,7 @@ pub enum TirType {
     ///interfaces are represented as a vec of other types, there are no field names, everything is done by position
     StructInterface(Vec<TirType>),
     Void,
-    ///represents a pointer 
+    ///represents a pointer
     Ptr,
 }
 impl TirType {
@@ -64,13 +65,12 @@ impl TirType {
         return s;
     }
 }
-#[derive(PartialEq, Debug, Clone, Hash, Eq)]
-
+#[derive(PartialEq, Debug, Clone, Hash, Eq, Serialize, Deserialize)]
 pub struct SSAValue {
     pub val: ValueId,
     pub ty: Option<TirType>,
 }
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub enum TIR {
     ///value as i64, regardless of weather it is an i64 or i1, and TirType to specify that
     IConst(ValueId, i64, TirType),
@@ -93,8 +93,8 @@ pub enum TIR {
     Ret(ValueId, SSAValue),
     ///call locally defined function, functions are called by name, SSA values are passed by order to the function , the bool represents weather the return value from the function is HEAP allocated, CTLA will take ownership of any returned values,
     CallLocalFunction(ValueId, Box<String>, Vec<SSAValue>, bool, TirType),
-    ///call externally defined function, same rules as above final type is just return type
-    CallExternFunction(ValueId, Box<String>, Vec<SSAValue>, bool, TirType),
+    ///call externally defined function, same rules as above final type is just return type. final bool is doesn't take ownership
+    CallExternFunction(ValueId, Box<String>, Vec<SSAValue>, bool, TirType, bool),
     ///creates a new struct interface, with a ValueId and with the specified values (YOU ARE RESPONSIBLE FOR KEEPING TRACK OF Field -> Idx mapping),
     ///second string is name, note please make the Tir AType a struct otherwise you will get a weird error
     CreateStructInterface(ValueId, Box<String>, TirType),
@@ -124,7 +124,7 @@ impl TIR {
             TIR::JumpBlockUnCond(id, _) => *id,
             TIR::Ret(id, _) => *id,
             TIR::CallLocalFunction(id, _, _, _, _) => *id,
-            TIR::CallExternFunction(id, _, _, _, _) => *id,
+            TIR::CallExternFunction(id, _, _, _, _, _) => *id,
             TIR::CreateStructInterface(id, _, _) => *id,
             TIR::CreateStructLiteral(id, _, _) => *id,
             TIR::ReadStructLiteral(id, _, _) => *id,
@@ -135,12 +135,12 @@ impl TIR {
         }
     }
 }
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub struct Block {
     pub id: BlockId,
     pub ins: Vec<TIR>,
 }
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Eq, Hash, Serialize, Deserialize)]
 pub struct HeapAllocation {
     pub block: BlockId,
     ///functions are detected by name
@@ -152,8 +152,14 @@ pub struct HeapAllocation {
     ///a vec representing every ssa value that references the allocation
     ///The string is the function name where the ref occurs, BlockId is self explanatory, ValueId is the id of the instruction where the ref occurs
     pub refs: Vec<(Box<String>, BlockId, ValueId)>,
+
+   ///Takes all the different aliases of the allocation. References to the allocations are put into the res vec. 
+    pub aliases: BTreeSet<(String, BlockId, ValueId)>,
+
+    ///Encapsulators are heap allocations which reference within them this allocation. An allocation MUST not be freed until all its encapsulators are freed.
+    pub encapsulators: BTreeSet<(String, BlockId, ValueId)>
 }
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct Function {
     ///the ssa values where the params can be referenced
     pub params: Vec<SSAValue>,
@@ -162,16 +168,16 @@ pub struct Function {
     pub ret_type: TirType,
     pub ins_counter: usize,
     pub heap_counter: AllocationId,
-    ///this tracks all the heap allocations in a given function, but the same heap allocation can be in multiple functions, if
+    ///this tracks all the heap allocations in a given function, but the same heap allocation can be in multiple functions, if it is passed as a param or returned
     pub heap_allocations: Vec<HeapAllocation>,
 }
 #[derive(Clone)]
 pub struct TirBuilder {
     block_counter: BlockId,
     pub funcs: Vec<Function>,
-    pub curr_func: Option<usize>, //index into self.funcs
-    curr_block: Option<usize>,    //index into self.curr_func.body,
-    pub extern_funcs: HashMap<String, (bool, TypeTok, bool)>, //external function name to is_allocator, return_type, is_user_defined
+    pub curr_func: Option<usize>,  //index into self.funcs
+    pub curr_block: Option<usize>, //index into self.curr_func.body,
+    pub extern_funcs: HashMap<String, (bool, TypeTok, bool, bool)>, //external function name to is_allocator, return_type, doesnt_take_ownership, is_read_only
 }
 impl TirBuilder {
     pub fn new() -> TirBuilder {
@@ -196,12 +202,16 @@ impl TirBuilder {
         return self.block_counter - 1;
     }
     pub fn new_func(&mut self, name: Box<String>, params: Vec<SSAValue>, ret_type: TypeTok) {
+        // The ins_counter must start past the highest param ID to avoid SSA ID collisions.
+        // Params are allocated from the caller's (parent function's) counter, so their IDs
+        // can be arbitrary. Starting at max_param_id + 1 ensures no instruction shadows a param.
+        let ins_counter_start = params.iter().map(|p| p.val + 1).max().unwrap_or(0);
         let func = Function {
             name: name,
             params: params.clone(),
             body: vec![],
             ret_type: self.type_tok_to_tir_type(ret_type),
-            ins_counter: params.len(),
+            ins_counter: ins_counter_start,
             heap_allocations: vec![],
             heap_counter: 0,
         };
@@ -215,7 +225,7 @@ impl TirBuilder {
         self.curr_block = Some(self.funcs[self.curr_func.unwrap()].body.len() - 1);
     }
 
-    pub fn register_extern_func(&mut self, name: String, ret_type: TypeTok) {
+    pub fn register_extern_func(&mut self, name: String, ret_type: TypeTok, is_read_only: bool) {
         //Functions returning str, str[], or any array type are allocators
         let is_allocator = matches!(
             ret_type,
@@ -224,10 +234,10 @@ impl TirBuilder {
                 | TypeTok::IntArr(_)
                 | TypeTok::FloatArr(_)
                 | TypeTok::BoolArr(_)
-                | TypeTok::StructArr(_)
+                | TypeTok::StructArr(_, _)
         );
         self.extern_funcs
-            .insert(name, (is_allocator, ret_type, true));
+            .insert(name, (is_allocator, ret_type, false, is_read_only));
     }
 
     /// Updates the parameters of the current function
@@ -491,6 +501,8 @@ impl TirBuilder {
                 function: self.funcs[self.curr_func.unwrap()].name.clone(),
                 refs: vec![],
                 alloc_ins: ret_ins.clone(),
+                aliases: BTreeSet::new(),
+                encapsulators: BTreeSet::new()
             };
             self.funcs[self.curr_func.unwrap()]
                 .heap_allocations
@@ -517,8 +529,9 @@ impl TirBuilder {
         &mut self,
         name: String,
         params: Vec<SSAValue>,
+        doesnt_take_ownership: bool,
     ) -> Result<SSAValue, ToyError> {
-        let (is_allocator, ret_tok, _) = self.extern_funcs.get(&name).cloned().unwrap(); // parser validated
+        let (is_allocator, ret_tok, _, _) = self.extern_funcs.get(&name).cloned().unwrap(); // parser validated
         let ret_type = self.type_tok_to_tir_type(ret_tok);
         let curr_func_name = self.funcs[self.curr_func.unwrap()].name.clone();
         let curr_block_idx = self.curr_block.unwrap();
@@ -539,8 +552,14 @@ impl TirBuilder {
             }
         });
         let id = self._next_value_id();
-        let ins =
-            TIR::CallExternFunction(id, Box::new(name), params, is_allocator, ret_type.clone());
+        let ins = TIR::CallExternFunction(
+            id,
+            Box::new(name),
+            params,
+            is_allocator,
+            ret_type.clone(),
+            doesnt_take_ownership,
+        );
         self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()]
             .ins
             .push(ins.clone()); //SAFETY: that is the real value of the ins and the only ref later is for the ins_value in the HeapAllocation
@@ -557,6 +576,8 @@ impl TirBuilder {
                 function: self.funcs[self.curr_func.unwrap()].name.clone(),
                 refs: vec![],
                 alloc_ins: val.clone(),
+                aliases: BTreeSet::new(),
+                encapsulators: BTreeSet::new(),
             };
             self.funcs[self.curr_func.unwrap()]
                 .heap_allocations
@@ -590,28 +611,50 @@ impl TirBuilder {
 
         // Otherwise, try extern
         if self.extern_funcs.contains_key(&name) {
-            return self.call_extern(name, params);
+            let (_, _, doesnt_take_ownership, _) = self.extern_funcs.get(&name).unwrap();
+            return self.call_extern(name, params, *doesnt_take_ownership);
         }
-
+        println!("Name: {name}");
         unreachable!(); // parser validated
     }
-    //I dont like ths, it should be in the call_extern
-    /// Calls an externally defined function that returns void.
-    /// Use this for functions like toy_write_to_arr that don't return a value.
     pub fn call_extern_void(
         &mut self,
         name: String,
         params: Vec<SSAValue>,
     ) -> Result<(), ToyError> {
-        //params should never be freed, so no need to track refs
-        let (is_allocator, ret_tok, _) = self.extern_funcs.get(&name).cloned().unwrap(); // parser validated
+        let curr_func_name = self.funcs[self.curr_func.unwrap()].name.clone();
+        let curr_block_idx = self.curr_block.unwrap();
+        let curr_block = self.funcs[self.curr_func.unwrap()].body[curr_block_idx].id;
+
+        // track refs just like call_extern does
+        self.funcs.iter_mut().for_each(|f| {
+            if f.name == curr_func_name {
+                f.heap_allocations.iter_mut().for_each(|alloc| {
+                    params.iter().for_each(|p| {
+                        if p.val == alloc.alloc_ins.val || alloc.refs.iter().any(|r| r.2 == p.val) {
+                            alloc.refs.push((curr_func_name.clone(), curr_block, p.val));
+                        }
+                    })
+                })
+            }
+        });
+
+        let (_, ret_tok, _, _) = self.extern_funcs.get(&name).cloned().unwrap();
         let ret_type = self.type_tok_to_tir_type(ret_tok);
         let id = self._next_value_id();
-        let ins = TIR::CallExternFunction(id, Box::new(name), params, is_allocator, ret_type);
+        let (_, _, doesnt_take_ownership, _) = self.extern_funcs.get(&name).unwrap();
+
+        let ins = TIR::CallExternFunction(
+            id,
+            Box::new(name),
+            params,
+            false,
+            ret_type,
+            *doesnt_take_ownership,
+        );
         self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()]
             .ins
             .push(ins);
-
         Ok(())
     }
     pub fn create_struct_interface(&mut self, name: String, types: Vec<TirType>) -> TirType {
@@ -768,9 +811,22 @@ impl TirBuilder {
             .push(ins);
         return Ok(SSAValue { val: id, ty: None });
     }
+    pub fn get_curr_block_id(&self) -> BlockId {
+        self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()].id
+    }
+    pub fn curr_block_has_terminator(&self) -> bool {
+        let block = &self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()];
+        block.ins.last().map_or(false, |ins| {
+            matches!(
+                ins,
+                TIR::Ret(_, _) | TIR::JumpCond(_, _, _, _) | TIR::JumpBlockUnCond(_, _)
+            )
+        })
+    }
     /// Emit a phi node that takes values from multiple predecessor blocks
     /// block_ids: the IDs of the predecessor blocks
     /// values: the SSA values from each predecessor block (must match order of block_ids)
+    /// Will create a NEW PHI
     pub fn emit_phi(
         &mut self,
         block_ids: Vec<BlockId>,
@@ -814,6 +870,7 @@ impl TirBuilder {
         // Use the type from the first value
         return Ok(ret_val);
     }
+    ///Uses an OLD PHI
     pub fn insert_phi(
         &mut self,
         block_id: BlockId,
@@ -906,9 +963,16 @@ impl TirBuilder {
             .map(|f| f.clone().ret_type)
             .unwrap()) // parser validated
     }
-    pub fn register_extern(&mut self, name: String, is_allocator: bool, ret_type: TypeTok) {
+    pub fn register_extern(
+        &mut self,
+        name: String,
+        is_allocator: bool,
+        ret_type: TypeTok,
+        doesnt_take_ownership: bool,
+        is_extern: bool,
+    ) {
         self.extern_funcs
-            .insert(name, (is_allocator, ret_type, false));
+            .insert(name, (is_allocator, ret_type, doesnt_take_ownership, is_extern));
     }
     pub fn global_string(&mut self, name: String) -> Result<SSAValue, ToyError> {
         let id = self._next_value_id();
@@ -920,10 +984,8 @@ impl TirBuilder {
             val: id,
             ty: Some(TirType::Ptr),
         };
-        let mut val2 = self.call_extern("toy_malloc".to_string(), vec![val])?;
+        let mut val2 = self.call_extern("toy_malloc".to_string(), vec![val], true)?;
         val2.ty = Some(TirType::Ptr);
-        //we need to update the type of the allocation instruction in the heap allocation list
-        //otherwise the CTLA will not be able to find the allocation
         self.funcs[self.curr_func.unwrap()]
             .heap_allocations
             .iter_mut()
@@ -951,8 +1013,9 @@ impl TirBuilder {
             &TypeTok::BoolArr(n) => (if use_element_type && n == 1 { 1 } else { 5 }, n),
             &TypeTok::IntArr(n) => (if use_element_type && n == 1 { 2 } else { 6 }, n),
             &TypeTok::FloatArr(n) => (if use_element_type && n == 1 { 3 } else { 7 }, n),
-            TypeTok::Struct(_) => (0, 0),
-            TypeTok::StructArr(_, n) => (if use_element_type && *n == 1 { 0 } else { 4 }, *n),
+            &TypeTok::AnyArr(n) => (if use_element_type && n == 1 { 0 } else { 4 }, n),
+            TypeTok::Struct(_) => (8, 0),
+            TypeTok::StructArr(_, n) => (if use_element_type && *n == 1 { 8 } else { 8 }, *n),
             _ => unreachable!(), // parser validated
         };
         let v = self.iconst(n, TypeTok::Int)?;
@@ -969,6 +1032,7 @@ impl TirBuilder {
             TypeTok::Bool => TirType::I1,
             TypeTok::Float => TirType::F64,
             TypeTok::Void => TirType::Void,
+            TypeTok::Any => TirType::Ptr,
             TypeTok::Str
             | TypeTok::Any
             | TypeTok::StrArr(_)
@@ -984,6 +1048,7 @@ impl TirBuilder {
                 }
                 TirType::StructInterface(types)
             }
+            _ => todo!("interfaces"),
         };
     }
     ///will erase all functions saved in the builder and set current func to the indicated
@@ -998,6 +1063,23 @@ impl TirBuilder {
             allocs.extend(func.heap_allocations);
         }
         return allocs;
+    }
+    pub fn detect_unique_heap_allocations(&self) -> Vec<HeapAllocation> {
+        let mut seen: HashMap<(AllocationId, Box<String>, ValueId), HeapAllocation> =
+            HashMap::new();
+        for func in &self.funcs {
+            for alloc in &func.heap_allocations {
+                seen.insert(
+                    (
+                        alloc.allocation_id,
+                        alloc.function.clone(),
+                        alloc.alloc_ins.val,
+                    ),
+                    alloc.clone(),
+                );
+            }
+        }
+        return seen.into_values().collect();
     }
     ///Will add a manually created TIR instruction before the specified instruction
     ///Will NOT move the cursor
@@ -1015,6 +1097,7 @@ impl TirBuilder {
             vec![to_free_val],
             false,
             TirType::Void,
+            false,
         );
 
         let func = self

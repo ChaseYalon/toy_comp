@@ -12,7 +12,7 @@ export fn panic(message: str){
 }
 //gets current process ID
 extern fn toy_sys_get_pid(): int;
-export fn get_pid(){
+export fn get_pid(): int {
     return toy_sys_get_pid();
 }
 
@@ -51,4 +51,9 @@ export fn is_little_endian(): bool{
 }
 export fn is_big_endian(): bool {
     return !is_little_endian();
+}
+//0 = success, 1 = failure
+extern fn toy_sys_invoke(code: str, args: str[]): int;
+export fn invoke(code: str, args: str[]): int{
+    return toy_sys_invoke(code, args);
 }

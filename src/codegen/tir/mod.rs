@@ -58,9 +58,47 @@ pub struct AstToIrConverter {
     ///struct name -> ((Field Name -> idx), TirType::Struct)
     interfaces: HashMap<String, (HashMap<String, usize>, TirType)>,
     main_func_name: String,
+    loop_stack: Vec<LoopContext>,
+}
+
+#[derive(Debug, Clone)]
+struct LoopContext {
+    continue_target: BlockId,
+    break_target: BlockId,
+    tracked_vars: Vec<String>,
+    backedges: Vec<(BlockId, BTreeMap<String, SSAValue>)>,
 }
 
 impl AstToIrConverter {
+    fn has_loop_control_for_current_loop(node: &Ast) -> bool {
+        match node {
+            Ast::Break(_) | Ast::Continue(_) => true,
+            Ast::IfStmt(_, body, alt, _) => {
+                body.iter().any(Self::has_loop_control_for_current_loop)
+                    || alt
+                        .as_ref()
+                        .map(|a| a.iter().any(Self::has_loop_control_for_current_loop))
+                        .unwrap_or(false)
+            }
+            Ast::WhileStmt(_, _, _) => false,
+            Ast::FuncDec(_, _, _, _, _) => false,
+            _ => false,
+        }
+    }
+
+    fn snapshot_loop_vars(
+        &self,
+        scope: &Rc<RefCell<Scope>>,
+        tracked_vars: &[String],
+    ) -> Result<BTreeMap<String, SSAValue>, ToyError> {
+        let mut snapshot = BTreeMap::new();
+        for var_name in tracked_vars {
+            let val = scope.as_ref().borrow().get_var(var_name)?;
+            snapshot.insert(var_name.clone(), val);
+        }
+        Ok(snapshot)
+    }
+
     pub fn new() -> AstToIrConverter {
         return AstToIrConverter {
             builder: TirBuilder::new(),
@@ -71,14 +109,15 @@ impl AstToIrConverter {
             last_val: None,
             interfaces: HashMap::new(),
             main_func_name: "user_main".to_string(),
+            loop_stack: vec![],
         };
     }
     fn get_expr_type(&self, node: &Ast, scope: &Rc<RefCell<Scope>>) -> Result<TypeTok, ToyError> {
         match node {
-            Ast::IntLit(_) => Ok(TypeTok::Int),
-            Ast::BoolLit(_) => Ok(TypeTok::Bool),
+            Ast::IntLit(_, _) => Ok(TypeTok::Int),
+            Ast::BoolLit(_, _) => Ok(TypeTok::Bool),
             Ast::StringLit(_, _) => Ok(TypeTok::Str),
-            Ast::FloatLit(_) => Ok(TypeTok::Float),
+            Ast::FloatLit(_, _) => Ok(TypeTok::Float),
             Ast::VarRef(n, _) => scope.as_ref().borrow().get_var_type(n),
             Ast::InfixExpr(l, r, op, _) => match op {
                 InfixOp::Equals
@@ -101,7 +140,9 @@ impl AstToIrConverter {
                 "float" => Ok(TypeTok::Float),
                 "bool" => Ok(TypeTok::Bool),
                 _ => {
-                    if let Some((_, type_tok, _)) = self.builder.extern_funcs.get(&*n.to_string()) {
+                    if let Some((_, type_tok, _, _)) =
+                        self.builder.extern_funcs.get(&*n.to_string())
+                    {
                         Ok(type_tok.clone())
                     } else if let Some(f) =
                         self.builder.funcs.iter().find(|f| *f.name == *n.clone())
@@ -162,31 +203,22 @@ impl AstToIrConverter {
                 }
             }
             Ast::StructLit(_, _, _) => Ok(TypeTok::Int),
-            Ast::Not(_) => Ok(TypeTok::Bool),
-            Ast::MemberAccess(target, field_name, _) => {
+            Ast::Not(_, _) => Ok(TypeTok::Bool),
+            Ast::MemberAccess(target, field_name, span) => {
                 let target_ty = self.get_expr_type(target, scope)?;
                 match target_ty {
                     TypeTok::Struct(fields) => {
                         if let Some(field_ty) = fields.get(field_name) {
                             Ok(*field_ty.clone())
                         } else {
-                            Err(ToyError::new(
-                                ToyErrorType::KeyNotOnStruct,
-                                Some(field_name.clone()),
-                            ))
+                            Err(ToyError::new(ToyErrorType::KeyNotOnStruct, span.clone()))
                         }
                     }
-                    _ => Err(ToyError::new(
-                        ToyErrorType::VariableNotAStruct,
-                        Some(format!("{:?}", target)),
-                    )),
+                    _ => Err(ToyError::new(ToyErrorType::VariableNotAStruct, node.span())),
                 }
             }
 
-            _ => Err(ToyError::new(
-                ToyErrorType::TypeIdNotAssigned,
-                Some(format!("{}", node)),
-            )),
+            _ => Err(ToyError::new(ToyErrorType::TypeIdNotAssigned, node.span())),
         }
     }
 
@@ -196,9 +228,9 @@ impl AstToIrConverter {
         scope: &Rc<RefCell<Scope>>,
     ) -> Result<SSAValue, ToyError> {
         let res = match node {
-            Ast::IntLit(v) => self.builder.iconst(v, TypeTok::Int),
-            Ast::BoolLit(b) => self.builder.iconst(if b { 1 } else { 0 }, TypeTok::Bool),
-            Ast::FloatLit(f) => self.builder.fconst(f.into()),
+            Ast::IntLit(v, _) => self.builder.iconst(v, TypeTok::Int),
+            Ast::BoolLit(b, _) => self.builder.iconst(if b { 1 } else { 0 }, TypeTok::Bool),
+            Ast::FloatLit(f, _) => self.builder.fconst(f.into()),
             Ast::InfixExpr(left_i, right_i, op, _) => {
                 let mut left = self.compile_expr(*left_i, scope)?;
                 let mut right = self.compile_expr(*right_i, scope)?;
@@ -212,10 +244,9 @@ impl AstToIrConverter {
                 if left.ty == right.ty && left.ty == Some(TirType::I64) {}
                 return if vec![
                     InfixOp::LessThan,
-                    InfixOp::LessThan,
                     InfixOp::GreaterThan,
                     InfixOp::GreaterThanEqt,
-                    InfixOp::GreaterThan,
+                    InfixOp::LessThanEqt,
                     //can be str also InfixOp::Equals,
                     InfixOp::NotEquals, //will be str in the future
                     InfixOp::And,
@@ -238,16 +269,20 @@ impl AstToIrConverter {
                 {
                     self.builder.numeric_infix(left, right, op)
                 } else {
-                    //at this point we assume it is a string expression
+                    //at this point assume it is a string expression
                     if op == InfixOp::Equals {
-                        return self
-                            .builder
-                            .call_extern("toy_strequal".to_string(), vec![left, right]);
+                        return self.builder.call_extern(
+                            "toy_strequal".to_string(),
+                            vec![left, right],
+                            true,
+                        );
                     }
                     if op == InfixOp::Plus {
-                        return self
-                            .builder
-                            .call_extern("toy_concat".to_string(), vec![left, right]);
+                        return self.builder.call_extern(
+                            "toy_concat".to_string(),
+                            vec![left, right],
+                            true,
+                        );
                     }
                     unreachable!()
                 };
@@ -284,7 +319,7 @@ impl AstToIrConverter {
                     .builder
                     .extern_funcs
                     .get(name)
-                    .map(|(_, _, u)| *u)
+                    .map(|(_, _, _, is_builtin_extern)| !*is_builtin_extern)
                     .unwrap_or(false);
 
                 let mut final_params = Vec::new();
@@ -321,17 +356,15 @@ impl AstToIrConverter {
 
                         if let Some(s_name) = struct_name {
                             let method_base_name = format!("{}::to_str", s_name);
-                            let mangled =
-                                Driver::mangle_name(None, &method_base_name, &[]);
-                            
+                            let mangled = Driver::mangle_name(None, &method_base_name, &[]);
+
                             if self.builder.funcs.iter().any(|f| *f.name == mangled)
                                 || self.builder.extern_funcs.contains_key(&mangled)
                             {
                                 if !is_arr {
-                                    final_params.push(self.builder.call(
-                                        mangled,
-                                        vec![ssa_params[0].clone()],
-                                    )?);
+                                    final_params.push(
+                                        self.builder.call(mangled, vec![ssa_params[0].clone()])?,
+                                    );
                                 } else {
                                     let s = format!("String[]([]{})", dimension);
                                     let str_val = self.builder.global_string(s)?;
@@ -410,13 +443,13 @@ impl AstToIrConverter {
                 let st = *s;
                 self.builder.global_string(st)
             }
-            Ast::ArrLit(ty, vals, _) => {
+            Ast::ArrLit(ref ty, ref vals, _) => {
                 let mut ssa_vals: Vec<SSAValue> = Vec::new();
                 for val in vals.clone() {
                     let compiled_val = self.compile_expr(val, scope)?;
                     ssa_vals.push(compiled_val);
                 }
-                let len = self.compile_expr(Ast::IntLit(vals.len() as i64), scope)?;
+                let len = self.compile_expr(Ast::IntLit(vals.len() as i64, node.span()), scope)?;
                 let degree = match ty {
                     TypeTok::IntArr(d) => d,
                     TypeTok::BoolArr(d) => d,
@@ -424,53 +457,20 @@ impl AstToIrConverter {
                     TypeTok::FloatArr(d) => d,
                     TypeTok::AnyArr(d) => d,
                     TypeTok::StructArr(_, d) => d,
-                    _ => unreachable!(),
+                    _ => panic!("Type {:?} does not have a degree", ty),
                 };
                 let mut params = vec![len];
-                /*
-                if let TypeTok::StructArr(_, d) = &ty {
-                    self.builder.inject_type_param(
-                        &TypeTok::StrArr(*d),
-                        false,
-                        true,
-                        &mut params,
-                    )?;
-                } else {
-                    self.builder
-                        .inject_type_param(&ty, false, true, &mut params)?;
-                }
-                */
                 self.builder
-                    .inject_type_param(&ty, false, true, &mut params)?;
-                params.push(self.builder.iconst(degree as i64, TypeTok::Int)?);
+                    .inject_type_param(ty, false, true, &mut params)?;
+                params.push(self.builder.iconst(*degree as i64, TypeTok::Int)?);
                 let arr = self.builder.call("toy_malloc_arr".to_string(), params)?;
                 for (i, ssa_val) in ssa_vals.iter().enumerate() {
                     let idx = self.builder.iconst(i as i64, TypeTok::Int)?;
                     let x: SSAValue = ssa_val.clone();
-                    let mut write_params: Vec<SSAValue> = [arr.clone(), x, idx].to_vec();
-                    /*
-                    if let TypeTok::StructArr(_, d) = &ty {
-                        self.builder.inject_type_param(
-                            &TypeTok::StrArr(*d),
-                            false,
-                            true,
-                            &mut write_params,
-                        )?;
-                    } else {
-                        self.builder.inject_type_param(
-                            &ty,
-                            false,
-                            true,
-                            &mut write_params,
-                        )?;
-                    }
-                    */
-                    self.builder.inject_type_param(
-                        &ty,
-                        false,
-                        true,
-                        &mut write_params,
-                    )?;
+                    let mut write_params: Vec<SSAValue> = vec![arr.clone(), x, idx];
+
+                    self.builder
+                        .inject_type_param(&ty, false, true, &mut write_params)?;
                     self.builder
                         .call("toy_write_to_arr".to_string(), write_params);
                 }
@@ -546,7 +546,17 @@ impl AstToIrConverter {
                 for (key, val) in m {
                     val_vec[val] = compiled_map.get(&key).unwrap().clone();
                 }
-                self.builder.create_struct_literal(val_vec, ty)
+                let toy_struct = self.builder.create_struct_literal(val_vec, ty.clone())?;
+                let struct_size = self
+                    .builder
+                    .iconst(compiled_map.len() as i64 * 8, TypeTok::Int)?;
+                let mut heap_struct = self.builder.call_extern(
+                    "toy_malloc_struct".to_string(),
+                    vec![struct_size, toy_struct],
+                    true,
+                )?;
+                heap_struct.ty = Some(ty);
+                Ok(heap_struct)
             }
             Ast::MemberAccess(target, field_name, _) => {
                 let target_val = self.compile_expr(*target, scope)?;
@@ -578,7 +588,7 @@ impl AstToIrConverter {
                 self.builder.read_struct_literal(target_val, idx as u64, ty)
             }
 
-            Ast::Not(v) => {
+            Ast::Not(v, _) => {
                 let val = self.compile_expr(*v, scope)?;
                 self.builder.not(val)
             }
@@ -606,28 +616,119 @@ impl AstToIrConverter {
             Ast::IfStmt(c, b, a, _) => (*c, b, a),
             _ => unreachable!(),
         };
+
+        let pre_if_vars: BTreeMap<String, (SSAValue, TypeTok)> =
+            scope.as_ref().borrow().vars.clone();
+
         let compiled_cond = self.compile_expr(cond, scope)?;
+        let pre_if_block = self.builder.get_curr_block_id();
         let (true_id, false_id) = self.builder.jump_cond(compiled_cond)?;
+
+        // --- true branch ---
         self.builder.switch_block(true_id);
         let child_scope = Scope::new_child(scope);
-        for ast in body {
-            self.compile_stmt(ast, &child_scope);
+        for (var_name, val) in &pre_if_vars {
+            child_scope.as_ref().borrow_mut().set_var(
+                var_name.clone(),
+                val.0.clone(),
+                val.1.clone(),
+            );
         }
-        //if there is no else, then the false is the merge block
-        let mut merge_id: Option<BlockId> = None;
+        for ast in body {
+            self.compile_stmt(ast, &child_scope)?;
+        }
+        let true_end_block = self.builder.get_curr_block_id();
+        let true_branch_vars: BTreeMap<String, (SSAValue, TypeTok)> =
+            child_scope.as_ref().borrow().vars.clone();
+        let true_terminated = self.builder.curr_block_has_terminator();
+
         if alt.is_none() {
-            self.builder.jump_block_un_cond(false_id);
+            //if there is no else, then the false is the merge block
+            if !true_terminated {
+                self.builder.jump_block_un_cond(false_id);
+            }
             self.builder.switch_block(false_id);
+
+            // insert phi nodes for variables modified in the true branch
+            for (var_name, pre_val) in &pre_if_vars {
+                if let Some(true_val) = true_branch_vars.get(var_name) {
+                    if true_val.0 != pre_val.0 && !true_terminated {
+                        let phi_id = self.builder.alloc_value_id();
+                        self.builder.insert_phi(
+                            false_id,
+                            phi_id,
+                            vec![true_end_block, pre_if_block],
+                            vec![true_val.0.clone(), pre_val.0.clone()],
+                        )?;
+                        scope.as_ref().borrow_mut().set_var(
+                            var_name.clone(),
+                            SSAValue {
+                                val: phi_id,
+                                ty: pre_val.0.ty.clone(),
+                            },
+                            pre_val.1.clone(),
+                        );
+                    }
+                }
+            }
         } else {
-            merge_id = Some(self.builder.create_block()?);
-            self.builder.jump_block_un_cond(merge_id.unwrap());
+            let merge_id = self.builder.create_block()?;
+            if !true_terminated {
+                self.builder.jump_block_un_cond(merge_id);
+            }
+
+            // --- false/else branch ---
             self.builder.switch_block(false_id);
             let else_child = Scope::new_child(scope);
-            for ast in alt.unwrap() {
-                self.compile_stmt(ast, &else_child);
+            for (var_name, val) in &pre_if_vars {
+                else_child.as_ref().borrow_mut().set_var(
+                    var_name.clone(),
+                    val.0.clone(),
+                    val.1.clone(),
+                );
             }
-            self.builder.jump_block_un_cond(merge_id.unwrap());
-            self.builder.switch_block(merge_id.unwrap());
+            for ast in alt.unwrap() {
+                self.compile_stmt(ast, &else_child)?;
+            }
+            let false_end_block = self.builder.get_curr_block_id();
+            let false_branch_vars: BTreeMap<String, (SSAValue, TypeTok)> =
+                else_child.as_ref().borrow().vars.clone();
+            let false_terminated = self.builder.curr_block_has_terminator();
+
+            if !false_terminated {
+                self.builder.jump_block_un_cond(merge_id);
+            }
+            self.builder.switch_block(merge_id);
+
+            // insert phi nodes for variables modified in either branch
+            for (var_name, pre_val) in &pre_if_vars {
+                let true_val = true_branch_vars
+                    .get(var_name)
+                    .map(|v| &v.0)
+                    .unwrap_or(&pre_val.0);
+                let false_val = false_branch_vars
+                    .get(var_name)
+                    .map(|v| &v.0)
+                    .unwrap_or(&pre_val.0);
+
+                if *true_val != pre_val.0 || *false_val != pre_val.0 {
+                    let phi_id = self.builder.alloc_value_id();
+                    self.builder.insert_phi(
+                        merge_id,
+                        phi_id,
+                        vec![true_end_block, false_end_block],
+                        vec![true_val.clone(), false_val.clone()],
+                    )?;
+                    scope.as_ref().borrow_mut().set_var(
+                        var_name.clone(),
+                        SSAValue {
+                            val: phi_id,
+                            ty: pre_val.0.ty.clone(),
+                        },
+                        pre_val.1.clone(),
+                    );
+                }
+            }
         }
 
         return Ok(());
@@ -644,7 +745,9 @@ impl AstToIrConverter {
 
         let pre_loop_vars: BTreeMap<String, (SSAValue, TypeTok)> =
             scope.as_ref().borrow().vars.clone();
+        let uses_loop_control = body.iter().any(Self::has_loop_control_for_current_loop);
         let header_id = self.builder.create_block()?;
+        let pre_loop_block_id = self.builder.get_curr_block_id();
         self.builder.jump_block_un_cond(header_id);
         self.builder.switch_block(header_id);
 
@@ -670,6 +773,19 @@ impl AstToIrConverter {
 
         let compiled_cond = self.compile_expr(cond.clone(), scope)?;
         let (body_id, merge_id) = self.builder.jump_cond(compiled_cond)?;
+        let latch_id = if uses_loop_control {
+            Some(self.builder.create_block()?)
+        } else {
+            None
+        };
+        let continue_target = latch_id.unwrap_or(header_id);
+        self.loop_stack.push(LoopContext {
+            continue_target,
+            break_target: merge_id,
+            tracked_vars: pre_loop_vars.keys().cloned().collect(),
+            backedges: vec![],
+        });
+        let mut non_latch_backedge_block: Option<BlockId> = None;
 
         self.builder.switch_block(body_id);
         let child_scope = Scope::new_child(scope);
@@ -688,7 +804,64 @@ impl AstToIrConverter {
         let post_loop_vars: BTreeMap<String, (SSAValue, TypeTok)> =
             child_scope.as_ref().borrow().vars.clone();
 
-        self.builder.jump_block_un_cond(header_id)?;
+        if !self.builder.curr_block_has_terminator() {
+            let tracked_vars = self
+                .loop_stack
+                .last()
+                .map(|ctx| ctx.tracked_vars.clone())
+                .unwrap_or_default();
+            let snapshot = self.snapshot_loop_vars(&child_scope, &tracked_vars)?;
+            if let Some(loop_ctx) = self.loop_stack.last_mut() {
+                loop_ctx
+                    .backedges
+                    .push((self.builder.get_curr_block_id(), snapshot.clone()));
+            }
+            if latch_id.is_none() {
+                non_latch_backedge_block = Some(self.builder.get_curr_block_id());
+            }
+            self.builder.jump_block_un_cond(continue_target)?;
+        }
+
+        let mut latch_var_vals: BTreeMap<String, SSAValue> = BTreeMap::new();
+        if let Some(latch) = latch_id {
+            self.builder.switch_block(latch);
+
+            if let Some(loop_ctx) = self.loop_stack.last() {
+                for (var_name, pre_val) in &pre_loop_vars {
+                    let mut backedge_blocks = Vec::new();
+                    let mut backedge_vals = Vec::new();
+
+                    for (pred_block, snapshot) in &loop_ctx.backedges {
+                        let val = snapshot
+                            .get(var_name)
+                            .cloned()
+                            .unwrap_or_else(|| pre_val.0.clone());
+                        backedge_blocks.push(*pred_block);
+                        backedge_vals.push(val);
+                    }
+
+                    let latch_val = if backedge_vals.is_empty() {
+                        pre_val.0.clone()
+                    } else if backedge_vals.len() == 1 {
+                        backedge_vals[0].clone()
+                    } else {
+                        let phi_id = self.builder.alloc_value_id();
+                        self.builder
+                            .insert_phi(latch, phi_id, backedge_blocks, backedge_vals)?;
+                        SSAValue {
+                            val: phi_id,
+                            ty: pre_val.0.ty.clone(),
+                        }
+                    };
+
+                    latch_var_vals.insert(var_name.clone(), latch_val);
+                }
+            }
+
+            if !self.builder.curr_block_has_terminator() {
+                self.builder.jump_block_un_cond(header_id)?;
+            }
+        }
 
         for (var_name, pre_val) in &pre_loop_vars {
             let post_val = post_loop_vars
@@ -696,15 +869,30 @@ impl AstToIrConverter {
                 .cloned()
                 .unwrap_or_else(|| pre_val.clone());
             if let Some(&phi_id) = phi_id_map.get(var_name) {
+                let (loop_backedge, loop_backedge_val) = if let Some(latch) = latch_id {
+                    (
+                        latch,
+                        latch_var_vals
+                            .get(var_name)
+                            .cloned()
+                            .unwrap_or_else(|| post_val.0.clone()),
+                    )
+                } else {
+                    (
+                        non_latch_backedge_block.unwrap_or(body_id),
+                        post_val.0.clone(),
+                    )
+                };
                 self.builder.insert_phi(
                     header_id,
                     phi_id,
-                    vec![0, body_id],
-                    vec![pre_val.0.clone(), post_val.0],
+                    vec![pre_loop_block_id, loop_backedge],
+                    vec![pre_val.0.clone(), loop_backedge_val],
                 )?;
             }
         }
 
+        self.loop_stack.pop();
         self.builder.switch_block(merge_id);
 
         return Ok(());
@@ -718,7 +906,7 @@ impl AstToIrConverter {
             Ast::ExternFuncDec(n, p, r, _) => (*n, p, r),
             _ => unreachable!(),
         };
-        self.builder.register_extern_func(name, ret_type);
+        self.builder.register_extern_func(name, ret_type, false);
         Ok(())
     }
 
@@ -756,8 +944,8 @@ impl AstToIrConverter {
     }
     fn compile_stmt(&mut self, node: Ast, scope: &Rc<RefCell<Scope>>) -> Result<(), ToyError> {
         match node {
-            Ast::IntLit(_)
-            | Ast::BoolLit(_)
+            Ast::IntLit(_, _)
+            | Ast::BoolLit(_, _)
             | Ast::InfixExpr(_, _, _, _)
             | Ast::EmptyExpr(_, _)
             | Ast::FuncCall(_, _, _)
@@ -765,7 +953,7 @@ impl AstToIrConverter {
             | Ast::StringLit(_, _)
             | Ast::ArrLit(_, _, _)
             | Ast::StructLit(_, _, _)
-            | Ast::Not(_) => {
+            | Ast::Not(_, _) => {
                 let _ = self.compile_expr(node, scope)?;
             }
             Ast::VarDec(box_name, ty, box_val, _) => {
@@ -784,10 +972,10 @@ impl AstToIrConverter {
 
                         let type_val = match val.ty {
                             Some(TirType::Ptr) => 0, // String element
-                            Some(TirType::I1) => 1,    // Bool element
-                            Some(TirType::I64) => 2,   // Int element
-                            Some(TirType::F64) => 3,   // Float element
-                            _ => 2,                    // Default to Int
+                            Some(TirType::I1) => 1,  // Bool element
+                            Some(TirType::I64) => 2, // Int element
+                            Some(TirType::F64) => 3, // Float element
+                            _ => 2,                  // Default to Int
                         };
                         let type_param = self.builder.iconst(type_val, TypeTok::Int)?;
 
@@ -828,7 +1016,7 @@ impl AstToIrConverter {
                     _ => {
                         return Err(ToyError::new(
                             ToyErrorType::MalformedVariableReassign,
-                            Some("Invalid assignment target".to_string()),
+                            lhs.span(),
                         ));
                     }
                 }
@@ -884,6 +1072,8 @@ impl AstToIrConverter {
                                                     _ => false,
                                                 },
                                                 ret_type,
+                                                false,
+                                                false,
                                             );
                                         }
                                     }
@@ -910,6 +1100,42 @@ impl AstToIrConverter {
                     }
                 }
             }
+            Ast::Continue(span) => {
+                let continue_target = self
+                    .loop_stack
+                    .last()
+                    .map(|ctx| ctx.continue_target)
+                    .ok_or_else(|| {
+                        ToyError::new(
+                            ToyErrorType::InvalidLocationForContinueStatement,
+                            span.clone(),
+                        )
+                    })?;
+
+                let tracked_vars = self
+                    .loop_stack
+                    .last()
+                    .map(|ctx| ctx.tracked_vars.clone())
+                    .unwrap_or_default();
+                let snapshot = self.snapshot_loop_vars(scope, &tracked_vars)?;
+                if let Some(loop_ctx) = self.loop_stack.last_mut() {
+                    loop_ctx
+                        .backedges
+                        .push((self.builder.get_curr_block_id(), snapshot));
+                }
+
+                self.builder.jump_block_un_cond(continue_target)?;
+            }
+            Ast::Break(span) => {
+                let merge_id = self
+                    .loop_stack
+                    .last()
+                    .map(|ctx| ctx.break_target)
+                    .ok_or_else(|| {
+                        ToyError::new(ToyErrorType::InvalidLocationForBreakStatement, span.clone())
+                    })?;
+                self.builder.jump_block_un_cond(merge_id)?;
+            }
 
             _ => todo!("Chase you have not implemented {} yet", node),
         };
@@ -918,49 +1144,59 @@ impl AstToIrConverter {
     fn register_extern_funcs(&mut self) {
         //everything is either void, int64_t (int) or float (double/f64)
         self.builder
-            .register_extern("toy_print".to_string(), false, TypeTok::Void); //builtins.c
+            .register_extern("toy_print".to_string(), false, TypeTok::Void, true, true); //builtins.c
         self.builder
-            .register_extern("toy_println".to_string(), false, TypeTok::Void);
+            .register_extern("toy_println".to_string(), false, TypeTok::Void, true, true);
         self.builder
-            .register_extern("toy_malloc".to_string(), true, TypeTok::Str);
+            .register_extern("toy_malloc".to_string(), true, TypeTok::Str, true, true);
         self.builder
-            .register_extern("toy_concat".to_string(), true, TypeTok::Str);
+            .register_extern("toy_concat".to_string(), true, TypeTok::Str, true, true);
         self.builder
-            .register_extern("toy_strequal".to_string(), false, TypeTok::Int);
+            .register_extern("toy_strequal".to_string(), false, TypeTok::Int, true, true);
         self.builder
-            .register_extern("toy_strlen".to_string(), false, TypeTok::Int);
+            .register_extern("toy_strlen".to_string(), false, TypeTok::Int, true, true);
         self.builder
-            .register_extern("toy_type_to_str".to_string(), true, TypeTok::Str);
+            .register_extern("toy_type_to_str".to_string(), true, TypeTok::Str, true, true);
         self.builder
-            .register_extern("toy_type_to_bool".to_string(), false, TypeTok::Int);
+            .register_extern("toy_type_to_bool".to_string(), false, TypeTok::Int, true, true);
         self.builder
-            .register_extern("toy_type_to_int".to_string(), false, TypeTok::Int);
+            .register_extern("toy_type_to_int".to_string(), false, TypeTok::Int, true, true);
         self.builder
-            .register_extern("toy_type_to_float".to_string(), false, TypeTok::Int); //int representation of float bits, reinterpreted with union
+            .register_extern("toy_type_to_float".to_string(), false, TypeTok::Int, true, true); //int representation of float bits, reinterpreted with union
         self.builder
-            .register_extern("toy_int_to_float".to_string(), false, TypeTok::Float);
+            .register_extern("toy_int_to_float".to_string(), false, TypeTok::Float, true, true);
         self.builder.register_extern(
             "toy_float_bits_to_double".to_string(),
             false,
             TypeTok::Float,
+            true,
+            true,
+        );
+        self.builder.register_extern(
+            "toy_double_to_float_bits".to_string(),
+            false,
+            TypeTok::Int,
+            true,
+            true,
         );
         self.builder
-            .register_extern("toy_double_to_float_bits".to_string(), false, TypeTok::Int);
+            .register_extern("toy_malloc_arr".to_string(), true, TypeTok::Str, true, true);
         self.builder
-            .register_extern("toy_malloc_arr".to_string(), true, TypeTok::Str);
+            .register_extern("toy_write_to_arr".to_string(), false, TypeTok::Void, true, true);
         self.builder
-            .register_extern("toy_write_to_arr".to_string(), false, TypeTok::Void);
+            .register_extern("toy_read_from_arr".to_string(), false, TypeTok::Int, true, true);
         self.builder
-            .register_extern("toy_read_from_arr".to_string(), false, TypeTok::Int);
+            .register_extern("toy_arrlen".to_string(), false, TypeTok::Int, true, true);
         self.builder
-            .register_extern("toy_arrlen".to_string(), false, TypeTok::Int);
+            .register_extern("toy_input".to_string(), true, TypeTok::Str, true, true);
         self.builder
-            .register_extern("toy_input".to_string(), true, TypeTok::Str);
+            .register_extern("toy_free".to_string(), false, TypeTok::Void, false, false); //ctla/ctla.c
         self.builder
-            .register_extern("toy_free".to_string(), false, TypeTok::Void); //ctla/ctla.c
+            .register_extern("toy_free_arr".to_string(), false, TypeTok::Void, false, true);
         self.builder
-            .register_extern("toy_free_arr".to_string(), false, TypeTok::Void);
+            .register_extern("toy_malloc_struct".to_string(), true, TypeTok::Any, true, true);
     }
+    ///ast to convert, is_main_module, and module name
     pub fn convert(
         &mut self,
         ast: Vec<Ast>,
@@ -978,11 +1214,8 @@ impl AstToIrConverter {
             self.main_func_name = format!("init_{}", safe_name);
         }
 
-        self.builder.new_func(
-            Box::new(self.main_func_name.clone()),
-            vec![],
-            TypeTok::Int,
-        );
+        self.builder
+            .new_func(Box::new(self.main_func_name.clone()), vec![], TypeTok::Int);
         let user_main_scope = Scope::new_child(&self.global_scope);
         for node in ast {
             self.compile_stmt(node, &user_main_scope)?;

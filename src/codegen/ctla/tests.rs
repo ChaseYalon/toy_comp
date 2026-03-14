@@ -1,4 +1,5 @@
 use inkwell::context::Context;
+use chrono::Local;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::thread;
@@ -27,12 +28,16 @@ macro_rules! compile_code_aot {
         let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let output_name = format!("output_{}", $test_name);
         let output_path = project_root.join("temp").join(&output_name);
+        let source_path = project_root
+            .join("temp")
+            .join(format!("{}.toy", output_name));
 
         let _ = std::fs::remove_file(&output_path);
+        std::fs::write(&source_path, $i).unwrap();
         thread::sleep(Duration::from_millis(100));
         let ctx = Context::create();
         let mut d =
-            crate::driver::Driver::new_with_name($i.to_string(), format!("temp/{}", output_name));
+            crate::driver::Driver::new_with_name(source_path, format!("temp/{}", output_name));
         d.start(&ctx).unwrap();
 
         thread::sleep(Duration::from_millis(200));
@@ -142,6 +147,86 @@ fn test_ctla_argv() {
         output,
         "import std.sys; let args = sys.argv(); println(args[0]);",
         "ctla_argv"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_ret_arr() {
+    compile_code_aot!(
+        output,
+        "fn ret_arr(): int[] {return [1,2, 3];} let a = ret_arr(); println(a);",
+        "ctla_arr_ret"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_str_reassign() {
+    compile_code_aot!(
+        output,
+        r#"
+        import std.sys;
+        export fn write_response(code: int, content_type: int, body: str): str{
+            let content_type_str = "";
+            if content_type == 1{
+                content_type_str = "text/plain; charset=utf-8";
+            } else if content_type == 2{
+                content_type_str = "text/html; charset=utf-8";
+            } else if content_type == 3{
+                content_type_str = "application/json";
+            } else if content_type == 4{
+                content_type_str = "application/javascript";
+            } else {
+                sys.panic("[ERROR] Content type you requested not implemented");
+            }
+            return content_type_str
+        }
+
+        println(write_response(1, 1, ""));
+        println(write_response(1, 2, ""));
+        "#,
+        "ctla_str_reassign"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_aliasing() {
+    compile_code_aot!(
+        output,
+        r#"
+        let a = "hi";
+        let b = "bye";
+        let arr = [a, b]
+        println(a);
+        println(len(arr));
+        "#,
+        "ctla_aliasing"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_extern_struct_func_call() {
+    compile_code_aot!(
+        output,
+        "import std.time; let d = time.current_date(); println(d.to_str());",
+        "ctla_extern_struct_func_call"
+    );
+    let mut month_num = Local::now().format("%m").to_string();
+    if month_num.starts_with("0") {
+        month_num = month_num[1..].to_string();
+    }
+    assert!(output.contains(&month_num), "[DEBUG] output was {output}");
+}
+
+#[test]
+fn test_ctla_struct_aliasing_and_encapsulation(){
+    compile_code_aot!(
+        output,
+        r#"struct Test {x: str}; let s = "hello world";let m = Test{x: s}; let n = m; println(n.x);"#,
+        "ctla_struct_aliasing_and_encapsulation"
     );
     assert!(!output.contains("FAIL_TEST"));
 }
