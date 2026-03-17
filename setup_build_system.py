@@ -279,7 +279,7 @@ elif os_name == "Linux":
         check=True,
     )
 try:
-    os.rename("x86_64-unkown-linux-gnu", "x86_64-unknown-linux-gnu")
+    os.rename("x86_64-unknown-linux-gnu", "x86_64-unknown-linux-gnu")
 except OSError:
     pass
 
