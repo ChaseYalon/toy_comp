@@ -4023,12 +4023,10 @@ fn test_tirgen_ins_elimination_bug() {
                     TIR::CallExternFunction(
                         14,
                         Box::new("toy_arrlen".to_string()),
-                        vec![
-                            SSAValue {
-                                val: 7,
-                                ty: Some(TirType::Ptr),
-                            },
-                        ],
+                        vec![SSAValue {
+                            val: 7,
+                            ty: Some(TirType::Ptr),
+                        }],
                         false,
                         TirType::I64,
                         true,

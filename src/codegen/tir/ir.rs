@@ -2,12 +2,12 @@
 use itertools::Itertools;
 use std::collections::{BTreeSet, HashMap, HashSet};
 type AllocationId = u64;
-use serde::{Serialize, Deserialize};
 use crate::{
     errors::{ToyError, ToyErrorType},
     parser::ast::InfixOp,
     token::TypeTok,
 };
+use serde::{Deserialize, Serialize};
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 
 pub enum NumericInfixOp {
@@ -153,11 +153,11 @@ pub struct HeapAllocation {
     ///The string is the function name where the ref occurs, BlockId is self explanatory, ValueId is the id of the instruction where the ref occurs
     pub refs: Vec<(Box<String>, BlockId, ValueId)>,
 
-   ///Takes all the different aliases of the allocation. References to the allocations are put into the res vec. 
+    ///Takes all the different aliases of the allocation. References to the allocations are put into the res vec.
     pub aliases: BTreeSet<(String, BlockId, ValueId)>,
 
     ///Encapsulators are heap allocations which reference within them this allocation. An allocation MUST not be freed until all its encapsulators are freed.
-    pub encapsulators: BTreeSet<(String, BlockId, ValueId)>
+    pub encapsulators: BTreeSet<(String, BlockId, ValueId)>,
 }
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct Function {
@@ -502,7 +502,7 @@ impl TirBuilder {
                 refs: vec![],
                 alloc_ins: ret_ins.clone(),
                 aliases: BTreeSet::new(),
-                encapsulators: BTreeSet::new()
+                encapsulators: BTreeSet::new(),
             };
             self.funcs[self.curr_func.unwrap()]
                 .heap_allocations
@@ -971,8 +971,10 @@ impl TirBuilder {
         doesnt_take_ownership: bool,
         is_extern: bool,
     ) {
-        self.extern_funcs
-            .insert(name, (is_allocator, ret_type, doesnt_take_ownership, is_extern));
+        self.extern_funcs.insert(
+            name,
+            (is_allocator, ret_type, doesnt_take_ownership, is_extern),
+        );
     }
     pub fn global_string(&mut self, name: String) -> Result<SSAValue, ToyError> {
         let id = self._next_value_id();

@@ -1155,16 +1155,41 @@ impl AstToIrConverter {
             .register_extern("toy_strequal".to_string(), false, TypeTok::Int, true, true);
         self.builder
             .register_extern("toy_strlen".to_string(), false, TypeTok::Int, true, true);
-        self.builder
-            .register_extern("toy_type_to_str".to_string(), true, TypeTok::Str, true, true);
-        self.builder
-            .register_extern("toy_type_to_bool".to_string(), false, TypeTok::Int, true, true);
-        self.builder
-            .register_extern("toy_type_to_int".to_string(), false, TypeTok::Int, true, true);
-        self.builder
-            .register_extern("toy_type_to_float".to_string(), false, TypeTok::Int, true, true); //int representation of float bits, reinterpreted with union
-        self.builder
-            .register_extern("toy_int_to_float".to_string(), false, TypeTok::Float, true, true);
+        self.builder.register_extern(
+            "toy_type_to_str".to_string(),
+            true,
+            TypeTok::Str,
+            true,
+            true,
+        );
+        self.builder.register_extern(
+            "toy_type_to_bool".to_string(),
+            false,
+            TypeTok::Int,
+            true,
+            true,
+        );
+        self.builder.register_extern(
+            "toy_type_to_int".to_string(),
+            false,
+            TypeTok::Int,
+            true,
+            true,
+        );
+        self.builder.register_extern(
+            "toy_type_to_float".to_string(),
+            false,
+            TypeTok::Int,
+            true,
+            true,
+        ); //int representation of float bits, reinterpreted with union
+        self.builder.register_extern(
+            "toy_int_to_float".to_string(),
+            false,
+            TypeTok::Float,
+            true,
+            true,
+        );
         self.builder.register_extern(
             "toy_float_bits_to_double".to_string(),
             false,
@@ -1181,20 +1206,40 @@ impl AstToIrConverter {
         );
         self.builder
             .register_extern("toy_malloc_arr".to_string(), true, TypeTok::Str, true, true);
-        self.builder
-            .register_extern("toy_write_to_arr".to_string(), false, TypeTok::Void, true, true);
-        self.builder
-            .register_extern("toy_read_from_arr".to_string(), false, TypeTok::Int, true, true);
+        self.builder.register_extern(
+            "toy_write_to_arr".to_string(),
+            false,
+            TypeTok::Void,
+            true,
+            true,
+        );
+        self.builder.register_extern(
+            "toy_read_from_arr".to_string(),
+            false,
+            TypeTok::Int,
+            true,
+            true,
+        );
         self.builder
             .register_extern("toy_arrlen".to_string(), false, TypeTok::Int, true, true);
         self.builder
             .register_extern("toy_input".to_string(), true, TypeTok::Str, true, true);
         self.builder
             .register_extern("toy_free".to_string(), false, TypeTok::Void, false, false); //ctla/ctla.c
-        self.builder
-            .register_extern("toy_free_arr".to_string(), false, TypeTok::Void, false, true);
-        self.builder
-            .register_extern("toy_malloc_struct".to_string(), true, TypeTok::Any, true, true);
+        self.builder.register_extern(
+            "toy_free_arr".to_string(),
+            false,
+            TypeTok::Void,
+            false,
+            true,
+        );
+        self.builder.register_extern(
+            "toy_malloc_struct".to_string(),
+            true,
+            TypeTok::Any,
+            true,
+            true,
+        );
     }
     ///ast to convert, is_main_module, and module name
     pub fn convert(

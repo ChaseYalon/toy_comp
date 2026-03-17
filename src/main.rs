@@ -1,12 +1,12 @@
 #![feature(error_generic_member_access)]
 #![feature(backtrace_frames)]
 
+use crate::driver::Driver;
 use std::env;
 use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process;
-use crate::driver::Driver;
 mod lexer;
 pub mod parser;
 mod token;
@@ -58,8 +58,17 @@ fn compile_and_run(source: String) -> Result<(), Box<dyn std::error::Error>> {
 fn compile_and_print(file_path: &str) -> Result<(), Box<dyn std::error::Error>> {
     let ctx: Context = Context::create();
     let args: Vec<String> = env::args().collect();
-    let name = if args.iter().position(|a| a == &"--name".to_string()).is_some(){
-        args[args.iter().position(|a| a == &"--name".to_string()).unwrap() + 1].clone()
+    let name = if args
+        .iter()
+        .position(|a| a == &"--name".to_string())
+        .is_some()
+    {
+        args[args
+            .iter()
+            .position(|a| a == &"--name".to_string())
+            .unwrap()
+            + 1]
+        .clone()
     } else {
         "program".to_string()
     };

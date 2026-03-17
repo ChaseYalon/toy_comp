@@ -203,8 +203,8 @@ pub enum ModuleExportType {
     Function(Vec<TypeTok>, TypeTok),
     ///this is for struct interfaces and it contains the TypeTok for the interface
     Struct(TypeTok),
-    ///contains a type tok of type interface
-    Interface(TypeTok),
+    /////contains a type tok of type interface
+    //Interface(TypeTok),
 }
 pub struct ModuleExport {
     pub name: String,
@@ -340,8 +340,7 @@ impl Driver {
                             };
                             ast_gen.register_struct(full_name, fields.clone());
                         }
-                    }
-                    _ => todo!("interface exports not yet supported"),
+                    } //_ => todo!("interface exports not yet supported"),
                 }
             }
         }

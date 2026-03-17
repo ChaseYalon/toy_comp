@@ -1,9 +1,9 @@
+use crate::errors::Span;
 use ordered_float::OrderedFloat;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt;
 use std::hash::{Hash, Hasher};
-use serde::{Serialize, Deserialize};
-use crate::errors::Span;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Token {
     //Lits

@@ -6,20 +6,19 @@ use crate::errors::{Span, ToyErrorType};
 use crate::parser::ast::Ast;
 use crate::token::TypeTok;
 use crate::{codegen::ctla::CTLA, errors::ToyError};
+use ctla::cfg::CFGFunction;
 use inkwell::context::Context;
 use inkwell::module::Module;
-use tir::AstToIrConverter;
-pub use tir::ir::{Block, Function, SSAValue, TIR, TirType};
-use ctla::CFGFunction;
+use serde_json;
 use std::env;
 use std::fs;
-use serde_json;
+use tir::AstToIrConverter;
+pub use tir::ir::{Block, Function, SSAValue, TIR, TirType};
 pub struct Generator<'a> {
     converter: AstToIrConverter,
     analyzer: CTLA,
     generator: LlvmGenerator<'a>,
 }
-
 
 impl<'a> Generator<'a> {
     pub fn new(ctx: &'a Context, main_module: Module<'a>) -> Generator<'a> {
@@ -35,12 +34,16 @@ impl<'a> Generator<'a> {
             .builder
             .register_extern_func(name, ret_type, false);
     }
-    fn pretty_print_tir(ir: &Vec<Function>) -> Result<String, ToyError>{
-        let res =  serde_json::to_string(ir);
-        match res{
-            Ok(s) => {return Ok(s)},
-            Err(_) => {return Err(ToyError::new(ToyErrorType::SerializationError, Span::null_span()))}
-
+    fn pretty_print_tir(ir: &Vec<Function>) -> Result<String, ToyError> {
+        let res = serde_json::to_string(ir);
+        match res {
+            Ok(s) => return Ok(s),
+            Err(_) => {
+                return Err(ToyError::new(
+                    ToyErrorType::SerializationError,
+                    Span::null_span(),
+                ));
+            }
         };
     }
     fn pretty_print_cfg(cfg: &Vec<CFGFunction>) -> Result<String, ToyError> {
@@ -61,9 +64,9 @@ impl<'a> Generator<'a> {
     ) -> Result<(), ToyError> {
         let pre_ctla_ir = self.converter.convert(ast, is_main, &name)?;
         let args: Vec<String> = env::args().collect();
-        if args.contains(&"--debug-tir".to_string()) || args.contains(&"--debug-ALL".to_string()){
+        if args.contains(&"--debug-tir".to_string()) || args.contains(&"--debug-ALL".to_string()) {
             let s = Generator::pretty_print_tir(&pre_ctla_ir)?;
-            fs::write("./debug/TIR.json", s).unwrap();//rly should be an io error -> toy error conversion
+            fs::write("./debug/TIR.json", s).unwrap(); //rly should be an io error -> toy error conversion
         }
         let ir = self.analyzer.analyze(self.converter.builder.clone())?;
         if args.contains(&"--debug-cfg".to_string()) || args.contains(&"--debug-ALL".to_string()) {

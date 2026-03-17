@@ -9,7 +9,7 @@ use crate::parser::toy_box::TBox;
 use crate::token::TypeTok;
 use crate::token::{SpannedToken, Token};
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::{fs, env};
+use std::{env, fs};
 
 mod exprs;
 pub struct AstGenerator {
@@ -760,11 +760,14 @@ impl AstGenerator {
 
         return Ok(node);
     }
-    fn pretty_print_ast(ast: &Vec<Ast>) -> Result<String, ToyError>{
-        return match serde_json::to_string(ast){
+    fn pretty_print_ast(ast: &Vec<Ast>) -> Result<String, ToyError> {
+        return match serde_json::to_string(ast) {
             Ok(st) => Ok(st),
-            Err(_) => Err(ToyError::new(ToyErrorType::SerializationError, Span::null_span_with_msg("serializing ast failed")))
-        }
+            Err(_) => Err(ToyError::new(
+                ToyErrorType::SerializationError,
+                Span::null_span_with_msg("serializing ast failed"),
+            )),
+        };
     }
     pub fn generate(&mut self, boxes: Vec<TBox>) -> Result<Vec<Ast>, ToyError> {
         self.boxes = boxes.clone();
@@ -777,9 +780,9 @@ impl AstGenerator {
             self.nodes.push(stmt)
         }
         let args: Vec<String> = env::args().collect();
-        if args.contains(&"--debug-ast".to_string()) || args.contains(&"--debug-ALL".to_string()){
+        if args.contains(&"--debug-ast".to_string()) || args.contains(&"--debug-ALL".to_string()) {
             let s = AstGenerator::pretty_print_ast(&self.nodes)?;
-            fs::write("./debug/AST.json", s).unwrap();//temp, bad
+            fs::write("./debug/AST.json", s).unwrap(); //temp, bad
         }
         return Ok(self.nodes.clone());
     }

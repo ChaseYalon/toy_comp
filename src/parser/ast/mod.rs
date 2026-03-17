@@ -2,8 +2,8 @@ use std::fmt::{self};
 
 use crate::{errors::Span, token::TypeTok};
 use ordered_float::OrderedFloat;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use serde::{Serialize, Deserialize};
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Ast {
     IntLit(i64, Span),

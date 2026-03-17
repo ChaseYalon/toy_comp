@@ -1,149 +1,35 @@
+use super::tir::ir::BlockId;
 use crate::{
     codegen::{
-        SSAValue,
-        tir::ir::{Block, Function, HeapAllocation, TIR, TirBuilder, ValueId},
+        SSAValue, ctla::aliasing::AliasAndEncapsulationTracker, tir::ir::{Block, Function, HeapAllocation, TIR, TirBuilder, ValueId}
     },
     errors::ToyError,
 };
+use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap, HashSet};
-use serde::{Serialize, Deserialize};
-use super::tir::ir::BlockId;
-
+use std::rc::Rc;
+pub mod aliasing;
+pub mod cfg;
+use cfg::{CFGBlock, CFGFunction, EscapeType};
 pub struct CTLA {
-    builder: TirBuilder,
+    builder: Rc<RefCell<TirBuilder>>,
     cfg_functions: Vec<CFGFunction>,
+    alias_detector: AliasAndEncapsulationTracker
 }
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum EscapeType {
-    EscapesProgram,
-    EscapesFunction,
-    DoesNotEscape,
-}
-#[derive(Debug, Clone, Serialize, Deserialize)]
-///will ALWAYS share a block id with its internal block
-pub struct CFGBlock {
-    block: BlockId,
-    ///id of all the blocks that could cause the block to run
-    possible_input_blocks: Vec<BlockId>,
 
-    ///id of all the possible blocks it could output to
-    possible_output_blocks: Vec<BlockId>,
-}
-impl CFGBlock {
-    pub fn new(id: BlockId) -> CFGBlock {
-        return CFGBlock {
-            block: id,
-            possible_input_blocks: vec![],
-            possible_output_blocks: vec![],
-        };
-    }
-}
-#[derive(Serialize, Deserialize)]
-pub struct CFGFunction {
-    func: Function,
-    /// parameter indexes whose value may be returned (possibly via phi chains)
-    returns_alias_of_parameter: Vec<usize>,
-    ///block id -> index in funcs.block
-    block_id_to_index: HashMap<BlockId, usize>,
-    cfg_blocks: Vec<CFGBlock>,
-    ///maps a block id to the id's of all the different blocks that could input to it
-    block_id_to_inputs: HashMap<BlockId, Vec<BlockId>>,
-    visited_blocks: HashSet<BlockId>,
-}
-impl CFGFunction {
-    pub fn new(func: Function) -> CFGFunction {
-        let mut id_to_idx = HashMap::new();
-        for (i, b) in func.body.iter().enumerate() {
-            id_to_idx.insert(b.id, i);
-        }
-
-        return CFGFunction {
-            func,
-            returns_alias_of_parameter: vec![],
-            block_id_to_index: id_to_idx,
-            cfg_blocks: vec![],
-            block_id_to_inputs: HashMap::new(),
-            visited_blocks: HashSet::new(),
-        };
-    }
-
-    /// Calculates the control flow graph for a given block in the CFGFunction
-    /// Will panic if the blockID does not exist, or if the last element is not a TIR::Ret, JumpCond, or JumpUnCond
-    /// Will build the CFG for the block and all of its children, DCE happens incidentally, but the code is not eliminated until LLVM
-    fn calc_block_cfg(&mut self, id: BlockId) {
-        if self.visited_blocks.contains(&id) {
-            return;
-        }
-        //start with entry block, which must always be func.body[0]
-        let block = self.func.body[self.block_id_to_index.get(&id).unwrap().to_owned()].clone();
-        let mut block_cfg = CFGBlock::new(block.id);
-        let start_final_ins = block.ins.last().unwrap();
-        match start_final_ins {
-            &TIR::Ret(_, _) => {
-                self.cfg_blocks.push(block_cfg);
-                self.visited_blocks.insert(id);
-                return; //leaf node
-            }
-            &TIR::JumpCond(_, _, b1id, b2id) => {
-                //make sure b1 and b2 know this block input to it
-                block_cfg.possible_output_blocks = vec![b1id, b2id];
-                if self.block_id_to_inputs.contains_key(&b1id) {
-                    let mut v = self.block_id_to_inputs.get(&b1id).unwrap().to_owned();
-                    v.push(id);
-                    self.block_id_to_inputs.insert(b1id, v);
-                } else {
-                    self.block_id_to_inputs.insert(b1id, vec![id]);
-                }
-                if self.block_id_to_inputs.contains_key(&b2id) {
-                    let mut v = self.block_id_to_inputs.get(&b2id).unwrap().to_owned();
-                    v.push(id);
-                    self.block_id_to_inputs.insert(b2id, v);
-                } else {
-                    self.block_id_to_inputs.insert(b2id, vec![id]);
-                }
-                self.cfg_blocks.push(block_cfg);
-                self.visited_blocks.insert(id);
-                self.calc_block_cfg(b1id);
-                self.calc_block_cfg(b2id);
-            }
-            &TIR::JumpBlockUnCond(_, bid) => {
-                block_cfg.possible_output_blocks = vec![bid];
-                if self.block_id_to_inputs.contains_key(&bid) {
-                    let mut v = self.block_id_to_inputs.get(&bid).unwrap().to_owned();
-                    v.push(id);
-                    self.block_id_to_inputs.insert(bid, v);
-                } else {
-                    self.block_id_to_inputs.insert(bid, vec![id]);
-                }
-                self.cfg_blocks.push(block_cfg);
-                self.visited_blocks.insert(id);
-                self.calc_block_cfg(bid);
-            }
-            _ => unreachable!(),
-        };
-    }
-
-    /// A wrapper for calc_block_cfg that starts it at the root node, and then retroactively updates the inputs after the output CFG has been calculated
-    fn calc_cfg(&mut self) {
-        //build base tree - DCE covered by LLVM, they will do it better than I can anyways
-
-        //no inputs for  start block
-        self.block_id_to_inputs.insert(self.func.body[0].id, vec![]);
-        self.calc_block_cfg(self.func.body[0].id);
-        for b in &mut self.cfg_blocks {
-            b.possible_input_blocks = self.block_id_to_inputs.get(&b.block).unwrap().to_owned();
-        }
-    }
-}
 //COMPILE TIME LIFETIME ANALYSIS
 impl CTLA {
     pub fn new() -> CTLA {
-        return CTLA {
-            builder: TirBuilder::new(),
+        let b = Rc::new(RefCell::new(TirBuilder::new()));
+        let alias_detector = AliasAndEncapsulationTracker::new(&b);
+        
+        CTLA {
+            builder: b,
             cfg_functions: vec![],
-        };
+            alias_detector,
+        }
     }
-    pub fn cfg_functions(&self) -> &Vec<CFGFunction> {
+        pub fn cfg_functions(&self) -> &Vec<CFGFunction> {
         &self.cfg_functions
     }
     fn is_terminator_ins(&self, ins: &TIR) -> bool {
@@ -241,9 +127,10 @@ impl CTLA {
             }
         }
 
-        alias_param_indexes
+        return alias_param_indexes;
     }
     /// repeatedly recomputes return alias summaries for all cfg functions until a fixed point is reached
+    /// Will determine if any of the possible return values are aliases of any of the parameters
     fn populate_return_alias_parameter_summaries(&mut self) {
         loop {
             let summary_snapshot: HashMap<String, Vec<usize>> = self
@@ -315,7 +202,7 @@ impl CTLA {
 
         match ins {
             TIR::Phi(_, block_ids, vals) => block_ids.iter().zip(vals.iter()).any(|(bid, v)| {
-                if self.block_has_non_returning_panic_call(func, *bid) {
+                if self.alias_detector.block_has_non_returning_panic_call(func, *bid) {
                     return false;
                 }
                 self.value_may_match_seed_via_phi(func, v.val, seeds, visited)
@@ -397,18 +284,7 @@ impl CTLA {
 
         tracked_blocks
     }
-    ///just tests if the block contains a call to panic
-    fn block_has_non_returning_panic_call(&self, func: &Function, block_id: BlockId) -> bool {
-        let Some(block) = func.body.iter().find(|b| b.id == block_id) else {
-            return false;
-        };
-        block.ins.iter().any(|ins| {
-            matches!(
-                ins,
-                TIR::CallExternFunction(_, name, _, _, _, _) if **name == *"std::sys::panic_str"
-            )
-        })
-    }
+
     /// Finds the exact index in a given block where it is safe to insert a free call
     /// Assumes the block is the correct place for the free
     fn free_insertion_index_for_block(
@@ -438,10 +314,8 @@ impl CTLA {
             None => terminator_idx.unwrap_or(block.ins.len()),
         };
 
-        let has_same_func_encapsulator = alloc
-            .encapsulators
-            .iter()
-            .any(|(f, _, _)| *f == *func.name);
+        let has_same_func_encapsulator =
+            alloc.encapsulators.iter().any(|(f, _, _)| *f == *func.name);
         if has_same_func_encapsulator {
             insertion_idx = terminator_idx.unwrap_or(block.ins.len());
         }
@@ -510,12 +384,15 @@ impl CTLA {
 
     /// Determines if a given allocation escapes the function it was created in, escapes the program as a whole, or dies in the function
     fn allocation_escapes(&self, alloc: &HeapAllocation) -> EscapeType {
-        let func = self
-            .builder
-            .funcs
-            .iter()
-            .find(|f| *f.name == *alloc.function)
-            .unwrap();
+        let func = {
+            let builder = self.builder.borrow();
+            builder
+                .funcs
+                .iter()
+                .find(|f| *f.name == *alloc.function)
+                .cloned()
+                .unwrap()
+        };
         let protected_ids = self.allocation_protected_values_in_function(alloc, func.name.as_ref());
         let is_param = func.params.iter().any(|p| p.val == alloc.alloc_ins.val);
         //params always freed by the caller
@@ -540,7 +417,7 @@ impl CTLA {
                     }
                 }
                 let mut visited = HashSet::new();
-                if self.value_may_be_allocation_via_phi(func, a.val, alloc, &mut visited) {
+                if self.value_may_be_allocation_via_phi(&func, a.val, alloc, &mut visited) {
                     return EscapeType::EscapesFunction;
                 }
             }
@@ -556,7 +433,7 @@ impl CTLA {
                                 return true;
                             }
                             let mut visited = HashSet::new();
-                            self.value_may_be_allocation_via_phi(func, arg.val, alloc, &mut visited)
+                            self.value_may_be_allocation_via_phi(&func, arg.val, alloc, &mut visited)
                         }) {
                             return EscapeType::EscapesProgram;
                         }
@@ -621,42 +498,44 @@ impl CTLA {
         loop {
             // find all callers that receive a value from current_func via CallLocalFunction
             // this is ludicrous and needs to be refactored into like 5 separate things.
-            let callers: Vec<(Function, Block, SSAValue)> = self
-                .builder
-                .funcs
-                .iter()
-                .flat_map(|f| {
-                    f.body.iter().flat_map(|b| {
-                        b.ins.iter().filter_map(|i| {
-                            if let TIR::CallLocalFunction(ret_id, name, _, _, ret_type) = i {
-                                if **name == *current_func {
-                                    return Some((
-                                        f.clone(),
-                                        b.clone(),
-                                        SSAValue {
-                                            val: *ret_id,
-                                            ty: Some(ret_type.clone()),
-                                        },
-                                    ));
+            let callers: Vec<(Function, Block, SSAValue)> = {
+                let builder = self.builder.borrow();
+                builder
+                    .funcs
+                    .iter()
+                    .flat_map(|f| {
+                        f.body.iter().flat_map(|b| {
+                            b.ins.iter().filter_map(|i| {
+                                if let TIR::CallLocalFunction(ret_id, name, _, _, ret_type) = i {
+                                    if **name == *current_func {
+                                        return Some((
+                                            f.clone(),
+                                            b.clone(),
+                                            SSAValue {
+                                                val: *ret_id,
+                                                ty: Some(ret_type.clone()),
+                                            },
+                                        ));
+                                    }
                                 }
-                            }
-                            if let TIR::CallExternFunction(ret_id, name, _, _, ret_type, _) = i {
-                                if **name == *current_func {
-                                    return Some((
-                                        f.clone(),
-                                        b.clone(),
-                                        SSAValue {
-                                            val: *ret_id,
-                                            ty: Some(ret_type.clone()),
-                                        },
-                                    ));
+                                if let TIR::CallExternFunction(ret_id, name, _, _, ret_type, _) = i {
+                                    if **name == *current_func {
+                                        return Some((
+                                            f.clone(),
+                                            b.clone(),
+                                            SSAValue {
+                                                val: *ret_id,
+                                                ty: Some(ret_type.clone()),
+                                            },
+                                        ));
+                                    }
                                 }
-                            }
-                            None
+                                None
+                            })
                         })
                     })
-                })
-                .collect();
+                    .collect()
+            };
 
             if callers.is_empty() {
                 // nobody called us, we are the owner
@@ -677,7 +556,7 @@ impl CTLA {
                         .cloned()
                         .collect(),
                     allocation_id: alloc.allocation_id,
-                    aliases: BTreeSet::new(), //temp
+                    aliases: BTreeSet::new(),       //temp
                     encapsulators: BTreeSet::new(), //temp
                 };
                 if self.allocation_escapes(&test_alloc) == EscapeType::DoesNotEscape {
@@ -791,13 +670,15 @@ impl CTLA {
         function_name: &str,
         block_id: BlockId,
         value_id: ValueId,
-    ) -> Option<&TIR> {
+    ) -> Option<TIR> {
         self.builder
+            .borrow()
             .funcs
             .iter()
             .find(|f| *f.name == function_name)
             .and_then(|f| f.body.iter().find(|b| b.id == block_id))
             .and_then(|b| b.ins.iter().find(|ins| ins.get_id() == value_id))
+            .cloned()
     }
     /// crude doubleplusungood function that tests if a given function name matches 3 known to return arrays
     fn is_array_allocation_call_name(&self, name: &str) -> bool {
@@ -805,7 +686,8 @@ impl CTLA {
     }
     /// tries to determine if a function returns an array by name, this is bad however and should in future just ask the TIRBuilder
     fn function_returns_array_allocation(&self, function_name: &str) -> bool {
-        let Some(func) = self.builder.funcs.iter().find(|f| *f.name == function_name) else {
+        let builder = self.builder.borrow();
+        let Some(func) = builder.funcs.iter().find(|f| *f.name == function_name) else {
             return false;
         };
 
@@ -833,14 +715,14 @@ impl CTLA {
         match alloc_ins {
             TIR::CallExternFunction(_, f_box, _, _, _, _) => {
                 //that argv thing is hacky but I dont know how to say under the hood it calls toy_malloc_arr
-                if self.is_array_allocation_call_name(f_box) {
+                if self.is_array_allocation_call_name(f_box.as_ref()) {
                     return "toy_free_arr".to_string();
                 }
                 return "toy_free".to_string();
             }
             // For local function calls that return heap-allocated values (strings),
             TIR::CallLocalFunction(_, callee_name, _, _, _) => {
-                if self.function_returns_array_allocation(callee_name) {
+                if self.function_returns_array_allocation(callee_name.as_ref()) {
                     return "toy_free_arr".to_string();
                 }
                 return "toy_free".to_string();
@@ -848,238 +730,23 @@ impl CTLA {
             _ => unreachable!(),
         };
     }
-    /// finds all aliases and encapsulators for an allocation, including transitive alias<->encapsulator closure
-    fn find_aliases_and_encapsulators(&self, alloc: &mut HeapAllocation) {
-        let summary_by_func: HashMap<String, Vec<usize>> = self
-            .cfg_functions
-            .iter()
-            .map(|cfg_f| {
-                (
-                    (*cfg_f.func.name).clone(),
-                    cfg_f.returns_alias_of_parameter.clone(),
-                )
-            })
-            .collect();
 
-        let mut value_to_block: HashMap<(String, ValueId), BlockId> = HashMap::new();
-        for f in &self.builder.funcs {
-            let function_name = (*f.name).clone();
-            for block in &f.body {
-                for ins in &block.ins {
-                    value_to_block.insert((function_name.clone(), ins.get_id()), block.id);
-                }
-            }
-        }
-
-        let mut alias_values: HashSet<(String, ValueId)> = HashSet::new();
-        alias_values.insert(((*alloc.function).clone(), alloc.alloc_ins.val));
-        for (function_name, _, value_id) in &alloc.refs {
-            alias_values.insert((function_name.as_ref().clone(), *value_id));
-        }
-
-        let mut encapsulator_values: HashSet<(String, ValueId)> = HashSet::new();
-
-        loop {
-            let mut changed = false;
-
-            let mut new_aliases = alias_values.clone();
-            for f in &self.builder.funcs {
-                let function_name = (*f.name).clone();
-                for block in &f.body {
-                    for ins in &block.ins {
-                        match ins {
-                            TIR::Phi(out_id, block_ids, vals) => {
-                                if block_ids.iter().zip(vals.iter()).any(|(bid, v)| {
-                                    if self.block_has_non_returning_panic_call(f, *bid) {
-                                        return false;
-                                    }
-                                    alias_values.contains(&(function_name.clone(), v.val))
-                                }) {
-                                    if new_aliases.insert((function_name.clone(), *out_id)) {
-                                        changed = true;
-                                    }
-                                }
-                            }
-                            TIR::CallLocalFunction(out_id, callee_name, params, _, _)
-                            | TIR::CallExternFunction(out_id, callee_name, params, _, _, _) => {
-                                let Some(return_alias_param_indexes) =
-                                    summary_by_func.get(callee_name.as_ref())
-                                else {
-                                    continue;
-                                };
-
-                                if return_alias_param_indexes.iter().any(|arg_idx| {
-                                    params.get(*arg_idx).is_some_and(|arg| {
-                                        alias_values.contains(&(function_name.clone(), arg.val))
-                                    })
-                                }) {
-                                    if new_aliases.insert((function_name.clone(), *out_id)) {
-                                        changed = true;
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-            }
-            alias_values = new_aliases;
-
-            let mut new_encapsulators = encapsulator_values.clone();
-            for f in &self.builder.funcs {
-                let function_name = (*f.name).clone();
-                for block in &f.body {
-                    for ins in &block.ins {
-                        match ins {
-                            TIR::CreateStructLiteral(out_id, _, params) => {
-                                if params.iter().any(|param| {
-                                    alias_values.contains(&(function_name.clone(), param.val))
-                                }) {
-                                    if new_encapsulators
-                                        .insert((function_name.clone(), *out_id))
-                                    {
-                                        changed = true;
-                                    }
-                                }
-                            }
-                            TIR::WriteStructLiteral(_, struct_value, _, new_value) => {
-                                if alias_values.contains(&(function_name.clone(), new_value.val)) {
-                                    if new_encapsulators
-                                        .insert((function_name.clone(), struct_value.val))
-                                    {
-                                        changed = true;
-                                    }
-                                }
-                            }
-                            TIR::CallExternFunction(_, callee_name, params, _, _, _)
-                                if callee_name.as_ref() == "toy_write_to_arr" =>
-                            {
-                                if params.len() >= 2
-                                    && alias_values
-                                        .contains(&(function_name.clone(), params[1].val))
-                                {
-                                    if new_encapsulators
-                                        .insert((function_name.clone(), params[0].val))
-                                    {
-                                        changed = true;
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-            }
-
-            let mut enc_alias_closure = new_encapsulators.clone();
-            for f in &self.builder.funcs {
-                let function_name = (*f.name).clone();
-                for block in &f.body {
-                    for ins in &block.ins {
-                        match ins {
-                            TIR::Phi(out_id, block_ids, vals) => {
-                                if block_ids.iter().zip(vals.iter()).any(|(bid, v)| {
-                                    if self.block_has_non_returning_panic_call(f, *bid) {
-                                        return false;
-                                    }
-                                    new_encapsulators.contains(&(function_name.clone(), v.val))
-                                }) {
-                                    if enc_alias_closure.insert((function_name.clone(), *out_id)) {
-                                        changed = true;
-                                    }
-                                }
-                            }
-                            TIR::CallLocalFunction(out_id, callee_name, params, _, _)
-                            | TIR::CallExternFunction(out_id, callee_name, params, _, _, _) => {
-                                let Some(return_alias_param_indexes) =
-                                    summary_by_func.get(callee_name.as_ref())
-                                else {
-                                    continue;
-                                };
-
-                                if return_alias_param_indexes.iter().any(|arg_idx| {
-                                    params.get(*arg_idx).is_some_and(|arg| {
-                                        new_encapsulators
-                                            .contains(&(function_name.clone(), arg.val))
-                                    })
-                                }) {
-                                    if enc_alias_closure.insert((function_name.clone(), *out_id)) {
-                                        changed = true;
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-            }
-
-            encapsulator_values = enc_alias_closure;
-
-            if !changed {
-                break;
-            }
-        }
-
-        alloc.aliases.clear();
-        for (function_name, value_id) in &alias_values {
-            if function_name == alloc.function.as_ref() && *value_id == alloc.alloc_ins.val {
-                continue;
-            }
-
-            let block_id = value_to_block
-                .get(&(function_name.clone(), *value_id))
-                .copied()
-                .or_else(|| {
-                    alloc.refs.iter().find_map(|(f, b, v)| {
-                        if f.as_ref() == function_name && *v == *value_id {
-                            Some(*b)
-                        } else {
-                            None
-                        }
-                    })
-                });
-
-            if let Some(block_id) = block_id {
-                alloc.aliases
-                    .insert((function_name.clone(), block_id, *value_id));
-            }
-        }
-
-        alloc.encapsulators.clear();
-        for (function_name, value_id) in &encapsulator_values {
-            let block_id = value_to_block
-                .get(&(function_name.clone(), *value_id))
-                .copied()
-                .or_else(|| {
-                    alloc.refs.iter().find_map(|(f, b, v)| {
-                        if f.as_ref() == function_name && *v == *value_id {
-                            Some(*b)
-                        } else {
-                            None
-                        }
-                    })
-                });
-
-            if let Some(block_id) = block_id {
-                alloc.encapsulators
-                    .insert((function_name.clone(), block_id, *value_id));
-            }
-        }
-    }
     /// runs the full pipeline to mark (or intentionally leak) a given allocation
     fn process_allocation(
         &mut self,
         alloc: &mut HeapAllocation,
         insertion_points: &mut Vec<(String, BlockId, ValueId, SSAValue, String)>,
     ) {
-        let func = self
-            .builder
-            .funcs
-            .iter()
-            .find(|f| *f.name == *alloc.function)
-            .unwrap();
-        self.find_aliases_and_encapsulators(alloc);
+        let func = {
+            let builder = self.builder.borrow();
+            builder
+                .funcs
+                .iter()
+                .find(|f| *f.name == *alloc.function)
+                .cloned()
+                .unwrap()
+        };
+        self.alias_detector.find_aliases_and_encapsulators(alloc, &mut self.cfg_functions);
         let is_param = func.params.iter().any(|p| p.val == alloc.alloc_ins.val);
         if is_param {
             return;
@@ -1094,16 +761,19 @@ impl CTLA {
             return;
         } else if self.allocation_escapes(&alloc) == EscapeType::DoesNotEscape {
             //if in this branch, the allocation dies in ths function
-            self.process_non_escaping_allocation(cfg_func, func, &alloc, insertion_points);
+            self.process_non_escaping_allocation(cfg_func, &func, &alloc, insertion_points);
         } else {
             let (owning_func_name, owning_val) = self.find_owning_function(&alloc);
 
-            let owning_func = self
-                .builder
-                .funcs
-                .iter()
-                .find(|f| *f.name == owning_func_name)
-                .unwrap();
+            let owning_func = {
+                let builder = self.builder.borrow();
+                builder
+                    .funcs
+                    .iter()
+                    .find(|f| *f.name == owning_func_name)
+                    .cloned()
+                    .unwrap()
+            };
 
             // find the block containing the call site (where owning_val was defined)
             let owning_block_id = owning_func
@@ -1146,7 +816,7 @@ impl CTLA {
 
             self.process_non_escaping_allocation(
                 owning_cfg_func,
-                owning_func,
+                &owning_func,
                 &owned_alloc,
                 insertion_points,
             );
@@ -1154,15 +824,21 @@ impl CTLA {
     }
     /// Runs CTLA Analysis on the given Builder, returns a vec of functions containing the processed code, or an error.
     pub fn analyze(&mut self, builder: TirBuilder) -> Result<Vec<Function>, ToyError> {
-        self.builder = builder;
+        self.builder = Rc::new(RefCell::new(builder));
+        self.alias_detector = AliasAndEncapsulationTracker::new(&self.builder);
         self.cfg_functions.clear();
-        for f in &mut self.builder.funcs {
-            let mut cfg_f = CFGFunction::new(f.to_owned());
-            cfg_f.calc_cfg();
-            self.cfg_functions.push(cfg_f);
+
+        //build per-function CFG graphs
+        {
+            let mut builder = self.builder.borrow_mut();
+            for f in &mut builder.funcs {
+                let mut cfg_f = CFGFunction::new(f.to_owned());
+                cfg_f.calc_cfg();
+                self.cfg_functions.push(cfg_f);
+            }
         }
         self.populate_return_alias_parameter_summaries();
-        let mut unique_allocations = self.builder.detect_unique_heap_allocations();
+        let mut unique_allocations = self.builder.borrow().detect_unique_heap_allocations();
         let mut insertion_points: Vec<(String, BlockId, ValueId, SSAValue, String)> = vec![];
         for a in &mut unique_allocations {
             self.process_allocation(a, &mut insertion_points);
@@ -1204,9 +880,10 @@ impl CTLA {
         });
         for (name, bid, vid, val, free_name) in insertion_points {
             self.builder
+                .borrow_mut()
                 .splice_free_before(name, bid, vid, val, free_name);
         }
-        return Ok(self.builder.funcs.clone());
+        return Ok(self.builder.borrow().funcs.clone());
     }
 }
 
