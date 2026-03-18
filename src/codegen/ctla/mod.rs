@@ -1,7 +1,9 @@
 use super::tir::ir::BlockId;
 use crate::{
     codegen::{
-        SSAValue, ctla::aliasing::AliasAndEncapsulationTracker, tir::ir::{Block, Function, HeapAllocation, TIR, TirBuilder, ValueId}
+        SSAValue,
+        ctla::aliasing::AliasAndEncapsulationTracker,
+        tir::ir::{Block, Function, HeapAllocation, TIR, TirBuilder, ValueId},
     },
     errors::ToyError,
 };
@@ -14,7 +16,7 @@ use cfg::{CFGBlock, CFGFunction, EscapeType};
 pub struct CTLA {
     builder: Rc<RefCell<TirBuilder>>,
     cfg_functions: Vec<CFGFunction>,
-    alias_detector: AliasAndEncapsulationTracker
+    alias_detector: AliasAndEncapsulationTracker,
 }
 
 //COMPILE TIME LIFETIME ANALYSIS
@@ -22,14 +24,14 @@ impl CTLA {
     pub fn new() -> CTLA {
         let b = Rc::new(RefCell::new(TirBuilder::new()));
         let alias_detector = AliasAndEncapsulationTracker::new(&b);
-        
+
         CTLA {
             builder: b,
             cfg_functions: vec![],
             alias_detector,
         }
     }
-        pub fn cfg_functions(&self) -> &Vec<CFGFunction> {
+    pub fn cfg_functions(&self) -> &Vec<CFGFunction> {
         &self.cfg_functions
     }
     fn is_terminator_ins(&self, ins: &TIR) -> bool {
@@ -202,7 +204,10 @@ impl CTLA {
 
         match ins {
             TIR::Phi(_, block_ids, vals) => block_ids.iter().zip(vals.iter()).any(|(bid, v)| {
-                if self.alias_detector.block_has_non_returning_panic_call(func, *bid) {
+                if self
+                    .alias_detector
+                    .block_has_non_returning_panic_call(func, *bid)
+                {
                     return false;
                 }
                 self.value_may_match_seed_via_phi(func, v.val, seeds, visited)
@@ -433,7 +438,12 @@ impl CTLA {
                                 return true;
                             }
                             let mut visited = HashSet::new();
-                            self.value_may_be_allocation_via_phi(&func, arg.val, alloc, &mut visited)
+                            self.value_may_be_allocation_via_phi(
+                                &func,
+                                arg.val,
+                                alloc,
+                                &mut visited,
+                            )
                         }) {
                             return EscapeType::EscapesProgram;
                         }
@@ -518,7 +528,8 @@ impl CTLA {
                                         ));
                                     }
                                 }
-                                if let TIR::CallExternFunction(ret_id, name, _, _, ret_type, _) = i {
+                                if let TIR::CallExternFunction(ret_id, name, _, _, ret_type, _) = i
+                                {
                                     if **name == *current_func {
                                         return Some((
                                             f.clone(),
@@ -746,7 +757,8 @@ impl CTLA {
                 .cloned()
                 .unwrap()
         };
-        self.alias_detector.find_aliases_and_encapsulators(alloc, &mut self.cfg_functions);
+        self.alias_detector
+            .find_aliases_and_encapsulators(alloc, &mut self.cfg_functions);
         let is_param = func.params.iter().any(|p| p.val == alloc.alloc_ins.val);
         if is_param {
             return;

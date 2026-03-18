@@ -1,16 +1,29 @@
 use std::cell::RefCell;
-use std::collections::{HashMap,HashSet};
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
-use crate::codegen::tir::ir::{BlockId, ValueId, TirBuilder, TIR, Function, HeapAllocation};
+
 use crate::codegen::ctla::cfg::CFGFunction;
+use crate::codegen::tir::ir::{BlockId, Function, HeapAllocation, TIR, TirBuilder, ValueId};
 pub struct AliasAndEncapsulationTracker {
-    builder: Rc<RefCell<TirBuilder>>
+    builder: Rc<RefCell<TirBuilder>>,
+    aliases: HashSet<(String, ValueId)>,
+    encapsulators: HashSet<(String, ValueId)>,
 }
-impl<'a> AliasAndEncapsulationTracker{
-    pub fn new(builder: &Rc<RefCell<TirBuilder>>) -> AliasAndEncapsulationTracker{
-        return AliasAndEncapsulationTracker { builder: Rc::clone(builder) };
+impl<'a> AliasAndEncapsulationTracker {
+    pub fn new(builder: &Rc<RefCell<TirBuilder>>) -> AliasAndEncapsulationTracker {
+        return AliasAndEncapsulationTracker {
+            builder: Rc::clone(builder),
+            aliases: HashSet::new(),
+            encapsulators: HashSet::new(),
+        };
     }
-        ///just tests if the block contains a call to panic
+    pub fn has_alias(&self, f_name: String, value: ValueId)->bool{
+        return self.aliases.contains(&(f_name, value));
+    }
+    pub fn has_encapsulator(&self, f_name: String, value: ValueId) -> bool {
+        return self.encapsulators.contains(&(f_name, value));
+    }
+    ///just tests if the block contains a call to panic
     pub fn block_has_non_returning_panic_call(&self, func: &Function, block_id: BlockId) -> bool {
         let Some(block) = func.body.iter().find(|b| b.id == block_id) else {
             return false;
@@ -20,7 +33,7 @@ impl<'a> AliasAndEncapsulationTracker{
                 ins,
                 TIR::CallExternFunction(_, name, _, _, _, _) if **name == *"std::sys::panic_str"
             )
-        })
+        });
     }
     fn propagate_aliases(
         &self,
@@ -170,7 +183,11 @@ impl<'a> AliasAndEncapsulationTracker{
         }
     }
     /// finds all aliases and encapsulators for an allocation, including transitive alias<->encapsulator closure
-    pub fn find_aliases_and_encapsulators(&self, alloc: &mut HeapAllocation, cfg_functions: &mut Vec<CFGFunction>) {
+    pub fn find_aliases_and_encapsulators(
+        &mut self,
+        alloc: &mut HeapAllocation,
+        cfg_functions: &mut Vec<CFGFunction>,
+    ) {
         let summary_by_func: HashMap<String, Vec<usize>> = cfg_functions
             .iter()
             .map(|cfg_f| {
@@ -201,7 +218,8 @@ impl<'a> AliasAndEncapsulationTracker{
         let mut encapsulator_values: HashSet<(String, ValueId)> = HashSet::new();
 
         self.propagate_aliases(&mut alias_values, summary_by_func, &mut encapsulator_values);
-
+        self.aliases = alias_values.clone();
+        self.encapsulators = encapsulator_values.clone();
         alloc.aliases.clear();
         for (function_name, value_id) in &alias_values {
             if function_name == alloc.function.as_ref() && *value_id == alloc.alloc_ins.val {
@@ -251,3 +269,6 @@ impl<'a> AliasAndEncapsulationTracker{
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
