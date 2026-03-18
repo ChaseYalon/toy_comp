@@ -34,6 +34,9 @@ impl CTLA {
     pub fn cfg_functions(&self) -> &Vec<CFGFunction> {
         &self.cfg_functions
     }
+    pub fn alias_tracker(&self) -> &AliasAndEncapsulationTracker {
+        &self.alias_detector
+    }
     fn is_terminator_ins(&self, ins: &TIR) -> bool {
         return matches!(
             ins,

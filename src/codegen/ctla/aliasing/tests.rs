@@ -1,3 +1,5 @@
+use super::AliasAndEncapsulationTracker;
+use crate::codegen::ctla::CTLA;
 use crate::codegen::tir::AstToIrConverter;
 use crate::Driver;
 use crate::parser::ast::Ast;
@@ -32,13 +34,16 @@ macro_rules! setup_tir_builder {
                 }
             }
         }
-        t.convert(ast, true, "test").unwrap();
-        $o = t;
+        eprintln!("{:#?}", t.convert(ast, true, "test").unwrap());
+        let mut analyzer = CTLA::new();
+        analyzer.analyze(t.builder.clone()).unwrap();
+        let $o: AliasAndEncapsulationTracker = analyzer.alias_tracker().clone();
     };
 }
 
 #[test]
 fn test_basic_alias(){
-    setup_tir_builder!(ir, r#"let x = "hello"; let y = x;"#);
+    setup_tir_builder!(tracker, r#"let x = "foo"; fn dup(x: str): str{return x}; let y = dup(x); println(y);"#);
 
+    assert!(tracker.aliases.contains(&(1, "user_main".to_string(), 3)));
 }

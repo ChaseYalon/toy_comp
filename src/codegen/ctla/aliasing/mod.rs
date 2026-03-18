@@ -4,10 +4,11 @@ use std::rc::Rc;
 
 use crate::codegen::ctla::cfg::CFGFunction;
 use crate::codegen::tir::ir::{BlockId, Function, HeapAllocation, TIR, TirBuilder, ValueId};
+#[derive(Clone)]
 pub struct AliasAndEncapsulationTracker {
     builder: Rc<RefCell<TirBuilder>>,
-    aliases: HashSet<(String, ValueId)>,
-    encapsulators: HashSet<(String, ValueId)>,
+    pub aliases: HashSet<(u64, String, ValueId)>,
+    pub encapsulators: HashSet<(u64, String, ValueId)>,
 }
 impl<'a> AliasAndEncapsulationTracker {
     pub fn new(builder: &Rc<RefCell<TirBuilder>>) -> AliasAndEncapsulationTracker {
@@ -16,12 +17,6 @@ impl<'a> AliasAndEncapsulationTracker {
             aliases: HashSet::new(),
             encapsulators: HashSet::new(),
         };
-    }
-    pub fn has_alias(&self, f_name: String, value: ValueId)->bool{
-        return self.aliases.contains(&(f_name, value));
-    }
-    pub fn has_encapsulator(&self, f_name: String, value: ValueId) -> bool {
-        return self.encapsulators.contains(&(f_name, value));
     }
     ///just tests if the block contains a call to panic
     pub fn block_has_non_returning_panic_call(&self, func: &Function, block_id: BlockId) -> bool {
@@ -218,8 +213,19 @@ impl<'a> AliasAndEncapsulationTracker {
         let mut encapsulator_values: HashSet<(String, ValueId)> = HashSet::new();
 
         self.propagate_aliases(&mut alias_values, summary_by_func, &mut encapsulator_values);
-        self.aliases = alias_values.clone();
-        self.encapsulators = encapsulator_values.clone();
+        self.aliases.retain(|(allocation_id, _, _)| *allocation_id != alloc.allocation_id);
+        self.encapsulators
+            .retain(|(allocation_id, _, _)| *allocation_id != alloc.allocation_id);
+        self.aliases.extend(
+            alias_values
+                .iter()
+                .map(|(function_name, value_id)| (alloc.allocation_id, function_name.clone(), *value_id)),
+        );
+        self.encapsulators.extend(
+            encapsulator_values
+                .iter()
+                .map(|(function_name, value_id)| (alloc.allocation_id, function_name.clone(), *value_id)),
+        );
         alloc.aliases.clear();
         for (function_name, value_id) in &alias_values {
             if function_name == alloc.function.as_ref() && *value_id == alloc.alloc_ins.val {
