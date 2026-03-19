@@ -34,6 +34,7 @@ impl CTLA {
     pub fn cfg_functions(&self) -> &Vec<CFGFunction> {
         &self.cfg_functions
     }
+    #[allow(unused)]
     pub fn alias_tracker(&self) -> &AliasAndEncapsulationTracker {
         &self.alias_detector
     }
@@ -42,132 +43,6 @@ impl CTLA {
             ins,
             TIR::Ret(_, _) | TIR::JumpCond(_, _, _, _) | TIR::JumpBlockUnCond(_, _)
         );
-    }
-    /// checks whether a value may alias a given parameter by walking phi nodes and call-return summaries
-    fn value_may_alias_param_with_summaries(
-        func: &Function,
-        value_id: ValueId,
-        param_value_id: ValueId,
-        visited: &mut HashSet<ValueId>,
-        summary_by_func: &HashMap<String, Vec<usize>>,
-    ) -> bool {
-        if value_id == param_value_id {
-            return true;
-        }
-        if visited.contains(&value_id) {
-            return false;
-        }
-        visited.insert(value_id);
-
-        let maybe_ins = func
-            .body
-            .iter()
-            .flat_map(|b| b.ins.iter())
-            .find(|ins| ins.get_id() == value_id);
-
-        let Some(ins) = maybe_ins else {
-            return false;
-        };
-
-        match ins {
-            TIR::Phi(_, _, vals) => vals.iter().any(|v| {
-                CTLA::value_may_alias_param_with_summaries(
-                    func,
-                    v.val,
-                    param_value_id,
-                    visited,
-                    summary_by_func,
-                )
-            }),
-            TIR::CallLocalFunction(_, callee_name, params, _, _)
-            | TIR::CallExternFunction(_, callee_name, params, _, _, _) => {
-                let Some(return_alias_param_indexes) = summary_by_func.get(callee_name.as_ref())
-                else {
-                    return false;
-                };
-
-                return_alias_param_indexes.iter().any(|arg_idx| {
-                    params.get(*arg_idx).is_some_and(|arg| {
-                        CTLA::value_may_alias_param_with_summaries(
-                            func,
-                            arg.val,
-                            param_value_id,
-                            visited,
-                            summary_by_func,
-                        )
-                    })
-                })
-            }
-            _ => false,
-        }
-    }
-    /// computes which parameter indexes in this function may flow to a return value
-    fn find_return_alias_parameter_indexes_with_summaries(
-        func: &Function,
-        summary_by_func: &HashMap<String, Vec<usize>>,
-    ) -> Vec<usize> {
-        let return_values: Vec<ValueId> = func
-            .body
-            .iter()
-            .filter_map(|b| match b.ins.last() {
-                Some(TIR::Ret(_, ret_val)) => Some(ret_val.val),
-                _ => None,
-            })
-            .collect();
-
-        let mut alias_param_indexes = vec![];
-        for (idx, param) in func.params.iter().enumerate() {
-            let param_is_returned_or_aliased = return_values.iter().any(|ret_val| {
-                let mut visited = HashSet::new();
-                CTLA::value_may_alias_param_with_summaries(
-                    func,
-                    *ret_val,
-                    param.val,
-                    &mut visited,
-                    summary_by_func,
-                )
-            });
-            if param_is_returned_or_aliased {
-                alias_param_indexes.push(idx);
-            }
-        }
-
-        return alias_param_indexes;
-    }
-    /// repeatedly recomputes return alias summaries for all cfg functions until a fixed point is reached
-    /// Will determine if any of the possible return values are aliases of any of the parameters
-    fn populate_return_alias_parameter_summaries(&mut self) {
-        loop {
-            let summary_snapshot: HashMap<String, Vec<usize>> = self
-                .cfg_functions
-                .iter()
-                .map(|cfg_f| {
-                    (
-                        (*cfg_f.func.name).clone(),
-                        cfg_f.returns_alias_of_parameter.clone(),
-                    )
-                })
-                .collect();
-
-            let mut changed = false;
-            for cfg_f in &mut self.cfg_functions {
-                let mut new_summary = CTLA::find_return_alias_parameter_indexes_with_summaries(
-                    &cfg_f.func,
-                    &summary_snapshot,
-                );
-                new_summary.sort_unstable();
-                new_summary.dedup();
-
-                if cfg_f.returns_alias_of_parameter != new_summary {
-                    cfg_f.returns_alias_of_parameter = new_summary;
-                    changed = true;
-                }
-            }
-
-            if !changed {
-                break;
-            }
-        }
     }
     ///checks whether some SSA value could refer to a specific allocation, but only by following phi chains.
     fn value_may_be_allocation_via_phi(
@@ -852,7 +727,8 @@ impl CTLA {
                 self.cfg_functions.push(cfg_f);
             }
         }
-        self.populate_return_alias_parameter_summaries();
+        self.alias_detector
+            .populate_return_alias_parameter_summaries(&mut self.cfg_functions);
         let mut unique_allocations = self.builder.borrow().detect_unique_heap_allocations();
         let mut insertion_points: Vec<(String, BlockId, ValueId, SSAValue, String)> = vec![];
         for a in &mut unique_allocations {

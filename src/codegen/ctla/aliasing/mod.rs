@@ -10,13 +10,21 @@ pub struct AliasAndEncapsulationTracker {
     pub aliases: HashSet<(u64, String, ValueId)>,
     pub encapsulators: HashSet<(u64, String, ValueId)>,
 }
-impl<'a> AliasAndEncapsulationTracker {
+impl AliasAndEncapsulationTracker {
     pub fn new(builder: &Rc<RefCell<TirBuilder>>) -> AliasAndEncapsulationTracker {
         return AliasAndEncapsulationTracker {
             builder: Rc::clone(builder),
             aliases: HashSet::new(),
             encapsulators: HashSet::new(),
         };
+    }
+    #[allow(unused)]
+    pub fn has_alias(&self, original_alloc_id: u64, func_name: &str, alias_id: ValueId) -> bool {
+        return self.aliases.get(&(original_alloc_id, func_name.to_string(), alias_id)).is_some();
+    }
+    #[allow(unused)]
+    pub fn has_encapsulator(&self, original_alloc_id: u64, func_name: &str, enc_id: ValueId) -> bool {
+        return self.encapsulators.get(&(original_alloc_id, func_name.to_string(), enc_id)).is_some();
     }
     ///just tests if the block contains a call to panic
     pub fn block_has_non_returning_panic_call(&self, func: &Function, block_id: BlockId) -> bool {
@@ -29,6 +37,132 @@ impl<'a> AliasAndEncapsulationTracker {
                 TIR::CallExternFunction(_, name, _, _, _, _) if **name == *"std::sys::panic_str"
             )
         });
+    }
+    /// checks whether a value may alias a given parameter by walking phi nodes and call-return summaries
+    fn value_may_alias_param_with_summaries(
+        func: &Function,
+        value_id: ValueId,
+        param_value_id: ValueId,
+        visited: &mut HashSet<ValueId>,
+        summary_by_func: &HashMap<String, Vec<usize>>,
+    ) -> bool {
+        if value_id == param_value_id {
+            return true;
+        }
+        if visited.contains(&value_id) {
+            return false;
+        }
+        visited.insert(value_id);
+
+        let maybe_ins = func
+            .body
+            .iter()
+            .flat_map(|b| b.ins.iter())
+            .find(|ins| ins.get_id() == value_id);
+
+        let Some(ins) = maybe_ins else {
+            return false;
+        };
+
+        match ins {
+            TIR::Phi(_, _, vals) => vals.iter().any(|v| {
+                AliasAndEncapsulationTracker::value_may_alias_param_with_summaries(
+                    func,
+                    v.val,
+                    param_value_id,
+                    visited,
+                    summary_by_func,
+                )
+            }),
+            TIR::CallLocalFunction(_, callee_name, params, _, _)
+            | TIR::CallExternFunction(_, callee_name, params, _, _, _) => {
+                let Some(return_alias_param_indexes) = summary_by_func.get(callee_name.as_ref())
+                else {
+                    return false;
+                };
+
+                return_alias_param_indexes.iter().any(|arg_idx| {
+                    params.get(*arg_idx).is_some_and(|arg| {
+                        AliasAndEncapsulationTracker::value_may_alias_param_with_summaries(
+                            func,
+                            arg.val,
+                            param_value_id,
+                            visited,
+                            summary_by_func,
+                        )
+                    })
+                })
+            }
+            _ => false,
+        }
+    }
+    /// computes which parameter indexes in this function may flow to a return value
+    fn find_return_alias_parameter_indexes_with_summaries(
+        func: &Function,
+        summary_by_func: &HashMap<String, Vec<usize>>,
+    ) -> Vec<usize> {
+        let return_values: Vec<ValueId> = func
+            .body
+            .iter()
+            .filter_map(|b| match b.ins.last() {
+                Some(TIR::Ret(_, ret_val)) => Some(ret_val.val),
+                _ => None,
+            })
+            .collect();
+
+        let mut alias_param_indexes = vec![];
+        for (idx, param) in func.params.iter().enumerate() {
+            let param_is_returned_or_aliased = return_values.iter().any(|ret_val| {
+                let mut visited = HashSet::new();
+                AliasAndEncapsulationTracker::value_may_alias_param_with_summaries(
+                    func,
+                    *ret_val,
+                    param.val,
+                    &mut visited,
+                    summary_by_func,
+                )
+            });
+            if param_is_returned_or_aliased {
+                alias_param_indexes.push(idx);
+            }
+        }
+
+        return alias_param_indexes;
+    }
+    /// repeatedly recomputes return alias summaries for all cfg functions until a fixed point is reached
+    /// Will determine if any of the possible return values are aliases of any of the parameters
+    pub fn populate_return_alias_parameter_summaries(&self, cfg_functions: &mut [CFGFunction]) {
+        loop {
+            let summary_snapshot: HashMap<String, Vec<usize>> = cfg_functions
+                .iter()
+                .map(|cfg_f| {
+                    (
+                        (*cfg_f.func.name).clone(),
+                        cfg_f.returns_alias_of_parameter.clone(),
+                    )
+                })
+                .collect();
+
+            let mut changed = false;
+            for cfg_f in cfg_functions.iter_mut() {
+                let mut new_summary =
+                    AliasAndEncapsulationTracker::find_return_alias_parameter_indexes_with_summaries(
+                        &cfg_f.func,
+                        &summary_snapshot,
+                    );
+                new_summary.sort_unstable();
+                new_summary.dedup();
+
+                if cfg_f.returns_alias_of_parameter != new_summary {
+                    cfg_f.returns_alias_of_parameter = new_summary;
+                    changed = true;
+                }
+            }
+
+            if !changed {
+                break;
+            }
+        }
     }
     fn propagate_aliases(
         &self,
@@ -58,8 +192,38 @@ impl<'a> AliasAndEncapsulationTracker {
                                     }
                                 }
                             }
-                            TIR::CallLocalFunction(out_id, callee_name, params, _, _)
-                            | TIR::CallExternFunction(out_id, callee_name, params, _, _, _) => {
+                            TIR::CallLocalFunction(out_id, callee_name, params, _, _) => {
+                                if let Some(callee_func) =
+                                    builder.funcs.iter().find(|f| f.name.as_ref() == callee_name.as_ref())
+                                {
+                                    for (arg_idx, arg) in params.iter().enumerate() {
+                                        if alias_values.contains(&(function_name.clone(), arg.val))
+                                            && callee_func.params.get(arg_idx).is_some_and(|callee_param| {
+                                                new_aliases.insert(((*callee_func.name).clone(), callee_param.val))
+                                            })
+                                        {
+                                            changed = true;
+                                        }
+                                    }
+                                }
+
+                                let Some(return_alias_param_indexes) =
+                                    summary_by_func.get(callee_name.as_ref())
+                                else {
+                                    continue;
+                                };
+
+                                if return_alias_param_indexes.iter().any(|arg_idx| {
+                                    params.get(*arg_idx).is_some_and(|arg| {
+                                        alias_values.contains(&(function_name.clone(), arg.val))
+                                    })
+                                }) {
+                                    if new_aliases.insert((function_name.clone(), *out_id)) {
+                                        changed = true;
+                                    }
+                                }
+                            }
+                            TIR::CallExternFunction(out_id, callee_name, params, _, _, _) => {
                                 let Some(return_alias_param_indexes) =
                                     summary_by_func.get(callee_name.as_ref())
                                 else {
@@ -107,7 +271,7 @@ impl<'a> AliasAndEncapsulationTracker {
                                     }
                                 }
                             }
-                            TIR::CallExternFunction(_, callee_name, params, _, _, _)
+                            TIR::CallExternFunction(out_id, callee_name, params, _, _, _)
                                 if callee_name.as_ref() == "toy_write_to_arr" =>
                             {
                                 if params.len() >= 2
@@ -115,7 +279,7 @@ impl<'a> AliasAndEncapsulationTracker {
                                         .contains(&(function_name.clone(), params[1].val))
                                 {
                                     if new_encapsulators
-                                        .insert((function_name.clone(), params[0].val))
+                                        .insert((function_name.clone(), *out_id))
                                     {
                                         changed = true;
                                     }
@@ -147,6 +311,43 @@ impl<'a> AliasAndEncapsulationTracker {
                             }
                             TIR::CallLocalFunction(out_id, callee_name, params, _, _)
                             | TIR::CallExternFunction(out_id, callee_name, params, _, _, _) => {
+                                // Propagate encapsulation through call returns when the callee
+                                // returns an array value that was written with an aliased value.
+                                let callee_returns_encapsulating_array = builder
+                                    .funcs
+                                    .iter()
+                                    .find(|f| f.name.as_ref() == callee_name.as_ref())
+                                    .is_some_and(|callee| {
+                                        let returned_values: HashSet<ValueId> = callee
+                                            .body
+                                            .iter()
+                                            .filter_map(|b| match b.ins.last() {
+                                                Some(TIR::Ret(_, ret_val)) => Some(ret_val.val),
+                                                _ => None,
+                                            })
+                                            .collect();
+
+                                        if returned_values.is_empty() {
+                                            return false;
+                                        }
+
+                                        callee.body.iter().flat_map(|b| b.ins.iter()).any(|ins| {
+                                            matches!(
+                                                ins,
+                                                TIR::CallExternFunction(_, name, write_params, _, _, _)
+                                                    if name.as_ref() == "toy_write_to_arr"
+                                                        && write_params.len() >= 2
+                                                        && returned_values.contains(&write_params[0].val)
+                                                        && alias_values.contains(&((*callee.name).clone(), write_params[1].val))
+                                            )
+                                        })
+                                    });
+                                if callee_returns_encapsulating_array
+                                    && enc_alias_closure.insert((function_name.clone(), *out_id))
+                                {
+                                    changed = true;
+                                }
+
                                 let Some(return_alias_param_indexes) =
                                     summary_by_func.get(callee_name.as_ref())
                                 else {
@@ -213,18 +414,16 @@ impl<'a> AliasAndEncapsulationTracker {
         let mut encapsulator_values: HashSet<(String, ValueId)> = HashSet::new();
 
         self.propagate_aliases(&mut alias_values, summary_by_func, &mut encapsulator_values);
-        self.aliases.retain(|(allocation_id, _, _)| *allocation_id != alloc.allocation_id);
-        self.encapsulators
-            .retain(|(allocation_id, _, _)| *allocation_id != alloc.allocation_id);
+        let alloc_key = alloc.alloc_ins.val as u64;
         self.aliases.extend(
             alias_values
                 .iter()
-                .map(|(function_name, value_id)| (alloc.allocation_id, function_name.clone(), *value_id)),
+                .map(|(function_name, value_id)| (alloc_key, function_name.clone(), *value_id)),
         );
         self.encapsulators.extend(
             encapsulator_values
                 .iter()
-                .map(|(function_name, value_id)| (alloc.allocation_id, function_name.clone(), *value_id)),
+                .map(|(function_name, value_id)| (alloc_key, function_name.clone(), *value_id)),
         );
         alloc.aliases.clear();
         for (function_name, value_id) in &alias_values {
