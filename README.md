@@ -4,12 +4,7 @@ Please reach out to chaseyalon@gmail.com or chase@chaseyalon.com with questions/
 This repository is actively maintained, issues and PR's are appreciated.
 
 <h1>DOCS</h1>
-<<<<<<< Updated upstream
-ToyLang is a compiled language, meaning that it produces binary executable files. The currently supported platforms are x86_64-Windows and x86_64-Linux, both use the GNU abi. By default if you run the binary it expects a path to a .toy file that it will compile. By default it is in JIT mode, meaning it will take the toy code and just in-time compile and run it, if you pass the --aot the compiler will instead produce a binary named output.exe (64-bit PE) or output (64-bit ELF). You will be able to pass a -o parameter in a future version and if you (yes you ya lazy bum) want to make a pr with the feature, the change needs to happen in /src/codegen/mod.rs.
-
-=======
 ToyLang is a compiled language, meaning that it produces binary executable files. The currently supported platforms are x86_64-Windows and x86_64-Linux, both use the GNU abi. By default if you run the binary it expects a path to a .toy file that it will compile. You can also use --repl to bring up a repl. The language is based on LLVM and uses "-O3" optimizations by default, but the --repl or --no-opt flags will cause it to use no optimizations. Also right now only ASCII encoding for .toy files is supported. UTF-8 will be supported in the future.
->>>>>>> Stashed changes
 <h2>Datatypes</h2>
 Toy lang supports the following first class datatypes - meaning they are fully supported for all situations
 <ul>
@@ -19,19 +14,14 @@ Toy lang supports the following first class datatypes - meaning they are fully s
     <li> <code>bool</code>: 64 bit integer representing a bool (value of 1 for true, 0 for false)</li>
     <li> <code>str</code>: Represents a string of characters, you can call <code>len(str)</code> to get the length, but strings are immutable under the hood, so be aware of that</li>
     <!-- TODO: Struct implementation is terrible, fix-->
-<<<<<<< Updated upstream
-    <li> <code>Struct</code>: structs are special first class datatypes because while you can pass and return them from functions, there is no <code>MY_STRUCT[]</code> type, instead use <code>struct[]</code> (which is "first class" in the same way structs are) or <code>any[]</code> (which is second class) </li>
-    <li>I touched on it above but all first class types can have n dimensional arrays declared like <code>int[][]</code> for an integer matrix. Lengths are not necessary and the arrays behave like vectors in the strict sense, as they are contiguously allocated in memory, but can grow, and will be able to shrink in the future</li>
-=======
     <li><code>Struct</code> Structs are custom heap allocated data structures created by the user. If you create a struct Point, you can also do Point[], the same way you can with any other type</li>
     <li>I touched on it above but all first class types can have n dimensional arrays declared like <code>int[][]</code> for an integer matrix. Lengths are not necessary and the arrays behave like vectors in the strict sense, as they are contiguously allocated in (heap) memory, but can grow, and will be able to shrink in the future</li>
->>>>>>> Stashed changes
 </ul>
 The following are second class datatypes, which may be used in certain scenarios however should be avoided by default, and are not guaranteed to work in all scenarios, 
 <ul>
     <li> <code>Void</code>: represents a function that does not return, stability and compilation are guaranteed when using it as a return type from a function, and for no other place </li>
     <li> <code>Any</code>: Will disable the typechecker when used, so it assumes you have manually checked your types, if they are wrong you will get a nasty error, while the following is allowed: functions may return <code>any</code>, and take <code>any</code> as parameters, variables may assigned to any, and you may make <code>any[]</code>'s it is highly unstable for all other use cases and should be avoided if at all possible</li>
-    <li> Functions: This language has 0, nada, nil functional features. Maybe they will be added later but for now treat all functions like C functions</li>
+    <li> Functions: This language has 0, nada, nil functional features. Maybe they will be added later but for now treat all functions like C functions. Also DO NOT USE COLONS IN YOUR FUNCTION NAMES!!! THey will confuse the name mangler</li>
 </ul>
 
 <h2>Syntax</h2>
@@ -150,8 +140,6 @@ origin.print_point(); //outputs Point{x: 0.0000, y: 0.0000};
     <li> <code> bool(b: any): bool </code> will turn "true" => true, same with false and will panic for any other string, will turn 1 => true, 0 => false and wil panic otherwise, and will round a float and use do the same</li>
 </ul>
 
-<<<<<<< Updated upstream
-=======
 <h2>STDLIB Functions</h2>
 <!--TODO: LIBM Docs-->
 
@@ -200,7 +188,6 @@ origin.print_point(); //outputs Point{x: 0.0000, y: 0.0000};
     <li><code>close_client()</code> Will close the client connection, but not the server.</li>
     <li><code>write_response(code: int, content_type: int, body: str)</code> Will write a response back to the open client. Code is the http status code (200 = good, 500/503 = server error, 404 = page not found). Content_type is 1 = text/plain, 2 = text/html 3 = application/json 4 = application/javascript. Body is the text of the response</li>
 <ul>
->>>>>>> Stashed changes
 <h2> Build Instructions </h2>
 If you do not have the build system setup (mys2 - clang/llvm), rust on the correct toolchain, cmake, and ninja run the following.
 <pre><code class="language-python">

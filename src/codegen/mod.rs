@@ -1,4 +1,4 @@
-mod ctla;
+pub mod ctla;
 mod llvm;
 mod tir;
 use crate::codegen::llvm::LlvmGenerator;
@@ -10,6 +10,7 @@ use ctla::cfg::CFGFunction;
 use inkwell::context::Context;
 use inkwell::module::Module;
 use serde_json;
+use std::collections::HashMap;
 use std::env;
 use std::fs;
 use tir::AstToIrConverter;
@@ -34,6 +35,14 @@ impl<'a> Generator<'a> {
             .builder
             .register_extern_func(name, ret_type, false);
     }
+    pub fn set_original_text(&mut self, text: String) {
+        self.analyzer.set_original_text(text);
+    }
+
+    pub fn set_external_modules(&mut self, modules: HashMap<String, Vec<ctla::FunctionSummary>>) {
+        self.analyzer.set_external_modules(modules);
+    }
+
     fn pretty_print_tir(ir: &Vec<Function>) -> Result<String, ToyError> {
         let res = serde_json::to_string(ir);
         match res {

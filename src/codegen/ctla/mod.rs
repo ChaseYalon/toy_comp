@@ -3,8 +3,9 @@ use crate::{
     codegen::{
         SSAValue,
         ctla::aliasing::AliasAndEncapsulationTracker,
-        tir::ir::{Block, Function, HeapAllocation, TIR, TirBuilder, ValueId},
+        tir::ir::{Block, Function, HeapAllocation, TIR, TirBuilder, TirType, ValueId},
     },
+    driver::Driver,
     errors::ToyError,
 };
 use std::cell::RefCell;
@@ -13,12 +14,58 @@ use std::rc::Rc;
 pub mod aliasing;
 pub mod cfg;
 use cfg::{CFGBlock, CFGFunction, EscapeType};
+use serde::{Deserialize, Serialize};
+use std::fs;
 pub struct CTLA {
     builder: Rc<RefCell<TirBuilder>>,
     cfg_functions: Vec<CFGFunction>,
     alias_detector: AliasAndEncapsulationTracker,
+    original_text: Option<String>,
 }
-
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct FunctionSummary {
+    pub name: String,
+    pub aliased_parameters: Vec<usize>,
+    pub encapsulated_parameters: Vec<usize>,
+    pub escaped_parameters: Vec<usize>,
+}
+impl FunctionSummary {
+    pub fn new(
+        name: String,
+        aliased_parameters: Vec<usize>,
+        encapsulated_parameters: Vec<usize>,
+        escaped_parameters: Vec<usize>,
+    ) -> FunctionSummary {
+        return FunctionSummary {
+            name: name,
+            aliased_parameters,
+            encapsulated_parameters,
+            escaped_parameters,
+        };
+    }
+}
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CTLASchema {
+    pub schema_version: u64,
+    pub summaries: Vec<FunctionSummary>,
+    pub input_hash: String,
+    pub module_name: String,
+}
+impl CTLASchema {
+    pub fn new(
+        schema_version: u64,
+        summaries: Vec<FunctionSummary>,
+        input_hash: String,
+        module_name: String,
+    ) -> CTLASchema {
+        return CTLASchema {
+            schema_version,
+            summaries,
+            input_hash,
+            module_name,
+        };
+    }
+}
 //COMPILE TIME LIFETIME ANALYSIS
 impl CTLA {
     pub fn new() -> CTLA {
@@ -29,7 +76,16 @@ impl CTLA {
             builder: b,
             cfg_functions: vec![],
             alias_detector,
+            original_text: None,
         }
+    }
+
+    pub fn set_external_modules(&mut self, modules: HashMap<String, Vec<FunctionSummary>>) {
+        self.alias_detector.set_external_modules(modules);
+    }
+
+    pub fn set_original_text(&mut self, text: String) {
+        self.original_text = Some(text);
     }
     pub fn cfg_functions(&self) -> &Vec<CFGFunction> {
         &self.cfg_functions
@@ -309,21 +365,27 @@ impl CTLA {
         for b in &func.body {
             for i in &b.ins {
                 match i {
-                    //only extern func calls are considered escapes because in regular func calls, everything s passed by reference.
-                    TIR::CallExternFunction(_, _, p, _, _, false) => {
-                        if p.iter().any(|arg| {
-                            if protected_ids.contains(&arg.val) {
-                                return true;
+                    TIR::CallExternFunction(_, callee_name, p, _, _, doesnt_take_ownership) => {
+                        for (idx, arg) in p.iter().enumerate() {
+                            let is_alloc_ref = protected_ids.contains(&arg.val) || {
+                                let mut visited = HashSet::new();
+                                self.value_may_be_allocation_via_phi(
+                                    &func,
+                                    arg.val,
+                                    alloc,
+                                    &mut visited,
+                                )
+                            };
+
+                            if is_alloc_ref {
+                                if let Some(summary) = self.alias_detector.get_external_summary(callee_name.as_ref()) {
+                                    if summary.escaped_parameters.contains(&idx) {
+                                        return EscapeType::EscapesModule;
+                                    }
+                                } else if !*doesnt_take_ownership {
+                                    return EscapeType::EscapesProgram;
+                                }
                             }
-                            let mut visited = HashSet::new();
-                            self.value_may_be_allocation_via_phi(
-                                &func,
-                                arg.val,
-                                alloc,
-                                &mut visited,
-                            )
-                        }) {
-                            return EscapeType::EscapesProgram;
                         }
                     }
                     _ => continue,
@@ -388,6 +450,7 @@ impl CTLA {
             // this is ludicrous and needs to be refactored into like 5 separate things.
             let callers: Vec<(Function, Block, SSAValue)> = {
                 let builder = self.builder.borrow();
+                //also I have seen egyptian hyreoglphyics that make more sense then 4 statements inside 8 lambdas and 2 flat maps.
                 builder
                     .funcs
                     .iter()
@@ -646,7 +709,8 @@ impl CTLA {
             .iter()
             .find(|f| f.func.name == func.name)
             .unwrap();
-        if self.allocation_escapes(&alloc) == EscapeType::EscapesProgram {
+        let escape_type = self.allocation_escapes(&alloc);
+        if escape_type == EscapeType::EscapesProgram || escape_type == EscapeType::EscapesModule {
             //at this pont let it leak, it it escapes the program
             return;
         } else if self.allocation_escapes(&alloc) == EscapeType::DoesNotEscape {
@@ -712,6 +776,51 @@ impl CTLA {
             );
         }
     }
+    fn populate_parameter_escape_summary(&self, funcs: Vec<CFGFunction>) -> Vec<CFGFunction> {
+        let mut new_funcs: Vec<CFGFunction> = vec![];
+        for cfg_func in funcs {
+            let mut new_cfg = cfg_func.clone();
+            for (idx, param) in new_cfg.func.params.iter().enumerate() {
+                if param.ty != Some(TirType::Ptr) {
+                    continue;
+                }
+
+                let seeds = HashSet::from([param.val]);
+                let mut param_escapes_program = false;
+                for b in &new_cfg.func.body {
+                    for ins in &b.ins {
+                        if let TIR::CallExternFunction(_, callee, args, _, _, doesnt_take_ownership) = ins {
+                            for (arg_idx, arg) in args.iter().enumerate() {
+                                let mut visited = HashSet::new();
+                                if self.value_may_match_seed_via_phi(
+                                    &new_cfg.func,
+                                    arg.val,
+                                    &seeds,
+                                    &mut visited,
+                                ) {
+                                    if let Some(summary) = self.alias_detector.get_external_summary(callee.as_ref()) {
+                                        if summary.escaped_parameters.contains(&arg_idx) {
+                                            param_escapes_program = true;
+                                        }
+                                    } else if !*doesnt_take_ownership {
+                                        param_escapes_program = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if param_escapes_program {
+                    new_cfg.parameter_escapes.push(idx);
+                }
+            }
+            new_cfg.parameter_escapes.sort_unstable();
+            new_cfg.parameter_escapes.dedup();
+            new_funcs.push(new_cfg);
+        }
+        return new_funcs;
+    }
     /// Runs CTLA Analysis on the given Builder, returns a vec of functions containing the processed code, or an error.
     pub fn analyze(&mut self, builder: TirBuilder) -> Result<Vec<Function>, ToyError> {
         self.builder = Rc::new(RefCell::new(builder));
@@ -729,6 +838,7 @@ impl CTLA {
         }
         self.alias_detector
             .populate_return_alias_parameter_summaries(&mut self.cfg_functions);
+        self.cfg_functions = self.populate_parameter_escape_summary(self.cfg_functions.clone());
         let mut unique_allocations = self.builder.borrow().detect_unique_heap_allocations();
         let mut insertion_points: Vec<(String, BlockId, ValueId, SSAValue, String)> = vec![];
         for a in &mut unique_allocations {
@@ -774,6 +884,44 @@ impl CTLA {
                 .borrow_mut()
                 .splice_free_before(name, bid, vid, val, free_name);
         }
+        let build_dir = Driver::get_build_dir();
+        let mut summaries: Vec<FunctionSummary> = vec![];
+        for func in &self.cfg_functions {
+            summaries.push(FunctionSummary::new(
+                *func.func.name.clone(),
+                func.returns_alias_of_parameter.clone(),
+                func.parameter_encapsulates.clone(),
+                func.parameter_escapes.clone(),
+            ));
+        }
+
+        let mut hasher = ahash::AHasher::default();
+        use std::hash::Hasher;
+        hasher.write(self.original_text.as_deref().unwrap_or("").as_bytes());
+        let hash = format!("{:x}", hasher.finish());
+
+        let module_name = Driver::get_current_file_path()
+            .and_then(|p| {
+                std::path::Path::new(&p)
+                    .file_stem()
+                    .and_then(|s| s.to_str().map(|s| s.to_string()))
+            })
+            .unwrap_or_else(|| "module".to_string());
+
+        let schema = CTLASchema::new(1, summaries, hash, module_name.clone());
+        let serialized = serde_json::to_string(&schema).unwrap(); //should fix ?
+
+        let _ = fs::create_dir_all(&build_dir);
+        let res = fs::write(format!("{}/{}.ctla", build_dir, module_name), serialized);
+        match res {
+            Err(e) => {
+                eprintln!(
+                    "[ERROR] Could not write module {} with error {:?}",
+                    module_name, e
+                )
+            }
+            _ => {}
+        };
         return Ok(self.builder.borrow().funcs.clone());
     }
 }

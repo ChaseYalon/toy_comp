@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum EscapeType {
     EscapesProgram,
+    EscapesModule,
     EscapesFunction,
     DoesNotEscape,
 }
@@ -27,11 +28,15 @@ impl CFGBlock {
         };
     }
 }
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct CFGFunction {
     pub func: Function,
     /// parameter indexes whose value may be returned (possibly via phi chains)
     pub returns_alias_of_parameter: Vec<usize>,
+    /// parameter indexes whose value may be encapsulated in a returned value
+    pub parameter_encapsulates: Vec<usize>,
+    /// returns the idx's of any parameters who escape the program
+    pub parameter_escapes: Vec<usize>,
     ///block id -> index in funcs.block
     pub block_id_to_index: HashMap<BlockId, usize>,
     pub cfg_blocks: Vec<CFGBlock>,
@@ -49,10 +54,12 @@ impl CFGFunction {
         return CFGFunction {
             func,
             returns_alias_of_parameter: vec![],
+            parameter_encapsulates: vec![],
             block_id_to_index: id_to_idx,
             cfg_blocks: vec![],
             block_id_to_inputs: HashMap::new(),
             visited_blocks: HashSet::new(),
+            parameter_escapes: vec![],
         };
     }
 

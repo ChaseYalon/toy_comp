@@ -9,11 +9,13 @@ use std::{
 thread_local! {
     static CURRENT_FILE_PATH: RefCell<Option<String>> = const { RefCell::new(None) };
 }
-
+thread_local! {
+    static BUILD_DIR: RefCell<String> = RefCell::new("build".to_string());
+}
 use inkwell::{context::Context, module::Module};
 
 use crate::{
-    codegen::Generator,
+    codegen::{ctla::CTLASchema, Generator},
     errors::{Span, ToyError, ToyErrorType},
     lexer::Lexer,
     parser::{ast::Ast, ast_gen::AstGenerator, boxer::Boxer, toy_box::TBox},
@@ -238,6 +240,8 @@ pub struct Driver {
     pub parsed_modules: HashSet<String>,
     ///contains the path of a file to its generated IR
     pub file_path_to_ast: HashMap<String, Vec<Ast>>,
+    pub file_path_to_text: HashMap<String, String>,
+    pub file_path_to_ctla: HashMap<String, CTLASchema>,
     pub mangled_lookup: HashMap<String, String>,
 }
 
@@ -248,6 +252,12 @@ impl Driver {
 
     fn set_current_file_path(path: &str) {
         CURRENT_FILE_PATH.with(|p| *p.borrow_mut() = Some(path.to_string()));
+    }
+    pub fn get_build_dir() -> String {
+        BUILD_DIR.with(|b| b.borrow().clone())
+    }
+    pub fn set_build_dir(new_dir: String) {
+        BUILD_DIR.with(|b| *b.borrow_mut() = new_dir);
     }
     pub fn mangle_name(module_prefix: Option<&str>, name: &str, params: &[TypeTok]) -> String {
         let prefixed_name = if let Some(prefix) = module_prefix {
@@ -282,6 +292,8 @@ impl Driver {
             main_program_path: prgm_path,
             parsed_modules: HashSet::new(),
             file_path_to_ast: HashMap::new(),
+            file_path_to_text: HashMap::new(),
+            file_path_to_ctla: HashMap::new(),
             mangled_lookup: HashMap::new(),
         };
     }
@@ -293,6 +305,8 @@ impl Driver {
             main_program_path: prgm_path,
             parsed_modules: HashSet::new(),
             file_path_to_ast: HashMap::new(),
+            file_path_to_text: HashMap::new(),
+            file_path_to_ctla: HashMap::new(),
             mangled_lookup: HashMap::new(),
         };
     }
@@ -410,6 +424,23 @@ impl Driver {
 
             //create a new lexer and boxer for each module
             Driver::set_current_file_path(&import);
+            self.file_path_to_text
+                .insert(import.clone(), contents.clone());
+
+            let build_dir = Driver::get_build_dir();
+            let module_name = import
+                .clone()
+                .replace("/", ".")
+                .replace(".toy", "")
+                .trim_start_matches('.')
+                .to_string();
+            let ctla_path = format!("{}/{}.ctla", build_dir, module_name);
+            if let Ok(ctla_content) = fs::read_to_string(ctla_path) {
+                if let Ok(ctla_schema) = serde_json::from_str::<CTLASchema>(&ctla_content) {
+                    self.file_path_to_ctla.insert(import.clone(), ctla_schema);
+                }
+            }
+
             let mut l = Lexer::new();
             let import_toks = l.lex(contents)?;
             let module_name = import
@@ -480,6 +511,11 @@ impl Driver {
     ///Will automatically compile and build the program
     ///Linking in all necessary modules
     pub fn start(&mut self, ctx: &Context) -> Result<(), ToyError> {
+        let args: Vec<String> = env::args().collect();
+        let idx = args.iter().position(|r| r == "--build");
+        if idx.is_some() {
+            Driver::set_build_dir(args[idx.unwrap() + 1].clone());
+        }
         Driver::set_current_file_path(&self.main_program_path.to_string_lossy());
         let main_program = fs::read_to_string(&self.main_program_path).map_err(|_| {
             ToyError::new(
@@ -490,6 +526,10 @@ impl Driver {
                 )),
             )
         })?;
+        self.file_path_to_text.insert(
+            self.main_program_path.to_string_lossy().to_string(),
+            main_program.clone(),
+        );
 
         //Lex and box main program
         let mut l = Lexer::new();
@@ -514,13 +554,56 @@ impl Driver {
             Driver::set_current_file_path(path);
             let llvm_module = ctx.create_module(&module_name);
             let mut generator = Generator::new(ctx, llvm_module);
+            if let Some(text) = self.file_path_to_text.get(path) {
+                generator.set_original_text(text.clone());
+            }
+
+            let mut external_modules = HashMap::new();
+            for (p, schema) in &self.file_path_to_ctla {
+                let p_str: &String = p;
+                if p_str != path {
+                    let m_name = p_str
+                        .replace("/", ".")
+                        .replace(".toy", "")
+                        .trim_start_matches('.')
+                        .to_string();
+                    external_modules.insert(m_name, schema.summaries.clone());
+                }
+            }
+            generator.set_external_modules(external_modules);
+
             generator.compile_to_object(ast.clone(), module_name.clone(), false)?;
             object_files.push(format!("{}.o", module_name));
         }
 
-        //Compile Main
         let main_module = ctx.create_module("program");
         let mut generator = Generator::new(ctx, main_module);
+        if let Some(text) = self
+            .file_path_to_text
+            .get(&self.main_program_path.to_string_lossy().to_string())
+        {
+            generator.set_original_text(text.clone());
+        }
+
+        let mut external_modules = HashMap::new();
+        for (p, schema) in &self.file_path_to_ctla {
+            let p_str: &String = p;
+            let m_name = p_str
+                .replace("/", ".")
+                .replace(".toy", "")
+                .trim_start_matches('.')
+                .to_string();
+            external_modules.insert(m_name, schema.summaries.clone());
+        }
+        generator.set_external_modules(external_modules);
+
+        let module_name = self
+            .main_program_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("program")
+            .to_string();
+        Driver::set_current_file_path(&(module_name.clone() + ".toy"));
 
         //Register imported functions so TIR knows about them
         for (path, exports) in &self.table.path_to_exports {

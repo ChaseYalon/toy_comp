@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
+use crate::codegen::ctla::FunctionSummary;
 use crate::codegen::ctla::cfg::CFGFunction;
 use crate::codegen::tir::ir::{BlockId, Function, HeapAllocation, TIR, TirBuilder, ValueId};
 #[derive(Clone)]
@@ -9,6 +10,7 @@ pub struct AliasAndEncapsulationTracker {
     builder: Rc<RefCell<TirBuilder>>,
     pub aliases: HashSet<(u64, String, ValueId)>,
     pub encapsulators: HashSet<(u64, String, ValueId)>,
+    external_modules: HashMap<String, Vec<FunctionSummary>>
 }
 impl AliasAndEncapsulationTracker {
     pub fn new(builder: &Rc<RefCell<TirBuilder>>) -> AliasAndEncapsulationTracker {
@@ -16,15 +18,44 @@ impl AliasAndEncapsulationTracker {
             builder: Rc::clone(builder),
             aliases: HashSet::new(),
             encapsulators: HashSet::new(),
+            external_modules: HashMap::new(),
         };
     }
+
+    pub fn set_external_modules(&mut self, modules: HashMap<String, Vec<FunctionSummary>>) {
+        self.external_modules = modules;
+    }
+
+    pub fn get_external_summary(&self, callee_name: &str) -> Option<&FunctionSummary> {
+        let parts: Vec<&str> = callee_name.split("::").collect();
+        if parts.len() < 2 {
+            return None;
+        }
+        let module_name = parts[..parts.len() - 1].join(".");
+        if let Some(summaries) = self.external_modules.get(&module_name) {
+            return summaries.iter().find(|s| s.name == callee_name);
+        }
+        None
+    }
+
     #[allow(unused)]
     pub fn has_alias(&self, original_alloc_id: u64, func_name: &str, alias_id: ValueId) -> bool {
-        return self.aliases.get(&(original_alloc_id, func_name.to_string(), alias_id)).is_some();
+        return self
+            .aliases
+            .get(&(original_alloc_id, func_name.to_string(), alias_id))
+            .is_some();
     }
     #[allow(unused)]
-    pub fn has_encapsulator(&self, original_alloc_id: u64, func_name: &str, enc_id: ValueId) -> bool {
-        return self.encapsulators.get(&(original_alloc_id, func_name.to_string(), enc_id)).is_some();
+    pub fn has_encapsulator(
+        &self,
+        original_alloc_id: u64,
+        func_name: &str,
+        enc_id: ValueId,
+    ) -> bool {
+        return self
+            .encapsulators
+            .get(&(original_alloc_id, func_name.to_string(), enc_id))
+            .is_some();
     }
     ///just tests if the block contains a call to panic
     pub fn block_has_non_returning_panic_call(&self, func: &Function, block_id: BlockId) -> bool {
@@ -133,7 +164,7 @@ impl AliasAndEncapsulationTracker {
     /// Will determine if any of the possible return values are aliases of any of the parameters
     pub fn populate_return_alias_parameter_summaries(&self, cfg_functions: &mut [CFGFunction]) {
         loop {
-            let summary_snapshot: HashMap<String, Vec<usize>> = cfg_functions
+            let mut summary_snapshot: HashMap<String, Vec<usize>> = cfg_functions
                 .iter()
                 .map(|cfg_f| {
                     (
@@ -142,6 +173,12 @@ impl AliasAndEncapsulationTracker {
                     )
                 })
                 .collect();
+            
+            for summaries in self.external_modules.values() {
+                for summary in summaries {
+                    summary_snapshot.insert(summary.name.clone(), summary.aliased_parameters.clone());
+                }
+            }
 
             let mut changed = false;
             for cfg_f in cfg_functions.iter_mut() {
@@ -153,8 +190,11 @@ impl AliasAndEncapsulationTracker {
                 new_summary.sort_unstable();
                 new_summary.dedup();
 
-                if cfg_f.returns_alias_of_parameter != new_summary {
+                if cfg_f.returns_alias_of_parameter != new_summary
+                    || cfg_f.parameter_encapsulates != new_summary
+                {
                     cfg_f.returns_alias_of_parameter = new_summary;
+                    cfg_f.parameter_encapsulates = cfg_f.returns_alias_of_parameter.clone();
                     changed = true;
                 }
             }
@@ -193,14 +233,21 @@ impl AliasAndEncapsulationTracker {
                                 }
                             }
                             TIR::CallLocalFunction(out_id, callee_name, params, _, _) => {
-                                if let Some(callee_func) =
-                                    builder.funcs.iter().find(|f| f.name.as_ref() == callee_name.as_ref())
+                                if let Some(callee_func) = builder
+                                    .funcs
+                                    .iter()
+                                    .find(|f| f.name.as_ref() == callee_name.as_ref())
                                 {
                                     for (arg_idx, arg) in params.iter().enumerate() {
                                         if alias_values.contains(&(function_name.clone(), arg.val))
-                                            && callee_func.params.get(arg_idx).is_some_and(|callee_param| {
-                                                new_aliases.insert(((*callee_func.name).clone(), callee_param.val))
-                                            })
+                                            && callee_func.params.get(arg_idx).is_some_and(
+                                                |callee_param| {
+                                                    new_aliases.insert((
+                                                        (*callee_func.name).clone(),
+                                                        callee_param.val,
+                                                    ))
+                                                },
+                                            )
                                         {
                                             changed = true;
                                         }
@@ -278,9 +325,7 @@ impl AliasAndEncapsulationTracker {
                                     && alias_values
                                         .contains(&(function_name.clone(), params[1].val))
                                 {
-                                    if new_encapsulators
-                                        .insert((function_name.clone(), *out_id))
-                                    {
+                                    if new_encapsulators.insert((function_name.clone(), *out_id)) {
                                         changed = true;
                                     }
                                 }
@@ -384,7 +429,7 @@ impl AliasAndEncapsulationTracker {
         alloc: &mut HeapAllocation,
         cfg_functions: &mut Vec<CFGFunction>,
     ) {
-        let summary_by_func: HashMap<String, Vec<usize>> = cfg_functions
+        let mut summary_by_func: HashMap<String, Vec<usize>> = cfg_functions
             .iter()
             .map(|cfg_f| {
                 (
@@ -393,6 +438,12 @@ impl AliasAndEncapsulationTracker {
                 )
             })
             .collect();
+            
+        for summaries in self.external_modules.values() {
+            for summary in summaries {
+                summary_by_func.insert(summary.name.clone(), summary.aliased_parameters.clone());
+            }
+        }
 
         let mut value_to_block: HashMap<(String, ValueId), BlockId> = HashMap::new();
         let builder = self.builder.borrow();
