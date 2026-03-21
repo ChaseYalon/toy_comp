@@ -2177,8 +2177,6 @@ fn test_ast_gen_any_arr() {
 
 #[test]
 fn test_ast_gen_net_boolean() {
-    eprintln!("[WARN] The test_ast_gen_net_boolean test has been disabled b/c it depends on some future driver changes. DO NOT MERGE ANY PR'S UNTIL THE TEST IS REENABLED");
-    return;
     setup_ast!(
         r#"import std.net; net.configure_http_server(8080, 100); while true {if net.connection_requested(){println("CConnection!");}}"#,
         ast

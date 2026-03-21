@@ -237,3 +237,15 @@ fn test_ctla_multi_module_alloc() {
     compile_code_aot!(output, r#"import std.fs; fs.write_file("temp.txt", "hi");"#, "ctla_multi_module");
     assert!(!output.contains("FAIL_TEST"));
 }
+
+#[test]
+fn test_ctla_grow_array_with_double_alias(){
+    compile_code_aot!(output, r#"let s = "hi"; let y = s; let arr = [s]; arr[1] = "bye"; arr[0] = "foobar"; println(arr);"#, "ctla_grow_arr_alias");
+    assert!(!output.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_many_allocs(){
+    compile_code_aot!(output, r#"import std.time; let i = 0; while i < 10000 {let ms = time.now(); let s = str(ms); i++;}"#, "ctla_many_allocs");
+    assert!(!output.contains("FAIL_TEST"));
+}

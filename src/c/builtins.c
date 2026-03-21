@@ -466,7 +466,7 @@ void toy_write_to_arr(ToyPtr arr_in_ptr, int64_t value, int64_t idx, int64_t typ
         memcpy(new_data, arr_ptr->arr, arr_ptr->length * sizeof(ToyArrVal));
 
         // Free old arr
-        free(arr_ptr->arr);
+        toy_free(arr_ptr->arr);
 
         // Update metadata
         arr_ptr->arr = new_data;
