@@ -48,6 +48,7 @@ pub enum Token {
     Struct(Box<String>),
     For, //in the context of binding functions to structs
     Extern,
+    ExternType(QualifiedExternType),
     Import,
     Export,
     Interface,
@@ -94,6 +95,36 @@ impl SpannedToken {
             tok,
             span: Span::null_span(),
         };
+    }
+}
+#[allow(nonstandard_style)]
+///types
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ExternType {
+    C_int64_t,
+    c_char_ptr,
+    c_void_ptr,
+    c_double,
+}
+impl ExternType {
+    pub fn to_str(&self) -> String {
+        match self {
+            Self::C_int64_t => "C_int64_t".to_string(),
+            Self::c_char_ptr => "c_char_ptr".to_string(),
+            Self::c_double => "c_double".to_string(),
+            Self::c_void_ptr => "c_void_ptr".to_string()
+        }
+    }
+}
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct QualifiedExternType {
+    pub ty: ExternType,
+    ///specifies if the value represented by the type should be released from ctla analysis
+    pub is_released: bool,
+}
+impl QualifiedExternType {
+    pub fn to_str(&self) -> String {
+        format!("{}_{}", self.ty.to_str(), if self.is_released {"released"} else {"retain"})
     }
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -269,6 +300,7 @@ impl Token {
             Self::Not => "Not".to_string(),
             Self::For => "For".to_string(),
             Self::Extern => "Extern".to_string(),
+            Self::ExternType(_) => "ExternType".to_string(),
             Self::Import => "Import".to_string(),
             Self::Export => "Export".to_string(),
             Self::Interface => "Interface".to_string(),
@@ -355,6 +387,7 @@ impl Token {
                 Token::Not => String::from("!"),
                 Token::For => String::from("for"),
                 Token::Extern => String::from("extern"),
+                Token::ExternType(et) => et.to_str(),
                 Token::Import => String::from("import"),
                 Token::Export => String::from("export"),
                 Token::Implements => String::from("implements"),

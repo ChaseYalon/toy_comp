@@ -32,7 +32,7 @@ macro_rules! setup_tir {
                     let full_mangled =
                         crate::driver::Driver::mangle_name(Some(&prefix), &export.name, &[]);
                     t.builder
-                        .register_extern_func(full_mangled, ret.clone(), true);
+                        .register_extern_func(full_mangled, ret.clone(), true, vec![]);
                 }
             }
         }

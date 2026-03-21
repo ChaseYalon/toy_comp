@@ -252,6 +252,7 @@ impl fmt::Display for ToyErrorType {
             Self::InvalidOperationOnGivenType => write!(f, "Invalid Operation On Given Type"),
             Self::MissingFile => write!(f, "Missing File"),
             Self::VariableNotAStruct => write!(f, "VariableNotAStruct"),
+            Self::IncorrectNumberOfArguments => write!(f, "Incorrect Number Of Arguments"),
             _ => todo!("chase implement error type {:?}", self),
         }
     }

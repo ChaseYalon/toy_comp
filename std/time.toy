@@ -93,7 +93,7 @@ export fn current_date(): Date {
         day: current_day(),
     };
 }
-extern fn toy_time_sleep(ms: int);
+extern fn toy_time_sleep(ms: c_int64_t);
 export fn sleep(ms: int){
     toy_time_sleep(ms);
 }

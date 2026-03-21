@@ -231,3 +231,9 @@ fn test_ctla_struct_aliasing_and_encapsulation() {
     );
     assert!(!output.contains("FAIL_TEST"));
 }
+
+#[test]
+fn test_ctla_multi_module_alloc() {
+    compile_code_aot!(output, r#"import std.fs; fs.write_file("temp.txt", "hi");"#, "ctla_multi_module");
+    assert!(!output.contains("FAIL_TEST"));
+}

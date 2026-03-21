@@ -2,7 +2,7 @@ use crate::token::{SpannedToken, TypeTok};
 use colored::*;
 use ordered_float::OrderedFloat;
 use std::fs;
-
+use crate::token::{QualifiedExternType, ExternType};
 use super::{Lexer, Token};
 
 fn compare_tokens(test_name: &str, got: Vec<SpannedToken>, want: Vec<Token>) {
@@ -1522,6 +1522,37 @@ fn test_lexer_import() {
             Token::LParen,
             Token::IntLit(-3),
             Token::RParen,
+            Token::Semicolon,
+        ],
+    )
+}
+
+#[test]
+fn test_lexer_extern_c_type(){
+    let mut l = Lexer::new();
+    let toks = l.lex("extern fn foo(a: retained c_int64_t, b: c_double, c: released c_char_ptr): str;".to_string()).unwrap();
+    compare_tokens(
+        "test_lexer_extern_c_type",
+        toks,
+        vec![
+            Token::Extern,
+            Token::Func,
+            Token::VarName(Box::new("foo".to_string())),
+            Token::LParen,
+            Token::VarRef(Box::new("a".to_string())),
+            Token::Colon,
+            Token::ExternType(QualifiedExternType { ty: ExternType::C_int64_t, is_released: false }),
+            Token::Comma,
+            Token::VarRef(Box::new("b".to_string())),
+            Token::Colon,
+            Token::ExternType(QualifiedExternType { ty: ExternType::c_double, is_released: true }),
+            Token::Comma,
+            Token::VarRef(Box::new("c".to_string())),
+            Token::Colon,
+            Token::ExternType(QualifiedExternType { ty: ExternType::c_char_ptr, is_released: true }),
+            Token::RParen,
+            Token::Colon,
+            Token::Type(TypeTok::Str),
             Token::Semicolon,
         ],
     )

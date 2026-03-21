@@ -5,6 +5,7 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
 };
+use std::path;
 //this macro sucks
 thread_local! {
     static CURRENT_FILE_PATH: RefCell<Option<String>> = const { RefCell::new(None) };
@@ -15,11 +16,11 @@ thread_local! {
 use inkwell::{context::Context, module::Module};
 
 use crate::{
-    codegen::{ctla::CTLASchema, Generator},
+    codegen::{Generator, ctla::CTLASchema},
     errors::{Span, ToyError, ToyErrorType},
     lexer::Lexer,
     parser::{ast::Ast, ast_gen::AstGenerator, boxer::Boxer, toy_box::TBox},
-    token::TypeTok,
+    token::{ExternType, TypeTok},
 };
 
 pub static FILE_EXTENSION_EXE: &str = if cfg!(target_os = "windows") {
@@ -200,6 +201,7 @@ impl Linker {
         Ok(())
     }
 }
+#[derive(Debug)]
 pub enum ModuleExportType {
     ///in param types(in order declared), return type
     Function(Vec<TypeTok>, TypeTok),
@@ -208,6 +210,7 @@ pub enum ModuleExportType {
     /////contains a type tok of type interface
     //Interface(TypeTok),
 }
+#[derive(Debug)]
 pub struct ModuleExport {
     pub name: String,
     pub ty: ModuleExportType,
@@ -313,6 +316,14 @@ impl Driver {
     fn name_to_path(&self, path: String) -> String {
         let segments: Vec<&str> = path.split(".").collect();
         return segments.join("/") + ".toy";
+    }
+    pub fn extern_type_to_type_tok(ety: ExternType) -> TypeTok{
+        return match ety{
+            ExternType::C_int64_t => TypeTok::Int,
+            ExternType::c_double => TypeTok::Float,
+            ExternType::c_char_ptr => TypeTok::Str,
+            ExternType::c_void_ptr => TypeTok::Any
+        }
     }
 
     fn feed_to_ast_gen(&mut self, ast_gen: &mut AstGenerator) {
@@ -428,13 +439,12 @@ impl Driver {
                 .insert(import.clone(), contents.clone());
 
             let build_dir = Driver::get_build_dir();
-            let module_name = import
-                .clone()
-                .replace("/", ".")
-                .replace(".toy", "")
-                .trim_start_matches('.')
+            let module_stem = path::Path::new(&import)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default()
                 .to_string();
-            let ctla_path = format!("{}/{}.ctla", build_dir, module_name);
+            let ctla_path = format!("{}/{}.ctla", build_dir, module_stem);
             if let Ok(ctla_content) = fs::read_to_string(ctla_path) {
                 if let Ok(ctla_schema) = serde_json::from_str::<CTLASchema>(&ctla_content) {
                     self.file_path_to_ctla.insert(import.clone(), ctla_schema);
@@ -469,8 +479,8 @@ impl Driver {
                     TBox::ExternFuncDec(name, params, return_type, _) => {
                         let mut param_types = Vec::new();
                         for p in params {
-                            if let TBox::FuncParam(_, t, _) = p {
-                                param_types.push(t);
+                            if let TBox::ExternFuncParam(_, qualified_type, _) = p {
+                                param_types.push(Driver::extern_type_to_type_tok(qualified_type.ty));
                             }
                         }
                         let ty = ModuleExportType::Function(param_types, return_type.clone());

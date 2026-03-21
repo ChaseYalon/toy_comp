@@ -33,7 +33,7 @@ impl<'a> Generator<'a> {
     pub fn register_imported_func(&mut self, name: String, ret_type: TypeTok) {
         self.converter
             .builder
-            .register_extern_func(name, ret_type, false);
+            .register_extern_func(name, ret_type, false, vec![]);
     }
     pub fn set_original_text(&mut self, text: String) {
         self.analyzer.set_original_text(text);

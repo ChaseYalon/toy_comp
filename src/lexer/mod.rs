@@ -1,7 +1,7 @@
 use crate::debug;
 use crate::driver::Driver;
 use crate::errors::{Span, ToyError, ToyErrorType};
-use crate::token::{SpannedToken, Token, TypeTok};
+use crate::token::{SpannedToken, Token, TypeTok, ExternType, QualifiedExternType};
 use ordered_float::OrderedFloat;
 
 #[derive(Debug)]
@@ -148,6 +148,49 @@ impl Lexer {
         self.cursor = scan;
         return Ok(true);
     }
+    
+    fn lex_extern_type(&mut self, word: &str, ty: ExternType) -> Result<bool, ToyError> {
+        let start_cursor = self.cursor;
+        for (i, c) in word.char_indices() {
+            if self.peek(i) != c {
+                return Ok(false);
+            }
+        }
+
+        let prev_char = if self.cursor == 0 {
+            '\0'
+        } else {
+            self.source_chars[self.cursor - 1]
+        };
+        if prev_char.is_alphanumeric() || prev_char == '_' {
+            return Ok(false);
+        }
+
+        let next_char = self.peek(word.len());
+        if next_char.is_alphanumeric() || next_char == '_' {
+            return Ok(false);
+        }
+
+        let mut is_released = true;
+        let final_start_cursor = start_cursor;
+
+        if let Some(last) = self.pending_tokens.last() {
+            if let Token::VarRef(name) = last {
+                if name.as_str() == "retained" || name.as_str() == "released" {
+                    is_released = name.as_str() == "released";
+                    // Pop the retained/released token
+                    self.pending_tokens.pop();
+                    self.token_start_bytes.pop();
+                    // We don't have the start_cursor of the popped token easily available here,
+                    // but start_cursor of the type word is fine.
+                }
+            }
+        }
+        
+        self.cursor += word.len();
+        self.push_tok(Token::ExternType(QualifiedExternType { ty, is_released }), final_start_cursor);
+        return Ok(true);
+    }
 
     pub fn lex(&mut self, input: String) -> Result<Vec<SpannedToken>, ToyError> {
         self.char_byte_offsets = input.char_indices().map(|(byte_pos, _)| byte_pos).collect();
@@ -190,6 +233,7 @@ impl Lexer {
             }
             let _ = tok_start;
             if (c == ' ' || c == '\t' || c == '\n' || c == '\r') && !self.in_string_literal {
+                self.flush();
                 self.eat();
                 continue;
             }
@@ -264,6 +308,18 @@ impl Lexer {
                 continue;
             }
             if self.lex_keyword("extern", Token::Extern) {
+                continue;
+            }
+            if self.lex_extern_type("c_int64_t", ExternType::C_int64_t)? {
+                continue;
+            }
+            if self.lex_extern_type("c_char_ptr", ExternType::c_char_ptr)? {
+                continue;
+            }
+            if self.lex_extern_type("c_double", ExternType::c_double)? {
+                continue;
+            }
+            if self.lex_extern_type("c_void_ptr", ExternType::c_void_ptr)? {
                 continue;
             }
             if self.lex_keyword("import", Token::Import) {

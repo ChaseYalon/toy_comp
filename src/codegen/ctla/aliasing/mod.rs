@@ -10,7 +10,7 @@ pub struct AliasAndEncapsulationTracker {
     builder: Rc<RefCell<TirBuilder>>,
     pub aliases: HashSet<(u64, String, ValueId)>,
     pub encapsulators: HashSet<(u64, String, ValueId)>,
-    external_modules: HashMap<String, Vec<FunctionSummary>>
+    pub external_modules: HashMap<String, Vec<FunctionSummary>>
 }
 impl AliasAndEncapsulationTracker {
     pub fn new(builder: &Rc<RefCell<TirBuilder>>) -> AliasAndEncapsulationTracker {

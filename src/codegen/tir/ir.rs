@@ -93,8 +93,9 @@ pub enum TIR {
     Ret(ValueId, SSAValue),
     ///call locally defined function, functions are called by name, SSA values are passed by order to the function , the bool represents weather the return value from the function is HEAP allocated, CTLA will take ownership of any returned values,
     CallLocalFunction(ValueId, Box<String>, Vec<SSAValue>, bool, TirType),
-    ///call externally defined function, same rules as above final type is just return type. final bool is doesn't take ownership
-    CallExternFunction(ValueId, Box<String>, Vec<SSAValue>, bool, TirType, bool),
+    ///call externally defined function, same rules as above final type is just return type.
+    ///final Vec<bool> is per-param "doesn't take ownership" metadata.
+    CallExternFunction(ValueId, Box<String>, Vec<SSAValue>, bool, TirType, Vec<bool>),
     ///creates a new struct interface, with a ValueId and with the specified values (YOU ARE RESPONSIBLE FOR KEEPING TRACK OF Field -> Idx mapping),
     ///second string is name, note please make the Tir AType a struct otherwise you will get a weird error
     CreateStructInterface(ValueId, Box<String>, TirType),
@@ -177,7 +178,8 @@ pub struct TirBuilder {
     pub funcs: Vec<Function>,
     pub curr_func: Option<usize>,  //index into self.funcs
     pub curr_block: Option<usize>, //index into self.curr_func.body,
-    pub extern_funcs: HashMap<String, (bool, TypeTok, bool, bool)>, //external function name to is_allocator, return_type, doesnt_take_ownership, is_read_only
+    ///func_name -> (is_allocator, ret_type, Vec<param_1_not_owned, param_2_not_owned, ... , param_n_not_owned>, is_read_only)
+    pub extern_funcs: HashMap<String, (bool, TypeTok, Vec<bool>, bool)>, //external function name to is_allocator, return_type, doesnt_take_ownership, is_read_only
 }
 impl TirBuilder {
     pub fn new() -> TirBuilder {
@@ -225,7 +227,7 @@ impl TirBuilder {
         self.curr_block = Some(self.funcs[self.curr_func.unwrap()].body.len() - 1);
     }
 
-    pub fn register_extern_func(&mut self, name: String, ret_type: TypeTok, is_read_only: bool) {
+    pub fn register_extern_func(&mut self, name: String, ret_type: TypeTok, is_read_only: bool, doesnt_take_ownership_list: Vec<bool>) {
         //Functions returning str, str[], or any array type are allocators
         let is_allocator = matches!(
             ret_type,
@@ -237,7 +239,7 @@ impl TirBuilder {
                 | TypeTok::StructArr(_, _)
         );
         self.extern_funcs
-            .insert(name, (is_allocator, ret_type, false, is_read_only));
+            .insert(name, (is_allocator, ret_type, doesnt_take_ownership_list, is_read_only));
     }
 
     /// Updates the parameters of the current function
@@ -525,13 +527,9 @@ impl TirBuilder {
     /// Calls an externally defined function by name.
     /// The function must be registered with `register_extern` first.
     /// Returns an error if the function is not registered.
-    pub fn call_extern(
-        &mut self,
-        name: String,
-        params: Vec<SSAValue>,
-        doesnt_take_ownership: bool,
-    ) -> Result<SSAValue, ToyError> {
-        let (is_allocator, ret_tok, _, _) = self.extern_funcs.get(&name).cloned().unwrap(); // parser validated
+    pub fn call_extern(&mut self, name: String, params: Vec<SSAValue>) -> Result<SSAValue, ToyError> {
+        let (is_allocator, ret_tok, doesnt_take_ownership, _) =
+            self.extern_funcs.get(&name).cloned().unwrap(); // parser validated
         let ret_type = self.type_tok_to_tir_type(ret_tok);
         let curr_func_name = self.funcs[self.curr_func.unwrap()].name.clone();
         let curr_block_idx = self.curr_block.unwrap();
@@ -611,8 +609,7 @@ impl TirBuilder {
 
         // Otherwise, try extern
         if self.extern_funcs.contains_key(&name) {
-            let (_, _, doesnt_take_ownership, _) = self.extern_funcs.get(&name).unwrap();
-            return self.call_extern(name, params, *doesnt_take_ownership);
+            return self.call_extern(name, params);
         }
         println!("Name: {name}");
         unreachable!(); // parser validated
@@ -642,7 +639,7 @@ impl TirBuilder {
         let (_, ret_tok, _, _) = self.extern_funcs.get(&name).cloned().unwrap();
         let ret_type = self.type_tok_to_tir_type(ret_tok);
         let id = self._next_value_id();
-        let (_, _, doesnt_take_ownership, _) = self.extern_funcs.get(&name).unwrap();
+        let (_, _, doesnt_take_ownership, _) = self.extern_funcs.get(&name).cloned().unwrap();
 
         let ins = TIR::CallExternFunction(
             id,
@@ -650,7 +647,7 @@ impl TirBuilder {
             params,
             false,
             ret_type,
-            *doesnt_take_ownership,
+            doesnt_take_ownership,
         );
         self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()]
             .ins
@@ -968,7 +965,7 @@ impl TirBuilder {
         name: String,
         is_allocator: bool,
         ret_type: TypeTok,
-        doesnt_take_ownership: bool,
+        doesnt_take_ownership: Vec<bool>,
         is_extern: bool,
     ) {
         self.extern_funcs.insert(
@@ -986,7 +983,7 @@ impl TirBuilder {
             val: id,
             ty: Some(TirType::Ptr),
         };
-        let mut val2 = self.call_extern("toy_malloc".to_string(), vec![val], true)?;
+        let mut val2 = self.call_extern("toy_malloc".to_string(), vec![val])?;
         val2.ty = Some(TirType::Ptr);
         self.funcs[self.curr_func.unwrap()]
             .heap_allocations
@@ -1099,7 +1096,7 @@ impl TirBuilder {
             vec![to_free_val],
             false,
             TirType::Void,
-            false,
+            vec![false],
         );
 
         let func = self

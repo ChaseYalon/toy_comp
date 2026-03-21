@@ -37,7 +37,8 @@ macro_rules! setup_tir_builder_with_cfg {
                 if let crate::driver::ModuleExportType::Function(_params, ret) = &export.ty {
                     let full_mangled =
                         crate::driver::Driver::mangle_name(Some(&prefix), &export.name, &[]);
-                    t.builder.register_extern_func(full_mangled, ret.clone(), true);//i think true is right?
+                    t.builder
+                        .register_extern_func(full_mangled, ret.clone(), true, vec![]); //i think true is right?
                 }
             }
         }

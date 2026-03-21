@@ -33,6 +33,3 @@ Program
 
 #core dumps
 core.*
-
-#generated binaries
-build

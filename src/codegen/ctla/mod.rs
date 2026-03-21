@@ -382,7 +382,8 @@ impl CTLA {
                                     if summary.escaped_parameters.contains(&idx) {
                                         return EscapeType::EscapesModule;
                                     }
-                                } else if !*doesnt_take_ownership {
+                                } else if !doesnt_take_ownership.get(idx).copied().unwrap_or(false)
+                                {
                                     return EscapeType::EscapesProgram;
                                 }
                             }
@@ -802,7 +803,11 @@ impl CTLA {
                                         if summary.escaped_parameters.contains(&arg_idx) {
                                             param_escapes_program = true;
                                         }
-                                    } else if !*doesnt_take_ownership {
+                                    } else if !doesnt_take_ownership
+                                        .get(arg_idx)
+                                        .copied()
+                                        .unwrap_or(false)
+                                    {
                                         param_escapes_program = true;
                                     }
                                 }
@@ -823,8 +828,17 @@ impl CTLA {
     }
     /// Runs CTLA Analysis on the given Builder, returns a vec of functions containing the processed code, or an error.
     pub fn analyze(&mut self, builder: TirBuilder) -> Result<Vec<Function>, ToyError> {
+        let module_name = Driver::get_current_file_path()
+            .and_then(|p| {
+                std::path::Path::new(&p)
+                    .file_stem()
+                    .and_then(|s| s.to_str().map(|s| s.to_string()))
+            })
+            .unwrap_or_else(|| "module".to_string());
+        let external_modules = self.alias_detector.external_modules.clone();
         self.builder = Rc::new(RefCell::new(builder));
         self.alias_detector = AliasAndEncapsulationTracker::new(&self.builder);
+        self.alias_detector.set_external_modules(external_modules);
         self.cfg_functions.clear();
 
         //build per-function CFG graphs
@@ -900,13 +914,6 @@ impl CTLA {
         hasher.write(self.original_text.as_deref().unwrap_or("").as_bytes());
         let hash = format!("{:x}", hasher.finish());
 
-        let module_name = Driver::get_current_file_path()
-            .and_then(|p| {
-                std::path::Path::new(&p)
-                    .file_stem()
-                    .and_then(|s| s.to_str().map(|s| s.to_string()))
-            })
-            .unwrap_or_else(|| "module".to_string());
 
         let schema = CTLASchema::new(1, summaries, hash, module_name.clone());
         let serialized = serde_json::to_string(&schema).unwrap(); //should fix ?
