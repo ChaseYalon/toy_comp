@@ -310,7 +310,7 @@ impl Lexer {
             if self.lex_keyword("extern", Token::Extern) {
                 continue;
             }
-            if self.lex_extern_type("c_int64_t", ExternType::C_int64_t)? {
+            if self.lex_extern_type("c_int64_t", ExternType::c_int64_t)? {
                 continue;
             }
             if self.lex_extern_type("c_char_ptr", ExternType::c_char_ptr)? {

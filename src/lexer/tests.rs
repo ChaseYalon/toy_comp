@@ -1541,7 +1541,7 @@ fn test_lexer_extern_c_type(){
             Token::LParen,
             Token::VarRef(Box::new("a".to_string())),
             Token::Colon,
-            Token::ExternType(QualifiedExternType { ty: ExternType::C_int64_t, is_released: false }),
+            Token::ExternType(QualifiedExternType { ty: ExternType::c_int64_t, is_released: false }),
             Token::Comma,
             Token::VarRef(Box::new("b".to_string())),
             Token::Colon,

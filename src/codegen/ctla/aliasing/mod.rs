@@ -325,7 +325,9 @@ impl AliasAndEncapsulationTracker {
                                     && alias_values
                                         .contains(&(function_name.clone(), params[1].val))
                                 {
-                                    if new_encapsulators.insert((function_name.clone(), *out_id)) {
+                                    if new_encapsulators
+                                        .insert((function_name.clone(), params[0].val))
+                                    {
                                         changed = true;
                                     }
                                 }

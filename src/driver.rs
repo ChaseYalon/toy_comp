@@ -319,7 +319,7 @@ impl Driver {
     }
     pub fn extern_type_to_type_tok(ety: ExternType) -> TypeTok{
         return match ety{
-            ExternType::C_int64_t => TypeTok::Int,
+            ExternType::c_int64_t => TypeTok::Int,
             ExternType::c_double => TypeTok::Float,
             ExternType::c_char_ptr => TypeTok::Str,
             ExternType::c_void_ptr => TypeTok::Any

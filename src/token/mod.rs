@@ -101,7 +101,7 @@ impl SpannedToken {
 ///types
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ExternType {
-    C_int64_t,
+    c_int64_t,
     c_char_ptr,
     c_void_ptr,
     c_double,
@@ -109,7 +109,7 @@ pub enum ExternType {
 impl ExternType {
     pub fn to_str(&self) -> String {
         match self {
-            Self::C_int64_t => "C_int64_t".to_string(),
+            Self::c_int64_t => "c_int64_t".to_string(),
             Self::c_char_ptr => "c_char_ptr".to_string(),
             Self::c_double => "c_double".to_string(),
             Self::c_void_ptr => "c_void_ptr".to_string()

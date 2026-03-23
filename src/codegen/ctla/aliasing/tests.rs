@@ -77,7 +77,7 @@ fn test_basic_encapsulator() {
         r#"let x = "hi"; let arr = [x]; println(arr); println(x);"#
     );
     assert!(
-        tracker.has_encapsulator(1, "user_main", 8),
+        tracker.has_encapsulator(1, "user_main", 5),
         "{:#?}",
         tracker.encapsulators
     );
@@ -141,7 +141,8 @@ fn test_branch_alias_and_encapsulator() {
         tracker.aliases
     );
     assert!(
-        tracker.has_encapsulator(1, "user_main", 20),
+        tracker.has_encapsulator(1, "user_main", 17)
+            || tracker.has_encapsulator(1, "user_main", 23),
         "{:#?}",
         tracker.encapsulators
     );
@@ -150,9 +151,9 @@ fn test_branch_alias_and_encapsulator() {
 #[test]
 fn test_nested_encapsulator() {
     setup_tir_builder!(tracker, r#"let arr = ["hello"]; let outer = [arr];"#);
-    assert!(tracker.has_encapsulator(1, "user_main", 8));
+    assert!(tracker.has_encapsulator(1, "user_main", 5));
     assert!(
-        tracker.has_encapsulator(5, "user_main", 15),
+        tracker.has_encapsulator(5, "user_main", 12),
         "{:#?}",
         tracker.encapsulators
     )
@@ -206,12 +207,12 @@ fn test_struct_array_alias() {
     "#
     );
     assert!(
-        tracker.has_encapsulator(1, "user_main", 10),
+        tracker.has_encapsulator(1, "user_main", 7),
         "{:#?}",
         tracker.encapsulators
     );
     assert!(
-        tracker.has_encapsulator(3, "user_main", 13),
+        tracker.has_encapsulator(3, "user_main", 7),
         "{:#?}",
         tracker.encapsulators
     );

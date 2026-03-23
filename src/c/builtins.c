@@ -18,7 +18,7 @@ static void _toy_init() {
 }
 
 //datatype is 0 for string, 1 for bool, 2 for int, 3 for float, 4 for str[], 5 for bool[], 6 for int[], 7 for float[], 8 for struct[]
-//if datatype is 0 (input is string) then nput is a pointer
+//if datatype is 0 (input is string) then input is a pointer
 //Input could be an int, if sizeof(type) > wordSize
 char* _toy_format(ToyPtr input, int64_t datatype, int64_t degree) {
     switch(datatype) {
