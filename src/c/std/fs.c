@@ -18,9 +18,6 @@
 #include <string.h>
 #endif
 
-// ---------------------------
-// Cross-platform read file
-// ---------------------------
 ToyPtr toy_fs_read_file(ToyPtr path) {
     const char *p = (const char*)path;
 #ifdef _WIN32

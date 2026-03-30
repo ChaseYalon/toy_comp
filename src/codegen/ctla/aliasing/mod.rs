@@ -318,7 +318,7 @@ impl AliasAndEncapsulationTracker {
                                     }
                                 }
                             }
-                            TIR::CallExternFunction(out_id, callee_name, params, _, _, _)
+                            TIR::CallExternFunction(_, callee_name, params, _, _, _)
                                 if callee_name.as_ref() == "toy_write_to_arr" =>
                             {
                                 if params.len() >= 2

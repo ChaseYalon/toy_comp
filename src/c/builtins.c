@@ -597,7 +597,3 @@ ToyPtr toy_arr_concat(ToyPtr arr1, ToyPtr arr2) {
 
     return res_ptr;
 }
-
-void toy_free_struct(ToyPtr struct_ptr){
-    
-}

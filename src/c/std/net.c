@@ -119,7 +119,7 @@ static void _sock_perror(const char* what) {
 #endif
 
 void toy_net_configure_http_server(int64_t port, int64_t timeout) {
-    (void)timeout;
+    (void)timeout; //I forgot why this is here, clangd complains when I remove it, but this is sus
 
 #ifdef _WIN32
     _wsa_init_once();
