@@ -18,7 +18,7 @@ static void _toy_init() {
 }
 
 //datatype is 0 for string, 1 for bool, 2 for int, 3 for float, 4 for str[], 5 for bool[], 6 for int[], 7 for float[], 8 for struct[]
-//if datatype is 0 (input is string) then nput is a pointer
+//if datatype is 0 (input is string) then input is a pointer
 //Input could be an int, if sizeof(type) > wordSize
 char* _toy_format(ToyPtr input, int64_t datatype, int64_t degree) {
     switch(datatype) {
@@ -466,7 +466,7 @@ void toy_write_to_arr(ToyPtr arr_in_ptr, int64_t value, int64_t idx, int64_t typ
         memcpy(new_data, arr_ptr->arr, arr_ptr->length * sizeof(ToyArrVal));
 
         // Free old arr
-        free(arr_ptr->arr);
+        toy_free(arr_ptr->arr);
 
         // Update metadata
         arr_ptr->arr = new_data;
@@ -596,8 +596,4 @@ ToyPtr toy_arr_concat(ToyPtr arr1, ToyPtr arr2) {
     }
 
     return res_ptr;
-}
-
-void toy_free_struct(ToyPtr struct_ptr){
-    
 }

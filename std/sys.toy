@@ -1,5 +1,5 @@
 //low level module for interacting with hardware
-extern fn toy_sys_exit(code: int);
+extern fn toy_sys_exit(code: c_int64_t);
 export fn exit(code: int){
     toy_sys_exit(code);
 }
@@ -53,7 +53,7 @@ export fn is_big_endian(): bool {
     return !is_little_endian();
 }
 //0 = success, 1 = failure
-extern fn toy_sys_invoke(code: str, args: str[]): int;
+extern fn toy_sys_invoke(code: retained c_char_ptr, args: retained c_void_ptr): int;
 export fn invoke(code: str, args: str[]): int{
     return toy_sys_invoke(code, args);
 }

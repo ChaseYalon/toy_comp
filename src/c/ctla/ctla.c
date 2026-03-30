@@ -37,6 +37,14 @@ void toy_free(void* buff) {
         fprintf(stderr, "[ERROR] Tried to free a null buffer\n");
         abort();
     }
+    int64_t value;
+    if (DebugMap_get(DEBUG_HEAP->Map, buff, &value) && value == -1){
+        fprintf(stderr, "[ERROR] Double free on pointer %p detected\n", buff);
+        fprintf(stderr, "FAIL_TEST\n");
+        fflush(stderr);
+        fflush(stdout);
+        abort();
+    }
     if(getenv("TOY_DEBUG") && strcmp(getenv("TOY_DEBUG"), "TRUE") == 0) {
         // Only decrement if this pointer was actually tracked (has a non-negative value)
         int64_t value;

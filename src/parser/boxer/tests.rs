@@ -2,7 +2,7 @@ use super::{Boxer, TBox, Token};
 use crate::{
     errors::Span,
     lexer::Lexer,
-    token::{SpannedToken, TypeTok},
+    token::{ExternType, QualifiedExternType, SpannedToken, TypeTok},
 };
 use ordered_float::OrderedFloat;
 use std::collections::BTreeMap;
@@ -48,6 +48,9 @@ fn eq_tbox_ignoring_src(x: &TBox, y: &TBox) -> bool {
         }
 
         (TBox::FuncParam(xn, xt, _), TBox::FuncParam(yn, yt, _)) => xn.tok == yn.tok && xt == yt,
+        (TBox::ExternFuncParam(xn, xt, _), TBox::ExternFuncParam(yn, yt, _)) => {
+            xn.tok == yn.tok && xt == yt
+        }
 
         (TBox::FuncDec(xn, xp, xr, xb, _, xie), TBox::FuncDec(yn, yp, yr, yb, _, yie)) => {
             xn.tok == yn.tok
@@ -1211,7 +1214,7 @@ fn test_boxer_increment() {
 
 #[test]
 fn test_boxer_extern_function_declaration() {
-    let input = String::from("extern fn printf(msg: str): int;");
+    let input = String::from("extern fn printf(msg: c_char_ptr): int;");
     let mut l = Lexer::new();
     let mut b = Boxer::new();
     let toks = l.lex(input).unwrap();
@@ -1221,9 +1224,9 @@ fn test_boxer_extern_function_declaration() {
         boxes.unwrap(),
         vec![TBox::ExternFuncDec(
             SpannedToken::new_null(Token::VarName(Box::new("printf".to_string()))),
-            vec![TBox::FuncParam(
+            vec![TBox::ExternFuncParam(
                 SpannedToken::new_null(Token::VarRef(Box::new("msg".to_string()))),
-                TypeTok::Str,
+                QualifiedExternType{ty: ExternType::c_char_ptr, is_released: true},
                 Span::null_span()
             )],
             TypeTok::Int,
@@ -1234,7 +1237,7 @@ fn test_boxer_extern_function_declaration() {
 
 #[test]
 fn test_boxer_extern_function_declaration_void() {
-    let input = String::from("extern fn puts(msg: str): void;");
+    let input = String::from("extern fn puts(msg: retained c_char_ptr): void;");
     let mut l = Lexer::new();
     let mut b = Boxer::new();
     let toks = l.lex(input).unwrap();
@@ -1244,9 +1247,9 @@ fn test_boxer_extern_function_declaration_void() {
         boxes.unwrap(),
         vec![TBox::ExternFuncDec(
             SpannedToken::new_null(Token::VarName(Box::new("puts".to_string()))),
-            vec![TBox::FuncParam(
+            vec![TBox::ExternFuncParam(
                 SpannedToken::new_null(Token::VarRef(Box::new("msg".to_string()))),
-                TypeTok::Str,
+                QualifiedExternType{ty: ExternType::c_char_ptr, is_released: false},
                 Span::null_span()
             )],
             TypeTok::Void,

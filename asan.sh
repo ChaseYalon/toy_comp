@@ -1,4 +1,2 @@
-#!/bin/bash
-echo "please be aware, this needs program.ll and will compile the whole std directory"
-clang -fsanitize=address -fno-omit-frame-pointer Program.ll std/* /lib/x86_64-unknown-linux-gnu/libruntime.a -o Program
-./Program
+echo "please be aware, this needs Program.ll and will compile the whole std directory"
+clang -fsanitize=address -fno-omit-frame-pointer Program.ll std/*.ll lib/x86_64-unknown-linux-gnu/cacert.o lib/x86_64-unknown-linux-gnu/libruntime.a lib/x86_64-unknown-linux-gnu/libcurl.a lib/x86_64-unknown-linux-gnu/libssl.a lib/x86_64-unknown-linux-gnu/libcrypto.a lib/x86_64-unknown-linux-gnu/libgcc.a -lm -lpthread -ldl -o Program

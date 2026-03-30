@@ -36,7 +36,8 @@ macro_rules! setup_tir {
                 if let crate::driver::ModuleExportType::Function(_params, ret) = &export.ty {
                     let full_mangled =
                         crate::driver::Driver::mangle_name(Some(&prefix), &export.name, &[]);
-                    t.builder.register_extern_func(full_mangled, ret.clone(), true);//i think true is right?
+                    t.builder
+                        .register_extern_func(full_mangled, ret.clone(), true, vec![]); //i think true is right?
                 }
             }
         }
@@ -57,6 +58,19 @@ fn panic_with_write(test_name: &str, a: Vec<Function>, b: Vec<Function>) {
 }
 ///ignores heap allocations
 fn compare_tir(test_name: &str, a: Vec<Function>, b: Vec<Function>) {
+    fn extern_ownership_matches(got: &Vec<bool>, want: &Vec<bool>) -> bool {
+        if got == want {
+            return true;
+        }
+        if want.len() == 1 {
+            return got.iter().all(|v| *v == want[0]);
+        }
+        if got.len() == 1 {
+            return want.iter().all(|v| *v == got[0]);
+        }
+        false
+    }
+
     if a.len() != b.len() {
         panic!(
             "{}\nGenerated: {} functions, got {} functions",
@@ -234,6 +248,25 @@ fn compare_tir(test_name: &str, a: Vec<Function>, b: Vec<Function>) {
 
             for (k, g_ins) in g_block.ins.iter().enumerate() {
                 let r_ins = &r_block.ins[k];
+                let call_extern_equivalent = match (g_ins, r_ins) {
+                    (
+                        TIR::CallExternFunction(g_id, g_name, g_params, g_alloc, g_ret, g_own),
+                        TIR::CallExternFunction(r_id, r_name, r_params, r_alloc, r_ret, r_own),
+                    ) => {
+                        g_id == r_id
+                            && g_name == r_name
+                            && g_params == r_params
+                            && g_alloc == r_alloc
+                            && g_ret == r_ret
+                            && extern_ownership_matches(g_own, r_own)
+                    }
+                    _ => false,
+                };
+
+                if call_extern_equivalent {
+                    continue;
+                }
+
                 if g_ins != r_ins {
                     let temp = format!("{:#?}", r_ins);
                     let wanted = temp.lines().collect::<Vec<_>>();
@@ -1040,7 +1073,7 @@ fn test_tirgen_string_lit_concat_and_equals() {
                         }],
                         true,
                         TirType::Ptr,
-                        true,
+                        vec![true],
                     ),
                     TIR::GlobalString(2, Box::new("fee".to_string())),
                     TIR::CallExternFunction(
@@ -1052,7 +1085,7 @@ fn test_tirgen_string_lit_concat_and_equals() {
                         }],
                         true,
                         TirType::Ptr,
-                        true,
+                        vec![true],
                     ),
                     TIR::CallExternFunction(
                         4,
@@ -1069,7 +1102,7 @@ fn test_tirgen_string_lit_concat_and_equals() {
                         ],
                         true,
                         TirType::Ptr,
-                        true,
+                        vec![true],
                     ),
                     TIR::CallExternFunction(
                         5,
@@ -1086,7 +1119,7 @@ fn test_tirgen_string_lit_concat_and_equals() {
                         ],
                         false,
                         TirType::I64,
-                        true,
+                        vec![true],
                     ),
                     TIR::IConst(6, 0, TirType::I64),
                     TIR::Ret(
@@ -1196,7 +1229,7 @@ fn test_tirgen_arr_lit_read_and_write() {
                         ],
                         true,
                         TirType::Ptr,
-                        true,
+                        vec![true],
                     ),
                     TIR::IConst(7, 0, TirType::I64),
                     TIR::IConst(8, 2, TirType::I64),
@@ -1223,7 +1256,7 @@ fn test_tirgen_arr_lit_read_and_write() {
                         ],
                         false,
                         TirType::Void,
-                        true,
+                        vec![true],
                     ),
                     TIR::IConst(10, 1, TirType::I64),
                     TIR::IConst(11, 2, TirType::I64),
@@ -1250,7 +1283,7 @@ fn test_tirgen_arr_lit_read_and_write() {
                         ],
                         false,
                         TirType::Void,
-                        true,
+                        vec![true],
                     ),
                     TIR::IConst(13, 2, TirType::I64),
                     TIR::IConst(14, 2, TirType::I64),
@@ -1277,7 +1310,7 @@ fn test_tirgen_arr_lit_read_and_write() {
                         ],
                         false,
                         TirType::Void,
-                        true,
+                        vec![true],
                     ),
                     TIR::IConst(16, 9, TirType::I64),
                     TIR::IConst(17, 2, TirType::I64),
@@ -1305,7 +1338,7 @@ fn test_tirgen_arr_lit_read_and_write() {
                         ],
                         false,
                         TirType::Void,
-                        true,
+                        vec![true],
                     ),
                     TIR::IConst(20, 1, TirType::I64),
                     TIR::CallExternFunction(
@@ -1323,7 +1356,7 @@ fn test_tirgen_arr_lit_read_and_write() {
                         ],
                         false,
                         TirType::I64,
-                        true,
+                        vec![true],
                     ),
                     TIR::IConst(22, 3, TirType::I64),
                     TIR::NumericInfix(
@@ -1411,7 +1444,7 @@ fn test_tirgen_struct_lit() {
                         ],
                         true,
                         TirType::Ptr,
-                        true,
+                        vec![true],
                     ),
                     TIR::ReadStructLiteral(
                         6,
@@ -1549,7 +1582,7 @@ fn test_tirgen_recursion_bug() {
                             ],
                             false,
                             TirType::Void,
-                            true,
+                            vec![true],
                         ),
                         TIR::IConst(6, 0, TirType::I64),
                         TIR::Ret(
@@ -1786,7 +1819,7 @@ fn test_tirgen_broken_booleans() {
                         ],
                         false,
                         TirType::Void,
-                        true,
+                        vec![true],
                     ),
                     TIR::IConst(7, 0, TirType::I64),
                     TIR::Ret(
@@ -1841,7 +1874,7 @@ fn test_tirgen_broken_floats() {
                         ],
                         false,
                         TirType::Void,
-                        true,
+                        vec![true],
                     ),
                     TIR::IConst(4, 0, TirType::I64),
                     TIR::Ret(
@@ -1900,7 +1933,7 @@ fn test_tirgen_print_arr_lit() {
                         ],
                         true,
                         TirType::Ptr,
-                        true,
+                        vec![true],
                     ),
                     TIR::IConst(7, 0, TirType::I64),
                     TIR::IConst(8, 2, TirType::I64),
@@ -1927,7 +1960,7 @@ fn test_tirgen_print_arr_lit() {
                         ],
                         false,
                         TirType::Void,
-                        true,
+                        vec![true],
                     ),
                     TIR::IConst(10, 1, TirType::I64),
                     TIR::IConst(11, 2, TirType::I64),
@@ -1954,7 +1987,7 @@ fn test_tirgen_print_arr_lit() {
                         ],
                         false,
                         TirType::Void,
-                        true,
+                        vec![true],
                     ),
                     TIR::IConst(13, 2, TirType::I64),
                     TIR::IConst(14, 2, TirType::I64),
@@ -1981,7 +2014,7 @@ fn test_tirgen_print_arr_lit() {
                         ],
                         false,
                         TirType::Void,
-                        true,
+                        vec![true],
                     ),
                     TIR::IConst(16, 6, TirType::I64),
                     TIR::IConst(17, 1, TirType::I64),
@@ -2004,7 +2037,7 @@ fn test_tirgen_print_arr_lit() {
                         ],
                         false,
                         TirType::Void,
-                        true,
+                        vec![true],
                     ),
                     TIR::IConst(19, 0, TirType::I64),
                     TIR::Ret(
@@ -2070,7 +2103,7 @@ fn test_tirgen_if_no_else_return() {
                             ],
                             false,
                             TirType::Void,
-                            true,
+                            vec![true],
                         ),
                         TIR::IConst(6, 0, TirType::I64),
                         TIR::Ret(
@@ -2147,7 +2180,7 @@ fn test_tirgen_if_no_else_return() {
                                 }],
                                 true,
                                 TirType::Ptr,
-                                true,
+                                vec![true],
                             ),
                             TIR::Ret(
                                 8,
@@ -2171,7 +2204,7 @@ fn test_tirgen_if_no_else_return() {
                                 }],
                                 true,
                                 TirType::Ptr,
-                                true,
+                                vec![true],
                             ),
                             TIR::Ret(
                                 11,
@@ -2248,7 +2281,7 @@ fn test_tirgen_struct_funcs() {
                             ],
                             true,
                             TirType::Ptr,
-                            true,
+                            vec![true],
                         ),
                         TIR::CallLocalFunction(
                             7,
@@ -2319,7 +2352,7 @@ fn test_tirgen_struct_funcs() {
                             ],
                             false,
                             TirType::Void,
-                            true,
+                            vec![true],
                         ),
                         TIR::Ret(6, SSAValue { val: 0, ty: None }),
                     ],
@@ -2416,7 +2449,7 @@ println(points);
                                 ],
                                 true,
                                 TirType::Ptr,
-                                true,
+                                vec![true],
                             ),
                             TIR::FConst(9, 1.0, TirType::F64),
                             TIR::FConst(10, 1.0, TirType::F64),
@@ -2453,7 +2486,7 @@ println(points);
                                 ],
                                 true,
                                 TirType::Ptr,
-                                true,
+                                vec![true],
                             ),
                             TIR::FConst(14, -1.0, TirType::F64),
                             TIR::FConst(15, -1.0, TirType::F64),
@@ -2490,7 +2523,7 @@ println(points);
                                 ],
                                 true,
                                 TirType::Ptr,
-                                true,
+                                vec![true],
                             ),
                             TIR::IConst(19, 3, TirType::I64),
                             TIR::IConst(20, 8, TirType::I64),
@@ -2514,7 +2547,7 @@ println(points);
                                 ],
                                 true,
                                 TirType::Ptr,
-                                true,
+                                vec![true],
                             ),
                             TIR::IConst(23, 0, TirType::I64),
                             TIR::IConst(24, 8, TirType::I64),
@@ -2544,7 +2577,7 @@ println(points);
                                 ],
                                 false,
                                 TirType::Void,
-                                true,
+                                vec![true],
                             ),
                             TIR::IConst(26, 1, TirType::I64),
                             TIR::IConst(27, 8, TirType::I64),
@@ -2574,7 +2607,7 @@ println(points);
                                 ],
                                 false,
                                 TirType::Void,
-                                true,
+                                vec![true],
                             ),
                             TIR::IConst(29, 2, TirType::I64),
                             TIR::IConst(30, 8, TirType::I64),
@@ -2604,7 +2637,7 @@ println(points);
                                 ],
                                 false,
                                 TirType::Void,
-                                true,
+                                vec![true],
                             ),
                             TIR::IConst(32, 0, TirType::I64),
                             TIR::JumpBlockUnCond(33, 2),
@@ -2650,7 +2683,7 @@ println(points);
                                 }],
                                 false,
                                 TirType::I64,
-                                true,
+                                vec![true],
                             ),
                             TIR::BoolInfix(
                                 37,
@@ -2693,7 +2726,7 @@ println(points);
                                 ],
                                 false,
                                 TirType::I64,
-                                true,
+                                vec![true],
                             ),
                             TIR::FConst(40, 5.0, TirType::F64),
                             TIR::IConst(41, 0, TirType::I64),
@@ -2781,7 +2814,7 @@ println(points);
                                 ],
                                 false,
                                 TirType::Void,
-                                true,
+                                vec![true],
                             ),
                             TIR::IConst(52, 0, TirType::I64),
                             TIR::Ret(
@@ -2932,7 +2965,7 @@ fn test_tirgen_extern_func_dec_and_call() {
                         }],
                         true,
                         TirType::Ptr,
-                        true,
+                        vec![true],
                     ),
                     TIR::CallExternFunction(
                         2,
@@ -2943,7 +2976,7 @@ fn test_tirgen_extern_func_dec_and_call() {
                         }],
                         false,
                         TirType::I64,
-                        false,
+                        vec![false],
                     ),
                     TIR::IConst(3, 0, TirType::I64),
                     TIR::Ret(
@@ -2989,7 +3022,7 @@ fn test_tirgen_import_stmt() {
                         }],
                         false,
                         TirType::I64,
-                        false,
+                        vec![false],
                     ),
                     TIR::IConst(2, 0, TirType::I64),
                     TIR::Ret(
@@ -3027,7 +3060,7 @@ fn test_tirgen_argv() {
                         vec![],
                         true,
                         TirType::Ptr,
-                        false,
+                        vec![false],
                     ),
                     TIR::IConst(1, 4, TirType::I64),
                     TIR::IConst(2, 1, TirType::I64),
@@ -3050,7 +3083,7 @@ fn test_tirgen_argv() {
                         ],
                         false,
                         TirType::Void,
-                        true,
+                        vec![true],
                     ),
                     TIR::IConst(4, 0, TirType::I64),
                     TIR::Ret(
@@ -3150,7 +3183,7 @@ fn test_tirgen_weird_loop_bug() {
                                 ],
                                 true,
                                 TirType::Ptr,
-                                true,
+                                vec![true],
                             ),
                             TIR::IConst(6, 0, TirType::I64),
                             TIR::JumpBlockUnCond(7, 2),
@@ -3224,7 +3257,7 @@ fn test_tirgen_weird_loop_bug() {
                                 }],
                                 false,
                                 TirType::I64,
-                                true,
+                                vec![true],
                             ),
                             TIR::BoolInfix(
                                 13,
@@ -3267,7 +3300,7 @@ fn test_tirgen_weird_loop_bug() {
                                 ],
                                 false,
                                 TirType::I64,
-                                true,
+                                vec![true],
                             ),
                             TIR::IConst(16, 0, TirType::I64),
                             TIR::CallExternFunction(
@@ -3293,7 +3326,7 @@ fn test_tirgen_weird_loop_bug() {
                                 ],
                                 false,
                                 TirType::Void,
-                                true,
+                                vec![true],
                             ),
                             TIR::IConst(18, 1, TirType::I64),
                             TIR::NumericInfix(
@@ -3338,7 +3371,7 @@ fn test_tirgen_weird_loop_bug() {
                                 ],
                                 false,
                                 TirType::Void,
-                                true,
+                                vec![true],
                             ),
                             TIR::Ret(
                                 23,
@@ -3460,7 +3493,7 @@ fn test_tirgen_nested_if() {
                             ],
                             false,
                             TirType::Void,
-                            true,
+                            vec![true],
                         ),
                         TIR::JumpBlockUnCond(10, 4),
                     ],
@@ -3538,7 +3571,7 @@ fn test_tirgen_multiple_vars() {
                         ],
                         false,
                         TirType::Void,
-                        true,
+                        vec![true],
                     ),
                     TIR::IConst(8, 0, TirType::I64),
                     TIR::Ret(
@@ -3928,7 +3961,7 @@ fn test_tirgen_ins_elimination_bug() {
                         }],
                         true,
                         TirType::Ptr,
-                        true,
+                        vec![true],
                     ),
                     TIR::GlobalString(2, Box::new("bye".to_string())),
                     TIR::CallExternFunction(
@@ -3940,7 +3973,7 @@ fn test_tirgen_ins_elimination_bug() {
                         }],
                         true,
                         TirType::Ptr,
-                        true,
+                        vec![true],
                     ),
                     TIR::IConst(4, 2, TirType::I64),
                     TIR::IConst(5, 0, TirType::I64),
@@ -3964,7 +3997,7 @@ fn test_tirgen_ins_elimination_bug() {
                         ],
                         true,
                         TirType::Ptr,
-                        true,
+                        vec![true],
                     ),
                     TIR::IConst(8, 0, TirType::I64),
                     TIR::IConst(9, 0, TirType::I64),
@@ -3991,7 +4024,7 @@ fn test_tirgen_ins_elimination_bug() {
                         ],
                         false,
                         TirType::Void,
-                        true,
+                        vec![true],
                     ),
                     TIR::IConst(11, 1, TirType::I64),
                     TIR::IConst(12, 0, TirType::I64),
@@ -4018,20 +4051,18 @@ fn test_tirgen_ins_elimination_bug() {
                         ],
                         false,
                         TirType::Void,
-                        true,
+                        vec![true],
                     ),
                     TIR::CallExternFunction(
                         14,
                         Box::new("toy_arrlen".to_string()),
-                        vec![
-                            SSAValue {
-                                val: 7,
-                                ty: Some(TirType::Ptr),
-                            },
-                        ],
+                        vec![SSAValue {
+                            val: 7,
+                            ty: Some(TirType::Ptr),
+                        }],
                         false,
                         TirType::I64,
-                        true,
+                        vec![true],
                     ),
                     TIR::IConst(15, 2, TirType::I64),
                     TIR::IConst(16, 0, TirType::I64),
@@ -4054,7 +4085,7 @@ fn test_tirgen_ins_elimination_bug() {
                         ],
                         false,
                         TirType::Void,
-                        true,
+                        vec![true],
                     ),
                     TIR::IConst(18, 0, TirType::I64),
                     TIR::Ret(

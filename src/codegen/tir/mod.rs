@@ -271,18 +271,14 @@ impl AstToIrConverter {
                 } else {
                     //at this point assume it is a string expression
                     if op == InfixOp::Equals {
-                        return self.builder.call_extern(
-                            "toy_strequal".to_string(),
-                            vec![left, right],
-                            true,
-                        );
+                        return self
+                            .builder
+                            .call_extern("toy_strequal".to_string(), vec![left, right]);
                     }
                     if op == InfixOp::Plus {
-                        return self.builder.call_extern(
-                            "toy_concat".to_string(),
-                            vec![left, right],
-                            true,
-                        );
+                        return self
+                            .builder
+                            .call_extern("toy_concat".to_string(), vec![left, right]);
                     }
                     unreachable!()
                 };
@@ -550,11 +546,9 @@ impl AstToIrConverter {
                 let struct_size = self
                     .builder
                     .iconst(compiled_map.len() as i64 * 8, TypeTok::Int)?;
-                let mut heap_struct = self.builder.call_extern(
-                    "toy_malloc_struct".to_string(),
-                    vec![struct_size, toy_struct],
-                    true,
-                )?;
+                let mut heap_struct = self
+                    .builder
+                    .call_extern("toy_malloc_struct".to_string(), vec![struct_size, toy_struct])?;
                 heap_struct.ty = Some(ty);
                 Ok(heap_struct)
             }
@@ -902,11 +896,19 @@ impl AstToIrConverter {
         node: Ast,
         _scope: &Rc<RefCell<Scope>>,
     ) -> Result<(), ToyError> {
-        let (name, _, ret_type) = match node {
+        let (name, params, ret_type) = match node {
             Ast::ExternFuncDec(n, p, r, _) => (*n, p, r),
             _ => unreachable!(),
         };
-        self.builder.register_extern_func(name, ret_type, false);
+        let doesnt_take_ownership_list: Vec<bool> = params
+            .into_iter()
+            .filter_map(|p| match p {
+                Ast::ExternFuncParam(_, qualified_type, _) => Some(!qualified_type.is_released),
+                _ => None,
+            })
+            .collect();
+        self.builder
+            .register_extern_func(name, ret_type, false, doesnt_take_ownership_list);
         Ok(())
     }
 
@@ -1055,10 +1057,18 @@ impl AstToIrConverter {
                             let prefix = name.replace(".", "::");
                             for b in boxes {
                                 match b {
-                                    TBox::ExternFuncDec(name_tok, _, ret_type, _)
-                                    | TBox::FuncDec(name_tok, _, ret_type, _, _, _) => {
+                                    TBox::ExternFuncDec(name_tok, params, ret_type, _) => {
                                         if let Some(n) = name_tok.get_var_name() {
                                             let full_name = format!("{}::{}", prefix, n);
+                                            let doesnt_take_ownership_list: Vec<bool> = params
+                                                .into_iter()
+                                                .filter_map(|param| match param {
+                                                    TBox::ExternFuncParam(_, qualified_type, _) => {
+                                                        Some(!qualified_type.is_released)
+                                                    }
+                                                    _ => None,
+                                                })
+                                                .collect();
                                             self.builder.register_extern(
                                                 full_name,
                                                 match ret_type {
@@ -1072,7 +1082,30 @@ impl AstToIrConverter {
                                                     _ => false,
                                                 },
                                                 ret_type,
+                                                doesnt_take_ownership_list,
                                                 false,
+                                            );
+                                        }
+                                    }
+                                    TBox::FuncDec(name_tok, params, ret_type, _, _, _) => {
+                                        if let Some(n) = name_tok.get_var_name() {
+                                            let full_name = format!("{}::{}", prefix, n);
+                                            let doesnt_take_ownership_list =
+                                                vec![false; params.len()];
+                                            self.builder.register_extern(
+                                                full_name,
+                                                match ret_type {
+                                                    TypeTok::AnyArr(_)
+                                                    | TypeTok::IntArr(_)
+                                                    | TypeTok::BoolArr(_)
+                                                    | TypeTok::StrArr(_)
+                                                    | TypeTok::FloatArr(_)
+                                                    | TypeTok::StructArr(_, _) => true,
+                                                    TypeTok::Str => true,
+                                                    _ => false,
+                                                },
+                                                ret_type,
+                                                doesnt_take_ownership_list,
                                                 false,
                                             );
                                         }
@@ -1144,57 +1177,102 @@ impl AstToIrConverter {
     fn register_extern_funcs(&mut self) {
         //everything is either void, int64_t (int) or float (double/f64)
         self.builder
-            .register_extern("toy_print".to_string(), false, TypeTok::Void, true, true); //builtins.c
+            .register_extern("toy_print".to_string(), false, TypeTok::Void, vec![true, true, true], true); //builtins.c
         self.builder
-            .register_extern("toy_println".to_string(), false, TypeTok::Void, true, true);
+            .register_extern("toy_println".to_string(), false, TypeTok::Void, vec![true, true, true], true);
         self.builder
-            .register_extern("toy_malloc".to_string(), true, TypeTok::Str, true, true);
+            .register_extern("toy_malloc".to_string(), true, TypeTok::Str, vec![true], true);
         self.builder
-            .register_extern("toy_concat".to_string(), true, TypeTok::Str, true, true);
+            .register_extern("toy_concat".to_string(), true, TypeTok::Str, vec![true, true], true);
         self.builder
-            .register_extern("toy_strequal".to_string(), false, TypeTok::Int, true, true);
+            .register_extern("toy_strequal".to_string(), false, TypeTok::Int, vec![true, true], true);
         self.builder
-            .register_extern("toy_strlen".to_string(), false, TypeTok::Int, true, true);
-        self.builder
-            .register_extern("toy_type_to_str".to_string(), true, TypeTok::Str, true, true);
-        self.builder
-            .register_extern("toy_type_to_bool".to_string(), false, TypeTok::Int, true, true);
-        self.builder
-            .register_extern("toy_type_to_int".to_string(), false, TypeTok::Int, true, true);
-        self.builder
-            .register_extern("toy_type_to_float".to_string(), false, TypeTok::Int, true, true); //int representation of float bits, reinterpreted with union
-        self.builder
-            .register_extern("toy_int_to_float".to_string(), false, TypeTok::Float, true, true);
+            .register_extern("toy_strlen".to_string(), false, TypeTok::Int, vec![true], true);
+        self.builder.register_extern(
+            "toy_type_to_str".to_string(),
+            true,
+            TypeTok::Str,
+            vec![true, true],
+            true,
+        );
+        self.builder.register_extern(
+            "toy_type_to_bool".to_string(),
+            false,
+            TypeTok::Int,
+            vec![true, true],
+            true,
+        );
+        self.builder.register_extern(
+            "toy_type_to_int".to_string(),
+            false,
+            TypeTok::Int,
+            vec![true, true],
+            true,
+        );
+        self.builder.register_extern(
+            "toy_type_to_float".to_string(),
+            false,
+            TypeTok::Int,
+            vec![true, true],
+            true,
+        ); //int representation of float bits, reinterpreted with union
+        self.builder.register_extern(
+            "toy_int_to_float".to_string(),
+            false,
+            TypeTok::Float,
+            vec![true],
+            true,
+        );
         self.builder.register_extern(
             "toy_float_bits_to_double".to_string(),
             false,
             TypeTok::Float,
-            true,
+            vec![true],
             true,
         );
         self.builder.register_extern(
             "toy_double_to_float_bits".to_string(),
             false,
             TypeTok::Int,
-            true,
+            vec![true],
             true,
         );
         self.builder
-            .register_extern("toy_malloc_arr".to_string(), true, TypeTok::Str, true, true);
+            .register_extern("toy_malloc_arr".to_string(), true, TypeTok::Str, vec![true, true, true], true);
+        self.builder.register_extern(
+            "toy_write_to_arr".to_string(),
+            false,
+            TypeTok::Void,
+            vec![true, true, true, true],
+            true,
+        );
+        self.builder.register_extern(
+            "toy_read_from_arr".to_string(),
+            false,
+            TypeTok::Int,
+            vec![true, true],
+            true,
+        );
         self.builder
-            .register_extern("toy_write_to_arr".to_string(), false, TypeTok::Void, true, true);
+            .register_extern("toy_arrlen".to_string(), false, TypeTok::Int, vec![true], true);
         self.builder
-            .register_extern("toy_read_from_arr".to_string(), false, TypeTok::Int, true, true);
+            .register_extern("toy_input".to_string(), true, TypeTok::Str, vec![], true);
         self.builder
-            .register_extern("toy_arrlen".to_string(), false, TypeTok::Int, true, true);
-        self.builder
-            .register_extern("toy_input".to_string(), true, TypeTok::Str, true, true);
-        self.builder
-            .register_extern("toy_free".to_string(), false, TypeTok::Void, false, false); //ctla/ctla.c
-        self.builder
-            .register_extern("toy_free_arr".to_string(), false, TypeTok::Void, false, true);
-        self.builder
-            .register_extern("toy_malloc_struct".to_string(), true, TypeTok::Any, true, true);
+            .register_extern("toy_free".to_string(), false, TypeTok::Void, vec![false], false); //ctla/ctla.c
+        self.builder.register_extern(
+            "toy_free_arr".to_string(),
+            false,
+            TypeTok::Void,
+            vec![false],
+            true,
+        );
+        self.builder.register_extern(
+            "toy_malloc_struct".to_string(),
+            true,
+            TypeTok::Any,
+            vec![true, true],
+            true,
+        );
     }
     ///ast to convert, is_main_module, and module name
     pub fn convert(

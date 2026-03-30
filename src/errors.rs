@@ -2,11 +2,11 @@ use crate::token::Token;
 use colored::*;
 use inkwell::builder::BuilderError;
 use inkwell::support::LLVMString;
+use serde::{Deserialize, Serialize};
 use std::backtrace::Backtrace;
 use std::fmt::*;
 use std::{fmt, fs};
 use thiserror::Error;
-use serde::{Serialize, Deserialize};
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Span {
     pub file_path: String,
@@ -147,7 +147,7 @@ pub enum ToyErrorType {
     MalformedImportStatement,
     MissingFile,
     IncorrectNumberOfArguments,
-    SerializationError
+    SerializationError,
 }
 
 #[derive(Debug, Error)]
@@ -252,6 +252,7 @@ impl fmt::Display for ToyErrorType {
             Self::InvalidOperationOnGivenType => write!(f, "Invalid Operation On Given Type"),
             Self::MissingFile => write!(f, "Missing File"),
             Self::VariableNotAStruct => write!(f, "VariableNotAStruct"),
+            Self::IncorrectNumberOfArguments => write!(f, "Incorrect Number Of Arguments"),
             _ => todo!("chase implement error type {:?}", self),
         }
     }

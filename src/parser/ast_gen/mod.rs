@@ -1,15 +1,16 @@
 use ordered_float::OrderedFloat;
 
 use crate::debug;
+use crate::driver::Driver;
 use crate::errors::{Span, ToyError, ToyErrorType};
 use crate::lexer::Lexer;
 use crate::parser::ast::Ast;
 use crate::parser::boxer::Boxer;
 use crate::parser::toy_box::TBox;
-use crate::token::TypeTok;
+use crate::token::{ExternType, QualifiedExternType, TypeTok};
 use crate::token::{SpannedToken, Token};
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::{fs, env};
+use std::{env, fs};
 
 mod exprs;
 pub struct AstGenerator {
@@ -551,30 +552,49 @@ impl AstGenerator {
         };
 
         let mut ast_params: Vec<Ast> = Vec::new();
-        let mut param_types: Vec<TypeTok> = Vec::new();
+        let mut param_types: Vec<QualifiedExternType> = Vec::new();
 
         for param in params {
             let (param_name, param_type, param_raw_text) = match param {
-                TBox::FuncParam(name, type_tok, rt) => {
+                TBox::ExternFuncParam(name, type_tok, rt) => {
                     let n = match name.tok {
                         Token::VarRef(var) => *var,
                         _ => unreachable!(),
                     };
                     (n, type_tok, rt)
                 }
+                TBox::FuncParam(name, type_tok, rt) => {
+                    let n = match name.tok {
+                        Token::VarRef(var) => *var,
+                        _ => unreachable!(),
+                    };
+                    let q = QualifiedExternType {
+                        ty: match type_tok {
+                            TypeTok::Int => ExternType::c_int64_t,
+                            TypeTok::Float => ExternType::c_double,
+                            TypeTok::Str => ExternType::c_char_ptr,
+                            _ => ExternType::c_void_ptr,
+                        },
+                        is_released: true,
+                    };
+                    (n, q, rt)
+                }
                 _ => unreachable!(),
             };
 
-            ast_params.push(Ast::FuncParam(
-                Box::new(param_name.clone()),
+            ast_params.push(Ast::ExternFuncParam(
+                param_name.clone(),
                 param_type.clone(),
                 param_raw_text,
             ));
             param_types.push(param_type.clone());
         }
-
+        let mut ty_params: Vec<TypeTok> = vec![];
+        for p in param_types{
+            ty_params.push(Driver::extern_type_to_type_tok(p.ty));
+        }
         self.extern_funcs.insert(name.clone());
-        self.func_param_type_map.insert(name.clone(), param_types);
+        self.func_param_type_map.insert(name.clone(), ty_params);
         self.func_return_type_map
             .insert(name.clone(), return_type.clone());
 
@@ -735,7 +755,11 @@ impl AstGenerator {
                                     TBox::FuncDec(fname, _params, ret_type, _, _, true) => {
                                         let param_types = tbox.get_func_param_types();
                                         let func_name = fname.get_var_name().unwrap();
-                                        let full_name = format!("{}::{}", prefix, func_name);
+                                        let full_name = Driver::mangle_name(
+                                            Some(&prefix),
+                                            &func_name,
+                                            &param_types,
+                                        );
                                         self.register_function(
                                             full_name,
                                             param_types,
@@ -760,11 +784,14 @@ impl AstGenerator {
 
         return Ok(node);
     }
-    fn pretty_print_ast(ast: &Vec<Ast>) -> Result<String, ToyError>{
-        return match serde_json::to_string(ast){
+    fn pretty_print_ast(ast: &Vec<Ast>) -> Result<String, ToyError> {
+        return match serde_json::to_string(ast) {
             Ok(st) => Ok(st),
-            Err(_) => Err(ToyError::new(ToyErrorType::SerializationError, Span::null_span_with_msg("serializing ast failed")))
-        }
+            Err(_) => Err(ToyError::new(
+                ToyErrorType::SerializationError,
+                Span::null_span_with_msg("serializing ast failed"),
+            )),
+        };
     }
     pub fn generate(&mut self, boxes: Vec<TBox>) -> Result<Vec<Ast>, ToyError> {
         self.boxes = boxes.clone();
@@ -777,9 +804,9 @@ impl AstGenerator {
             self.nodes.push(stmt)
         }
         let args: Vec<String> = env::args().collect();
-        if args.contains(&"--debug-ast".to_string()) || args.contains(&"--debug-ALL".to_string()){
+        if args.contains(&"--debug-ast".to_string()) || args.contains(&"--debug-ALL".to_string()) {
             let s = AstGenerator::pretty_print_ast(&self.nodes)?;
-            fs::write("./debug/AST.json", s).unwrap();//temp, bad
+            fs::write("./debug/AST.json", s).unwrap(); //temp, bad
         }
         return Ok(self.nodes.clone());
     }

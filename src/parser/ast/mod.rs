@@ -1,9 +1,9 @@
 use std::fmt::{self};
 
-use crate::{errors::Span, token::TypeTok};
+use crate::{errors::Span, token::{QualifiedExternType, TypeTok}};
 use ordered_float::OrderedFloat;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use serde::{Serialize, Deserialize};
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Ast {
     IntLit(i64, Span),
@@ -28,8 +28,10 @@ pub enum Ast {
     FuncDec(Box<String>, Vec<Ast>, TypeTok, Vec<Ast>, Span),
 
     ///Name, Params, ReturnType, raw text
+    ///Params will ALWAYS be ExternFuncParam
     ExternFuncDec(Box<String>, Vec<Ast>, TypeTok, Span),
-
+    ///name type, span
+    ExternFuncParam(String, QualifiedExternType, Span),
     ///Name, params as exprs, raw text
     FuncCall(Box<String>, Vec<Ast>, Span),
 
@@ -94,6 +96,7 @@ impl Ast {
             Ast::Assignment(_, _, _) => "Assignment".to_string(),
             Ast::Not(_, _) => "Not".to_string(),
             Ast::ImportStmt(_, _) => "ImportStmt".to_string(),
+            Ast::ExternFuncParam(_, _, _) => "ExternFuncParam".to_string()
         };
     }
 
@@ -124,6 +127,7 @@ impl Ast {
             Ast::Assignment(_, _, s) => s.clone(),
             Ast::Not(_, s) => s.clone(),
             Ast::ImportStmt(_, s) => s.clone(),
+            Ast::ExternFuncParam(_, _, s) => s.clone()
         }
     }
 }
@@ -207,6 +211,7 @@ impl fmt::Display for Ast {
                 Ast::Assignment(l, r, s) =>
                     format!("Assignment LHS({}), RHS({}), Literal({})", *l, *r, s),
                 Ast::ImportStmt(path, s) => format!("ImportStmt Path({}), Literal({})", path, s),
+                Ast::ExternFuncParam(n, t, s) => format!("ExternFuncParam Name({}), Type({:?}), Literal({})", n, t, s)
             }
         )
     }
