@@ -742,28 +742,38 @@ impl AstGenerator {
                         self.imports.insert(alias.to_string(), name.clone());
                     }
                 }
-                // Load the module file and register its exported function signatures
+                // Load the module file and register exported APIs plus struct methods/interfaces.
                 let file_path = name.replace('.', "/") + ".toy";
                 let prefix = name.replace('.', "::");
                 if let Ok(contents) = fs::read_to_string(&file_path) {
                     let mut l = Lexer::new();
                     if let Ok(toks) = l.lex(contents) {
-                        let mut b = Boxer::new();
+                        let mut b = Boxer::with_module_prefix(prefix.clone());
                         if let Ok(boxes) = b.box_toks(toks) {
                             for tbox in &boxes {
                                 match tbox {
-                                    TBox::FuncDec(fname, _params, ret_type, _, _, true) => {
+                                    TBox::FuncDec(fname, _params, ret_type, _, _, is_export) => {
                                         let param_types = tbox.get_func_param_types();
-                                        let func_name = fname.get_var_name().unwrap();
-                                        let full_name = Driver::mangle_name(
-                                            Some(&prefix),
-                                            &func_name,
-                                            &param_types,
-                                        );
-                                        self.register_function(
-                                            full_name,
-                                            param_types,
-                                            ret_type.clone(),
+                                        let func_name = *fname.get_var_name().unwrap();
+                                        // Non-exported struct methods are still callable through values
+                                        // of exported struct types (e.g. x.to_str()).
+                                        if *is_export || func_name.contains(":::") {
+                                            self.register_function(
+                                                func_name,
+                                                param_types,
+                                                ret_type.clone(),
+                                            );
+                                        }
+                                    }
+                                    TBox::StructInterface(interface_name, field_map, _) => {
+                                        let boxed: BTreeMap<String, Box<TypeTok>> = (*field_map)
+                                            .clone()
+                                            .into_iter()
+                                            .map(|(k, v)| (k, Box::new(v)))
+                                            .collect();
+                                        self.register_struct(
+                                            format!("{}::{}", prefix, interface_name),
+                                            boxed,
                                         );
                                     }
                                     _ => {}

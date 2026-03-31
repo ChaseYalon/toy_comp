@@ -2217,3 +2217,27 @@ fn test_ast_gen_net_boolean() {
         ]
     ))
 }
+//weird edge case around struct function importing
+#[test]
+fn test_ast_gen_imported_struct_method_call() {
+    setup_ast!(
+        r#"import std.fs; let x = fs.read_dir("."); println(x.to_str());"#,
+        ast
+    );
+
+    let has_method_call = ast.iter().any(|node| {
+        if let Ast::FuncCall(name, args, _) = node {
+            if **name == "println" {
+                if let Some(Ast::FuncCall(inner_name, _, _)) = args.first() {
+                    return inner_name.contains(":::to_str_struct");
+                }
+            }
+        }
+        false
+    });
+
+    assert!(
+        has_method_call,
+        "Expected imported struct method call to be resolved and present in AST"
+    );
+}

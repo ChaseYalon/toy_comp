@@ -73,7 +73,13 @@ impl CFGFunction {
         //start with entry block, which must always be func.body[0]
         let block = self.func.body[self.block_id_to_index.get(&id).unwrap().to_owned()].clone();
         let mut block_cfg = CFGBlock::new(block.id);
-        let start_final_ins = block.ins.last().unwrap();
+        let Some(start_final_ins) = block.ins.last() else {
+            // Some generated blocks can be empty (e.g. transient merge/unreachable blocks).
+            // Treat them as leaf nodes so CFG analysis never panics.
+            self.cfg_blocks.push(block_cfg);
+            self.visited_blocks.insert(id);
+            return;
+        };
         match start_final_ins {
             &TIR::Ret(_, _) => {
                 self.cfg_blocks.push(block_cfg);

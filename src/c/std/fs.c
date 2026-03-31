@@ -275,3 +275,232 @@ int64_t toy_fs_file_size(ToyPtr path) {
     return (int64_t)sz;
 }
 #endif
+#ifdef _WIN32
+//the delta between this code and the linux version is so astounding, Microsoft is worth however many trillions and yet their API looks like a 3 year old took an OS course.
+int64_t _count_files(const char* path) {
+    WIN32_FIND_DATAA ffd;
+    HANDLE hFind;
+    int64_t count = 0;
+
+    // Build search pattern: "path\*"
+    char pattern[MAX_PATH];
+    snprintf(pattern, MAX_PATH, "%s\\*", path);
+
+    hFind = FindFirstFileA(pattern, &ffd);
+    if (hFind == INVALID_HANDLE_VALUE) {
+        fprintf(stderr, "[ERROR] Could not open directory %s (error %lu)\n", path, GetLastError());
+        abort();
+    }
+
+    do {
+        if (!(ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+            count++;
+        }
+    } while (FindNextFileA(hFind, &ffd));
+
+    FindClose(hFind);
+    return count;
+}
+
+char** _list_files(const char* path) {
+    WIN32_FIND_DATAA ffd;
+    HANDLE hFind;
+
+    char pattern[MAX_PATH];
+    snprintf(pattern, MAX_PATH, "%s\\*", path);
+
+    hFind = FindFirstFileA(pattern, &ffd);
+    if (hFind == INVALID_HANDLE_VALUE) {
+        fprintf(stderr, "[ERROR] Could not open directory %s (error %lu)\n", path, GetLastError());
+        abort();
+    }
+
+    int64_t count = _count_files(path);
+    char** arr = malloc(sizeof(char*) * count);
+    int64_t i = 0;
+
+    do {
+        if (!(ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+            arr[i] = _strdup(ffd.cFileName);
+            i++;
+        }
+    } while (FindNextFileA(hFind, &ffd));
+
+    FindClose(hFind);
+    return arr;
+}
+
+int64_t _count_dirs(const char* path) {
+    WIN32_FIND_DATAA ffd;
+    HANDLE hFind;
+    int64_t count = 0;
+
+    char pattern[MAX_PATH];
+    snprintf(pattern, MAX_PATH, "%s\\*", path);
+
+    hFind = FindFirstFileA(pattern, &ffd);
+    if (hFind == INVALID_HANDLE_VALUE) {
+        fprintf(stderr, "[ERROR] Could not open directory %s (error %lu)\n", path, GetLastError());
+        abort();
+    }
+
+    do {
+        if ((ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) &&
+            strcmp(ffd.cFileName, ".") != 0 &&
+            strcmp(ffd.cFileName, "..") != 0) {
+            count++;
+        }
+    } while (FindNextFileA(hFind, &ffd));
+
+    FindClose(hFind);
+    return count;
+}
+
+char** _list_dirs(const char* path) {
+    WIN32_FIND_DATAA ffd;
+    HANDLE hFind;
+
+    char pattern[MAX_PATH];
+    snprintf(pattern, MAX_PATH, "%s\\*", path);
+
+    hFind = FindFirstFileA(pattern, &ffd);
+    if (hFind == INVALID_HANDLE_VALUE) {
+        fprintf(stderr, "[ERROR] Could not open directory %s (error %lu)\n", path, GetLastError());
+        abort();
+    }
+
+    int64_t count = _count_dirs(path);
+    char** arr = malloc(sizeof(char*) * count);
+    int64_t i = 0;
+
+    do {
+        if ((ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) &&
+            strcmp(ffd.cFileName, ".") != 0 &&
+            strcmp(ffd.cFileName, "..") != 0) {
+            arr[i] = _strdup(ffd.cFileName);
+            i++;
+        }
+    } while (FindNextFileA(hFind, &ffd));
+
+    FindClose(hFind);
+    return arr;
+}
+#else
+#include <dirent.h>
+int64_t _count_dirs(const char* path) {
+    DIR *dir;
+    struct dirent *ent;
+
+    dir = opendir(path);
+    if (dir == NULL) {
+        fprintf(stderr, "[ERROR] Could not open directory %s", path);
+        abort();
+    }
+
+    int64_t i = 0;
+    while ((ent = readdir(dir)) != NULL) {
+        if (ent->d_type == DT_DIR &&
+            strcmp(ent->d_name, ".") != 0 &&
+            strcmp(ent->d_name, "..") != 0) {
+            i++;
+        }
+    }
+
+    closedir(dir);
+    return i;
+}
+
+char** _list_dirs(const char* path) {
+    DIR *dir;
+    struct dirent *ent;
+
+    dir = opendir(path);
+    if (dir == NULL) {
+        fprintf(stderr, "[ERROR] Could not open directory %s", path);
+        abort();
+    }
+
+    int64_t count = _count_dirs(path);
+    char** arr = malloc(sizeof(char*) * count);
+    int64_t i = 0;
+    while ((ent = readdir(dir)) != NULL) {
+        if (ent->d_type == DT_DIR &&
+            strcmp(ent->d_name, ".") != 0 &&
+            strcmp(ent->d_name, "..") != 0) {
+            arr[i] = strdup(ent->d_name);
+            i++;
+        }
+    }
+
+    closedir(dir);
+    return arr;
+}
+int64_t _count_files(const char* path){
+    DIR *dir;
+    struct dirent *ent;
+
+    dir = opendir(path);
+    if (dir == NULL) {
+        fprintf(stderr, "[ERROR] Could not open director %s", path);
+        abort();
+    }
+
+    int64_t i = 0;
+    while ((ent = readdir(dir)) != NULL) {
+        if (ent->d_type == DT_REG) {  // DT_REG = regular file
+            i++;
+        }
+    }
+
+    closedir(dir);
+    return i;
+}
+char** _list_files(const char* path) {
+    DIR *dir;
+    struct dirent *ent;
+
+    dir = opendir(path);
+    if (dir == NULL) {
+        fprintf(stderr, "[ERROR] Could not open directory %s", path);
+        abort();
+    }
+
+    char** arr = malloc(sizeof(char*) * _count_files(path));
+    int64_t i = 0;
+    while ((ent = readdir(dir)) != NULL) {
+        if (ent->d_type == DT_REG) {
+            arr[i] = strdup(ent->d_name);  // copy the name string
+            i++;
+        }
+    }
+
+    closedir(dir);
+    return arr;
+}
+#endif
+//the need for these two functions is yet more evidence of a TERRIBLE FFI design. Whatever shmuck designed this should rebuild it.
+int64_t toy_fs_get_file_count_in_dir(ToyPtr path){
+    return _count_files((char*) path);
+}
+int64_t toy_fs_get_folder_count_in_dir(ToyPtr path){
+    return _count_dirs((char*) path);
+}
+//takes a path as a string and will return a char***
+ToyArr* toy_fs_read_dir(ToyPtr path){
+    int64_t file_count = _count_files((char*) path);
+    int64_t folder_count = _count_dirs((char*) path);
+    char** files = _list_files((char*) path);
+    char** dirs = _list_dirs((char*) path);
+    ToyArr* toy_files = (ToyArr*) toy_malloc_arr(file_count, 4, 1);
+    ToyArr* toy_folders = (ToyArr*) toy_malloc_arr(folder_count, 4, 1);
+    for(int i = 0; i < file_count; i++){
+        toy_write_to_arr((ToyPtr) toy_files, (int64_t) files[i], i, 0);
+    }
+    for(int i = 0; i < folder_count; i++){
+        toy_write_to_arr((ToyPtr) toy_folders, (int64_t) dirs[i], i, 0);
+    }
+    ToyArr* arr = (ToyArr*) toy_malloc_arr(2, 4, 2);
+    toy_write_to_arr((ToyPtr) arr, (ToyPtr) toy_files, 0, 4);
+    toy_write_to_arr((ToyPtr) arr, (ToyPtr) toy_folders, 1, 4);
+    return arr;
+}
