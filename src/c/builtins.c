@@ -176,6 +176,20 @@ ToyPtr toy_concat(ToyPtr sp1, ToyPtr sp2) {
     strcat(out, str2);
     return (int64_t) out;
 }
+//this is terrible design - bad reusability
+ToyPtr toy_str_arr_to_str(ToyPtr arr) {
+    if (arr == 0) {
+        fprintf(stderr, "[ERROR] toy_str_arr_to_str received a null pointer\n");
+        abort();
+    }
+    _CheckUseAfterFree((void*)arr);
+
+    char* tmp = _toy_format(arr, 4, 1);
+    ToyPtr out = toy_malloc((ToyPtr)tmp);
+    free(tmp);
+    return out;
+}
+
 //return type is actually 64 bit boolean
 int64_t toy_strequal(ToyPtr sp1, ToyPtr sp2) {
     _CheckUseAfterFree((void*)sp1);
@@ -401,7 +415,6 @@ ToyPtr toy_malloc_struct(int64_t size, ToyPtr toy_struct) {
 ToyPtr toy_malloc_arr(int64_t len, int64_t type, int64_t degree) {
     size_t size = (size_t)(len * 16 * 1.4); // allocate 40% more space
     ToyArrVal* arr_ptr = META_MALLOC(size);
-
     ToyArrVal empty = { .value = 0, .type = 2, ._pad = {0} };
 
     for (int64_t i = 0; i < len; i++) {
@@ -425,6 +438,7 @@ ToyPtr toy_malloc_arr(int64_t len, int64_t type, int64_t degree) {
         arr->type = type;
     }
     arr->degree = degree;
+    arr->should_free_subelements = false;
     return (ToyPtr)arr;
 }
 
@@ -565,7 +579,18 @@ ToyPtr toy_input(ToyPtr i_prompt){
 void toy_free_arr(ToyPtr arr_ptr_int) {
     ToyArr* arr = (ToyArr*)arr_ptr_int;
     if (arr == NULL) return;
-
+    if (arr->should_free_subelements){
+        for(int i = 0; i < arr->length; i++){
+            if (arr->arr[i].type >= 4){
+                toy_free_arr((ToyPtr) arr->arr[i].value);
+            } else if (arr->arr[i].type == 0 || arr->arr[i].type == 8){
+                toy_free((void*) &arr->arr[i].value);
+            }
+            toy_free(&arr->arr[i]);
+        }
+        toy_free(arr);
+        return;
+    }
     if (arr->arr != NULL) {
         toy_free(arr->arr);
     }

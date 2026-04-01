@@ -493,13 +493,20 @@ ToyArr* toy_fs_read_dir(ToyPtr path){
     char** dirs = _list_dirs((char*) path);
     ToyArr* toy_files = (ToyArr*) toy_malloc_arr(file_count, 4, 1);
     ToyArr* toy_folders = (ToyArr*) toy_malloc_arr(folder_count, 4, 1);
+    toy_files->should_free_subelements = true;
+    toy_folders->should_free_subelements = true;
     for(int i = 0; i < file_count; i++){
-        toy_write_to_arr((ToyPtr) toy_files, (int64_t) files[i], i, 0);
+        char* t = META_MALLOC(sizeof(files[i]) + 1);
+        strcpy(t, files[i]);
+        toy_write_to_arr((ToyPtr) toy_files, (int64_t) t, i, 0);
     }
     for(int i = 0; i < folder_count; i++){
-        toy_write_to_arr((ToyPtr) toy_folders, (int64_t) dirs[i], i, 0);
+        char* t = META_MALLOC(sizeof(files[i]) + 1);
+        strcpy(t, files[i]);
+        toy_write_to_arr((ToyPtr) toy_folders, (int64_t) t, i, 0);
     }
     ToyArr* arr = (ToyArr*) toy_malloc_arr(2, 4, 2);
+    arr->should_free_subelements = true;
     toy_write_to_arr((ToyPtr) arr, (ToyPtr) toy_files, 0, 4);
     toy_write_to_arr((ToyPtr) arr, (ToyPtr) toy_folders, 1, 4);
     return arr;

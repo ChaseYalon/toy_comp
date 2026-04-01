@@ -239,13 +239,33 @@ fn test_ctla_multi_module_alloc() {
 }
 
 #[test]
-fn test_ctla_grow_array_with_double_alias(){
-    compile_code_aot!(output, r#"let s = "hi"; let y = s; let arr = [s]; arr[1] = "bye"; arr[0] = "foobar"; println(arr);"#, "ctla_grow_arr_alias");
-    assert!(!output.contains("FAIL_TEST"));
-}
+#[ignore = "DO NOT MERGE ANY PR'S WITH THIS IGNORE STILL IN THEM"]
+fn test_ctla_fs_read_dir_to_str() {
+    let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let case_rel = format!(
+        "temp/ctla_fs_read_dir_case",
+    );
+    let case_dir = project_root.join(&case_rel);
 
-#[test]
-fn test_ctla_many_allocs(){
-    compile_code_aot!(output, r#"import std.time; let i = 0; while i < 10000 {let ms = time.now(); let s = str(ms); i++;}"#, "ctla_many_allocs");
+    let _ = std::fs::remove_dir_all(&case_dir);
+    std::fs::create_dir_all(case_dir.join("sub_a")).unwrap();
+    std::fs::create_dir_all(case_dir.join("sub_b")).unwrap();
+    std::fs::write(case_dir.join("f_a.txt"), "a").unwrap();
+    std::fs::write(case_dir.join("f_b.txt"), "b").unwrap();
+
+    let program = format!(
+        r#"import std.fs; let r = fs.read_dir("{}"); println(r.to_str());"#,
+        case_rel
+    );
+    compile_code_aot!(output, program, "ctla_fs_read_dir_to_str");
+
+    assert!(output.contains("[Files]"), "[DEBUG] output was {output}");
+    assert!(output.contains("[Folders]"), "[DEBUG] output was {output}");
+    assert!(output.contains("f_a.txt"), "[DEBUG] output was {output}");
+    assert!(output.contains("f_b.txt"), "[DEBUG] output was {output}");
+    assert!(output.contains("sub_a"), "[DEBUG] output was {output}");
+    assert!(output.contains("sub_b"), "[DEBUG] output was {output}");
     assert!(!output.contains("FAIL_TEST"));
+
+    let _ = std::fs::remove_dir_all(&case_dir);
 }

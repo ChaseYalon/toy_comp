@@ -33,6 +33,9 @@ unsafe extern "C" {
     pub fn toy_concat(sp1: ToyPtr, sp2: ToyPtr) -> ToyPtr;
 }
 unsafe extern "C" {
+    pub fn toy_str_arr_to_str(arr: ToyPtr) -> ToyPtr;
+}
+unsafe extern "C" {
     pub fn toy_strequal(sp1: ToyPtr, sp2: ToyPtr) -> i64;
 }
 unsafe extern "C" {

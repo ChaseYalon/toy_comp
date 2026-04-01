@@ -7,7 +7,7 @@
 #endif
 #include <stdint.h>
 #include "ctla/ctla.h"
-
+#include <stdbool.h>
 extern DebugHeap* DEBUG_HEAP;
 extern int64_t GLOBAL_ARGC;
 extern char** GLOBAL_ARGV;
@@ -26,6 +26,7 @@ typedef struct {
     int64_t capacity;
     int64_t type;
     int64_t degree;
+    bool should_free_subelements;
     ToyArrVal* arr;
 } ToyArr;
 typedef int64_t ToyPtr;
@@ -33,6 +34,7 @@ void toy_print(ToyPtr input, int64_t datatype, int64_t degree);
 void toy_println(ToyPtr input, int64_t datatype, int64_t degree);
 ToyPtr toy_malloc(ToyPtr ptr);
 ToyPtr toy_concat(ToyPtr sp1, ToyPtr sp2);
+ToyPtr toy_str_arr_to_str(ToyPtr arr);
 int64_t toy_strequal(ToyPtr sp1, ToyPtr sp2);
 int64_t toy_strlen(ToyPtr sp1);
 //val could be a ToyPtr if it s a string

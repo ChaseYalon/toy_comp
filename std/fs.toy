@@ -22,6 +22,7 @@ export fn file_size(path: str): int{
 extern fn toy_fs_get_file_count_in_dir(path: retained c_char_ptr): int;
 extern fn toy_fs_get_folder_count_in_dir(path: retained c_char_ptr): int;
 extern fn toy_fs_read_dir(path: c_char_ptr): str[][];//TODO: FFI type
+extern fn toy_str_arr_to_str(arr: str[]): str;
 
 struct FolderReadResults{
     files: str[],
@@ -32,19 +33,11 @@ for FolderReadResults{
     fn to_str(): str{
         let s = " -- FOLDER READ RESULTS FOR " + this.path + " --\n";
         s += "[Files]\n";
-        let i = 0;
-        while i < len(this.files){
-            s += this.files[i];
-            s += "\n";
-            i++;
-        }
+        s += toy_str_arr_to_str(this.files);
+        s += "\n";
         s += "[Folders]\n";
-        i = 0;
-        while i < len(this.folders){
-            s += this.folders[i];
-            s += "\n";
-            i++;
-        }
+        s += toy_str_arr_to_str(this.folders);
+        s += "\n";
         return s;
     }
 }
