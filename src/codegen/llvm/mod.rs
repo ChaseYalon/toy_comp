@@ -1089,7 +1089,7 @@ impl<'a> LlvmGenerator<'a> {
         self.declare_individual_function("toy_arrlen", vec![TirType::I64], TirType::I64);
         self.declare_individual_function(
             "toy_input",
-            vec![TirType::I64, TirType::I64],
+            vec![TirType::I64],
             TirType::I64,
         );
         self.declare_individual_function(

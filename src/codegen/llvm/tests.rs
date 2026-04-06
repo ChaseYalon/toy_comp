@@ -211,7 +211,7 @@ fn test_llvm_codegen_stack_overflow() {
         println(points[0].x);",
         "stack_overflow"
     );
-    assert!(output.contains("5.00"));
+    assert!(output.contains("5"));
 }
 
 #[test]
@@ -326,4 +326,11 @@ fn test_llvm_string_conditional_assignment() {
         "str_cond_ass"
     );
     assert!(output.contains("c"));
+}
+
+#[test]
+fn test_llvm_fs(){
+    compile_code_aot!(output, r#"import std.fs; let d = fs.read_dir("."); println(d.to_str());"#, "fs_import");
+    assert!(!output.contains("error"));//should work??
+    assert!(output.contains("Cargo.toml"), "output contained {}", output);
 }

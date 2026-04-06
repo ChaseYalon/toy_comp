@@ -1,8 +1,14 @@
 use std::env;
-use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
 
 fn main() {
+    cc::Build::new()
+        .file("llvm_stubs.c")
+        .compile("temp_llvm_thing");
+    println!("cargo:rustc-link-arg=-Wl,--whole-archive");
+    println!("cargo:rustc-link-arg=-ltemp_llvm_thing");
+    println!("cargo:rustc-link-arg=-Wl,--no-whole-archive");
     if env::var("CARGO_CFG_RUST_ANALYZER").is_ok() {
         return;
     }
@@ -22,13 +28,32 @@ fn main() {
         }
     }
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    let runtime_dir = manifest_dir.join("src").join("runtimeRS");
 
-    let c_src = manifest_dir.join("src").join("c");
+    let runtime_build_status = Command::new("cargo")
+        .args(["build", "--release", "--target", &target])
+        .current_dir(&runtime_dir)
+        .env("TOY_COMP_ROOT", &manifest_dir)
+        .env("TOY_RUNTIME_COPY_TRIGGER", "build")
+        .status()
+        .expect("Failed to build runtimeRS crate");
+    if !runtime_build_status.success() {
+        panic!("runtimeRS build failed with status: {}", runtime_build_status);
+    }
 
-    cmake::Config::new(&c_src)
-        .generator("Ninja") // always use Ninja
-        .profile("Debug")
-        .build();
+    let runtime_copy_status = Command::new("cargo")
+        .args(["build", "--release", "--target", &target])
+        .current_dir(&runtime_dir)
+        .env("TOY_COMP_ROOT", &manifest_dir)
+        .env("TOY_RUNTIME_COPY_TRIGGER", "copy")
+        .status()
+        .expect("Failed to run runtimeRS copy build");
+    if !runtime_copy_status.success() {
+        panic!(
+            "runtimeRS copy build failed with status: {}",
+            runtime_copy_status
+        );
+    }
 
     let out_dir = manifest_dir.join("lib").join(&target);
 
@@ -40,50 +65,37 @@ fn main() {
     }
 
     let runtime = out_dir.join("libruntime.a");
-    let core = out_dir.join("libcore.a");
 
     if !runtime.exists() {
-        panic!("Missing C runtime library: {}", runtime.display());
-    }
-    if !core.exists() {
-        panic!("Missing C core library: {}", core.display());
+        panic!("Missing runtime library: {}", runtime.display());
     }
 
     println!("cargo:rustc-link-search=native={}", out_dir.display());
 
-    println!("cargo:rustc-link-arg=-lcore");
     if cfg!(target_os = "windows") {
-        println!("cargo:rustc-link-search=native=C:/msys64/mingw64/lib");
-        println!("cargo:rustc-link-search=native=C:/msys64/mingw64/bin");
+        let lib_dir = manifest_dir.join("lib").join(&target);
+        println!("cargo:rustc-link-search=native={}", lib_dir.display());
+        
         println!("cargo:rustc-link-arg=lib/x86_64-pc-windows-gnu/cacert.o");
+
+        println!("cargo:rustc-link-arg=-lntdll");
+        println!("cargo:rustc-link-arg=-luserenv");
+        println!("cargo:rustc-link-arg=-lgcc");
+        println!("cargo:rustc-link-arg=-lffi");
+        println!("cargo:rustc-link-arg=-lucrt");
     } else {
         println!("cargo:rustc-link-search=native=/usr/lib/x86_64-linux-gnu");
     }
-    //println!("cargo:rustc-link-lib=dylib=LLVM-21");
+    println!("cargo:rustc-link-lib=dylib=LLVM-21");
     println!("cargo:rustc-link-arg=-Wl,--allow-multiple-definition");
     if cfg!(target_os = "windows") {
         println!("cargo:rustc-link-arg=-lffi");
         println!("cargo:rustc-link-arg=-lucrt");
     }
 
-    println!("cargo:rerun-if-changed=src/c/builtins.h");
-    println!("cargo:rerun-if-changed=src/c");
-
-    let bindings = bindgen::Builder::default()
-        .header("src/c/builtins.h")
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
-        .allowlist_type("ToyArrVal")
-        .allowlist_type("ToyHashMap")
-        .allowlist_function("toy_.*")
-        .generate()
-        .expect("Unable to generate bindings");
-
-    let bindings_string = "#![allow(unused)]\n".to_string()
-        + &bindings
-            .to_string()
-            .replace(r#"extern "C""#, r#"unsafe extern "C""#);
-
-    fs::write("src/ffi.rs", bindings_string).unwrap();
+    println!("cargo:rerun-if-changed=src/runtimeRS/Cargo.toml");
+    println!("cargo:rerun-if-changed=src/runtimeRS/src");
+    println!("cargo:rerun-if-changed=src/runtimeRS/build.rs");
 
     println!("cargo:rustc-env=TARGET={}", target);
 }

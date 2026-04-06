@@ -38,7 +38,6 @@ fn run_repl() {
         }
     }
 }
-
 fn compile_and_run(source: String) -> Result<(), Box<dyn std::error::Error>> {
     let repl_path = PathBuf::from("./temp/repl.toy");
     fs::create_dir_all("temp")?;
@@ -48,13 +47,16 @@ fn compile_and_run(source: String) -> Result<(), Box<dyn std::error::Error>> {
     let mut driver = driver::Driver::new(repl_path);
     driver.start(&ctx)?;
     let exe_path = format!("./Program{}", driver::FILE_EXTENSION_EXE);
-    let output = process::Command::new(exe_path).output()?;
-    print!("{}", String::from_utf8_lossy(&output.stdout));
-    eprint!("{}", String::from_utf8_lossy(&output.stderr));
+    
+    process::Command::new(exe_path)
+        .stdin(process::Stdio::inherit())
+        .stdout(process::Stdio::inherit())
+        .stderr(process::Stdio::inherit())
+        .spawn()?
+        .wait()?;
 
     Ok(())
 }
-
 fn compile_and_print(file_path: &str) -> Result<(), Box<dyn std::error::Error>> {
     let ctx: Context = Context::create();
     let args: Vec<String> = env::args().collect();

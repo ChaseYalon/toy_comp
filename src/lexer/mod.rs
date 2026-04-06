@@ -149,13 +149,8 @@ impl Lexer {
         return Ok(true);
     }
     
-    fn lex_extern_type(&mut self, word: &str, ty: ExternType) -> Result<bool, ToyError> {
+    fn lex_extern_type(&mut self) -> Result<bool, ToyError> {
         let start_cursor = self.cursor;
-        for (i, c) in word.char_indices() {
-            if self.peek(i) != c {
-                return Ok(false);
-            }
-        }
 
         let prev_char = if self.cursor == 0 {
             '\0'
@@ -166,10 +161,21 @@ impl Lexer {
             return Ok(false);
         }
 
-        let next_char = self.peek(word.len());
-        if next_char.is_alphanumeric() || next_char == '_' {
+        let mut scan = self.cursor;
+        while scan < self.source_chars.len()
+            && (self.source_chars[scan].is_alphanumeric() || self.source_chars[scan] == '_')
+        {
+            scan += 1;
+        }
+
+        if scan == self.cursor {
             return Ok(false);
         }
+
+        let word: String = self.source_chars[self.cursor..scan].iter().collect();
+        let Some(ty) = ExternType::from_type_name(&word) else {
+            return Ok(false);
+        };
 
         let mut is_released = true;
         let final_start_cursor = start_cursor;
@@ -187,7 +193,7 @@ impl Lexer {
             }
         }
         
-        self.cursor += word.len();
+        self.cursor = scan;
         self.push_tok(Token::ExternType(QualifiedExternType { ty, is_released }), final_start_cursor);
         return Ok(true);
     }
@@ -310,16 +316,7 @@ impl Lexer {
             if self.lex_keyword("extern", Token::Extern) {
                 continue;
             }
-            if self.lex_extern_type("c_int64_t", ExternType::c_int64_t)? {
-                continue;
-            }
-            if self.lex_extern_type("c_char_ptr", ExternType::c_char_ptr)? {
-                continue;
-            }
-            if self.lex_extern_type("c_double", ExternType::c_double)? {
-                continue;
-            }
-            if self.lex_extern_type("c_void_ptr", ExternType::c_void_ptr)? {
+            if self.lex_extern_type()? {
                 continue;
             }
             if self.lex_keyword("import", Token::Import) {

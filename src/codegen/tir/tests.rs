@@ -3022,7 +3022,7 @@ fn test_tirgen_import_stmt() {
                         }],
                         false,
                         TirType::I64,
-                        vec![false],
+                        vec![true],
                     ),
                     TIR::IConst(2, 0, TirType::I64),
                     TIR::Ret(

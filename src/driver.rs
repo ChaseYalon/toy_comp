@@ -59,8 +59,8 @@ impl Linker {
             let a_name = a.file_name().unwrap().to_string_lossy();
             let b_name = b.file_name().unwrap().to_string_lossy();
 
-            let a_is_ours = a_name == "libruntime.a" || a_name == "libcore.a";
-            let b_is_ours = b_name == "libruntime.a" || b_name == "libcore.a";
+            let a_is_ours = a_name == "libruntime.a";
+            let b_is_ours = b_name == "libruntime.a";
 
             if a_is_ours && !b_is_ours {
                 std::cmp::Ordering::Less
@@ -94,6 +94,35 @@ impl Linker {
 
         let output_name = format!("{}{}", output, FILE_EXTENSION_EXE);
 
+        //this seems like a bad idea...
+        let rust_self_contained_lib = if env::consts::OS == "windows" {
+            Command::new("rustc")
+                .args(["--print", "sysroot"])
+                .output()
+                .ok()
+                .and_then(|o| {
+                    if !o.status.success() {
+                        return None;
+                    }
+
+                    let sysroot = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                    if sysroot.is_empty() {
+                        return None;
+                    }
+
+                    let p = Path::new(&sysroot)
+                        .join("lib")
+                        .join("rustlib")
+                        .join(&target)
+                        .join("lib")
+                        .join("self-contained");
+
+                    p.exists().then_some(p)
+                })
+        } else {
+            None
+        };
+
         let args: Vec<String> = if env::consts::OS == "windows" {
             let mut args: Vec<String> = vec![
                 "-m".into(),
@@ -114,6 +143,11 @@ impl Linker {
             args.push("-L".into());
             args.push(lib_path.to_string_lossy().into_owned());
 
+            if let Some(path) = &rust_self_contained_lib {
+                args.push("-L".into());
+                args.push(path.to_string_lossy().into_owned());
+            }
+
             args.push("--start-group".into());
 
             // all static archives
@@ -131,6 +165,16 @@ impl Linker {
             args.push(lib_path.join("cacert.o").to_string_lossy().into_owned());
 
             args.push("--end-group".into());
+
+            // libruntimers pulls std APIs that require these Windows and unwind symbols.
+            args.extend_from_slice(&[
+                "-lws2_32".into(),
+                "-luserenv".into(),
+                "-lbcrypt".into(),
+                "-lntdll".into(),
+                "-lgcc_eh".into(),
+                "-lgcc_s".into(),
+            ]);
 
             args.push("-o".into());
             args.push(output_name.clone());
@@ -319,10 +363,16 @@ impl Driver {
     }
     pub fn extern_type_to_type_tok(ety: ExternType) -> TypeTok{
         return match ety{
-            ExternType::c_int64_t => TypeTok::Int,
-            ExternType::c_double => TypeTok::Float,
-            ExternType::c_char_ptr => TypeTok::Str,
-            ExternType::c_void_ptr => TypeTok::Any
+            ExternType::c_int64_t(0) => TypeTok::Int,
+            ExternType::c_double(0) => TypeTok::Float,
+            ExternType::c_char(0) => TypeTok::Any,
+            ExternType::c_char(1) => TypeTok::Str,
+            ExternType::c_void(0) => TypeTok::Any,
+            ExternType::c_void(1) => TypeTok::Any,
+            ExternType::c_int64_t(n) => TypeTok::IntArr(n),
+            ExternType::c_double(n) => TypeTok::FloatArr(n),
+            ExternType::c_char(n) => TypeTok::StrArr(n - 1),
+            ExternType::c_void(n) => TypeTok::AnyArr(n - 1),
         }
     }
 
@@ -402,12 +452,12 @@ impl Driver {
     ///Finds and parses all dependencies from a list of TBoxes
     ///Returns a list of paths to import
     fn find_and_parse_dependencies(&mut self, boxes: Vec<TBox>) -> Result<(), ToyError> {
-        let mut import_list: Vec<String> = vec![];
+        let mut import_list: Vec<(String, Span)> = vec![];
         for t_box in boxes {
             match t_box {
-                TBox::ImportStmt(import_name, _) => {
+                TBox::ImportStmt(import_name, import_span) => {
                     let path = self.name_to_path(import_name.clone());
-                    import_list.push(path.clone());
+                    import_list.push((path.clone(), import_span));
                     self.table
                         .alias_to_path
                         .insert(path, import_name.split(".").last().unwrap().to_string());
@@ -416,7 +466,7 @@ impl Driver {
             }
         }
         //load lex and box each import
-        for import in import_list {
+        for (import, import_span) in import_list {
             if self.parsed_modules.contains(&import) {
                 //this means module has already been parsed, we can just skip it
                 continue;
@@ -428,7 +478,7 @@ impl Driver {
                 Err(_) => {
                     return Err(ToyError::new(
                         ToyErrorType::MissingFile,
-                        Span::null_span_with_msg(&format!("Could not find file: {}", import)),
+                        import_span,
                     ));
                 }
             };

@@ -124,6 +124,30 @@ impl AliasAndEncapsulationTracker {
                     })
                 })
             }
+            TIR::CreateStructLiteral(_, _, fields) => fields.iter().any(|field| {
+                AliasAndEncapsulationTracker::value_may_alias_param_with_summaries(
+                    func,
+                    field.val,
+                    param_value_id,
+                    visited,
+                    summary_by_func,
+                )
+            }),
+            TIR::WriteStructLiteral(_, base_struct, _, new_val) => {
+                AliasAndEncapsulationTracker::value_may_alias_param_with_summaries(
+                    func,
+                    base_struct.val,
+                    param_value_id,
+                    visited,
+                    summary_by_func,
+                ) || AliasAndEncapsulationTracker::value_may_alias_param_with_summaries(
+                    func,
+                    new_val.val,
+                    param_value_id,
+                    visited,
+                    summary_by_func,
+                )
+            }
             _ => false,
         }
     }

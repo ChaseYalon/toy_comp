@@ -799,6 +799,17 @@ impl Boxer {
             if toks[i].tok.tok_type() == "Semicolon" {
                 break;
             }
+
+            // Imports only allow dotted identifiers like `import std.fs;`.
+            // Catch cases like `import std.fs let ...` early with a syntax error.
+            let tok_type = toks[i].tok.tok_type();
+            if tok_type != "VarRef" && tok_type != "VarName" && tok_type != "Dot" {
+                return Err(ToyError::new(
+                    ToyErrorType::MalformedImportStatement,
+                    cumulative_span.clone(),
+                ));
+            }
+
             module_name.push_str(&toks[i].tok.to_string());
         }
         Ok(TBox::ImportStmt(module_name, cumulative_span))

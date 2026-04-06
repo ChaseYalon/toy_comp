@@ -1090,8 +1090,10 @@ impl AstToIrConverter {
                                     TBox::FuncDec(name_tok, params, ret_type, _, _, _) => {
                                         if let Some(n) = name_tok.get_var_name() {
                                             let full_name = format!("{}::{}", prefix, n);
+                                            // Imported Toy functions follow normal call semantics:
+                                            // parameters are borrowed unless explicitly modeled otherwise.
                                             let doesnt_take_ownership_list =
-                                                vec![false; params.len()];
+                                                vec![true; params.len()];
                                             self.builder.register_extern(
                                                 full_name,
                                                 match ret_type {
@@ -1256,7 +1258,7 @@ impl AstToIrConverter {
         self.builder
             .register_extern("toy_arrlen".to_string(), false, TypeTok::Int, vec![true], true);
         self.builder
-            .register_extern("toy_input".to_string(), true, TypeTok::Str, vec![], true);
+            .register_extern("toy_input".to_string(), true, TypeTok::Str, vec![true], true);
         self.builder
             .register_extern("toy_free".to_string(), false, TypeTok::Void, vec![false], false); //ctla/ctla.c
         self.builder.register_extern(

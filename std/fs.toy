@@ -21,8 +21,9 @@ export fn file_size(path: str): int{
 
 extern fn toy_fs_get_file_count_in_dir(path: retained c_char_ptr): int;
 extern fn toy_fs_get_folder_count_in_dir(path: retained c_char_ptr): int;
-extern fn toy_fs_read_dir(path: c_char_ptr): str[][];//TODO: FFI type
-extern fn toy_str_arr_to_str(arr: str[]): str;
+extern fn toy_fs_read_dir(path: retained c_char_ptr): str[][];//TODO: FFI type
+extern fn toy_str_arr_to_str(arr: retained c_char_ptr_ptr): str;
+extern fn toy_fs_read_dir_to_str(path: retained c_char_ptr): str;
 
 struct FolderReadResults{
     files: str[],

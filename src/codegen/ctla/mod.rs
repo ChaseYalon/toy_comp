@@ -835,9 +835,21 @@ impl CTLA {
                     .and_then(|s| s.to_str().map(|s| s.to_string()))
             })
             .unwrap_or_else(|| "module".to_string());
-        let external_modules = self.alias_detector.external_modules.clone();
+        let mut external_modules = self.alias_detector.external_modules.clone();
         self.builder = Rc::new(RefCell::new(builder));
         self.alias_detector = AliasAndEncapsulationTracker::new(&self.builder);
+        // toy_malloc_struct copies a struct to the heap and returns the heap pointer.
+        // The returned heap allocation captures all pointer values stored in the struct
+        // (param 1), so the return value aliases param 1.
+        external_modules
+            .entry("__builtins__".to_string())
+            .or_default()
+            .push(FunctionSummary::new(
+                "toy_malloc_struct".to_string(),
+                vec![1],
+                vec![],
+                vec![],
+            ));
         self.alias_detector.set_external_modules(external_modules);
         self.cfg_functions.clear();
 

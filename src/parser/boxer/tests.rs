@@ -1226,7 +1226,7 @@ fn test_boxer_extern_function_declaration() {
             SpannedToken::new_null(Token::VarName(Box::new("printf".to_string()))),
             vec![TBox::ExternFuncParam(
                 SpannedToken::new_null(Token::VarRef(Box::new("msg".to_string()))),
-                QualifiedExternType{ty: ExternType::c_char_ptr, is_released: true},
+                QualifiedExternType{ty: ExternType::c_char(1), is_released: true},
                 Span::null_span()
             )],
             TypeTok::Int,
@@ -1249,7 +1249,7 @@ fn test_boxer_extern_function_declaration_void() {
             SpannedToken::new_null(Token::VarName(Box::new("puts".to_string()))),
             vec![TBox::ExternFuncParam(
                 SpannedToken::new_null(Token::VarRef(Box::new("msg".to_string()))),
-                QualifiedExternType{ty: ExternType::c_char_ptr, is_released: false},
+                QualifiedExternType{ty: ExternType::c_char(1), is_released: false},
                 Span::null_span()
             )],
             TypeTok::Void,

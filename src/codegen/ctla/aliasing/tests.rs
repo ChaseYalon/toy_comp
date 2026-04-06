@@ -229,15 +229,15 @@ fn test_param_escape_summary_marks_escape() {
         _a,
         cfg_functions,
         r#"
-        import std.sys;
-        fn leak(x: str) {
-            sys.panic(x);
-        }
-        leak("hi");
+            extern fn foo(a: released c_char_ptr);
+            fn fee(a: str){
+                foo(a);
+            }
+            fee("hi");
         "#
     );
 
-    let leak_cfg = find_cfg_function_by_name(&cfg_functions, "leak");
+    let leak_cfg = find_cfg_function_by_name(&cfg_functions, "fee");
     assert_eq!(leak_cfg.parameter_escapes, vec![0]);
 }
 

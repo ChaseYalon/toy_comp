@@ -1541,15 +1541,51 @@ fn test_lexer_extern_c_type(){
             Token::LParen,
             Token::VarRef(Box::new("a".to_string())),
             Token::Colon,
-            Token::ExternType(QualifiedExternType { ty: ExternType::c_int64_t, is_released: false }),
+            Token::ExternType(QualifiedExternType { ty: ExternType::c_int64_t(0), is_released: false }),
             Token::Comma,
             Token::VarRef(Box::new("b".to_string())),
             Token::Colon,
-            Token::ExternType(QualifiedExternType { ty: ExternType::c_double, is_released: true }),
+            Token::ExternType(QualifiedExternType { ty: ExternType::c_double(0), is_released: true }),
             Token::Comma,
             Token::VarRef(Box::new("c".to_string())),
             Token::Colon,
-            Token::ExternType(QualifiedExternType { ty: ExternType::c_char_ptr, is_released: true }),
+            Token::ExternType(QualifiedExternType { ty: ExternType::c_char(1), is_released: true }),
+            Token::RParen,
+            Token::Colon,
+            Token::Type(TypeTok::Str),
+            Token::Semicolon,
+        ],
+    )
+}
+
+#[test]
+fn test_lexer_extern_c_type_pointer_depth() {
+    let mut l = Lexer::new();
+    let toks = l
+        .lex("extern fn foo(a: c_char_ptr_ptr_ptr, b: retained c_int64_t_ptr_ptr): str;".to_string())
+        .unwrap();
+
+    compare_tokens(
+        "test_lexer_extern_c_type_pointer_depth",
+        toks,
+        vec![
+            Token::Extern,
+            Token::Func,
+            Token::VarName(Box::new("foo".to_string())),
+            Token::LParen,
+            Token::VarRef(Box::new("a".to_string())),
+            Token::Colon,
+            Token::ExternType(QualifiedExternType {
+                ty: ExternType::c_char(3),
+                is_released: true,
+            }),
+            Token::Comma,
+            Token::VarRef(Box::new("b".to_string())),
+            Token::Colon,
+            Token::ExternType(QualifiedExternType {
+                ty: ExternType::c_int64_t(2),
+                is_released: false,
+            }),
             Token::RParen,
             Token::Colon,
             Token::Type(TypeTok::Str),

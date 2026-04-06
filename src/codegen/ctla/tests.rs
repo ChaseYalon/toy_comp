@@ -239,7 +239,6 @@ fn test_ctla_multi_module_alloc() {
 }
 
 #[test]
-#[ignore = "DO NOT MERGE ANY PR'S WITH THIS IGNORE STILL IN THEM"]
 fn test_ctla_fs_read_dir_to_str() {
     let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let case_rel = format!(

@@ -1967,7 +1967,7 @@ fn test_ast_gen_extern_func_dec() {
             Box::new("printf".to_string()),
             vec![Ast::ExternFuncParam(
                 "msg".to_string(),
-                QualifiedExternType{ty: ExternType::c_char_ptr, is_released: false},
+                QualifiedExternType{ty: ExternType::c_char(1), is_released: false},
                 Span::null_span()
             )],
             TypeTok::Int,

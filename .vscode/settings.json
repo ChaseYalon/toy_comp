@@ -125,6 +125,7 @@
       "roundf",
       "rstatus",
       "RTTI",
+      "runtimers",
       "rustup",
       "scalbln",
       "scalblnf",
@@ -170,7 +171,6 @@
     "rust-analyzer.diagnostics.disabled": [],
     "rust-analyzer.diagnostics.enableExperimental": true,
     "rust-analyzer.cargo.buildScripts.invocationStrategy": "once",
-    "cmake.sourceDirectory": "C:/Users/chase_qlo04cr/sideProjects/toy_comp/toy_comp/src/c",
       "C_Cpp.default.includePath": [
       "${workspaceFolder}/src/c",
     ],

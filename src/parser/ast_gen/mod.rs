@@ -570,10 +570,10 @@ impl AstGenerator {
                     };
                     let q = QualifiedExternType {
                         ty: match type_tok {
-                            TypeTok::Int => ExternType::c_int64_t,
-                            TypeTok::Float => ExternType::c_double,
-                            TypeTok::Str => ExternType::c_char_ptr,
-                            _ => ExternType::c_void_ptr,
+                            TypeTok::Int => ExternType::c_int64_t(0),
+                            TypeTok::Float => ExternType::c_double(0),
+                            TypeTok::Str => ExternType::c_char(1),
+                            _ => ExternType::c_void(1),
                         },
                         is_released: true,
                     };
