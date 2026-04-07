@@ -1,9 +1,9 @@
+use crate::errors::Span;
 use ordered_float::OrderedFloat;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt;
 use std::hash::{Hash, Hasher};
-use serde::{Serialize, Deserialize};
-use crate::errors::Span;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Token {
     //Lits
@@ -48,6 +48,7 @@ pub enum Token {
     Struct(Box<String>),
     For, //in the context of binding functions to structs
     Extern,
+    ExternType(QualifiedExternType),
     Import,
     Export,
     Interface,
@@ -94,6 +95,68 @@ impl SpannedToken {
             tok,
             span: Span::null_span(),
         };
+    }
+}
+#[allow(nonstandard_style)]
+///types
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ExternType {
+    c_int64_t(u64),
+    c_char(u64),
+    c_void(u64),
+    c_double(u64),
+}
+impl ExternType {
+    pub fn from_type_name(word: &str) -> Option<Self> {
+        fn parse_ptr_depth(word: &str, base: &str) -> Option<u64> {
+            if !word.starts_with(base) {
+                return None;
+            }
+            let mut suffix = &word[base.len()..];
+            let mut ptr_depth = 0;
+            while suffix.starts_with("_ptr") {
+                ptr_depth += 1;
+                suffix = &suffix[4..];
+            }
+
+            if suffix.is_empty() {
+                return Some(ptr_depth)
+            } else {
+                return None
+            }
+        }
+
+        parse_ptr_depth(word, "c_int64_t")
+            .map(Self::c_int64_t)
+            .or_else(|| parse_ptr_depth(word, "c_char").map(Self::c_char))
+            .or_else(|| parse_ptr_depth(word, "c_void").map(Self::c_void))
+            .or_else(|| parse_ptr_depth(word, "c_double").map(Self::c_double))
+    }
+
+    pub fn to_str(&self) -> String {
+        let (base, ptr_depth) = match self {
+            Self::c_int64_t(n) => ("c_int64_t", *n),
+            Self::c_char(n) => ("c_char", *n),
+            Self::c_void(n) => ("c_void", *n),
+            Self::c_double(n) => ("c_double", *n),
+        };
+
+        let mut out = base.to_string();
+        for _ in 0..ptr_depth {
+            out.push_str("_ptr");
+        }
+        return out
+    }
+}
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct QualifiedExternType {
+    pub ty: ExternType,
+    ///specifies if the value represented by the type should be released from ctla analysis
+    pub is_released: bool,
+}
+impl QualifiedExternType {
+    pub fn to_str(&self) -> String {
+        format!("{}_{}", self.ty.to_str(), if self.is_released {"released"} else {"retain"})
     }
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -269,6 +332,7 @@ impl Token {
             Self::Not => "Not".to_string(),
             Self::For => "For".to_string(),
             Self::Extern => "Extern".to_string(),
+            Self::ExternType(_) => "ExternType".to_string(),
             Self::Import => "Import".to_string(),
             Self::Export => "Export".to_string(),
             Self::Interface => "Interface".to_string(),
@@ -355,6 +419,7 @@ impl Token {
                 Token::Not => String::from("!"),
                 Token::For => String::from("for"),
                 Token::Extern => String::from("extern"),
+                Token::ExternType(et) => et.to_str(),
                 Token::Import => String::from("import"),
                 Token::Export => String::from("export"),
                 Token::Implements => String::from("implements"),

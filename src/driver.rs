@@ -5,19 +5,22 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
 };
+use std::path;
 //this macro sucks
 thread_local! {
     static CURRENT_FILE_PATH: RefCell<Option<String>> = const { RefCell::new(None) };
 }
-
+thread_local! {
+    static BUILD_DIR: RefCell<String> = RefCell::new("build".to_string());
+}
 use inkwell::{context::Context, module::Module};
 
 use crate::{
-    codegen::Generator,
+    codegen::{Generator, ctla::CTLASchema},
     errors::{Span, ToyError, ToyErrorType},
     lexer::Lexer,
     parser::{ast::Ast, ast_gen::AstGenerator, boxer::Boxer, toy_box::TBox},
-    token::TypeTok,
+    token::{ExternType, TypeTok},
 };
 
 pub static FILE_EXTENSION_EXE: &str = if cfg!(target_os = "windows") {
@@ -56,8 +59,8 @@ impl Linker {
             let a_name = a.file_name().unwrap().to_string_lossy();
             let b_name = b.file_name().unwrap().to_string_lossy();
 
-            let a_is_ours = a_name == "libruntime.a" || a_name == "libcore.a";
-            let b_is_ours = b_name == "libruntime.a" || b_name == "libcore.a";
+            let a_is_ours = a_name == "libruntime.a";
+            let b_is_ours = b_name == "libruntime.a";
 
             if a_is_ours && !b_is_ours {
                 std::cmp::Ordering::Less
@@ -91,6 +94,35 @@ impl Linker {
 
         let output_name = format!("{}{}", output, FILE_EXTENSION_EXE);
 
+        //this seems like a bad idea...
+        let rust_self_contained_lib = if env::consts::OS == "windows" {
+            Command::new("rustc")
+                .args(["--print", "sysroot"])
+                .output()
+                .ok()
+                .and_then(|o| {
+                    if !o.status.success() {
+                        return None;
+                    }
+
+                    let sysroot = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                    if sysroot.is_empty() {
+                        return None;
+                    }
+
+                    let p = Path::new(&sysroot)
+                        .join("lib")
+                        .join("rustlib")
+                        .join(&target)
+                        .join("lib")
+                        .join("self-contained");
+
+                    p.exists().then_some(p)
+                })
+        } else {
+            None
+        };
+
         let args: Vec<String> = if env::consts::OS == "windows" {
             let mut args: Vec<String> = vec![
                 "-m".into(),
@@ -111,6 +143,11 @@ impl Linker {
             args.push("-L".into());
             args.push(lib_path.to_string_lossy().into_owned());
 
+            if let Some(path) = &rust_self_contained_lib {
+                args.push("-L".into());
+                args.push(path.to_string_lossy().into_owned());
+            }
+
             args.push("--start-group".into());
 
             // all static archives
@@ -128,6 +165,16 @@ impl Linker {
             args.push(lib_path.join("cacert.o").to_string_lossy().into_owned());
 
             args.push("--end-group".into());
+
+            // libruntimers pulls std APIs that require these Windows and unwind symbols.
+            args.extend_from_slice(&[
+                "-lws2_32".into(),
+                "-luserenv".into(),
+                "-lbcrypt".into(),
+                "-lntdll".into(),
+                "-lgcc_eh".into(),
+                "-lgcc_s".into(),
+            ]);
 
             args.push("-o".into());
             args.push(output_name.clone());
@@ -198,14 +245,16 @@ impl Linker {
         Ok(())
     }
 }
+#[derive(Debug)]
 pub enum ModuleExportType {
     ///in param types(in order declared), return type
     Function(Vec<TypeTok>, TypeTok),
     ///this is for struct interfaces and it contains the TypeTok for the interface
     Struct(TypeTok),
-    ///contains a type tok of type interface
-    Interface(TypeTok),
+    /////contains a type tok of type interface
+    //Interface(TypeTok),
 }
+#[derive(Debug)]
 pub struct ModuleExport {
     pub name: String,
     pub ty: ModuleExportType,
@@ -238,6 +287,8 @@ pub struct Driver {
     pub parsed_modules: HashSet<String>,
     ///contains the path of a file to its generated IR
     pub file_path_to_ast: HashMap<String, Vec<Ast>>,
+    pub file_path_to_text: HashMap<String, String>,
+    pub file_path_to_ctla: HashMap<String, CTLASchema>,
     pub mangled_lookup: HashMap<String, String>,
 }
 
@@ -248,6 +299,12 @@ impl Driver {
 
     fn set_current_file_path(path: &str) {
         CURRENT_FILE_PATH.with(|p| *p.borrow_mut() = Some(path.to_string()));
+    }
+    pub fn get_build_dir() -> String {
+        BUILD_DIR.with(|b| b.borrow().clone())
+    }
+    pub fn set_build_dir(new_dir: String) {
+        BUILD_DIR.with(|b| *b.borrow_mut() = new_dir);
     }
     pub fn mangle_name(module_prefix: Option<&str>, name: &str, params: &[TypeTok]) -> String {
         let prefixed_name = if let Some(prefix) = module_prefix {
@@ -282,6 +339,8 @@ impl Driver {
             main_program_path: prgm_path,
             parsed_modules: HashSet::new(),
             file_path_to_ast: HashMap::new(),
+            file_path_to_text: HashMap::new(),
+            file_path_to_ctla: HashMap::new(),
             mangled_lookup: HashMap::new(),
         };
     }
@@ -293,12 +352,28 @@ impl Driver {
             main_program_path: prgm_path,
             parsed_modules: HashSet::new(),
             file_path_to_ast: HashMap::new(),
+            file_path_to_text: HashMap::new(),
+            file_path_to_ctla: HashMap::new(),
             mangled_lookup: HashMap::new(),
         };
     }
     fn name_to_path(&self, path: String) -> String {
         let segments: Vec<&str> = path.split(".").collect();
         return segments.join("/") + ".toy";
+    }
+    pub fn extern_type_to_type_tok(ety: ExternType) -> TypeTok{
+        return match ety{
+            ExternType::c_int64_t(0) => TypeTok::Int,
+            ExternType::c_double(0) => TypeTok::Float,
+            ExternType::c_char(0) => TypeTok::Any,
+            ExternType::c_char(1) => TypeTok::Str,
+            ExternType::c_void(0) => TypeTok::Any,
+            ExternType::c_void(1) => TypeTok::Any,
+            ExternType::c_int64_t(n) => TypeTok::IntArr(n),
+            ExternType::c_double(n) => TypeTok::FloatArr(n),
+            ExternType::c_char(n) => TypeTok::StrArr(n - 1),
+            ExternType::c_void(n) => TypeTok::AnyArr(n - 1),
+        }
     }
 
     fn feed_to_ast_gen(&mut self, ast_gen: &mut AstGenerator) {
@@ -340,8 +415,7 @@ impl Driver {
                             };
                             ast_gen.register_struct(full_name, fields.clone());
                         }
-                    }
-                    _ => todo!("interface exports not yet supported"),
+                    } //_ => todo!("interface exports not yet supported"),
                 }
             }
         }
@@ -378,12 +452,12 @@ impl Driver {
     ///Finds and parses all dependencies from a list of TBoxes
     ///Returns a list of paths to import
     fn find_and_parse_dependencies(&mut self, boxes: Vec<TBox>) -> Result<(), ToyError> {
-        let mut import_list: Vec<String> = vec![];
+        let mut import_list: Vec<(String, Span)> = vec![];
         for t_box in boxes {
             match t_box {
-                TBox::ImportStmt(import_name, _) => {
+                TBox::ImportStmt(import_name, import_span) => {
                     let path = self.name_to_path(import_name.clone());
-                    import_list.push(path.clone());
+                    import_list.push((path.clone(), import_span));
                     self.table
                         .alias_to_path
                         .insert(path, import_name.split(".").last().unwrap().to_string());
@@ -392,7 +466,7 @@ impl Driver {
             }
         }
         //load lex and box each import
-        for import in import_list {
+        for (import, import_span) in import_list {
             if self.parsed_modules.contains(&import) {
                 //this means module has already been parsed, we can just skip it
                 continue;
@@ -404,13 +478,29 @@ impl Driver {
                 Err(_) => {
                     return Err(ToyError::new(
                         ToyErrorType::MissingFile,
-                        Span::null_span_with_msg(&format!("Could not find file: {}", import)),
+                        import_span,
                     ));
                 }
             };
 
             //create a new lexer and boxer for each module
             Driver::set_current_file_path(&import);
+            self.file_path_to_text
+                .insert(import.clone(), contents.clone());
+
+            let build_dir = Driver::get_build_dir();
+            let module_stem = path::Path::new(&import)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default()
+                .to_string();
+            let ctla_path = format!("{}/{}.ctla", build_dir, module_stem);
+            if let Ok(ctla_content) = fs::read_to_string(ctla_path) {
+                if let Ok(ctla_schema) = serde_json::from_str::<CTLASchema>(&ctla_content) {
+                    self.file_path_to_ctla.insert(import.clone(), ctla_schema);
+                }
+            }
+
             let mut l = Lexer::new();
             let import_toks = l.lex(contents)?;
             let module_name = import
@@ -439,8 +529,8 @@ impl Driver {
                     TBox::ExternFuncDec(name, params, return_type, _) => {
                         let mut param_types = Vec::new();
                         for p in params {
-                            if let TBox::FuncParam(_, t, _) = p {
-                                param_types.push(t);
+                            if let TBox::ExternFuncParam(_, qualified_type, _) = p {
+                                param_types.push(Driver::extern_type_to_type_tok(qualified_type.ty));
                             }
                         }
                         let ty = ModuleExportType::Function(param_types, return_type.clone());
@@ -481,6 +571,11 @@ impl Driver {
     ///Will automatically compile and build the program
     ///Linking in all necessary modules
     pub fn start(&mut self, ctx: &Context) -> Result<(), ToyError> {
+        let args: Vec<String> = env::args().collect();
+        let idx = args.iter().position(|r| r == "--build");
+        if idx.is_some() {
+            Driver::set_build_dir(args[idx.unwrap() + 1].clone());
+        }
         Driver::set_current_file_path(&self.main_program_path.to_string_lossy());
         let main_program = fs::read_to_string(&self.main_program_path).map_err(|_| {
             ToyError::new(
@@ -491,6 +586,10 @@ impl Driver {
                 )),
             )
         })?;
+        self.file_path_to_text.insert(
+            self.main_program_path.to_string_lossy().to_string(),
+            main_program.clone(),
+        );
 
         //Lex and box main program
         let mut l = Lexer::new();
@@ -515,13 +614,56 @@ impl Driver {
             Driver::set_current_file_path(path);
             let llvm_module = ctx.create_module(&module_name);
             let mut generator = Generator::new(ctx, llvm_module);
+            if let Some(text) = self.file_path_to_text.get(path) {
+                generator.set_original_text(text.clone());
+            }
+
+            let mut external_modules = HashMap::new();
+            for (p, schema) in &self.file_path_to_ctla {
+                let p_str: &String = p;
+                if p_str != path {
+                    let m_name = p_str
+                        .replace("/", ".")
+                        .replace(".toy", "")
+                        .trim_start_matches('.')
+                        .to_string();
+                    external_modules.insert(m_name, schema.summaries.clone());
+                }
+            }
+            generator.set_external_modules(external_modules);
+
             generator.compile_to_object(ast.clone(), module_name.clone(), false)?;
             object_files.push(format!("{}.o", module_name));
         }
 
-        //Compile Main
         let main_module = ctx.create_module("program");
         let mut generator = Generator::new(ctx, main_module);
+        if let Some(text) = self
+            .file_path_to_text
+            .get(&self.main_program_path.to_string_lossy().to_string())
+        {
+            generator.set_original_text(text.clone());
+        }
+
+        let mut external_modules = HashMap::new();
+        for (p, schema) in &self.file_path_to_ctla {
+            let p_str: &String = p;
+            let m_name = p_str
+                .replace("/", ".")
+                .replace(".toy", "")
+                .trim_start_matches('.')
+                .to_string();
+            external_modules.insert(m_name, schema.summaries.clone());
+        }
+        generator.set_external_modules(external_modules);
+
+        let module_name = self
+            .main_program_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("program")
+            .to_string();
+        Driver::set_current_file_path(&(module_name.clone() + ".toy"));
 
         //Register imported functions so TIR knows about them
         for (path, exports) in &self.table.path_to_exports {

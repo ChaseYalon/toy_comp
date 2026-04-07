@@ -1,15 +1,16 @@
 use ordered_float::OrderedFloat;
 
 use crate::debug;
+use crate::driver::Driver;
 use crate::errors::{Span, ToyError, ToyErrorType};
 use crate::lexer::Lexer;
 use crate::parser::ast::Ast;
 use crate::parser::boxer::Boxer;
 use crate::parser::toy_box::TBox;
-use crate::token::TypeTok;
+use crate::token::{ExternType, QualifiedExternType, TypeTok};
 use crate::token::{SpannedToken, Token};
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::{fs, env};
+use std::{env, fs};
 
 mod exprs;
 pub struct AstGenerator {
@@ -551,30 +552,49 @@ impl AstGenerator {
         };
 
         let mut ast_params: Vec<Ast> = Vec::new();
-        let mut param_types: Vec<TypeTok> = Vec::new();
+        let mut param_types: Vec<QualifiedExternType> = Vec::new();
 
         for param in params {
             let (param_name, param_type, param_raw_text) = match param {
-                TBox::FuncParam(name, type_tok, rt) => {
+                TBox::ExternFuncParam(name, type_tok, rt) => {
                     let n = match name.tok {
                         Token::VarRef(var) => *var,
                         _ => unreachable!(),
                     };
                     (n, type_tok, rt)
                 }
+                TBox::FuncParam(name, type_tok, rt) => {
+                    let n = match name.tok {
+                        Token::VarRef(var) => *var,
+                        _ => unreachable!(),
+                    };
+                    let q = QualifiedExternType {
+                        ty: match type_tok {
+                            TypeTok::Int => ExternType::c_int64_t(0),
+                            TypeTok::Float => ExternType::c_double(0),
+                            TypeTok::Str => ExternType::c_char(1),
+                            _ => ExternType::c_void(1),
+                        },
+                        is_released: true,
+                    };
+                    (n, q, rt)
+                }
                 _ => unreachable!(),
             };
 
-            ast_params.push(Ast::FuncParam(
-                Box::new(param_name.clone()),
+            ast_params.push(Ast::ExternFuncParam(
+                param_name.clone(),
                 param_type.clone(),
                 param_raw_text,
             ));
             param_types.push(param_type.clone());
         }
-
+        let mut ty_params: Vec<TypeTok> = vec![];
+        for p in param_types{
+            ty_params.push(Driver::extern_type_to_type_tok(p.ty));
+        }
         self.extern_funcs.insert(name.clone());
-        self.func_param_type_map.insert(name.clone(), param_types);
+        self.func_param_type_map.insert(name.clone(), ty_params);
         self.func_return_type_map
             .insert(name.clone(), return_type.clone());
 
@@ -722,24 +742,38 @@ impl AstGenerator {
                         self.imports.insert(alias.to_string(), name.clone());
                     }
                 }
-                // Load the module file and register its exported function signatures
+                // Load the module file and register exported APIs plus struct methods/interfaces.
                 let file_path = name.replace('.', "/") + ".toy";
                 let prefix = name.replace('.', "::");
                 if let Ok(contents) = fs::read_to_string(&file_path) {
                     let mut l = Lexer::new();
                     if let Ok(toks) = l.lex(contents) {
-                        let mut b = Boxer::new();
+                        let mut b = Boxer::with_module_prefix(prefix.clone());
                         if let Ok(boxes) = b.box_toks(toks) {
                             for tbox in &boxes {
                                 match tbox {
-                                    TBox::FuncDec(fname, _params, ret_type, _, _, true) => {
+                                    TBox::FuncDec(fname, _params, ret_type, _, _, is_export) => {
                                         let param_types = tbox.get_func_param_types();
-                                        let func_name = fname.get_var_name().unwrap();
-                                        let full_name = format!("{}::{}", prefix, func_name);
-                                        self.register_function(
-                                            full_name,
-                                            param_types,
-                                            ret_type.clone(),
+                                        let func_name = *fname.get_var_name().unwrap();
+                                        // Non-exported struct methods are still callable through values
+                                        // of exported struct types (e.g. x.to_str()).
+                                        if *is_export || func_name.contains(":::") {
+                                            self.register_function(
+                                                func_name,
+                                                param_types,
+                                                ret_type.clone(),
+                                            );
+                                        }
+                                    }
+                                    TBox::StructInterface(interface_name, field_map, _) => {
+                                        let boxed: BTreeMap<String, Box<TypeTok>> = (*field_map)
+                                            .clone()
+                                            .into_iter()
+                                            .map(|(k, v)| (k, Box::new(v)))
+                                            .collect();
+                                        self.register_struct(
+                                            format!("{}::{}", prefix, interface_name),
+                                            boxed,
                                         );
                                     }
                                     _ => {}
@@ -760,11 +794,14 @@ impl AstGenerator {
 
         return Ok(node);
     }
-    fn pretty_print_ast(ast: &Vec<Ast>) -> Result<String, ToyError>{
-        return match serde_json::to_string(ast){
+    fn pretty_print_ast(ast: &Vec<Ast>) -> Result<String, ToyError> {
+        return match serde_json::to_string(ast) {
             Ok(st) => Ok(st),
-            Err(_) => Err(ToyError::new(ToyErrorType::SerializationError, Span::null_span_with_msg("serializing ast failed")))
-        }
+            Err(_) => Err(ToyError::new(
+                ToyErrorType::SerializationError,
+                Span::null_span_with_msg("serializing ast failed"),
+            )),
+        };
     }
     pub fn generate(&mut self, boxes: Vec<TBox>) -> Result<Vec<Ast>, ToyError> {
         self.boxes = boxes.clone();
@@ -777,9 +814,9 @@ impl AstGenerator {
             self.nodes.push(stmt)
         }
         let args: Vec<String> = env::args().collect();
-        if args.contains(&"--debug-ast".to_string()) || args.contains(&"--debug-ALL".to_string()){
+        if args.contains(&"--debug-ast".to_string()) || args.contains(&"--debug-ALL".to_string()) {
             let s = AstGenerator::pretty_print_ast(&self.nodes)?;
-            fs::write("./debug/AST.json", s).unwrap();//temp, bad
+            fs::write("./debug/AST.json", s).unwrap(); //temp, bad
         }
         return Ok(self.nodes.clone());
     }

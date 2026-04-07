@@ -3,7 +3,7 @@ use std::fmt;
 
 use crate::{
     errors::Span,
-    token::{SpannedToken, TypeTok},
+    token::{QualifiedExternType, SpannedToken, TypeTok},
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -36,7 +36,10 @@ pub enum TBox {
     StructInterface(Box<String>, Box<BTreeMap<String, TypeTok>>, Span),
     ///used for extern function declarations, those functions are called like any other
     ///Name, Params, Return Type, source code
+    ///For the Vec<TBox> it will ALWAYS be Vec<TBOX::ExternFuncDecParam
     ExternFuncDec(SpannedToken, Vec<TBox>, TypeTok, Span),
+    ///name, type, span
+    ExternFuncParam(SpannedToken, QualifiedExternType, Span),
     ///name of the module being imported, source_code
     ImportStmt(String, Span),
     ///Interfaces just contain the TypeTok of the interface, then the source code
@@ -106,6 +109,7 @@ impl fmt::Display for TBox {
                 TBox::ImportStmt(name, s) =>
                     format!("TBox_Import_Stmt Name({}), Literal({})", name, s),
                 TBox::Interface(ty, s) => format!("TBox_Interface Type({:#?}), Literal({})", ty, s),
+                TBox::ExternFuncParam(n, t, s) => format!("TBox_ExternFuncParam Name({}), Type({:?}), Literal({})", n, t, s)
             }
         )
     }
@@ -128,6 +132,7 @@ impl TBox {
             TBox::ExternFuncDec(_, _, _, s) => s.clone(),
             TBox::ImportStmt(_, s) => s.clone(),
             TBox::Interface(_, s) => s.clone(),
+            TBox::ExternFuncParam(_, _, s) => s.clone()
         };
     }
 }

@@ -1,6 +1,6 @@
 use crate::errors::{Span, ToyError, ToyErrorType};
 use crate::parser::toy_box::TBox;
-use crate::token::{SpannedToken, Token, TypeTok};
+use crate::token::{QualifiedExternType, SpannedToken, Token, TypeTok};
 use std::collections::BTreeMap;
 pub struct Boxer {
     toks: Vec<SpannedToken>,
@@ -464,6 +464,49 @@ impl Boxer {
         return Ok(func_params);
     }
 
+    fn box_extern_params(&mut self, input: Vec<SpannedToken>) -> Result<Vec<TBox>, ToyError> {
+        let cumulative_span = if input.is_empty() {
+            Span::null_span_with_msg(&"empty input to box_extern_params")
+        } else {
+            Boxer::total_span(input.clone())
+        };
+
+        if input.len() < 3 {
+            return Ok(vec![]);
+        }
+
+        let triplets: Vec<&[SpannedToken]> =
+            input.as_slice().split(|t| t.tok == Token::Comma).collect();
+        let mut extern_params: Vec<TBox> = Vec::new();
+
+        for triple in triplets {
+            if triple.len() < 3 || triple[1].tok != Token::Colon {
+                return Err(ToyError::new(
+                    ToyErrorType::MalformedFunctionDeclaration,
+                    cumulative_span.clone(),
+                ));
+            }
+
+            let param = match &triple[2].tok {
+                Token::ExternType(t) => {
+                    let extern_type = QualifiedExternType {
+                        ty: t.ty.clone(),
+                        is_released: t.is_released,
+                    };
+                    TBox::ExternFuncParam(triple[0].clone(), extern_type, cumulative_span.clone())
+                }
+                _ => {
+                    let (param_type, _) = self.parse_type(&triple[2..])?;
+                    TBox::FuncParam(triple[0].clone(), param_type, cumulative_span.clone())
+                }
+            };
+
+            extern_params.push(param);
+        }
+
+        Ok(extern_params)
+    }
+
     fn box_extern_fn_stmt(&mut self, input: Vec<SpannedToken>) -> Result<TBox, ToyError> {
         let cumulative_span = Boxer::total_span(input.clone());
         // input[0] is Extern
@@ -498,7 +541,7 @@ impl Boxer {
             }
             unboxed_params.push(input[i].clone());
         }
-        let boxed_params: Vec<TBox> = self.box_params(unboxed_params)?;
+        let boxed_params: Vec<TBox> = self.box_extern_params(unboxed_params)?;
 
         // Check return type
         let return_type = if input[return_type_begin + 1].tok.tok_type() == "Semicolon" {
@@ -756,6 +799,17 @@ impl Boxer {
             if toks[i].tok.tok_type() == "Semicolon" {
                 break;
             }
+
+            // Imports only allow dotted identifiers like `import std.fs;`.
+            // Catch cases like `import std.fs let ...` early with a syntax error.
+            let tok_type = toks[i].tok.tok_type();
+            if tok_type != "VarRef" && tok_type != "VarName" && tok_type != "Dot" {
+                return Err(ToyError::new(
+                    ToyErrorType::MalformedImportStatement,
+                    cumulative_span.clone(),
+                ));
+            }
+
             module_name.push_str(&toks[i].tok.to_string());
         }
         Ok(TBox::ImportStmt(module_name, cumulative_span))

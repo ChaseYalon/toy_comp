@@ -2,11 +2,11 @@ use crate::token::Token;
 use colored::*;
 use inkwell::builder::BuilderError;
 use inkwell::support::LLVMString;
+use serde::{Deserialize, Serialize};
 use std::backtrace::Backtrace;
 use std::fmt::*;
 use std::{fmt, fs};
 use thiserror::Error;
-use serde::{Serialize, Deserialize};
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Span {
     pub file_path: String,
@@ -17,8 +17,12 @@ pub struct Span {
 }
 impl fmt::Display for Span {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        if self.file_path == "NULL" || self.start_offset_bytes < 0 || self.end_offset_bytes < 0 {
+        if self.file_path == "NULL" {
             return write!(f, "<no span>");
+        }
+
+        if self.start_offset_bytes < 0 || self.end_offset_bytes < 0 {
+            return write!(f, "{}", self.file_path);
         }
 
         match fs::read_to_string(&self.file_path) {
@@ -147,7 +151,7 @@ pub enum ToyErrorType {
     MalformedImportStatement,
     MissingFile,
     IncorrectNumberOfArguments,
-    SerializationError
+    SerializationError,
 }
 
 #[derive(Debug, Error)]
@@ -159,10 +163,13 @@ pub struct ToyError {
 
 impl ToyError {
     pub fn new(i_error_type: ToyErrorType, offending_code: Span) -> ToyError {
+        let has_span = offending_code.end_offset_bytes >= 0;
+        let has_hint = offending_code.file_path != "NULL";
+
         return ToyError {
             error_type: i_error_type,
             backtrace: Backtrace::capture(),
-            offending_code: if offending_code.end_offset_bytes != -1 {
+            offending_code: if has_span || has_hint {
                 offending_code
             } else {
                 Span::new("FILE_NOT_SPECIFIED", -1, -1)
@@ -252,6 +259,8 @@ impl fmt::Display for ToyErrorType {
             Self::InvalidOperationOnGivenType => write!(f, "Invalid Operation On Given Type"),
             Self::MissingFile => write!(f, "Missing File"),
             Self::VariableNotAStruct => write!(f, "VariableNotAStruct"),
+            Self::IncorrectNumberOfArguments => write!(f, "Incorrect Number Of Arguments"),
+            Self::MalformedImportStatement => write!(f, "Malformed Import Statement"),
             _ => todo!("chase implement error type {:?}", self),
         }
     }

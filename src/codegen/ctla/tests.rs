@@ -1,5 +1,6 @@
-use inkwell::context::Context;
+//This file contains CTLA integration tests - human written not fuzz
 use chrono::Local;
+use inkwell::context::Context;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::thread;
@@ -222,11 +223,48 @@ fn test_ctla_extern_struct_func_call() {
 }
 
 #[test]
-fn test_ctla_struct_aliasing_and_encapsulation(){
+fn test_ctla_struct_aliasing_and_encapsulation() {
     compile_code_aot!(
         output,
         r#"struct Test {x: str}; let s = "hello world";let m = Test{x: s}; let n = m; println(n.x);"#,
         "ctla_struct_aliasing_and_encapsulation"
     );
     assert!(!output.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_multi_module_alloc() {
+    compile_code_aot!(output, r#"import std.fs; fs.write_file("temp.txt", "hi");"#, "ctla_multi_module");
+    assert!(!output.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_fs_read_dir_to_str() {
+    let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let case_rel = format!(
+        "temp/ctla_fs_read_dir_case",
+    );
+    let case_dir = project_root.join(&case_rel);
+
+    let _ = std::fs::remove_dir_all(&case_dir);
+    std::fs::create_dir_all(case_dir.join("sub_a")).unwrap();
+    std::fs::create_dir_all(case_dir.join("sub_b")).unwrap();
+    std::fs::write(case_dir.join("f_a.txt"), "a").unwrap();
+    std::fs::write(case_dir.join("f_b.txt"), "b").unwrap();
+
+    let program = format!(
+        r#"import std.fs; let r = fs.read_dir("{}"); println(r.to_str());"#,
+        case_rel
+    );
+    compile_code_aot!(output, program, "ctla_fs_read_dir_to_str");
+
+    assert!(output.contains("[Files]"), "[DEBUG] output was {output}");
+    assert!(output.contains("[Folders]"), "[DEBUG] output was {output}");
+    assert!(output.contains("f_a.txt"), "[DEBUG] output was {output}");
+    assert!(output.contains("f_b.txt"), "[DEBUG] output was {output}");
+    assert!(output.contains("sub_a"), "[DEBUG] output was {output}");
+    assert!(output.contains("sub_b"), "[DEBUG] output was {output}");
+    assert!(!output.contains("FAIL_TEST"));
+
+    let _ = std::fs::remove_dir_all(&case_dir);
 }

@@ -1,20 +1,54 @@
-extern fn toy_fs_read_file(path: str): str;
+extern fn toy_fs_read_file(path: retained c_char_ptr): str;
 
 export fn read_file(path: str): str{
     return toy_fs_read_file(path);
 }
 
-extern fn toy_fs_write_file(path: str, content: str): int;
+extern fn toy_fs_write_file(path: retained c_char_ptr, content: retained c_char_ptr): int;
 export fn write_file(path: str, content: str): int{
     return toy_fs_write_file(path, content);
 }
 
-extern fn toy_fs_append_file(path: str, content: str);
+extern fn toy_fs_append_file(path: retained c_char_ptr, content: retained c_char_ptr);
 export fn append_file(path: str, content: str){
     toy_fs_append_file(path, content);
 }
 
-extern fn toy_fs_file_size(path: str): int;
+extern fn toy_fs_file_size(path: retained c_char_ptr): int;
 export fn file_size(path: str): int{
     return toy_fs_file_size(path);
+}
+
+extern fn toy_fs_get_file_count_in_dir(path: retained c_char_ptr): int;
+extern fn toy_fs_get_folder_count_in_dir(path: retained c_char_ptr): int;
+extern fn toy_fs_read_dir(path: retained c_char_ptr): str[][];//TODO: FFI type
+extern fn toy_str_arr_to_str(arr: retained c_char_ptr_ptr): str;
+extern fn toy_fs_read_dir_to_str(path: retained c_char_ptr): str;
+
+struct FolderReadResults{
+    files: str[],
+    folders: str[],
+    path: str
+}
+for FolderReadResults{
+    fn to_str(): str{
+        let s = " -- FOLDER READ RESULTS FOR " + this.path + " --\n";
+        s += "[Files]\n";
+        s += toy_str_arr_to_str(this.files);
+        s += "\n";
+        s += "[Folders]\n";
+        s += toy_str_arr_to_str(this.folders);
+        s += "\n";
+        return s;
+    }
+}
+
+export fn read_dir(path: str): FolderReadResults{
+    let arr = toy_fs_read_dir(path);
+    let s = FolderReadResults{
+        files: arr[0],
+        folders: arr[1],
+        path: path
+    };
+    return s;
 }

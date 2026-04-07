@@ -1,5 +1,6 @@
 use crate::errors::Span;
 use crate::parser::ast::InfixOp;
+use crate::token::{ExternType, QualifiedExternType};
 use crate::{
     lexer::Lexer,
     parser::{ast::Ast, ast_gen::AstGenerator, boxer::Boxer},
@@ -39,6 +40,9 @@ fn eq_ast_ignoring_src(x: &Ast, y: &Ast) -> bool {
         }
 
         (Ast::FuncParam(xn, xt, _), Ast::FuncParam(yn, yt, _)) => xn == yn && xt == yt,
+        (Ast::ExternFuncParam(xn, xt, _), Ast::ExternFuncParam(yn, yt, _)) => {
+            xn == yn && xt == yt
+        }
 
         (Ast::FuncDec(xn, xp, xr, xb, _), Ast::FuncDec(yn, yp, yr, yb, _)) => {
             xn == yn
@@ -1949,7 +1953,7 @@ fn test_ast_gen_struct_arr_func_call() {
 
 #[test]
 fn test_ast_gen_extern_func_dec() {
-    let input = String::from("extern fn printf(msg: str): int;");
+    let input = String::from("extern fn printf(msg: retained c_char_ptr): int;");
     let mut l = Lexer::new();
     let mut b = Boxer::new();
     let mut g = AstGenerator::new();
@@ -1961,9 +1965,9 @@ fn test_ast_gen_extern_func_dec() {
         ast,
         vec![Ast::ExternFuncDec(
             Box::new("printf".to_string()),
-            vec![Ast::FuncParam(
-                Box::new("msg".to_string()),
-                TypeTok::Str,
+            vec![Ast::ExternFuncParam(
+                "msg".to_string(),
+                QualifiedExternType{ty: ExternType::c_char(1), is_released: false},
                 Span::null_span()
             )],
             TypeTok::Int,
@@ -2212,4 +2216,28 @@ fn test_ast_gen_net_boolean() {
             )
         ]
     ))
+}
+//weird edge case around struct function importing
+#[test]
+fn test_ast_gen_imported_struct_method_call() {
+    setup_ast!(
+        r#"import std.fs; let x = fs.read_dir("."); println(x.to_str());"#,
+        ast
+    );
+
+    let has_method_call = ast.iter().any(|node| {
+        if let Ast::FuncCall(name, args, _) = node {
+            if **name == "println" {
+                if let Some(Ast::FuncCall(inner_name, _, _)) = args.first() {
+                    return inner_name.contains(":::to_str_struct");
+                }
+            }
+        }
+        false
+    });
+
+    assert!(
+        has_method_call,
+        "Expected imported struct method call to be resolved and present in AST"
+    );
 }

@@ -1,10 +1,10 @@
 import std.sys;
-extern fn toy_net_get_url(url: str): str;
+extern fn toy_net_get_url(url: retained c_char_ptr): str;
 export fn get_url(url: str): str{
     return toy_net_get_url(url);
 }
 
-extern fn toy_net_configure_http_server(port: int, timeout: int);
+extern fn toy_net_configure_http_server(port: c_int64_t, timeout: c_int64_t);
 export fn configure_http_server(port: int, timeout: int){
     toy_net_configure_http_server(port, timeout);
 }
@@ -36,8 +36,8 @@ export fn close_client(){
     toy_net_close_client();
 }
 
-extern fn toy_net_write_bytes(code: int, content_type: str, data: str, size: int);
-extern fn toy_net_write_response(code: int, content_type: str, body: str);
+extern fn toy_net_write_bytes(code: int, content_type: retained c_char_ptr, data: retained c_char_ptr, size: int);
+extern fn toy_net_write_response(code: int, content_type: retained c_char_ptr, body: retained c_char_ptr);
 
 //1 - text/plain
 //2 - text/html
