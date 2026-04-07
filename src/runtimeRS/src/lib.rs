@@ -4,8 +4,9 @@
 
 mod builtins;
 mod ctla;
-mod toy_std;
 mod stub;
+mod toy_std;
+mod values;
 pub type ToyPtr = i64;
 use std::alloc::{GlobalAlloc, Layout};
 //makes sure that rust allocations can be freed from C

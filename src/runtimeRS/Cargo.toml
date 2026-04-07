@@ -3,10 +3,6 @@ name = "runtimers"
 version = "0.1.0"
 edition = "2024"
 
-[build-dependencies]
-bindgen = "0.72.1"
-cc = "1.2.59"
-
 [dependencies]
 chrono = "0.4.44"
 ctor = "0.8.0"

@@ -1,9 +1,7 @@
 use std::env;
 use std::fs;
 use std::path::PathBuf;
-use cc;
 fn main() {
-
     println!("cargo:rerun-if-env-changed=TOY_COMP_ROOT");
     println!("cargo:rerun-if-env-changed=TOY_RUNTIME_COPY_TRIGGER");
 

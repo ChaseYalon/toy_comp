@@ -112,6 +112,7 @@
       "nexttoward",
       "nexttowardf",
       "noconfirm",
+      "nonoverlapping",
       "objdumping",
       "opps",
       "peekable",
@@ -141,6 +142,7 @@
       "srem",
       "stdlib",
       "strequal",
+      "strs",
       "tanf",
       "tanhf",
       "tbox",
@@ -178,7 +180,8 @@
       "--compile-commands-dir=${workspaceFolder}/build"
   ],
   "chat.tools.terminal.autoApprove": {
-    "nm": true
+    "nm": true,
+    "cargo nextest": true
   },
   "cmake.ignoreCMakeListsMissing": true
 

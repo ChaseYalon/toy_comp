@@ -1,6 +1,6 @@
 use crate::ToyPtr;
-use crate::stub::{GLOBAL_ARGV, GLOBAL_ARGC};
 use crate::builtins;
+use crate::stub::{GLOBAL_ARGC, GLOBAL_ARGV};
 use std::ffi::CStr;
 use std::process;
 use std::process::Command;

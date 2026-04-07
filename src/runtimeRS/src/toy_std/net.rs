@@ -21,17 +21,8 @@ pub extern "C" fn toy_net_get_url(url: ToyPtr) -> ToyPtr {
         .unwrap();
 
     let c_string = CString::new(body).unwrap();
-    let len = c_string.as_bytes_with_nul().len();
-    let bytes = c_string.as_bytes_with_nul();
 
-    //THIS IS WRONG
-    //IT DOES NOT USE THE TOY_MALLOC DEBUG ALLOCATOR
-    //IT WILL CAUSE MEMORY LEAKS
-    unsafe {
-        let ptr: *mut i8 = libc::malloc(len) as *mut c_char;
-        std::ptr::copy_nonoverlapping(bytes.as_ptr() as *const c_char, ptr, len);
-        return ptr as i64;
-    };
+    return builtins::toy_malloc(c_string.as_ptr() as i64);
 }
 
 static GLOBAL_SERVER_ARR: OnceLock<RwLock<Vec<Server>>> = OnceLock::new();
@@ -87,7 +78,7 @@ pub extern "C" fn toy_net_read_request() -> *mut ToyPtr {
             request.as_reader().read_to_string(&mut body).unwrap_or(0);
 
             *slot = Some(request);
-            let arr_ptr =  builtins::toy_malloc_arr(4, 4, 1);
+            let arr_ptr = builtins::toy_malloc_arr(4, 4, 1);
 
             let ip_s = CString::new(ip).unwrap();
             let method_s = CString::new(method).unwrap();
