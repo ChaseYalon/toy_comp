@@ -1,7 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(ls temp/output_llvm_fs_import*)"
-    ]
-  }
-}
