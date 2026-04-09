@@ -24,6 +24,8 @@ pub struct AstGenerator {
     func_return_type_map: HashMap<String, TypeTok>,
     // Maps struct field signature to struct name for method resolution
     struct_type_to_name: HashMap<BTreeMap<String, Box<TypeTok>>, String>,
+    // Maps struct name to its field map, used for parsing struct types in lambda params
+    interfaces: BTreeMap<String, BTreeMap<String, TypeTok>>,
     ///module name -> path so std.math maps to /std/math.toy (posix)
     imports: HashMap<String, String>,
     extern_funcs: HashSet<String>,
@@ -112,6 +114,7 @@ impl AstGenerator {
             func_param_type_map: fptm,
             func_return_type_map: frtm,
             struct_type_to_name: HashMap::new(),
+            interfaces: BTreeMap::new(),
             imports: HashMap::new(),
             extern_funcs: HashSet::new(),
             module_prefix: None,
@@ -122,6 +125,183 @@ impl AstGenerator {
         let mut generator = AstGenerator::new();
         generator.module_prefix = Some(prefix);
         generator
+    }
+
+    /// Parse a type from a raw token slice, handling primitives, arrays, and lambda types.
+    /// Returns (TypeTok, number_of_tokens_consumed).
+    pub fn parse_type_from_tokens(
+        &self,
+        toks: &[SpannedToken],
+    ) -> Result<(TypeTok, usize), ToyError> {
+        if toks.is_empty() {
+            return Err(ToyError::new(
+                ToyErrorType::MalformedType,
+                Span::null_span_with_msg("expected type, got end of input"),
+            ));
+        }
+        match &toks[0].tok {
+            Token::Type(t) => {
+                let mut dim = 0u64;
+                let mut consumed = 1;
+                while consumed + 1 < toks.len()
+                    && toks[consumed].tok == Token::LBrack
+                    && toks[consumed + 1].tok == Token::RBrack
+                {
+                    dim += 1;
+                    consumed += 2;
+                }
+                let ty = if dim == 0 {
+                    t.clone()
+                } else {
+                    match t {
+                        TypeTok::Int => TypeTok::IntArr(dim),
+                        TypeTok::Bool => TypeTok::BoolArr(dim),
+                        TypeTok::Str => TypeTok::StrArr(dim),
+                        TypeTok::Float => TypeTok::FloatArr(dim),
+                        TypeTok::Any => TypeTok::AnyArr(dim),
+                        _ => {
+                            return Err(ToyError::new(
+                                ToyErrorType::MalformedType,
+                                toks[0].span.clone(),
+                            ))
+                        }
+                    }
+                };
+                Ok((ty, consumed))
+            }
+            Token::LParen => {
+                // Lambda type: (type1, type2, ...): return_type [[][]...]
+                let mut depth = 1usize;
+                let mut close = None;
+                for (i, t) in toks[1..].iter().enumerate() {
+                    match &t.tok {
+                        Token::LParen => depth += 1,
+                        Token::RParen => {
+                            depth -= 1;
+                            if depth == 0 {
+                                close = Some(i + 1);
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                let close = close.ok_or_else(|| {
+                    ToyError::new(
+                        ToyErrorType::MalformedType,
+                        Span::null_span_with_msg("unclosed paren in lambda type"),
+                    )
+                })?;
+                let param_toks = &toks[1..close];
+                let mut param_types: Vec<TypeTok> = Vec::new();
+                if !param_toks.is_empty() {
+                    let mut start = 0;
+                    let mut inner_depth = 0i32;
+                    for (i, t) in param_toks.iter().enumerate() {
+                        match &t.tok {
+                            Token::LParen => inner_depth += 1,
+                            Token::RParen => inner_depth -= 1,
+                            Token::Comma if inner_depth == 0 => {
+                                let (ty, _) = self.parse_type_from_tokens(&param_toks[start..i])?;
+                                param_types.push(ty);
+                                start = i + 1;
+                            }
+                            _ => {}
+                        }
+                    }
+                    let (ty, _) = self.parse_type_from_tokens(&param_toks[start..])?;
+                    param_types.push(ty);
+                }
+                // After RParen expect Colon
+                if close + 1 >= toks.len() || toks[close + 1].tok != Token::Colon {
+                    return Err(ToyError::new(
+                        ToyErrorType::MalformedType,
+                        Span::null_span_with_msg("expected ':' after lambda param types"),
+                    ));
+                }
+                let (ret_type, ret_consumed) = self.parse_type_from_tokens(&toks[close + 2..])?;
+                let mut lam_consumed = close + 2 + ret_consumed;
+                let mut lam_dim = 0u64;
+                while lam_consumed + 1 < toks.len()
+                    && toks[lam_consumed].tok == Token::LBrack
+                    && toks[lam_consumed + 1].tok == Token::RBrack
+                {
+                    lam_dim += 1;
+                    lam_consumed += 2;
+                }
+                let (ret_type, ret_dim) = match ret_type {
+                    TypeTok::IntArr(n) => (TypeTok::Int, n),
+                    TypeTok::BoolArr(n) => (TypeTok::Bool, n),
+                    TypeTok::StrArr(n) => (TypeTok::Str, n),
+                    TypeTok::FloatArr(n) => (TypeTok::Float, n),
+                    TypeTok::AnyArr(n) => (TypeTok::Any, n),
+                    TypeTok::StructArr(fields, n) => (TypeTok::Struct(fields), n),
+                    TypeTok::InterfaceArr(fields, methods, n) => {
+                        (TypeTok::Interface(fields, methods), n)
+                    }
+                    TypeTok::LambdaArr(params, ret, n) => (TypeTok::Lambda(params, ret), n),
+                    other => (other, 0),
+                };
+                lam_dim += ret_dim;
+                let lambda_ty = if lam_dim == 0 {
+                    TypeTok::Lambda(param_types, Box::new(ret_type))
+                } else {
+                    TypeTok::LambdaArr(param_types, Box::new(ret_type), lam_dim)
+                };
+                Ok((lambda_ty, lam_consumed))
+            }
+            Token::VarName(n) | Token::VarRef(n) => {
+                // Struct type
+                let fields = self.interfaces.get(n.as_ref()).ok_or_else(|| {
+                    ToyError::new(
+                        ToyErrorType::MalformedType,
+                        toks[0].span.clone(),
+                    )
+                })?;
+                let mut dim = 0u64;
+                let mut consumed = 1;
+                while consumed + 1 < toks.len()
+                    && toks[consumed].tok == Token::LBrack
+                    && toks[consumed + 1].tok == Token::RBrack
+                {
+                    dim += 1;
+                    consumed += 2;
+                }
+                let boxed: BTreeMap<String, Box<TypeTok>> = fields
+                    .iter()
+                    .map(|(k, v)| (k.clone(), Box::new(v.clone())))
+                    .collect();
+                let ty = if dim == 0 {
+                    TypeTok::Struct(boxed)
+                } else {
+                    TypeTok::StructArr(boxed, dim)
+                };
+                Ok((ty, consumed))
+            }
+            _ => Err(ToyError::new(
+                ToyErrorType::MalformedType,
+                toks[0].span.clone(),
+            )),
+        }
+    }
+
+    /// Generate AST nodes for a sub-list of TBoxes (e.g. a lambda body), preserving outer state.
+    fn generate_body(&mut self, boxes: Vec<TBox>) -> Result<Vec<Ast>, ToyError> {
+        let saved_boxes = std::mem::replace(&mut self.boxes, boxes);
+        let saved_bp = self.bp;
+        let saved_nodes = std::mem::take(&mut self.nodes);
+        self.bp = 0;
+
+        while self.bp < self.boxes.len() {
+            let val = self.boxes[self.bp].clone();
+            let stmt = self.parse_stmt(val, true)?;
+            self.nodes.push(stmt);
+        }
+
+        let result = std::mem::replace(&mut self.nodes, saved_nodes);
+        self.boxes = saved_boxes;
+        self.bp = saved_bp;
+        Ok(result)
     }
 
     pub fn register_function(&mut self, name: String, params: Vec<TypeTok>, ret: TypeTok) {
@@ -269,7 +449,7 @@ impl AstGenerator {
         return Ok((best_idx, best_val, best_tok));
     }
 
-    fn parse_func_call(&self, toks: &Vec<SpannedToken>) -> Result<(Ast, TypeTok), ToyError> {
+    fn parse_func_call(&mut self, toks: &Vec<SpannedToken>) -> Result<(Ast, TypeTok), ToyError> {
         let cumulative_span = AstGenerator::total_span(toks.clone());
         if toks[0].tok.tok_type() != "VarRef" {
             return Err(ToyError::new(
@@ -325,6 +505,19 @@ impl AstGenerator {
         let mut processed_params: Vec<(Ast, TypeTok)> = Vec::new();
         for p in unprocessed_params {
             processed_params.push(self.parse_expr(&p)?);
+        }
+
+        // If the callee is a lambda-typed variable, emit AnonFuncCall instead.
+        if let Some(TypeTok::Lambda(_, ret_type)) = self.lookup_var_type(&name) {
+            let args: Vec<Ast> = processed_params.into_iter().map(|(a, _)| a).collect();
+            return Ok((
+                Ast::AnonFuncCall(
+                    Box::new(Ast::VarRef(Box::new(name), cumulative_span.clone())),
+                    args,
+                    cumulative_span,
+                ),
+                *ret_type,
+            ));
         }
 
         let mut resolved_name = name.clone();
@@ -702,7 +895,7 @@ impl AstGenerator {
                 };
 
                 let (res, _) = self.parse_expr(expr)?;
-                return Ok(Ast::Return(Box::new(res), raw_text));
+                Ast::Return(Box::new(res), raw_text)
             }
 
             TBox::While(expr, body, raw_text) => {
@@ -729,8 +922,8 @@ impl AstGenerator {
                     .map(|(k, v)| (k, Box::new(v)))
                     .collect();
                 self.insert_var_type((*name).clone(), TypeTok::Struct(boxed.clone()));
-                // Store mapping from struct type signature to struct name for method resolution
                 self.struct_type_to_name.insert(boxed, (*name).clone());
+                self.interfaces.insert((*name).clone(), *types.clone());
 
                 Ast::StructInterface(name, types, raw_text)
             }

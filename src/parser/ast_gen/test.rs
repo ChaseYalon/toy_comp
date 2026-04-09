@@ -107,7 +107,17 @@ fn eq_ast_ignoring_src(x: &Ast, y: &Ast) -> bool {
 
         (Ast::ImportStmt(xp, _), Ast::ImportStmt(yp, _)) => xp == yp,
 
-        _ => todo!("Chase you have not implemented {} node yet", x.node_type()),
+        (Ast::LambdaDec(xp, xr, xb, _), Ast::LambdaDec(yp, yr, yb, _)) => {
+            xr == yr
+                && compare_ast_vecs(xp.clone(), yp.clone())
+                && compare_ast_vecs(xb.clone(), yb.clone())
+        }
+
+        (Ast::AnonFuncCall(xc, xa, _), Ast::AnonFuncCall(yc, ya, _)) => {
+            eq_ast_ignoring_src(xc, yc) && compare_ast_vecs(xa.clone(), ya.clone())
+        }
+
+        _ => false,
     }
 }
 
@@ -2217,6 +2227,249 @@ fn test_ast_gen_net_boolean() {
         ]
     ))
 }
+#[test]
+fn test_ast_gen_lambda_assigned_to_variable() {
+    setup_ast!("let add = (a: int, b: int): int { return a + b; };", ast);
+    assert!(compare_ast_vecs(
+        ast,
+        vec![Ast::VarDec(
+            Box::new("add".to_string()),
+            TypeTok::Lambda(vec![TypeTok::Int, TypeTok::Int], Box::new(TypeTok::Int)),
+            Box::new(Ast::LambdaDec(
+                vec![
+                    Ast::FuncParam(Box::new("a".to_string()), TypeTok::Int, Span::null_span()),
+                    Ast::FuncParam(Box::new("b".to_string()), TypeTok::Int, Span::null_span()),
+                ],
+                TypeTok::Int,
+                vec![Ast::Return(
+                    Box::new(Ast::InfixExpr(
+                        Box::new(Ast::VarRef(Box::new("a".to_string()), Span::null_span())),
+                        Box::new(Ast::VarRef(Box::new("b".to_string()), Span::null_span())),
+                        InfixOp::Plus,
+                        Span::null_span(),
+                    )),
+                    Span::null_span(),
+                )],
+                Span::null_span(),
+            )),
+            Span::null_span(),
+        )]
+    ))
+}
+
+#[test]
+fn test_ast_gen_lambda_passed_as_parameter() {
+    setup_ast!(
+        "fn apply(f: (int): int, x: int): int { return f(x); } apply((a: int): int { return a + 1; }, 5);",
+        ast
+    );
+    assert!(compare_ast_vecs(
+        ast,
+        vec![
+            Ast::FuncDec(
+                Box::new("apply_lambda_int".to_string()),
+                vec![
+                    Ast::FuncParam(
+                        Box::new("f".to_string()),
+                        TypeTok::Lambda(vec![TypeTok::Int], Box::new(TypeTok::Int)),
+                        Span::null_span(),
+                    ),
+                    Ast::FuncParam(Box::new("x".to_string()), TypeTok::Int, Span::null_span()),
+                ],
+                TypeTok::Int,
+                vec![Ast::Return(
+                    Box::new(Ast::AnonFuncCall(
+                        Box::new(Ast::VarRef(Box::new("f".to_string()), Span::null_span())),
+                        vec![Ast::VarRef(Box::new("x".to_string()), Span::null_span())],
+                        Span::null_span(),
+                    )),
+                    Span::null_span(),
+                )],
+                Span::null_span(),
+            ),
+            Ast::FuncCall(
+                Box::new("apply_lambda_int".to_string()),
+                vec![
+                    Ast::LambdaDec(
+                        vec![Ast::FuncParam(
+                            Box::new("a".to_string()),
+                            TypeTok::Int,
+                            Span::null_span(),
+                        )],
+                        TypeTok::Int,
+                        vec![Ast::Return(
+                            Box::new(Ast::InfixExpr(
+                                Box::new(Ast::VarRef(Box::new("a".to_string()), Span::null_span())),
+                                Box::new(Ast::IntLit(1, Span::null_span())),
+                                InfixOp::Plus,
+                                Span::null_span(),
+                            )),
+                            Span::null_span(),
+                        )],
+                        Span::null_span(),
+                    ),
+                    Ast::IntLit(5, Span::null_span()),
+                ],
+                Span::null_span(),
+            ),
+        ]
+    ))
+}
+
+#[test]
+fn test_ast_gen_lambda_returned_from_lambda() {
+    setup_ast!(
+        "let adder = (a: int): (int): int { return (b: int): int { return a + b; }; };",
+        ast
+    );
+    assert!(compare_ast_vecs(
+        ast,
+        vec![Ast::VarDec(
+            Box::new("adder".to_string()),
+            TypeTok::Lambda(
+                vec![TypeTok::Int],
+                Box::new(TypeTok::Lambda(
+                    vec![TypeTok::Int],
+                    Box::new(TypeTok::Int),
+                )),
+            ),
+            Box::new(Ast::LambdaDec(
+                vec![Ast::FuncParam(
+                    Box::new("a".to_string()),
+                    TypeTok::Int,
+                    Span::null_span(),
+                )],
+                TypeTok::Lambda(vec![TypeTok::Int], Box::new(TypeTok::Int)),
+                vec![Ast::Return(
+                    Box::new(Ast::LambdaDec(
+                        vec![Ast::FuncParam(
+                            Box::new("b".to_string()),
+                            TypeTok::Int,
+                            Span::null_span(),
+                        )],
+                        TypeTok::Int,
+                        vec![Ast::Return(
+                            Box::new(Ast::InfixExpr(
+                                Box::new(Ast::VarRef(Box::new("a".to_string()), Span::null_span())),
+                                Box::new(Ast::VarRef(Box::new("b".to_string()), Span::null_span())),
+                                InfixOp::Plus,
+                                Span::null_span(),
+                            )),
+                            Span::null_span(),
+                        )],
+                        Span::null_span(),
+                    )),
+                    Span::null_span(),
+                )],
+                Span::null_span(),
+            )),
+            Span::null_span(),
+        )]
+    ))
+}
+
+#[test]
+fn test_ast_gen_lambda_in_array() {
+    setup_ast!(
+        "let fns: (int): int [] = [(a: int): int { return a + 1; }];",
+        ast
+    );
+    assert!(compare_ast_vecs(
+        ast,
+        vec![Ast::VarDec(
+            Box::new("fns".to_string()),
+            TypeTok::LambdaArr(vec![TypeTok::Int], Box::new(TypeTok::Int), 1),
+            Box::new(Ast::ArrLit(
+                TypeTok::LambdaArr(vec![TypeTok::Int], Box::new(TypeTok::Int), 1),
+                vec![Ast::LambdaDec(
+                    vec![Ast::FuncParam(
+                        Box::new("a".to_string()),
+                        TypeTok::Int,
+                        Span::null_span(),
+                    )],
+                    TypeTok::Int,
+                    vec![Ast::Return(
+                        Box::new(Ast::InfixExpr(
+                            Box::new(Ast::VarRef(Box::new("a".to_string()), Span::null_span())),
+                            Box::new(Ast::IntLit(1, Span::null_span())),
+                            InfixOp::Plus,
+                            Span::null_span(),
+                        )),
+                        Span::null_span(),
+                    )],
+                    Span::null_span(),
+                )],
+                Span::null_span(),
+            )),
+            Span::null_span(),
+        )]
+    ))
+}
+
+#[test]
+fn test_ast_gen_function_returning_lambda() {
+    setup_ast!(
+        "fn make_adder(a: int): (int): int { return (b: int): int { return a + b; }; } let add_five = make_adder(5); let result = add_five(3);",
+        ast
+    );
+    assert!(compare_ast_vecs(
+        ast,
+        vec![
+            Ast::FuncDec(
+                Box::new("make_adder_int".to_string()),
+                vec![Ast::FuncParam(
+                    Box::new("a".to_string()),
+                    TypeTok::Int,
+                    Span::null_span(),
+                )],
+                TypeTok::Lambda(vec![TypeTok::Int], Box::new(TypeTok::Int)),
+                vec![Ast::Return(
+                    Box::new(Ast::LambdaDec(
+                        vec![Ast::FuncParam(
+                            Box::new("b".to_string()),
+                            TypeTok::Int,
+                            Span::null_span(),
+                        )],
+                        TypeTok::Int,
+                        vec![Ast::Return(
+                            Box::new(Ast::InfixExpr(
+                                Box::new(Ast::VarRef(Box::new("a".to_string()), Span::null_span())),
+                                Box::new(Ast::VarRef(Box::new("b".to_string()), Span::null_span())),
+                                InfixOp::Plus,
+                                Span::null_span(),
+                            )),
+                            Span::null_span(),
+                        )],
+                        Span::null_span(),
+                    )),
+                    Span::null_span(),
+                )],
+                Span::null_span(),
+            ),
+            Ast::VarDec(
+                Box::new("add_five".to_string()),
+                TypeTok::Lambda(vec![TypeTok::Int], Box::new(TypeTok::Int)),
+                Box::new(Ast::FuncCall(
+                    Box::new("make_adder_int".to_string()),
+                    vec![Ast::IntLit(5, Span::null_span())],
+                    Span::null_span(),
+                )),
+                Span::null_span(),
+            ),
+            Ast::VarDec(
+                Box::new("result".to_string()),
+                TypeTok::Int,
+                Box::new(Ast::AnonFuncCall(
+                    Box::new(Ast::VarRef(Box::new("add_five".to_string()), Span::null_span())),
+                    vec![Ast::IntLit(3, Span::null_span())],
+                    Span::null_span(),
+                )),
+                Span::null_span(),
+            ),
+        ]
+    ))
+}
+
 //weird edge case around struct function importing
 #[test]
 fn test_ast_gen_imported_struct_method_call() {

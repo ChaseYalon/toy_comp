@@ -67,6 +67,11 @@ pub enum Ast {
     Not(Box<Ast>, Span),
     ///Path to the module being imported from, source code
     ImportStmt(String, Span),
+
+    ///Params, ReturnType, Body, raw text
+    LambdaDec(Vec<Ast>, TypeTok, Vec<Ast>, Span),
+    ///Callable expression, Args, raw text
+    AnonFuncCall(Box<Ast>, Vec<Ast>, Span),
 }
 impl Ast {
     pub fn node_type(&self) -> String {
@@ -96,7 +101,9 @@ impl Ast {
             Ast::Assignment(_, _, _) => "Assignment".to_string(),
             Ast::Not(_, _) => "Not".to_string(),
             Ast::ImportStmt(_, _) => "ImportStmt".to_string(),
-            Ast::ExternFuncParam(_, _, _) => "ExternFuncParam".to_string()
+            Ast::ExternFuncParam(_, _, _) => "ExternFuncParam".to_string(),
+            Ast::LambdaDec(_, _, _, _) => "LambdaDec".to_string(),
+            Ast::AnonFuncCall(_, _, _) => "AnonFuncCall".to_string(),
         };
     }
 
@@ -127,7 +134,9 @@ impl Ast {
             Ast::Assignment(_, _, s) => s.clone(),
             Ast::Not(_, s) => s.clone(),
             Ast::ImportStmt(_, s) => s.clone(),
-            Ast::ExternFuncParam(_, _, s) => s.clone()
+            Ast::ExternFuncParam(_, _, s) => s.clone(),
+            Ast::LambdaDec(_, _, _, s) => s.clone(),
+            Ast::AnonFuncCall(_, _, s) => s.clone(),
         }
     }
 }
@@ -211,7 +220,15 @@ impl fmt::Display for Ast {
                 Ast::Assignment(l, r, s) =>
                     format!("Assignment LHS({}), RHS({}), Literal({})", *l, *r, s),
                 Ast::ImportStmt(path, s) => format!("ImportStmt Path({}), Literal({})", path, s),
-                Ast::ExternFuncParam(n, t, s) => format!("ExternFuncParam Name({}), Type({:?}), Literal({})", n, t, s)
+                Ast::ExternFuncParam(n, t, s) => format!("ExternFuncParam Name({}), Type({:?}), Literal({})", n, t, s),
+                Ast::LambdaDec(params, ret, body, s) => format!(
+                    "LambdaDec Params({:?}), ReturnType({:?}), Body({:?}), Literal({})",
+                    params, ret, body, s
+                ),
+                Ast::AnonFuncCall(callable, args, s) => format!(
+                    "AnonFuncCall Callable({}), Args({:?}), Literal({})",
+                    *callable, args, s
+                ),
             }
         )
     }

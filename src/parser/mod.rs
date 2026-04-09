@@ -1,5 +1,5 @@
 use crate::errors::ToyError;
-use crate::parser::{ast::Ast, ast_gen::AstGenerator, boxer::Boxer};
+use crate::parser::{ast::Ast, ast_gen::AstGenerator, boxer::Boxer, toy_box::TBox};
 use crate::token::SpannedToken;
 
 pub mod ast;
@@ -34,5 +34,12 @@ impl Parser {
         let ast = self.ast_gen.generate(boxes)?;
 
         return Ok(ast);
+    }
+
+    //this is terrible
+    //It totaly inverts the simple pipeline because ast_gen calls boxer
+    //that said it is the best because it helps with lambdas and reduces logic duplications
+    pub fn box_stmts(toks: Vec<SpannedToken>) -> Result<Vec<TBox>, ToyError> {
+        Boxer::new().box_toks(toks)
     }
 }

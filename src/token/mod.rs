@@ -188,6 +188,11 @@ pub enum TypeTok {
         BTreeMap<String, (Vec<TypeTok>, TypeTok)>,
         u64,
     ),
+
+    ///param types, return type
+    Lambda(Vec<TypeTok>, Box<TypeTok>),
+    ///param types, return type, array dimension
+    LambdaArr(Vec<TypeTok>, Box<TypeTok>, u64),
 }
 
 impl Hash for TypeTok {
@@ -255,6 +260,17 @@ impl Hash for TypeTok {
                 y.hash(state);
                 n.hash(state);
             }
+            TypeTok::Lambda(params, ret) => {
+                16.hash(state);
+                params.hash(state);
+                ret.hash(state);
+            }
+            TypeTok::LambdaArr(params, ret, n) => {
+                17.hash(state);
+                params.hash(state);
+                ret.hash(state);
+                n.hash(state);
+            }
         }
     }
 }
@@ -276,6 +292,8 @@ impl TypeTok {
             Self::StructArr(_, _) => "StructArr".to_string(),
             Self::Interface(_, _) => "Interface".to_string(),
             Self::InterfaceArr(_, _, _) => "InterfaceArr".to_string(),
+            Self::Lambda(_, _) => "Lambda".to_string(),
+            Self::LambdaArr(_, _, _) => "LambdaArr".to_string(),
         };
     }
 }

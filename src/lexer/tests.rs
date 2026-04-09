@@ -1593,3 +1593,86 @@ fn test_lexer_extern_c_type_pointer_depth() {
         ],
     )
 }
+
+#[test]
+fn test_lexer_lambda() {
+    let mut l = Lexer::new();
+
+    //"let add = (a: int, b: int): int { return a + b; }"
+    let out = l.lex(String::from("let add = (a: int, b: int): int { return a + b; }"));
+    compare_tokens(
+        "test_lexer_lambda",
+        out.unwrap(),
+        vec![
+            Token::Let,
+            Token::VarName(Box::new("add".to_string())),
+            Token::Assign,
+            Token::LParen,
+            Token::VarRef(Box::new("a".to_string())),
+            Token::Colon,
+            Token::Type(TypeTok::Int),
+            Token::Comma,
+            Token::VarRef(Box::new("b".to_string())),
+            Token::Colon,
+            Token::Type(TypeTok::Int),
+            Token::RParen,
+            Token::Colon,
+            Token::Type(TypeTok::Int),
+            Token::LBrace,
+            Token::Return,
+            Token::VarRef(Box::new("a".to_string())),
+            Token::Plus,
+            Token::VarRef(Box::new("b".to_string())),
+            Token::Semicolon,
+            Token::RBrace,
+        ],
+    )
+}
+
+#[test]
+fn test_lexer_lambda_type_annotation() {
+    let mut l = Lexer::new();
+
+    //"let x: (int, int): int = (a: int, b: int): int { return a + b; };"
+    //Plain lambda type — no [] means a single lambda value, not an array.
+    //A 1d array of lambdas would be (int, int): int [], 2d would be (int, int): int [][].
+    let out = l.lex(String::from(
+        "let x: (int, int): int = (a: int, b: int): int { return a + b; };",
+    ));
+    compare_tokens(
+        "test_lexer_lambda_type_annotation",
+        out.unwrap(),
+        vec![
+            Token::Let,
+            Token::VarName(Box::new("x".to_string())),
+            Token::Colon,
+            Token::LParen,
+            Token::Type(TypeTok::Int),
+            Token::Comma,
+            Token::Type(TypeTok::Int),
+            Token::RParen,
+            Token::Colon,
+            Token::Type(TypeTok::Int),
+            Token::Assign,
+            Token::LParen,
+            Token::VarRef(Box::new("a".to_string())),
+            Token::Colon,
+            Token::Type(TypeTok::Int),
+            Token::Comma,
+            Token::VarRef(Box::new("b".to_string())),
+            Token::Colon,
+            Token::Type(TypeTok::Int),
+            Token::RParen,
+            Token::Colon,
+            Token::Type(TypeTok::Int),
+            Token::LBrace,
+            Token::Return,
+            Token::VarRef(Box::new("a".to_string())),
+            Token::Plus,
+            Token::VarRef(Box::new("b".to_string())),
+            Token::Semicolon,
+            Token::RBrace,
+            Token::Semicolon,
+        ],
+    )
+}
