@@ -120,9 +120,9 @@ impl ExternType {
             }
 
             if suffix.is_empty() {
-                return Some(ptr_depth)
+                return Some(ptr_depth);
             } else {
-                return None
+                return None;
             }
         }
 
@@ -145,7 +145,7 @@ impl ExternType {
         for _ in 0..ptr_depth {
             out.push_str("_ptr");
         }
-        return out
+        return out;
     }
 }
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -156,7 +156,15 @@ pub struct QualifiedExternType {
 }
 impl QualifiedExternType {
     pub fn to_str(&self) -> String {
-        format!("{}_{}", self.ty.to_str(), if self.is_released {"released"} else {"retain"})
+        format!(
+            "{}_{}",
+            self.ty.to_str(),
+            if self.is_released {
+                "released"
+            } else {
+                "retain"
+            }
+        )
     }
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -318,6 +318,7 @@ impl CTLA {
             | TIR::JumpBlockUnCond(_, _)
             | TIR::CreateStructInterface(_, _, _)
             | TIR::GlobalString(_, _) => false,
+            _ => todo!("chase you have not implemented CTLA for {:?} yet", ins),
         };
     }
 
@@ -378,7 +379,10 @@ impl CTLA {
                             };
 
                             if is_alloc_ref {
-                                if let Some(summary) = self.alias_detector.get_external_summary(callee_name.as_ref()) {
+                                if let Some(summary) = self
+                                    .alias_detector
+                                    .get_external_summary(callee_name.as_ref())
+                                {
                                     if summary.escaped_parameters.contains(&idx) {
                                         return EscapeType::EscapesModule;
                                     }
@@ -790,7 +794,15 @@ impl CTLA {
                 let mut param_escapes_program = false;
                 for b in &new_cfg.func.body {
                     for ins in &b.ins {
-                        if let TIR::CallExternFunction(_, callee, args, _, _, doesnt_take_ownership) = ins {
+                        if let TIR::CallExternFunction(
+                            _,
+                            callee,
+                            args,
+                            _,
+                            _,
+                            doesnt_take_ownership,
+                        ) = ins
+                        {
                             for (arg_idx, arg) in args.iter().enumerate() {
                                 let mut visited = HashSet::new();
                                 if self.value_may_match_seed_via_phi(
@@ -799,7 +811,9 @@ impl CTLA {
                                     &seeds,
                                     &mut visited,
                                 ) {
-                                    if let Some(summary) = self.alias_detector.get_external_summary(callee.as_ref()) {
+                                    if let Some(summary) =
+                                        self.alias_detector.get_external_summary(callee.as_ref())
+                                    {
                                         if summary.escaped_parameters.contains(&arg_idx) {
                                             param_escapes_program = true;
                                         }
@@ -925,7 +939,6 @@ impl CTLA {
         use std::hash::Hasher;
         hasher.write(self.original_text.as_deref().unwrap_or("").as_bytes());
         let hash = format!("{:x}", hasher.finish());
-
 
         let schema = CTLASchema::new(1, summaries, hash, module_name.clone());
         let serialized = serde_json::to_string(&schema).unwrap(); //should fix ?

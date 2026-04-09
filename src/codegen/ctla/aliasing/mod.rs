@@ -10,7 +10,7 @@ pub struct AliasAndEncapsulationTracker {
     builder: Rc<RefCell<TirBuilder>>,
     pub aliases: HashSet<(u64, String, ValueId)>,
     pub encapsulators: HashSet<(u64, String, ValueId)>,
-    pub external_modules: HashMap<String, Vec<FunctionSummary>>
+    pub external_modules: HashMap<String, Vec<FunctionSummary>>,
 }
 impl AliasAndEncapsulationTracker {
     pub fn new(builder: &Rc<RefCell<TirBuilder>>) -> AliasAndEncapsulationTracker {
@@ -197,10 +197,11 @@ impl AliasAndEncapsulationTracker {
                     )
                 })
                 .collect();
-            
+
             for summaries in self.external_modules.values() {
                 for summary in summaries {
-                    summary_snapshot.insert(summary.name.clone(), summary.aliased_parameters.clone());
+                    summary_snapshot
+                        .insert(summary.name.clone(), summary.aliased_parameters.clone());
                 }
             }
 
@@ -464,7 +465,7 @@ impl AliasAndEncapsulationTracker {
                 )
             })
             .collect();
-            
+
         for summaries in self.external_modules.values() {
             for summary in summaries {
                 summary_by_func.insert(summary.name.clone(), summary.aliased_parameters.clone());

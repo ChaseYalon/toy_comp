@@ -3,7 +3,13 @@
     "allow": [
       "Bash(ls temp/output_llvm_fs_import*)",
       "Bash(cargo check:*)",
-      "Bash(cargo nextest:*)"
+      "Bash(cargo nextest:*)",
+      "Bash(objdump -p target/x86_64-pc-windows-gnu/debug/deps/toy_comp-5f4b0cf7ff2ab101.exe)",
+      "Bash(where libLLVM-21.dll)",
+      "Read(//c/msys64/mingw64/bin/**)",
+      "Read(//mingw64/bin/**)",
+      "Bash(target/x86_64-pc-windows-gnu/debug/deps/toy_comp-5f4b0cf7ff2ab101.exe --list)",
+      "Bash(echo \"exit code: $?\")"
     ]
   }
 }

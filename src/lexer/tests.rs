@@ -1,9 +1,9 @@
+use super::{Lexer, Token};
+use crate::token::{ExternType, QualifiedExternType};
 use crate::token::{SpannedToken, TypeTok};
 use colored::*;
 use ordered_float::OrderedFloat;
 use std::fs;
-use crate::token::{QualifiedExternType, ExternType};
-use super::{Lexer, Token};
 
 fn compare_tokens(test_name: &str, got: Vec<SpannedToken>, want: Vec<Token>) {
     if got.len() != want.len() {
@@ -1528,9 +1528,14 @@ fn test_lexer_import() {
 }
 
 #[test]
-fn test_lexer_extern_c_type(){
+fn test_lexer_extern_c_type() {
     let mut l = Lexer::new();
-    let toks = l.lex("extern fn foo(a: retained c_int64_t, b: c_double, c: released c_char_ptr): str;".to_string()).unwrap();
+    let toks = l
+        .lex(
+            "extern fn foo(a: retained c_int64_t, b: c_double, c: released c_char_ptr): str;"
+                .to_string(),
+        )
+        .unwrap();
     compare_tokens(
         "test_lexer_extern_c_type",
         toks,
@@ -1541,15 +1546,24 @@ fn test_lexer_extern_c_type(){
             Token::LParen,
             Token::VarRef(Box::new("a".to_string())),
             Token::Colon,
-            Token::ExternType(QualifiedExternType { ty: ExternType::c_int64_t(0), is_released: false }),
+            Token::ExternType(QualifiedExternType {
+                ty: ExternType::c_int64_t(0),
+                is_released: false,
+            }),
             Token::Comma,
             Token::VarRef(Box::new("b".to_string())),
             Token::Colon,
-            Token::ExternType(QualifiedExternType { ty: ExternType::c_double(0), is_released: true }),
+            Token::ExternType(QualifiedExternType {
+                ty: ExternType::c_double(0),
+                is_released: true,
+            }),
             Token::Comma,
             Token::VarRef(Box::new("c".to_string())),
             Token::Colon,
-            Token::ExternType(QualifiedExternType { ty: ExternType::c_char(1), is_released: true }),
+            Token::ExternType(QualifiedExternType {
+                ty: ExternType::c_char(1),
+                is_released: true,
+            }),
             Token::RParen,
             Token::Colon,
             Token::Type(TypeTok::Str),
@@ -1562,7 +1576,9 @@ fn test_lexer_extern_c_type(){
 fn test_lexer_extern_c_type_pointer_depth() {
     let mut l = Lexer::new();
     let toks = l
-        .lex("extern fn foo(a: c_char_ptr_ptr_ptr, b: retained c_int64_t_ptr_ptr): str;".to_string())
+        .lex(
+            "extern fn foo(a: c_char_ptr_ptr_ptr, b: retained c_int64_t_ptr_ptr): str;".to_string(),
+        )
         .unwrap();
 
     compare_tokens(
@@ -1599,7 +1615,9 @@ fn test_lexer_lambda() {
     let mut l = Lexer::new();
 
     //"let add = (a: int, b: int): int { return a + b; }"
-    let out = l.lex(String::from("let add = (a: int, b: int): int { return a + b; }"));
+    let out = l.lex(String::from(
+        "let add = (a: int, b: int): int { return a + b; }",
+    ));
     compare_tokens(
         "test_lexer_lambda",
         out.unwrap(),

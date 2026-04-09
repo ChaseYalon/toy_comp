@@ -40,9 +40,7 @@ fn eq_ast_ignoring_src(x: &Ast, y: &Ast) -> bool {
         }
 
         (Ast::FuncParam(xn, xt, _), Ast::FuncParam(yn, yt, _)) => xn == yn && xt == yt,
-        (Ast::ExternFuncParam(xn, xt, _), Ast::ExternFuncParam(yn, yt, _)) => {
-            xn == yn && xt == yt
-        }
+        (Ast::ExternFuncParam(xn, xt, _), Ast::ExternFuncParam(yn, yt, _)) => xn == yn && xt == yt,
 
         (Ast::FuncDec(xn, xp, xr, xb, _), Ast::FuncDec(yn, yp, yr, yb, _)) => {
             xn == yn
@@ -1977,7 +1975,10 @@ fn test_ast_gen_extern_func_dec() {
             Box::new("printf".to_string()),
             vec![Ast::ExternFuncParam(
                 "msg".to_string(),
-                QualifiedExternType{ty: ExternType::c_char(1), is_released: false},
+                QualifiedExternType {
+                    ty: ExternType::c_char(1),
+                    is_released: false
+                },
                 Span::null_span()
             )],
             TypeTok::Int,
@@ -2328,10 +2329,7 @@ fn test_ast_gen_lambda_returned_from_lambda() {
             Box::new("adder".to_string()),
             TypeTok::Lambda(
                 vec![TypeTok::Int],
-                Box::new(TypeTok::Lambda(
-                    vec![TypeTok::Int],
-                    Box::new(TypeTok::Int),
-                )),
+                Box::new(TypeTok::Lambda(vec![TypeTok::Int], Box::new(TypeTok::Int),)),
             ),
             Box::new(Ast::LambdaDec(
                 vec![Ast::FuncParam(
@@ -2460,7 +2458,10 @@ fn test_ast_gen_function_returning_lambda() {
                 Box::new("result".to_string()),
                 TypeTok::Int,
                 Box::new(Ast::AnonFuncCall(
-                    Box::new(Ast::VarRef(Box::new("add_five".to_string()), Span::null_span())),
+                    Box::new(Ast::VarRef(
+                        Box::new("add_five".to_string()),
+                        Span::null_span()
+                    )),
                     vec![Ast::IntLit(3, Span::null_span())],
                     Span::null_span(),
                 )),

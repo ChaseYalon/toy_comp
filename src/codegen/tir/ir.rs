@@ -95,7 +95,14 @@ pub enum TIR {
     CallLocalFunction(ValueId, Box<String>, Vec<SSAValue>, bool, TirType),
     ///call externally defined function, same rules as above final type is just return type.
     ///final Vec<bool> is per-param "doesn't take ownership" metadata.
-    CallExternFunction(ValueId, Box<String>, Vec<SSAValue>, bool, TirType, Vec<bool>),
+    CallExternFunction(
+        ValueId,
+        Box<String>,
+        Vec<SSAValue>,
+        bool,
+        TirType,
+        Vec<bool>,
+    ),
     ///creates a new struct interface, with a ValueId and with the specified values (YOU ARE RESPONSIBLE FOR KEEPING TRACK OF Field -> Idx mapping),
     ///second string is name, note please make the Tir AType a struct otherwise you will get a weird error
     CreateStructInterface(ValueId, Box<String>, TirType),
@@ -111,6 +118,10 @@ pub enum TIR {
     Phi(ValueId, Vec<BlockId>, Vec<SSAValue>),
     ///takes a string and puts it into global data
     GlobalString(ValueId, Box<String>),
+    ///ORIGINAL function name (so like __lambda_{id}_{param_types})
+    FuncPtr(ValueId, String),
+    ///function pointer, params, return_value_is_heap_allocated, return type
+    CallFuncPtr(ValueId, SSAValue, Vec<SSAValue>, bool, TirType),
 }
 
 impl TIR {
@@ -133,6 +144,8 @@ impl TIR {
             TIR::Not(id, _) => *id,
             TIR::Phi(id, _, _) => *id,
             TIR::GlobalString(id, _) => *id,
+            TIR::FuncPtr(id, _) => *id,
+            TIR::CallFuncPtr(id, _, _, _, _) => *id,
         }
     }
 }
@@ -226,8 +239,95 @@ impl TirBuilder {
         self.funcs[self.curr_func.unwrap()].body.push(block);
         self.curr_block = Some(self.funcs[self.curr_func.unwrap()].body.len() - 1);
     }
+    pub fn func_pointer(&mut self, name: String) -> SSAValue {
+        let id = self._next_value_id();
+        let ins = TIR::FuncPtr(id, name);
+        self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()]
+            .ins
+            .push(ins);
+        return SSAValue {
+            val: id,
+            ty: Some(TirType::Ptr),
+        };
+    }
+    pub fn call_lambda(
+        &mut self,
+        callable: SSAValue,
+        params: Vec<SSAValue>,
+        lambda_sig: TypeTok,
+    ) -> Result<SSAValue, ToyError> {
+        let curr_func_name = self.funcs[self.curr_func.unwrap()].name.clone();
+        let curr_block_idx = self.curr_block.unwrap();
+        let curr_block = self.funcs[self.curr_func.unwrap()].body[curr_block_idx].id;
 
-    pub fn register_extern_func(&mut self, name: String, ret_type: TypeTok, is_read_only: bool, doesnt_take_ownership_list: Vec<bool>) {
+        let callable_clone = callable.clone();
+        let params_clone = params.clone();
+        self.funcs.iter_mut().for_each(|f| {
+            if f.name == curr_func_name {
+                f.heap_allocations.iter_mut().for_each(|alloc| {
+                    if callable_clone.val == alloc.alloc_ins.val
+                        || alloc.refs.iter().any(|r| r.2 == callable_clone.val)
+                    {
+                        alloc
+                            .refs
+                            .push((curr_func_name.clone(), curr_block, callable_clone.val));
+                    }
+                    params_clone.iter().for_each(|p| {
+                        if p.val == alloc.alloc_ins.val || alloc.refs.iter().any(|r| r.2 == p.val) {
+                            alloc.refs.push((curr_func_name.clone(), curr_block, p.val));
+                        }
+                    })
+                })
+            }
+        });
+
+        let (ret_type, is_allocator) = match lambda_sig {
+            TypeTok::Lambda(_, ret_ty) => {
+                let ret_type = self.type_tok_to_tir_type(*ret_ty);
+                let is_allocator = ret_type == TirType::Ptr;
+                (ret_type, is_allocator)
+            }
+            _ => unreachable!(), // parser/typechecker validated
+        };
+
+        let id = self._next_value_id();
+        let ins = TIR::CallFuncPtr(id, callable, params, is_allocator, ret_type.clone());
+        self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()]
+            .ins
+            .push(ins);
+
+        let val = SSAValue {
+            val: id,
+            ty: Some(ret_type),
+        };
+
+        if is_allocator {
+            let curr_block_id =
+                self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()].id;
+            let alloc = HeapAllocation {
+                block: curr_block_id,
+                allocation_id: self._next_alloc_id(),
+                function: self.funcs[self.curr_func.unwrap()].name.clone(),
+                refs: vec![],
+                alloc_ins: val.clone(),
+                aliases: BTreeSet::new(),
+                encapsulators: BTreeSet::new(),
+            };
+            self.funcs[self.curr_func.unwrap()]
+                .heap_allocations
+                .push(alloc)
+        }
+
+        Ok(val)
+    }
+
+    pub fn register_extern_func(
+        &mut self,
+        name: String,
+        ret_type: TypeTok,
+        is_read_only: bool,
+        doesnt_take_ownership_list: Vec<bool>,
+    ) {
         //Functions returning str, str[], or any array type are allocators
         let is_allocator = matches!(
             ret_type,
@@ -237,9 +337,17 @@ impl TirBuilder {
                 | TypeTok::FloatArr(_)
                 | TypeTok::BoolArr(_)
                 | TypeTok::StructArr(_, _)
+                | TypeTok::LambdaArr(_, _, _)
         );
-        self.extern_funcs
-            .insert(name, (is_allocator, ret_type, doesnt_take_ownership_list, is_read_only));
+        self.extern_funcs.insert(
+            name,
+            (
+                is_allocator,
+                ret_type,
+                doesnt_take_ownership_list,
+                is_read_only,
+            ),
+        );
     }
 
     /// Updates the parameters of the current function
@@ -527,7 +635,11 @@ impl TirBuilder {
     /// Calls an externally defined function by name.
     /// The function must be registered with `register_extern` first.
     /// Returns an error if the function is not registered.
-    pub fn call_extern(&mut self, name: String, params: Vec<SSAValue>) -> Result<SSAValue, ToyError> {
+    pub fn call_extern(
+        &mut self,
+        name: String,
+        params: Vec<SSAValue>,
+    ) -> Result<SSAValue, ToyError> {
         let (is_allocator, ret_tok, doesnt_take_ownership, _) =
             self.extern_funcs.get(&name).cloned().unwrap(); // parser validated
         let ret_type = self.type_tok_to_tir_type(ret_tok);
@@ -1008,6 +1120,8 @@ impl TirBuilder {
             &TypeTok::Bool => (1, 0),
             &TypeTok::Int => (2, 0),
             &TypeTok::Float => (3, 0),
+            &TypeTok::Lambda(_, _) => (0, 0),
+            &TypeTok::LambdaArr(_, _, n) => (if use_element_type && n == 1 { 0 } else { 4 }, n),
             &TypeTok::StrArr(n) => (if use_element_type && n == 1 { 0 } else { 4 }, n),
             &TypeTok::BoolArr(n) => (if use_element_type && n == 1 { 1 } else { 5 }, n),
             &TypeTok::IntArr(n) => (if use_element_type && n == 1 { 2 } else { 6 }, n),
@@ -1034,11 +1148,13 @@ impl TirBuilder {
             TypeTok::Any => TirType::Ptr,
             TypeTok::Str
             | TypeTok::Any
+            | TypeTok::Lambda(_, _)
             | TypeTok::StrArr(_)
             | TypeTok::BoolArr(_)
             | TypeTok::IntArr(_)
             | TypeTok::FloatArr(_)
             | TypeTok::StructArr(_, _)
+            | TypeTok::LambdaArr(_, _, _)
             | TypeTok::AnyArr(_) => TirType::Ptr,
             TypeTok::Struct(i) => {
                 let mut types: Vec<TirType> = vec![];

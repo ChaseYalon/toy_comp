@@ -109,7 +109,10 @@ impl fmt::Display for TBox {
                 TBox::ImportStmt(name, s) =>
                     format!("TBox_Import_Stmt Name({}), Literal({})", name, s),
                 TBox::Interface(ty, s) => format!("TBox_Interface Type({:#?}), Literal({})", ty, s),
-                TBox::ExternFuncParam(n, t, s) => format!("TBox_ExternFuncParam Name({}), Type({:?}), Literal({})", n, t, s)
+                TBox::ExternFuncParam(n, t, s) => format!(
+                    "TBox_ExternFuncParam Name({}), Type({:?}), Literal({})",
+                    n, t, s
+                ),
             }
         )
     }
@@ -132,7 +135,7 @@ impl TBox {
             TBox::ExternFuncDec(_, _, _, s) => s.clone(),
             TBox::ImportStmt(_, s) => s.clone(),
             TBox::Interface(_, s) => s.clone(),
-            TBox::ExternFuncParam(_, _, s) => s.clone()
+            TBox::ExternFuncParam(_, _, s) => s.clone(),
         };
     }
 }

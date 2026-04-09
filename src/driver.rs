@@ -1,3 +1,4 @@
+use std::path;
 use std::{
     cell::RefCell,
     collections::{BTreeMap, HashMap, HashSet},
@@ -5,7 +6,6 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
 };
-use std::path;
 //this macro sucks
 thread_local! {
     static CURRENT_FILE_PATH: RefCell<Option<String>> = const { RefCell::new(None) };
@@ -306,6 +306,9 @@ impl Driver {
     pub fn set_build_dir(new_dir: String) {
         BUILD_DIR.with(|b| *b.borrow_mut() = new_dir);
     }
+    pub fn gen_lambda_name(module_prefix: Option<&str>, params: &[TypeTok], counter: u64) -> String {
+        return Driver::mangle_name(module_prefix, &format!("__lambda_{}", counter), params);
+    }
     pub fn mangle_name(module_prefix: Option<&str>, name: &str, params: &[TypeTok]) -> String {
         let prefixed_name = if let Some(prefix) = module_prefix {
             if prefix.is_empty() {
@@ -361,8 +364,8 @@ impl Driver {
         let segments: Vec<&str> = path.split(".").collect();
         return segments.join("/") + ".toy";
     }
-    pub fn extern_type_to_type_tok(ety: ExternType) -> TypeTok{
-        return match ety{
+    pub fn extern_type_to_type_tok(ety: ExternType) -> TypeTok {
+        return match ety {
             ExternType::c_int64_t(0) => TypeTok::Int,
             ExternType::c_double(0) => TypeTok::Float,
             ExternType::c_char(0) => TypeTok::Any,
@@ -373,7 +376,7 @@ impl Driver {
             ExternType::c_double(n) => TypeTok::FloatArr(n),
             ExternType::c_char(n) => TypeTok::StrArr(n - 1),
             ExternType::c_void(n) => TypeTok::AnyArr(n - 1),
-        }
+        };
     }
 
     fn feed_to_ast_gen(&mut self, ast_gen: &mut AstGenerator) {
@@ -476,10 +479,7 @@ impl Driver {
             let contents = match fs::read_to_string(import.clone()) {
                 Ok(c) => c,
                 Err(_) => {
-                    return Err(ToyError::new(
-                        ToyErrorType::MissingFile,
-                        import_span,
-                    ));
+                    return Err(ToyError::new(ToyErrorType::MissingFile, import_span));
                 }
             };
 
@@ -530,7 +530,8 @@ impl Driver {
                         let mut param_types = Vec::new();
                         for p in params {
                             if let TBox::ExternFuncParam(_, qualified_type, _) = p {
-                                param_types.push(Driver::extern_type_to_type_tok(qualified_type.ty));
+                                param_types
+                                    .push(Driver::extern_type_to_type_tok(qualified_type.ty));
                             }
                         }
                         let ty = ModuleExportType::Function(param_types, return_type.clone());

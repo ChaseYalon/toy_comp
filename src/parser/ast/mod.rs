@@ -1,6 +1,9 @@
 use std::fmt::{self};
 
-use crate::{errors::Span, token::{QualifiedExternType, TypeTok}};
+use crate::{
+    errors::Span,
+    token::{QualifiedExternType, TypeTok},
+};
 use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -220,7 +223,8 @@ impl fmt::Display for Ast {
                 Ast::Assignment(l, r, s) =>
                     format!("Assignment LHS({}), RHS({}), Literal({})", *l, *r, s),
                 Ast::ImportStmt(path, s) => format!("ImportStmt Path({}), Literal({})", path, s),
-                Ast::ExternFuncParam(n, t, s) => format!("ExternFuncParam Name({}), Type({:?}), Literal({})", n, t, s),
+                Ast::ExternFuncParam(n, t, s) =>
+                    format!("ExternFuncParam Name({}), Type({:?}), Literal({})", n, t, s),
                 Ast::LambdaDec(params, ret, body, s) => format!(
                     "LambdaDec Params({:?}), ReturnType({:?}), Body({:?}), Literal({})",
                     params, ret, body, s

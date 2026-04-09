@@ -329,8 +329,18 @@ fn test_llvm_string_conditional_assignment() {
 }
 
 #[test]
-fn test_llvm_fs(){
-    compile_code_aot!(output, r#"import std.fs; let d = fs.read_dir("."); println(d.to_str());"#, "fs_import");
-    assert!(!output.contains("error"));//should work??
+fn test_llvm_fs() {
+    compile_code_aot!(
+        output,
+        r#"import std.fs; let d = fs.read_dir("."); println(d.to_str());"#,
+        "fs_import"
+    );
+    assert!(!output.contains("error")); //should work??
     assert!(output.contains("Cargo.toml"), "output contained {}", output);
+}
+
+#[test]
+fn test_llvm_simple_lambda(){
+    compile_code_aot!(output, "let x = (a: int, b: int): int{ return a + b }; let y = x(3, 4); println(y);", "simple_lambda");
+    assert!(output.contains("7"));
 }

@@ -53,7 +53,12 @@ fn is_lambda_dec(toks: &[SpannedToken]) -> bool {
         Some(c) => c,
         None => return false,
     };
-    if close + 1 >= toks.len() || !matches!(toks[close + 1].tok, Token::Colon) {
+    if close + 1 >= toks.len() {
+        return false;
+    }
+    if !matches!(toks[close + 1].tok, Token::Colon)
+        && !matches!(toks[close + 1].tok, Token::LBrace)
+    {
         return false;
     }
     let param_toks = &toks[1..close];
@@ -242,7 +247,10 @@ impl AstGenerator {
             cumulative_span,
         ));
     }
-    pub fn parse_empty_expr(&mut self, toks: &Vec<SpannedToken>) -> Result<(Ast, TypeTok), ToyError> {
+    pub fn parse_empty_expr(
+        &mut self,
+        toks: &Vec<SpannedToken>,
+    ) -> Result<(Ast, TypeTok), ToyError> {
         let cumulative_span = AstGenerator::total_span(toks.clone());
         if toks.is_empty() {
             return Err(ToyError::new(
@@ -888,7 +896,7 @@ impl AstGenerator {
                         return Err(ToyError::new(
                             ToyErrorType::UnclosedDelimiter,
                             cumulative_span,
-                        ))
+                        ));
                     }
                 };
 
@@ -903,22 +911,46 @@ impl AstGenerator {
 
                 let elem_type = match left_type {
                     TypeTok::IntArr(n) => {
-                        if n == 1 { TypeTok::Int } else { TypeTok::IntArr(n - 1) }
+                        if n == 1 {
+                            TypeTok::Int
+                        } else {
+                            TypeTok::IntArr(n - 1)
+                        }
                     }
                     TypeTok::StrArr(n) => {
-                        if n == 1 { TypeTok::Str } else { TypeTok::StrArr(n - 1) }
+                        if n == 1 {
+                            TypeTok::Str
+                        } else {
+                            TypeTok::StrArr(n - 1)
+                        }
                     }
                     TypeTok::BoolArr(n) => {
-                        if n == 1 { TypeTok::Bool } else { TypeTok::BoolArr(n - 1) }
+                        if n == 1 {
+                            TypeTok::Bool
+                        } else {
+                            TypeTok::BoolArr(n - 1)
+                        }
                     }
                     TypeTok::FloatArr(n) => {
-                        if n == 1 { TypeTok::Float } else { TypeTok::FloatArr(n - 1) }
+                        if n == 1 {
+                            TypeTok::Float
+                        } else {
+                            TypeTok::FloatArr(n - 1)
+                        }
                     }
                     TypeTok::AnyArr(n) => {
-                        if n == 1 { TypeTok::Any } else { TypeTok::AnyArr(n - 1) }
+                        if n == 1 {
+                            TypeTok::Any
+                        } else {
+                            TypeTok::AnyArr(n - 1)
+                        }
                     }
                     TypeTok::StructArr(kv, n) => {
-                        if n == 1 { TypeTok::Struct(kv) } else { TypeTok::StructArr(kv, n - 1) }
+                        if n == 1 {
+                            TypeTok::Struct(kv)
+                        } else {
+                            TypeTok::StructArr(kv, n - 1)
+                        }
                     }
                     TypeTok::LambdaArr(params, ret, n) => {
                         if n == 1 {
@@ -935,12 +967,20 @@ impl AstGenerator {
                     }
                 };
 
-                let index_access =
-                    Ast::IndexAccess(Box::new(left_ast), Box::new(index_ast), cumulative_span.clone());
+                let index_access = Ast::IndexAccess(
+                    Box::new(left_ast),
+                    Box::new(index_ast),
+                    cumulative_span.clone(),
+                );
 
                 let remaining = &toks[rbrack_idx + 1..];
                 if !remaining.is_empty() {
-                    return self.parse_call_chain(index_access, elem_type, remaining, cumulative_span);
+                    return self.parse_call_chain(
+                        index_access,
+                        elem_type,
+                        remaining,
+                        cumulative_span,
+                    );
                 }
 
                 Ok((index_access, elem_type))
@@ -1024,7 +1064,10 @@ impl AstGenerator {
         let mut args = Vec::new();
         for group in split_by_comma(toks) {
             if group.is_empty() {
-                return Err(ToyError::new(ToyErrorType::ExpectedExpression, span.clone()));
+                return Err(ToyError::new(
+                    ToyErrorType::ExpectedExpression,
+                    span.clone(),
+                ));
             }
             let (arg, _) = self.parse_expr(&group)?;
             args.push(arg);
@@ -1043,7 +1086,10 @@ impl AstGenerator {
             return Ok((callee, callee_type));
         }
         if !matches!(toks[0].tok, Token::LParen) {
-            return Err(ToyError::new(ToyErrorType::ExpectedExpression, span.clone()));
+            return Err(ToyError::new(
+                ToyErrorType::ExpectedExpression,
+                span.clone(),
+            ));
         }
         let ret_type = match callee_type {
             TypeTok::Lambda(_, ret) => *ret,
@@ -1099,7 +1145,7 @@ impl AstGenerator {
             }
         }
 
-        return true
+        return true;
     }
 
     fn parse_lambda_dec(&mut self, toks: &[SpannedToken]) -> Result<(Ast, TypeTok), ToyError> {
@@ -1107,20 +1153,29 @@ impl AstGenerator {
 
         // Find matching RParen for the param list
         let mut depth = 1usize;
-        let mut close = 0;
+        let mut close: Option<usize> = None;
         for (i, t) in toks[1..].iter().enumerate() {
             match &t.tok {
                 Token::LParen => depth += 1,
                 Token::RParen => {
                     depth -= 1;
                     if depth == 0 {
-                        close = i + 1;
+                        close = Some(i + 1);
                         break;
                     }
                 }
                 _ => {}
             }
         }
+        let close = match close {
+            Some(idx) => idx,
+            None => {
+                return Err(ToyError::new(
+                    ToyErrorType::MalformedFunctionDeclaration,
+                    span,
+                ));
+            }
+        };
 
         // Parse params
         let param_toks = &toks[1..close];
@@ -1139,46 +1194,79 @@ impl AstGenerator {
                     return Err(ToyError::new(
                         ToyErrorType::MalformedFunctionDeclaration,
                         span.clone(),
-                    ))
+                    ));
                 }
             };
             let (ty, _) = self.parse_type_from_tokens(&group[2..])?;
             let param_span = AstGenerator::total_span(group.clone());
-            params.push(Ast::FuncParam(Box::new(name.clone()), ty.clone(), param_span));
+            params.push(Ast::FuncParam(
+                Box::new(name.clone()),
+                ty.clone(),
+                param_span,
+            ));
             param_types.push(ty);
         }
 
-        // toks[close] = RParen, toks[close+1] = Colon, toks[close+2..] = return_type LBrace body RBrace
-        let after_colon = &toks[close + 2..];
-        let (ret_type, consumed) = self.parse_type_from_tokens(after_colon)?;
-
-        if consumed >= after_colon.len() || !matches!(after_colon[consumed].tok, Token::LBrace) {
+        if close + 1 >= toks.len() {
             return Err(ToyError::new(
                 ToyErrorType::MalformedFunctionDeclaration,
-                span.clone(),
+                span,
             ));
         }
 
+        // Supported forms:
+        // 1) (a: int): int { ... }
+        // 2) (a: int) { ... }  // implicit void
+        let (ret_type, body_region): (TypeTok, &[SpannedToken]) =
+            if matches!(toks[close + 1].tok, Token::Colon) {
+                let after_colon = &toks[close + 2..];
+                let (ret_type, consumed) = self.parse_type_from_tokens(after_colon)?;
+                if consumed >= after_colon.len()
+                    || !matches!(after_colon[consumed].tok, Token::LBrace)
+                {
+                    return Err(ToyError::new(
+                        ToyErrorType::MalformedFunctionDeclaration,
+                        span.clone(),
+                    ));
+                }
+                (ret_type, &after_colon[consumed..])
+            } else if matches!(toks[close + 1].tok, Token::LBrace) {
+                (TypeTok::Void, &toks[close + 1..])
+            } else {
+                return Err(ToyError::new(
+                    ToyErrorType::MalformedFunctionDeclaration,
+                    span.clone(),
+                ));
+            };
+
         // Find matching RBrace for the body
-        let body_region = &after_colon[consumed..];
         let mut brace_depth = 1usize;
-        let mut rbrace = 0;
+        let mut rbrace: Option<usize> = None;
         for (i, t) in body_region[1..].iter().enumerate() {
             match &t.tok {
                 Token::LBrace => brace_depth += 1,
                 Token::RBrace => {
                     brace_depth -= 1;
                     if brace_depth == 0 {
-                        rbrace = i + 1;
+                        rbrace = Some(i + 1);
                         break;
                     }
                 }
                 _ => {}
             }
         }
+        let rbrace = match rbrace {
+            Some(idx) => idx,
+            None => {
+                return Err(ToyError::new(
+                    ToyErrorType::UnclosedDelimiter,
+                    span,
+                ));
+            }
+        };
 
         let body_toks = &body_region[1..rbrace];
-        let remaining_after_body = &after_colon[consumed + rbrace + 1..];
+        let remaining_after_body = &body_region[rbrace + 1..];
         //this sucks
         let body_boxes = Boxer::new().box_group(body_toks.to_vec())?;
 

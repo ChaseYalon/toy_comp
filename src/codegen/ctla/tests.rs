@@ -234,16 +234,18 @@ fn test_ctla_struct_aliasing_and_encapsulation() {
 
 #[test]
 fn test_ctla_multi_module_alloc() {
-    compile_code_aot!(output, r#"import std.fs; fs.write_file("temp.txt", "hi");"#, "ctla_multi_module");
+    compile_code_aot!(
+        output,
+        r#"import std.fs; fs.write_file("temp.txt", "hi");"#,
+        "ctla_multi_module"
+    );
     assert!(!output.contains("FAIL_TEST"));
 }
 
 #[test]
 fn test_ctla_fs_read_dir_to_str() {
     let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let case_rel = format!(
-        "temp/ctla_fs_read_dir_case",
-    );
+    let case_rel = format!("temp/ctla_fs_read_dir_case",);
     let case_dir = project_root.join(&case_rel);
 
     let _ = std::fs::remove_dir_all(&case_dir);

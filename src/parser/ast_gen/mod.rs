@@ -34,6 +34,9 @@ pub struct AstGenerator {
 
 impl AstGenerator {
     pub fn total_span(toks: Vec<SpannedToken>) -> Span {
+        if toks.is_empty() {
+            return Span::null_span();
+        }
         let first = toks[0].span.clone();
         //SAFETY - this array should always be filled
         let last = toks.last().unwrap().span.clone();
@@ -163,7 +166,7 @@ impl AstGenerator {
                             return Err(ToyError::new(
                                 ToyErrorType::MalformedType,
                                 toks[0].span.clone(),
-                            ))
+                            ));
                         }
                     }
                 };
@@ -253,10 +256,7 @@ impl AstGenerator {
             Token::VarName(n) | Token::VarRef(n) => {
                 // Struct type
                 let fields = self.interfaces.get(n.as_ref()).ok_or_else(|| {
-                    ToyError::new(
-                        ToyErrorType::MalformedType,
-                        toks[0].span.clone(),
-                    )
+                    ToyError::new(ToyErrorType::MalformedType, toks[0].span.clone())
                 })?;
                 let mut dim = 0u64;
                 let mut consumed = 1;
@@ -783,7 +783,7 @@ impl AstGenerator {
             param_types.push(param_type.clone());
         }
         let mut ty_params: Vec<TypeTok> = vec![];
-        for p in param_types{
+        for p in param_types {
             ty_params.push(Driver::extern_type_to_type_tok(p.ty));
         }
         self.extern_funcs.insert(name.clone());

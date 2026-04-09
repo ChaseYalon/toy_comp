@@ -47,7 +47,7 @@ fn compile_and_run(source: String) -> Result<(), Box<dyn std::error::Error>> {
     let mut driver = driver::Driver::new(repl_path);
     driver.start(&ctx)?;
     let exe_path = format!("./Program{}", driver::FILE_EXTENSION_EXE);
-    
+
     process::Command::new(exe_path)
         .stdin(process::Stdio::inherit())
         .stdout(process::Stdio::inherit())

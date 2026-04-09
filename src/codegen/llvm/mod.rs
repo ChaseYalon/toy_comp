@@ -857,6 +857,132 @@ impl<'a> LlvmGenerator<'a> {
                     },
                 ))
             }
+            TIR::FuncPtr(id, name) => {
+                let func_val = if let Some(f) = self.main_module.get_function(&name) {
+                    f
+                } else {
+                    let func_ty = *self.func_map.get(&name).unwrap(); // function is predeclared
+                    self.main_module
+                        .add_function(&name, func_ty, Some(Linkage::External))
+                };
+                let ptr = func_val.as_global_value().as_pointer_value();
+                Some((
+                    ptr.into(),
+                    SSAValue {
+                        val: id,
+                        ty: Some(TirType::Ptr),
+                    },
+                ))
+            }
+            TIR::CallFuncPtr(id, fp, params, _, ret_ty) => {
+                let mut compiled_types: Vec<BasicMetadataTypeEnum> = vec![];
+                for p in &params {
+                    let t = p.ty.as_ref().expect("Param type should be known");
+                    compiled_types.push(self._tir_to_llvm_type(t.clone()).into());
+                }
+
+                let fn_type = match ret_ty {
+                    TirType::I64 | TirType::Ptr => {
+                        self.ctx.i64_type().fn_type(compiled_types.as_slice(), false)
+                    }
+                    TirType::F64 => self.ctx.f64_type().fn_type(compiled_types.as_slice(), false),
+                    TirType::I1 => self.ctx.i64_type().fn_type(compiled_types.as_slice(), false),
+                    TirType::StructInterface(_) => self
+                        .ctx
+                        .ptr_type(AddressSpace::default())
+                        .fn_type(compiled_types.as_slice(), false),
+                    TirType::Void => self.ctx.void_type().fn_type(compiled_types.as_slice(), false),
+                };
+
+                let fp_raw = self.get_ssa_val(&curr_func_name, fp.clone());
+                let fp_ptr = if fp_raw.is_pointer_value() {
+                    fp_raw.into_pointer_value()
+                } else {
+                    builder.build_int_to_ptr(
+                        fp_raw.into_int_value(),
+                        self.ctx.ptr_type(AddressSpace::default()),
+                        "i64_to_fn_ptr",
+                    )?
+                };
+
+                let expected_param_types = fn_type.get_param_types();
+                let llvm_params: Vec<BasicMetadataValueEnum> = params
+                    .iter()
+                    .zip(expected_param_types.iter())
+                    .map(|(p, expected_type)| {
+                        let v = self.get_ssa_val(&curr_func_name, p.clone());
+
+                        if expected_type.is_int_type() && v.is_float_value() {
+                            builder
+                                .build_bit_cast(
+                                    v.into_float_value(),
+                                    self.ctx.i64_type(),
+                                    "double_to_i64_bitcast",
+                                )
+                                .unwrap()
+                                .into()
+                        } else if expected_type.is_pointer_type() && v.is_int_value() {
+                            builder
+                                .build_int_to_ptr(
+                                    v.into_int_value(),
+                                    expected_type.into_pointer_type(),
+                                    "i64_to_ptr",
+                                )
+                                .unwrap()
+                                .into()
+                        } else if expected_type.is_float_type() && v.is_int_value() {
+                            builder
+                                .build_bit_cast(
+                                    v.into_int_value(),
+                                    self.ctx.f64_type(),
+                                    "i64_to_double_bitcast",
+                                )
+                                .unwrap()
+                                .into()
+                        } else if expected_type.is_int_type() && v.is_pointer_value() {
+                            builder
+                                .build_ptr_to_int(
+                                    v.into_pointer_value(),
+                                    self.ctx.i64_type(),
+                                    "ptr_to_i64",
+                                )
+                                .unwrap()
+                                .into()
+                        } else {
+                            match p.ty.clone().unwrap() {
+                                TirType::I1 => builder
+                                    .build_int_z_extend(
+                                        v.into_int_value(),
+                                        self.ctx.i64_type(),
+                                        "bool_to_i64",
+                                    )
+                                    .unwrap()
+                                    .into(),
+                                _ => v.to_owned().into(),
+                            }
+                        }
+                    })
+                    .collect();
+
+                let call_ins =
+                    builder.build_indirect_call(fn_type, fp_ptr, llvm_params.as_slice(), "call_fp")?;
+                let ret = if ret_ty != TirType::Void {
+                    match call_ins.try_as_basic_value() {
+                        ValueKind::Basic(v) => v,
+                        _ => panic!("void"),
+                    }
+                } else {
+                    self.ctx.i64_type().const_int(0 as u64, true).into()
+                };
+
+                Some((
+                    ret,
+                    SSAValue {
+                        val: id,
+                        ty: Some(ret_ty),
+                    },
+                ))
+            }
         };
         if let Some((llvm_ir, val)) = res {
             self.tir_to_val.insert((curr_func_name, val), llvm_ir);
@@ -1087,11 +1213,7 @@ impl<'a> LlvmGenerator<'a> {
             TirType::I64,
         );
         self.declare_individual_function("toy_arrlen", vec![TirType::I64], TirType::I64);
-        self.declare_individual_function(
-            "toy_input",
-            vec![TirType::I64],
-            TirType::I64,
-        );
+        self.declare_individual_function("toy_input", vec![TirType::I64], TirType::I64);
         self.declare_individual_function(
             "toy_free",
             vec![TirType::I64], //?
@@ -1102,6 +1224,16 @@ impl<'a> LlvmGenerator<'a> {
     }
     fn generate_internal(&mut self, funcs: Vec<Function>) -> Result<(), ToyError> {
         self.declare_builtin_functions()?;
+        for func in funcs.iter() {
+            self.declare_individual_function(
+                &func.name,
+                func.params
+                    .iter()
+                    .map(|p| p.ty.clone().expect("Function param type should be known"))
+                    .collect(),
+                func.ret_type.clone(),
+            );
+        }
         for func in funcs {
             self.compile_tir_function(func)?;
         }
