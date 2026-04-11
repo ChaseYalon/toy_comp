@@ -2495,3 +2495,47 @@ fn test_ast_gen_imported_struct_method_call() {
         "Expected imported struct method call to be resolved and present in AST"
     );
 }
+
+#[test]
+fn test_ast_gen_void_lambda_in_array_and_call() {
+    setup_ast!(r#"let y = [(){println("hi")}]; let x = y[0]; x();"#, ast);
+    assert!(compare_ast_vecs(
+        ast,
+        vec![
+            Ast::VarDec(
+                Box::new("y".to_string()),
+                TypeTok::LambdaArr(vec![], Box::new(TypeTok::Void), 1),
+                Box::new(Ast::ArrLit(
+                    TypeTok::LambdaArr(vec![], Box::new(TypeTok::Void), 1),
+                    vec![Ast::LambdaDec(
+                        vec![],
+                        TypeTok::Void,
+                        vec![Ast::FuncCall(
+                            Box::new("println".to_string()),
+                            vec![Ast::StringLit(Box::new("hi".to_string()), Span::null_span())],
+                            Span::null_span(),
+                        )],
+                        Span::null_span(),
+                    )],
+                    Span::null_span(),
+                )),
+                Span::null_span(),
+            ),
+            Ast::VarDec(
+                Box::new("x".to_string()),
+                TypeTok::Lambda(vec![], Box::new(TypeTok::Void)),
+                Box::new(Ast::IndexAccess(
+                    Box::new(Ast::VarRef(Box::new("y".to_string()), Span::null_span())),
+                    Box::new(Ast::IntLit(0, Span::null_span())),
+                    Span::null_span(),
+                )),
+                Span::null_span(),
+            ),
+            Ast::AnonFuncCall(
+                Box::new(Ast::VarRef(Box::new("x".to_string()), Span::null_span())),
+                vec![],
+                Span::null_span(),
+            ),
+        ]
+    ))
+}

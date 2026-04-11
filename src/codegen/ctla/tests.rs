@@ -270,3 +270,13 @@ fn test_ctla_fs_read_dir_to_str() {
 
     let _ = std::fs::remove_dir_all(&case_dir);
 }
+
+#[test]
+fn test_ctla_str_lambda() {
+    compile_code_aot!(
+        output,
+        r#"let add = (a: str, b: str): str{return a + b}; let x = add("hello ", "world"); println(x);"#,
+        "ctla_str_lambda"
+    );
+    assert!(output.contains("hello world"));
+}

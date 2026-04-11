@@ -214,7 +214,7 @@ impl AstToIrConverter {
         }
         let mut free_vars: Vec<String> = Vec::new();
         Self::collect_free_vars_in_block(body, &mut bound, &mut free_vars);
-        free_vars
+        return free_vars;
     }
 
     pub fn new() -> AstToIrConverter {
@@ -741,7 +741,9 @@ impl AstToIrConverter {
             Ast::LambdaDec(params, ret_ty, body, _) => {
                 let lambda_scope = Scope::new_child(scope);
                 let mut ssa_params: Vec<SSAValue> = vec![];
-                let mut param_types: Vec<TypeTok> = vec![];
+                let mut all_param_types: Vec<TypeTok> = vec![];
+                let mut captured_param_types: Vec<TypeTok> = vec![];
+                let mut explicit_param_types: Vec<TypeTok> = vec![];
 
                 let captured_names = self.collect_lambda_captures(&params, &body);
                 let mut captured_args: Vec<SSAValue> = vec![];
@@ -753,11 +755,32 @@ impl AstToIrConverter {
                         .as_ref()
                         .borrow_mut()
                         .set_var(name, ssa_v.clone(), capture_type.clone());
-                    param_types.push(capture_type);
+                    captured_param_types.push(capture_type.clone());
+                    all_param_types.push(capture_type.clone());
                     ssa_params.push(ssa_v);
-                    captured_args.push(capture_val);
+                    // For heap types, deep-copy via toy_mem_dup so the lambda owns the
+                    // data and it remains valid even after the outer scope returns.
+                    // Primitives (int, bool, float) are already passed by value.
+                    let needs_dup = matches!(
+                        capture_type,
+                        TypeTok::Str
+                            | TypeTok::StrArr(_)
+                            | TypeTok::BoolArr(_)
+                            | TypeTok::IntArr(_)
+                            | TypeTok::FloatArr(_)
+                            | TypeTok::Struct(_)
+                            | TypeTok::StructArr(_, _)
+                    );
+                    if needs_dup {
+                        let mut dup_params = vec![capture_val];
+                        self.builder.inject_type_param(&capture_type, true, false, &mut dup_params)?;
+                        let dup_val = self.builder.call_extern("toy_mem_dup".to_string(), dup_params)?;
+                        captured_args.push(dup_val);
+                    } else {
+                        captured_args.push(capture_val);
+                    }
                 }
-
+                
                 for p in params {
                     let (name, param_type) = match p {
                         Ast::FuncParam(n, t, _) => (*n, t),
@@ -768,15 +791,17 @@ impl AstToIrConverter {
                         .as_ref()
                         .borrow_mut()
                         .set_var(name, ssa_v.clone(), param_type.clone());
-                    param_types.push(param_type);
+                    explicit_param_types.push(param_type.clone());
+                    all_param_types.push(param_type);
                     ssa_params.push(ssa_v);
                 }
                 let curr_fn_name = self.builder.funcs[self.builder.curr_func.unwrap()].name.clone();
                 let module_prefix = curr_fn_name
                     .rsplit_once("::")
                     .map(|(prefix, _)| prefix.to_string());
-                let name = Driver::gen_lambda_name(module_prefix.as_deref(), &param_types, self.lambda_counter);
+                let name = Driver::gen_lambda_name(module_prefix.as_deref(), &all_param_types, self.lambda_counter);
                 self.lambda_counter += 1;
+                let pos = self.builder.save_position();
                 self.builder.new_func(Box::new(name.clone()), ssa_params, ret_ty.clone());
                 for stmt in body {
                     self.compile_stmt(stmt, &lambda_scope)?;
@@ -784,15 +809,17 @@ impl AstToIrConverter {
                 if ret_ty == TypeTok::Void {
                     self.builder.ret(SSAValue { val: 0, ty: None });
                 }
-                self.builder.switch_fn(self.main_func_name.clone())?;
+                self.builder.restore_position(pos);
                 let func_ptr = self.builder.func_pointer(name.clone());
-                if captured_args.is_empty() {
+                if captured_args.is_empty() || !explicit_param_types.is_empty() {
                     Ok(func_ptr)
                 } else {
+                    // Zero-explicit-param lambdas can be evaluated eagerly by binding captures.
+                    let lambda_sig = TypeTok::Lambda(captured_param_types, Box::new(ret_ty.clone()));
                     self.builder.call_lambda(
                         func_ptr,
                         captured_args,
-                        TypeTok::Lambda(param_types, Box::new(ret_ty.clone())),
+                        lambda_sig,
                     )
                 }
             }
@@ -805,6 +832,9 @@ impl AstToIrConverter {
                 let ret_type = self.builder.type_tok_to_tir_type(ret_type_tok);
 
                 let ssa_callable_expr = self.compile_expr(*callable, scope)?;
+                if ssa_callable_expr.ty != Some(TirType::Ptr) {
+                    return Ok(ssa_callable_expr);
+                }
                 let mut ssa_params: Vec<SSAValue> = vec![];
                 for a in args {
                     ssa_params.push(self.compile_expr(a, scope)?);
@@ -1555,6 +1585,13 @@ impl AstToIrConverter {
             true,
             TypeTok::Any,
             vec![true, true],
+            true,
+        );
+        self.builder.register_extern(
+            "toy_mem_dup".to_string(),
+            true,
+            TypeTok::Any,
+            vec![true, true, true],
             true,
         );
     }

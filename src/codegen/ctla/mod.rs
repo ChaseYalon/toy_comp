@@ -308,6 +308,9 @@ impl CTLA {
             | TIR::CallExternFunction(_, _, params, _, _, _)
             | TIR::CreateStructLiteral(_, _, params)
             | TIR::Phi(_, _, params) => params.iter().any(uses),
+            TIR::CallFuncPtr(_, callable, params, _, _) => {
+                uses(callable) || params.iter().any(uses)
+            }
             TIR::ReadStructLiteral(_, struct_value, _) => uses(struct_value),
             TIR::WriteStructLiteral(_, struct_value, _, new_value) => {
                 uses(struct_value) || uses(new_value)
@@ -317,8 +320,8 @@ impl CTLA {
             | TIR::FConst(_, _, _)
             | TIR::JumpBlockUnCond(_, _)
             | TIR::CreateStructInterface(_, _, _)
-            | TIR::GlobalString(_, _) => false,
-            _ => todo!("chase you have not implemented CTLA for {:?} yet", ins),
+            | TIR::GlobalString(_, _)
+            | TIR::FuncPtr(_, _) => false,
         };
     }
 
@@ -661,6 +664,25 @@ impl CTLA {
         }
         return false;
     }
+    fn function_returns_struct_allocation(&self, function_name: &str) -> bool {
+        let builder = self.builder.borrow();
+        let Some(func) = builder.funcs.iter().find(|f| *f.name == function_name) else {
+            return false;
+        };
+
+        for block in &func.body {
+            if let Some(TIR::Ret(_, ret_ssa)) = block.ins.last() {
+                if let Some(ins) = block.ins.iter().find(|i| i.get_id() == ret_ssa.val) {
+                    if let TIR::CallExternFunction(_, f_box, _, _, _, _) = ins {
+                        if f_box.as_ref() == "toy_malloc_struct" {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        return false;
+    }
     /// matches the allocation type to the type of free needed (regular or array), returns that function name
     fn alloc_type_to_free_func(&self, alloc: &HeapAllocation) -> String {
         let alloc_ins = self.get_alloc_ins(&alloc.function, alloc.block, alloc.alloc_ins.val);
@@ -674,6 +696,8 @@ impl CTLA {
                 //that argv thing is hacky but I dont know how to say under the hood it calls toy_malloc_arr
                 if self.is_array_allocation_call_name(f_box.as_ref()) {
                     return "toy_free_arr".to_string();
+                } else if f_box.as_ref() == "toy_malloc_struct" {
+                    return "toy_free_struct".to_string();
                 }
                 return "toy_free".to_string();
             }
@@ -681,10 +705,18 @@ impl CTLA {
             TIR::CallLocalFunction(_, callee_name, _, _, _) => {
                 if self.function_returns_array_allocation(callee_name.as_ref()) {
                     return "toy_free_arr".to_string();
+                } else if self.function_returns_struct_allocation(callee_name.as_ref()) {
+                    return "toy_free_struct".to_string();
                 }
                 return "toy_free".to_string();
             }
-            _ => unreachable!(),
+            TIR::CallFuncPtr(_, _, _, _, _) => {
+                // Pointer calls do not encode array-vs-scalar ownership metadata here.
+                // Default to scalar free to avoid dropping heap strings from lambdas.
+                //this will cause errors
+                return "toy_free".to_string();
+            }
+            _ => return "toy_free".to_string(),
         };
     }
 

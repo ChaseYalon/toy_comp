@@ -283,8 +283,9 @@ impl TirBuilder {
 
         let (ret_type, is_allocator) = match lambda_sig {
             TypeTok::Lambda(_, ret_ty) => {
-                let ret_type = self.type_tok_to_tir_type(*ret_ty);
-                let is_allocator = ret_type == TirType::Ptr;
+                let ret_type = self.type_tok_to_tir_type(*ret_ty.clone()).clone();
+                let is_function_ptr = matches!(*ret_ty.clone(), TypeTok::Lambda(_, _) | TypeTok::LambdaArr(_, _, _));
+                let is_allocator = ret_type == TirType::Ptr && !is_function_ptr;
                 (ret_type, is_allocator)
             }
             _ => unreachable!(), // parser/typechecker validated
@@ -518,6 +519,15 @@ impl TirBuilder {
         }
     }
     ///switches the function to the given name, will set the block two the first block in the function, will crash if function is empty
+    /// Returns an opaque (func_idx, block_idx) token that can be passed to restore_position.
+    pub fn save_position(&self) -> (usize, usize) {
+        (self.curr_func.unwrap(), self.curr_block.unwrap())
+    }
+    /// Restores the current function and block to a previously saved position.
+    pub fn restore_position(&mut self, pos: (usize, usize)) {
+        self.curr_func = Some(pos.0);
+        self.curr_block = Some(pos.1);
+    }
     pub fn switch_fn(&mut self, name: String) -> Result<(), ToyError> {
         for i in 0..self.funcs.len() {
             if *self.funcs[i].name == name {
@@ -714,8 +724,24 @@ impl TirBuilder {
     pub fn call(&mut self, name: String, params: Vec<SSAValue>) -> Result<SSAValue, ToyError> {
         // Check if it's a local function first
         if let Some(func) = self.funcs.iter().find(|f| *f.name == name) {
-            // Function is an allocator if it returns Ptr (heap-allocated string)
-            let is_allocator = func.ret_type == TirType::Ptr;
+            // Function pointers are represented as Ptr in TIR, but they are not heap allocations.
+            // Detect direct function-pointer returns and avoid emitting allocator ownership for them.
+            let returns_function_ptr = func.body.iter().any(|block| {
+                if let Some(TIR::Ret(_, ret_val)) = block.ins.last() {
+                    block
+                        .ins
+                        .iter()
+                        .find(|ins| ins.get_id() == ret_val.val)
+                        .map(|ins| {
+                            matches!(ins, TIR::FuncPtr(_, _))
+                                || matches!(ins, TIR::CallFuncPtr(_, _, _, _, TirType::Ptr))
+                        })
+                        .unwrap_or(false)
+                } else {
+                    false
+                }
+            });
+            let is_allocator = func.ret_type == TirType::Ptr && !returns_function_ptr;
             return self.call_local(name, params, is_allocator);
         }
 

@@ -80,6 +80,7 @@ impl<'a> LlvmGenerator<'a> {
         }
         panic!("Undefined SSA Value: {:?} in function {}", ssa, func_name);
     }
+
     fn compile_instruction(
         &mut self,
         inst: TIR,
@@ -1220,6 +1221,11 @@ impl<'a> LlvmGenerator<'a> {
             TirType::Void,
         );
         self.declare_individual_function("toy_free_arr", vec![TirType::I64], TirType::Void);
+        self.declare_individual_function(
+            "toy_mem_dup",
+            vec![TirType::I64, TirType::I64, TirType::I64],
+            TirType::I64,
+        );
         return Ok(());
     }
     fn generate_internal(&mut self, funcs: Vec<Function>) -> Result<(), ToyError> {

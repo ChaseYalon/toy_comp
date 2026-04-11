@@ -344,3 +344,50 @@ fn test_llvm_simple_lambda(){
     compile_code_aot!(output, "let x = (a: int, b: int): int{ return a + b }; let y = x(3, 4); println(y);", "simple_lambda");
     assert!(output.contains("7"));
 }
+
+#[test]
+fn test_llvm_lambda_in_array() {
+    compile_code_aot!(
+        output,
+        r#"let y = [(){println("hi")}]; let x = y[0]; x();"#,
+        "lambda_in_array"
+    );
+    assert!(output.contains("hi"));
+}
+
+#[test]
+fn test_llvm_higher_order_func() {
+    compile_code_aot!(
+        output,
+        "fn make_adder(): (int, int): int { return (x: int, y: int): int { return x + y; }; } let add = make_adder(); println(add(3, 5));",
+        "higher_order_func"
+    );
+    assert!(output.contains("8"));
+}
+
+#[test]
+fn test_llvm_variable_capture() {
+    compile_code_aot!(output, "let x = 9; let foo = (): int{return x + 2}; println(foo());", "variable_capture");
+    assert!(output.contains("11"));
+}
+
+#[test]
+fn test_llvm_curried_adder() {
+    compile_code_aot!(
+        output,
+        "fn make_adder(x: int): (int): int { return (y: int): int { return x + y; }; } let add5 = make_adder(5); println(add5(3));",
+        "curried_adder"
+    );
+    //make sure output is not garbage
+    assert!(output.contains("8") && !(output.contains("1") || output.contains("2") || output.contains("3") || output.contains("4") || output.contains("5") || output.contains("6") || output.contains("7") || output.contains("9") || output.contains("0")));
+}
+
+#[test]
+fn test_mem_dup_str() {
+    compile_code_aot!(
+        output,
+        r#"extern fn toy_mem_dup(src: retained c_char_ptr, ty: c_int64_t, degree: c_int64_t): str; let s = "hello world"; let s2 = toy_mem_dup(s, 0, 0); println(s2);"#,
+        "mem_dup_str"
+    );
+    assert!(output.contains("hello world"));
+}
