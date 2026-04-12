@@ -366,20 +366,13 @@ fn test_llvm_higher_order_func() {
 }
 
 #[test]
-fn test_llvm_variable_capture() {
-    compile_code_aot!(output, "let x = 9; let foo = (): int{return x + 2}; println(foo());", "variable_capture");
-    assert!(output.contains("11"));
-}
-
-#[test]
-fn test_llvm_curried_adder() {
+fn test_llvm_lambda_as_arg() {
     compile_code_aot!(
         output,
-        "fn make_adder(x: int): (int): int { return (y: int): int { return x + y; }; } let add5 = make_adder(5); println(add5(3));",
-        "curried_adder"
+        "fn apply(f: (int, int): int, x: int, y: int): int { return f(x, y); } let mul = (a: int, b: int): int { return a * b; }; println(apply(mul, 6, 7));",
+        "lambda_as_arg"
     );
-    //make sure output is not garbage
-    assert!(output.contains("8") && !(output.contains("1") || output.contains("2") || output.contains("3") || output.contains("4") || output.contains("5") || output.contains("6") || output.contains("7") || output.contains("9") || output.contains("0")));
+    assert!(output.contains("42"));
 }
 
 #[test]

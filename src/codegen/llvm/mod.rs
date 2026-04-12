@@ -308,6 +308,15 @@ impl<'a> LlvmGenerator<'a> {
                                 )
                                 .unwrap()
                                 .into()
+                        } else if expected_type.is_int_type() && v.is_pointer_value() {
+                            builder
+                                .build_ptr_to_int(
+                                    v.into_pointer_value(),
+                                    self.ctx.i64_type(),
+                                    "ptr_to_i64",
+                                )
+                                .unwrap()
+                                .into()
                         } else {
                             match p.ty.clone().unwrap() {
                                 TirType::I1 => builder
