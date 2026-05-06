@@ -16,7 +16,11 @@ pub mod codegen;
 pub(crate) mod driver;
 mod errors;
 mod ffi;
+mod fuzzer;
 use inkwell::context::Context;
+pub use crate::parser::ast::*;
+pub use crate::token::TypeTok;
+pub use crate::errors::Span;
 fn run_repl() {
     loop {
         print!("> ");
