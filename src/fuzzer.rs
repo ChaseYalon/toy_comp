@@ -8,10 +8,7 @@ struct Scope {
     /// type -> Vec<VarNames>. The names are in no particular order, and one should be selected at random
     /// Also included here are any function parameters that are in scope
     vars: HashMap<TypeTok, Vec<String>>,
-    /// type -> Vec<VarNames>. The names are in no particular order, and one should be selected at random
-    /// Also included here are any function parameters that are in scope
-    /// TypeTok is always TypeTok::Struct and must be searched to see if it contains the type needed
-    struct_literals: HashMap<TypeTok, Vec<String>>,
+
 }
 
 pub struct TestRunner {
@@ -33,7 +30,6 @@ impl TestRunner {
     pub fn new() -> TestRunner {
         let root = Scope {
             vars: HashMap::new(),
-            struct_literals: HashMap::new(),
         };
         let seed = 100u64; //this is sketchy
         return TestRunner {
@@ -151,7 +147,6 @@ impl TestRunner {
         let mut stmts: Vec<Ast> = vec![];
         self.scopes.push(Scope {
             vars: HashMap::new(),
-            struct_literals: HashMap::new()
         });
         for _ in 0..block_len {
             stmts.push(self.gen_stmt(stmt_depth + 1));
@@ -161,7 +156,6 @@ impl TestRunner {
         let else_stmts = if self.rng.random_bool(0.5) {
             self.scopes.push(Scope {
                 vars: HashMap::new(),
-                struct_literals: HashMap::new()
             });
             let mut else_stmts = vec![];
             for _ in 0..block_len {
@@ -229,7 +223,6 @@ impl TestRunner {
         let mut stmts: Vec<Ast> = vec![];
         self.scopes.push(Scope {
             vars: HashMap::new(),
-            struct_literals: HashMap::new()
         });
         for _ in 0..block_len {
             stmts.push(self.gen_stmt(stmt_depth + 1));
@@ -237,7 +230,19 @@ impl TestRunner {
         self.scopes.pop();
         return Ast::WhileStmt(Box::new(expr), stmts, Span::null_span());
     }
+    fn gen_functions(&mut self) -> Ast {
+        let param_count = self.rng.random_range(0..=4);
+        let ret_type = self._random_type();
+        let body: Vec<Ast> = vec![];
+        self.scopes.push(Scope{vars: HashMap::new()});
+
+
+        ()
+    }
     fn gen_stmt(&mut self, stmt_depth: usize) -> Ast {
+        if stmt_depth == 0 {
+            //generate functions here
+        }
         if stmt_depth > self.max_stmt_depth {
             return self.gen_var_dec(); //this is a bodge
         }
@@ -372,7 +377,7 @@ impl TestRunner {
             0 => (self.gen_int_expr(0), TypeTok::Int),
             1 => (self.gen_float_expr(0), TypeTok::Float),
             2 => (self.gen_bool_expr(0), TypeTok::Bool),
-            3 => (self.gen_struct_expr(0)),
+            3 => self.gen_struct_expr(0),
             _ => todo!("{:?} is unimplemented", n)
         };
     }
@@ -385,7 +390,6 @@ impl TestRunner {
     pub fn generate(&mut self) -> Vec<Ast> {
         self.scopes.push(Scope {
             vars: HashMap::new(),
-            struct_literals: HashMap::new()
         });
         for _ in 0..self.prgm_length {
             //for now only var dec
