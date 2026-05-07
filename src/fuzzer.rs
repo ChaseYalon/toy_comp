@@ -2,7 +2,7 @@ use crate::errors::Span;
 use crate::*;
 use rand::RngExt;
 use rand::{SeedableRng, rngs::StdRng, distr::{Alphabetic, SampleString}};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::ops::RangeInclusive;
 struct Scope {
     /// type -> Vec<VarNames>. The names are in no particular order, and one should be selected at random
@@ -25,6 +25,8 @@ pub struct TestRunner {
     prgm_length: usize,
     program: Vec<Ast>,
     type_tok_range: RangeInclusive<usize>,
+    ///struct interfaces
+    interfaces: Vec<Ast>
 }
 
 impl TestRunner {
@@ -42,7 +44,8 @@ impl TestRunner {
             program: vec![],
             rng_seed: seed,
             type_tok_range: 0..=2,
-            prgm_length: 10
+            prgm_length: 10,
+            interfaces: vec![]
         };
     }
     fn _random_type(&mut self) -> TypeTok {
@@ -109,7 +112,7 @@ impl TestRunner {
             6 => {
                 //nested structs are currently not handled, that should be done in the future
                 let candidate_variables: Vec<(String, String)> = self.scopes.iter()
-                    .flat_map(|scope| scope.struct_literals.iter())
+                    .flat_map(|scope| scope.vars.iter())
                     .filter_map(|(ty, names)| {
                         if let TypeTok::Struct(struct_ty) = ty {
                             Some((struct_ty, names))
@@ -141,8 +144,7 @@ impl TestRunner {
     }
     fn gen_if_stmt(&mut self, stmt_depth: usize) -> Ast {
         if stmt_depth > self.max_stmt_depth {
-            //this is a bodge
-            return self.gen_var_dec();
+            return self.gen_stmt(stmt_depth);
         }
         let block_len = self.rng.random_range(1..=3); //this is small but it prevents a huge exponential branching
         let expr = self.gen_bool_expr(0);
@@ -173,10 +175,76 @@ impl TestRunner {
 
         return Ast::IfStmt(Box::new(expr), stmts, else_stmts, Span::null_span());
     }
+    fn gen_struct_expr(&mut self, depth: usize) -> (Ast, TypeTok) {
+        //make a struct interface - right now each struct has its own interface
+        let field_count = self.rng.random_range(1..=5);
+
+        let mut field_types: BTreeMap<String, TypeTok> = BTreeMap::new();
+
+        for _ in 0..field_count {
+            let field_name = Alphabetic.sample_string(&mut self.rng, 10);
+            field_types.insert(field_name, self._random_type());
+        }
+
+        let interface_name = Alphabetic.sample_string(&mut self.rng, 10);
+
+        
+        let mut ty: BTreeMap<String, Box<TypeTok>> = BTreeMap::new();
+        
+        for (n, v) in &field_types {
+            ty.insert(n.clone(), Box::new(v.clone()));
+        }
+        self.interfaces.push(
+            Ast::StructInterface(Box::new(interface_name.clone()), Box::new(field_types.clone()), Span::null_span())
+        );
+
+        let mut fields: BTreeMap<String, (Ast, TypeTok)> = BTreeMap::new();
+
+        for (n, t) in &field_types {
+            let v = match t {
+                TypeTok::Int => self.gen_int_expr(depth + 1),
+                TypeTok::Bool => self.gen_bool_expr(depth + 1),
+                TypeTok::Float => self.gen_float_expr(depth + 1),
+                _ => todo!("{:?} is not supported for struct fields yet", t),
+            };
+
+            fields.insert(n.clone(), (v, t.clone()));
+        }
+
+        let struct_ty = TypeTok::Struct(ty);
+
+
+        return (Ast::StructLit(
+            Box::new(interface_name),
+            Box::new(fields),
+            Span::null_span(),
+        ), struct_ty);
+    }
+    fn gen_while_stmt(&mut self, stmt_depth: usize) -> Ast {
+        if stmt_depth > self.max_stmt_depth {
+            return self.gen_stmt(stmt_depth);
+        }
+        let block_len = self.rng.random_range(0..=3);
+        let expr = self.gen_bool_expr(0);
+        let mut stmts: Vec<Ast> = vec![];
+        self.scopes.push(Scope {
+            vars: HashMap::new(),
+            struct_literals: HashMap::new()
+        });
+        for _ in 0..block_len {
+            stmts.push(self.gen_stmt(stmt_depth + 1));
+        }
+        self.scopes.pop();
+        return Ast::WhileStmt(Box::new(expr), stmts, Span::null_span());
+    }
     fn gen_stmt(&mut self, stmt_depth: usize) -> Ast {
-        return match self.rng.random_range(0..=1) {
+        if stmt_depth > self.max_stmt_depth {
+            return self.gen_var_dec(); //this is a bodge
+        }
+        return match self.rng.random_range(0..=2) {
             0 => self.gen_var_dec(),
             1 => self.gen_if_stmt(stmt_depth),
+            2 => self.gen_while_stmt(stmt_depth),
             _ => unreachable!()
         };
     }
@@ -206,7 +274,7 @@ impl TestRunner {
             4 => {
                 //nested structs are currently not handled, that should be done in the future
                 let candidate_variables: Vec<(String, String)> = self.scopes.iter()
-                    .flat_map(|scope| scope.struct_literals.iter())
+                    .flat_map(|scope| scope.vars.iter())
                     .filter_map(|(ty, names)| {
                         if let TypeTok::Struct(struct_ty) = ty {
                             Some((struct_ty, names))
@@ -267,7 +335,7 @@ impl TestRunner {
             4 => {
                 //nested structs are currently not handled, that should be done in the future
                 let candidate_variables: Vec<(String, String)> = self.scopes.iter()
-                    .flat_map(|scope| scope.struct_literals.iter())
+                    .flat_map(|scope| scope.vars.iter())
                     .filter_map(|(ty, names)| {
                         if let TypeTok::Struct(struct_ty) = ty {
                             Some((struct_ty, names))
@@ -298,12 +366,14 @@ impl TestRunner {
         return val
     }
     fn gen_expr(&mut self) -> (Ast, TypeTok) {
-        let ty = self._random_type();
-        return match ty {
-            TypeTok::Int => (self.gen_int_expr(0), TypeTok::Int),
-            TypeTok::Float => (self.gen_float_expr(0), TypeTok::Float),
-            TypeTok::Bool => (self.gen_bool_expr(0), TypeTok::Bool),
-            _ => todo!("{:?} is unreachable", ty)
+        let n = self.rng.random_range(0..=3);
+        return match n {
+            //should include structs and arrays
+            0 => (self.gen_int_expr(0), TypeTok::Int),
+            1 => (self.gen_float_expr(0), TypeTok::Float),
+            2 => (self.gen_bool_expr(0), TypeTok::Bool),
+            3 => (self.gen_struct_expr(0)),
+            _ => todo!("{:?} is unimplemented", n)
         };
     }
     fn gen_var_dec(&mut self) -> Ast {
@@ -322,6 +392,7 @@ impl TestRunner {
             let v = self.gen_stmt(0);
             self.program.push(v);
         }
-        return self.program.clone();
+        self.interfaces.append(&mut self.program);
+        return self.interfaces.clone()
     }
 }
