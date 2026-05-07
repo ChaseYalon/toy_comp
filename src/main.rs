@@ -21,6 +21,9 @@ use inkwell::context::Context;
 pub use crate::parser::ast::*;
 pub use crate::token::TypeTok;
 pub use crate::errors::Span;
+pub use crate::fuzzer::TestRunner;
+use ordered_float::OrderedFloat;
+use chrono::Local;
 fn run_repl() {
     loop {
         print!("> ");
@@ -88,9 +91,23 @@ fn compile_file(filename: &str) -> Result<(), Box<dyn std::error::Error>> {
     compile_and_print(filename)
 }
 
+
 fn main() {
     let args: Vec<String> = env::args().collect();
-
+    if args.contains(&"--fuzz".to_string()) {
+        let idx = args.iter().position(|f| f == &"--fuzz".to_string()).unwrap();
+        if idx + 1 > args.len() {
+            panic!("[ERROR] You should use --fuzz [NUMBER_OF_PROGRAMS]");
+        }
+        let num: u64 = args[idx + 1].parse().unwrap();
+        for _ in 0..num{
+            let mut runner = TestRunner::new();
+            let prgm = runner.generate();
+            println!("{:#?}", prgm);
+            
+        }
+        return;
+    }
     if args.contains(&"--repl".to_string()) {
         run_repl();
         return;

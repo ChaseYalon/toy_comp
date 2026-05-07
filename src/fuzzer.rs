@@ -1,7 +1,7 @@
 use crate::errors::Span;
 use crate::*;
 use rand::RngExt;
-use rand::{SeedableRng, rngs::StdRng};
+use rand::{SeedableRng, rngs::StdRng, distr::{Alphabetic, SampleString}};
 use std::collections::HashMap;
 use std::ops::RangeInclusive;
 struct Scope {
@@ -22,6 +22,7 @@ pub struct TestRunner {
     rng_seed: u64,
     max_stmt_depth: usize,
     max_expr_depth: usize,
+    prgm_length: usize,
     program: Vec<Ast>,
     type_tok_range: RangeInclusive<usize>,
 }
@@ -41,6 +42,7 @@ impl TestRunner {
             program: vec![],
             rng_seed: seed,
             type_tok_range: 0..=2,
+            prgm_length: 10
         };
     }
     fn _random_type(&mut self) -> TypeTok {
@@ -61,6 +63,123 @@ impl TestRunner {
             _ => unreachable!()
         }
     }
+    fn _rand_comp_infix_op(&mut self) -> InfixOp {
+        return match self.rng.random_range(0..=5) {
+            0 => InfixOp::LessThan,
+            1 => InfixOp::GreaterThan,
+            2 => InfixOp::LessThanEqt,
+            3 => InfixOp::GreaterThanEqt,
+            4 => InfixOp::Equals,
+            5 => InfixOp::NotEquals,
+            _ => unreachable!()
+        };
+    }
+    fn _rand_bool_infix_op(&mut self) -> InfixOp {
+        return match self.rng.random_range(0..=3) {
+            0 => InfixOp::And,
+            1 => InfixOp::Or,
+            2 => InfixOp::Equals,
+            3 => InfixOp::NotEquals,
+            _ => unreachable!()
+        };
+    }
+    fn gen_bool_expr(&mut self, depth: usize) -> Ast {
+
+        if depth > self.max_expr_depth {
+            return Ast::BoolLit(self.rng.random_bool(0.5), Span::null_span());
+        }
+        let val = match self.rng.random_range(0..=6) {//for right now it does not do function calls
+            0 => Ast::BoolLit(self.rng.random_bool(0.5), Span::null_span()),
+            1 => Ast::InfixExpr(Box::new(self.gen_bool_expr(depth + 1)), Box::new(self.gen_bool_expr(depth + 1)), self._rand_bool_infix_op(), Span::null_span()),
+            2 => Ast::InfixExpr(Box::new(self.gen_num_expr(depth + 1)), Box::new(self.gen_num_expr(depth + 1)), self._rand_comp_infix_op(), Span::null_span()),
+            3 => Ast::Not(Box::new(self.gen_bool_expr(depth + 1)), Span::null_span()),
+            4 => Ast::EmptyExpr(Box::new(self.gen_bool_expr(depth + 1)), Span::null_span()),
+            5 => {
+                let candidate_variables: Vec<String> = self.scopes.iter()
+                    .flat_map(|scope| scope.vars.get(&TypeTok::Bool).into_iter().flatten())
+                    .cloned()
+                    .collect(); 
+                if candidate_variables.len() == 0 {
+                    return self.gen_bool_expr(depth);
+                }
+                let v = candidate_variables[self.rng.random_range(0..candidate_variables.len())].clone();
+
+                Ast::VarRef(Box::new(v), Span::null_span())
+            }
+            6 => {
+                //nested structs are currently not handled, that should be done in the future
+                let candidate_variables: Vec<(String, String)> = self.scopes.iter()
+                    .flat_map(|scope| scope.struct_literals.iter())
+                    .filter_map(|(ty, names)| {
+                        if let TypeTok::Struct(struct_ty) = ty {
+                            Some((struct_ty, names))
+                        } else {
+                            None
+                        }
+                    })
+                    .flat_map(|(struct_ty, names)| {
+                        names.iter().flat_map(move |var_name| {
+                            struct_ty.iter()
+                                .filter(|(_, t)| ***t == TypeTok::Bool)
+                                .map(move |(field_name, _)| {
+                                    (var_name.clone(), field_name.clone())
+                                })
+                        })
+                    })
+                    .collect();
+                if candidate_variables.len() == 0 {
+                    return self.gen_bool_expr(depth);
+                }
+                let (v, m) = candidate_variables[self.rng.random_range(0..candidate_variables.len())].clone();
+                Ast::MemberAccess(Box::new(Ast::VarRef(Box::new(v), Span::null_span())), m, Span::null_span())
+            }
+            //arrays are hard because you have to make sure the access is in bound
+            //functions are todo
+            _ => unreachable!()
+        };
+        return val
+    }
+    fn gen_if_stmt(&mut self, stmt_depth: usize) -> Ast {
+        if stmt_depth > self.max_stmt_depth {
+            //this is a bodge
+            return self.gen_var_dec();
+        }
+        let block_len = self.rng.random_range(1..=3); //this is small but it prevents a huge exponential branching
+        let expr = self.gen_bool_expr(0);
+        let mut stmts: Vec<Ast> = vec![];
+        self.scopes.push(Scope {
+            vars: HashMap::new(),
+            struct_literals: HashMap::new()
+        });
+        for _ in 0..block_len {
+            stmts.push(self.gen_stmt(stmt_depth + 1));
+        }
+        self.scopes.pop();
+
+        let else_stmts = if self.rng.random_bool(0.5) {
+            self.scopes.push(Scope {
+                vars: HashMap::new(),
+                struct_literals: HashMap::new()
+            });
+            let mut else_stmts = vec![];
+            for _ in 0..block_len {
+                else_stmts.push(self.gen_stmt(stmt_depth + 1));
+            }
+            self.scopes.pop();
+            Some(else_stmts)
+        } else {
+            None
+        };
+
+        return Ast::IfStmt(Box::new(expr), stmts, else_stmts, Span::null_span());
+    }
+    fn gen_stmt(&mut self, stmt_depth: usize) -> Ast {
+        return match self.rng.random_range(0..=1) {
+            0 => self.gen_var_dec(),
+            1 => self.gen_if_stmt(stmt_depth),
+            _ => unreachable!()
+        };
+    }
     fn gen_int_expr(&mut self, depth: usize) -> Ast {
 
         if depth > self.max_expr_depth {
@@ -74,9 +193,14 @@ impl TestRunner {
                 let candidate_variables: Vec<String> = self.scopes.iter()
                     .flat_map(|scope| scope.vars.get(&TypeTok::Int).into_iter().flatten())
                     .cloned()
-                    .collect(); 
+                    .collect();
+                if candidate_variables.len() == 0 {
+                    return self.gen_int_expr(depth);
+                }
                 let v = candidate_variables[self.rng.random_range(0..candidate_variables.len())].clone();
-
+                if candidate_variables.len() == 0 {
+                    return self.gen_int_expr(depth);
+                }
                 Ast::VarRef(Box::new(v), Span::null_span())
             }
             4 => {
@@ -100,6 +224,9 @@ impl TestRunner {
                         })
                     })
                     .collect();
+                if candidate_variables.len() == 0 {
+                    return self.gen_int_expr(depth);
+                }
                 let (v, m) = candidate_variables[self.rng.random_range(0..candidate_variables.len())].clone();
                 Ast::MemberAccess(Box::new(Ast::VarRef(Box::new(v), Span::null_span())), m, Span::null_span())
             }
@@ -109,22 +236,92 @@ impl TestRunner {
         };
         return val
     }
-    fn gen_expr(&mut self) -> Ast {
+    fn gen_num_expr(&mut self, depth: usize) -> Ast {
+        return if self.rng.random_bool(0.5) {
+            self.gen_int_expr(depth)
+        } else {
+            self.gen_float_expr(depth)
+        };
+    }
+    fn gen_float_expr(&mut self, depth: usize) -> Ast {
+
+        if depth > self.max_expr_depth {
+            return Ast::FloatLit(OrderedFloat(self.rng.random_range(-1_000_000.0..1_000_000.0)), Span::null_span());
+        }
+        let val = match self.rng.random_range(0..=4) {//for right now it does not do function calls
+            0 => Ast::FloatLit(OrderedFloat(self.rng.random_range(-1_000_000.0..1_000_000.0)), Span::null_span()),
+            1 => Ast::InfixExpr(Box::new(self.gen_float_expr(depth + 1)), Box::new(self.gen_float_expr(depth + 1)), self._rand_int_infix_op(), Span::null_span()),
+            2 => Ast::EmptyExpr(Box::new(self.gen_float_expr(depth + 1)), Span::null_span()),
+            3 => {
+                let candidate_variables: Vec<String> = self.scopes.iter()
+                    .flat_map(|scope| scope.vars.get(&TypeTok::Float).into_iter().flatten())
+                    .cloned()
+                    .collect(); 
+                if candidate_variables.len() == 0 {
+                    return self.gen_float_expr(depth);
+                }
+                let v = candidate_variables[self.rng.random_range(0..candidate_variables.len())].clone();
+
+                Ast::VarRef(Box::new(v), Span::null_span())
+            }
+            4 => {
+                //nested structs are currently not handled, that should be done in the future
+                let candidate_variables: Vec<(String, String)> = self.scopes.iter()
+                    .flat_map(|scope| scope.struct_literals.iter())
+                    .filter_map(|(ty, names)| {
+                        if let TypeTok::Struct(struct_ty) = ty {
+                            Some((struct_ty, names))
+                        } else {
+                            None
+                        }
+                    })
+                    .flat_map(|(struct_ty, names)| {
+                        names.iter().flat_map(move |var_name| {
+                            struct_ty.iter()
+                                .filter(|(_, t)| ***t == TypeTok::Float)
+                                .map(move |(field_name, _)| {
+                                    (var_name.clone(), field_name.clone())
+                                })
+                        })
+                    })
+                    .collect();
+                if candidate_variables.len() == 0 {
+                    return self.gen_float_expr(depth);
+                }
+                let (v, m) = candidate_variables[self.rng.random_range(0..candidate_variables.len())].clone();
+                Ast::MemberAccess(Box::new(Ast::VarRef(Box::new(v), Span::null_span())), m, Span::null_span())
+            }
+            //arrays are hard because you have to make sure the access is in bound
+            //functions are todo
+            _ => unreachable!()
+        };
+        return val
+    }
+    fn gen_expr(&mut self) -> (Ast, TypeTok) {
         let ty = self._random_type();
         return match ty {
-            TypeTok::Int => self.gen_int_expr(0),
+            TypeTok::Int => (self.gen_int_expr(0), TypeTok::Int),
+            TypeTok::Float => (self.gen_float_expr(0), TypeTok::Float),
+            TypeTok::Bool => (self.gen_bool_expr(0), TypeTok::Bool),
             _ => todo!("{:?} is unreachable", ty)
         };
     }
     fn gen_var_dec(&mut self) -> Ast {
-
-        return ();
+        let name = Alphabetic.sample_string(&mut self.rng, 10);
+        let (v, t) = self.gen_expr();
+        self.scopes.last_mut().unwrap().vars.entry(t.clone()).or_insert_with(Vec::new).push(name.clone());
+        return Ast::VarDec(Box::new(name), t.clone(), Box::new(v), Span::null_span());
     }
     pub fn generate(&mut self) -> Vec<Ast> {
         self.scopes.push(Scope {
             vars: HashMap::new(),
             struct_literals: HashMap::new()
         });
+        for _ in 0..self.prgm_length {
+            //for now only var dec
+            let v = self.gen_stmt(0);
+            self.program.push(v);
+        }
         return self.program.clone();
     }
 }

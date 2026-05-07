@@ -1,10 +1,11 @@
-use std::fmt::{self};
+use std::fmt::{self, Debug};
 
 use crate::{errors::Span, token::{QualifiedExternType, TypeTok}};
 use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+use std::env;
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub enum Ast {
     IntLit(i64, Span),
     BoolLit(bool, Span),
@@ -132,7 +133,7 @@ impl Ast {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub enum InfixOp {
     Plus,
     Minus,
@@ -240,3 +241,321 @@ impl fmt::Display for InfixOp {
         )
     }
 }
+
+impl Debug for InfixOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            InfixOp::Plus => "Plus",
+            InfixOp::Minus => "Minus",
+            InfixOp::Multiply => "Multiply",
+            InfixOp::Divide => "Divide",
+            InfixOp::LessThan => "LessThan",
+            InfixOp::LessThanEqt => "LessThanEqt",
+            InfixOp::GreaterThan => "GreaterThan",
+            InfixOp::GreaterThanEqt => "GreaterThanEqt",
+            InfixOp::NotEquals => "NotEquals",
+            InfixOp::Equals => "Equals",
+            InfixOp::Modulo => "Modulo",
+            InfixOp::And => "And",
+            InfixOp::Or => "Or",
+        };
+        f.write_str(s)
+    }
+}
+
+impl Debug for Ast {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let skip_spans = env::var("TOY_PP")
+            .map(|v| v.to_uppercase() == "TRUE")
+            .unwrap_or(false);
+
+        if skip_spans {
+            self.fmt_no_spans(f)
+        } else {
+            self.fmt_with_spans(f)
+        }
+    }
+}
+
+impl Ast {
+    fn fmt_no_spans(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Ast::IntLit(i, _) => {
+                f.debug_tuple("IntLit").field(i).finish()
+            }
+            Ast::BoolLit(b, _) => {
+                f.debug_tuple("BoolLit").field(b).finish()
+            }
+            Ast::InfixExpr(lhs, rhs, op, _) => {
+                f.debug_tuple("InfixExpr")
+                    .field(lhs)
+                    .field(rhs)
+                    .field(op)
+                    .finish()
+            }
+            Ast::EmptyExpr(expr, _) => {
+                f.debug_tuple("EmptyExpr").field(expr).finish()
+            }
+            Ast::VarDec(name, ty, value, _) => {
+                f.debug_tuple("VarDec")
+                    .field(name)
+                    .field(ty)
+                    .field(value)
+                    .finish()
+            }
+            Ast::VarRef(name, _) => {
+                f.debug_tuple("VarRef").field(name).finish()
+            }
+            Ast::IfStmt(cond, body, alt, _) => {
+                f.debug_tuple("IfStmt")
+                    .field(cond)
+                    .field(body)
+                    .field(alt)
+                    .finish()
+            }
+            Ast::FuncParam(name, ty, _) => {
+                f.debug_tuple("FuncParam").field(name).field(ty).finish()
+            }
+            Ast::FuncDec(name, params, return_type, body, _) => {
+                f.debug_tuple("FuncDec")
+                    .field(name)
+                    .field(params)
+                    .field(return_type)
+                    .field(body)
+                    .finish()
+            }
+            Ast::ExternFuncDec(name, params, return_type, _) => {
+                f.debug_tuple("ExternFuncDec")
+                    .field(name)
+                    .field(params)
+                    .field(return_type)
+                    .finish()
+            }
+            Ast::FuncCall(name, params, _) => {
+                f.debug_tuple("FuncCall")
+                    .field(name)
+                    .field(params)
+                    .finish()
+            }
+            Ast::Return(val, _) => {
+                f.debug_tuple("Return").field(val).finish()
+            }
+            Ast::StringLit(s, _) => {
+                f.debug_tuple("StringLit").field(s).finish()
+            }
+            Ast::WhileStmt(cond, body, _) => {
+                f.debug_tuple("WhileStmt")
+                    .field(cond)
+                    .field(body)
+                    .finish()
+            }
+            Ast::Break(_) => {
+                f.debug_struct("Break").finish()
+            }
+            Ast::Continue(_) => {
+                f.debug_struct("Continue").finish()
+            }
+            Ast::FloatLit(fl, _) => {
+                f.debug_tuple("FloatLit").field(fl).finish()
+            }
+            Ast::ArrLit(ty, elements, _) => {
+                f.debug_tuple("ArrLit")
+                    .field(ty)
+                    .field(elements)
+                    .finish()
+            }
+            Ast::StructInterface(name, fields, _) => {
+                f.debug_tuple("StructInterface")
+                    .field(name)
+                    .field(fields)
+                    .finish()
+            }
+            Ast::StructLit(name, fields, _) => {
+                f.debug_tuple("StructLit")
+                    .field(name)
+                    .field(fields)
+                    .finish()
+            }
+            Ast::IndexAccess(target, index, _) => {
+                f.debug_tuple("IndexAccess")
+                    .field(target)
+                    .field(index)
+                    .finish()
+            }
+            Ast::MemberAccess(target, member, _) => {
+                f.debug_tuple("MemberAccess")
+                    .field(target)
+                    .field(member)
+                    .finish()
+            }
+            Ast::Assignment(lhs, rhs, _) => {
+                f.debug_tuple("Assignment")
+                    .field(lhs)
+                    .field(rhs)
+                    .finish()
+            }
+            Ast::Not(expr, _) => {
+                f.debug_tuple("Not").field(expr).finish()
+            }
+            Ast::ImportStmt(path, _) => {
+                f.debug_tuple("ImportStmt").field(path).finish()
+            }
+            Ast::ExternFuncParam(name, ty, _) => {
+                f.debug_tuple("ExternFuncParam")
+                    .field(name)
+                    .field(ty)
+                    .finish()
+            }
+        }
+    }
+
+    fn fmt_with_spans(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Ast::IntLit(i, s) => {
+                f.debug_tuple("IntLit").field(i).field(s).finish()
+            }
+            Ast::BoolLit(b, s) => {
+                f.debug_tuple("BoolLit").field(b).field(s).finish()
+            }
+            Ast::InfixExpr(lhs, rhs, op, s) => {
+                f.debug_tuple("InfixExpr")
+                    .field(lhs)
+                    .field(rhs)
+                    .field(op)
+                    .field(s)
+                    .finish()
+            }
+            Ast::EmptyExpr(expr, s) => {
+                f.debug_tuple("EmptyExpr").field(expr).field(s).finish()
+            }
+            Ast::VarDec(name, ty, value, s) => {
+                f.debug_tuple("VarDec")
+                    .field(name)
+                    .field(ty)
+                    .field(value)
+                    .field(s)
+                    .finish()
+            }
+            Ast::VarRef(name, s) => {
+                f.debug_tuple("VarRef").field(name).field(s).finish()
+            }
+            Ast::IfStmt(cond, body, alt, s) => {
+                f.debug_tuple("IfStmt")
+                    .field(cond)
+                    .field(body)
+                    .field(alt)
+                    .field(s)
+                    .finish()
+            }
+            Ast::FuncParam(name, ty, s) => {
+                f.debug_tuple("FuncParam")
+                    .field(name)
+                    .field(ty)
+                    .field(s)
+                    .finish()
+            }
+            Ast::FuncDec(name, params, return_type, body, s) => {
+                f.debug_tuple("FuncDec")
+                    .field(name)
+                    .field(params)
+                    .field(return_type)
+                    .field(body)
+                    .field(s)
+                    .finish()
+            }
+            Ast::ExternFuncDec(name, params, return_type, s) => {
+                f.debug_tuple("ExternFuncDec")
+                    .field(name)
+                    .field(params)
+                    .field(return_type)
+                    .field(s)
+                    .finish()
+            }
+            Ast::FuncCall(name, params, s) => {
+                f.debug_tuple("FuncCall")
+                    .field(name)
+                    .field(params)
+                    .field(s)
+                    .finish()
+            }
+            Ast::Return(val, s) => {
+                f.debug_tuple("Return").field(val).field(s).finish()
+            }
+            Ast::StringLit(st, s) => {
+                f.debug_tuple("StringLit").field(st).field(s).finish()
+            }
+            Ast::WhileStmt(cond, body, s) => {
+                f.debug_tuple("WhileStmt")
+                    .field(cond)
+                    .field(body)
+                    .field(s)
+                    .finish()
+            }
+            Ast::Break(s) => {
+                f.debug_struct("Break").field("span", s).finish()
+            }
+            Ast::Continue(s) => {
+                f.debug_struct("Continue").field("span", s).finish()
+            }
+            Ast::FloatLit(fl, s) => {
+                f.debug_tuple("FloatLit").field(fl).field(s).finish()
+            }
+            Ast::ArrLit(ty, elements, s) => {
+                f.debug_tuple("ArrLit")
+                    .field(ty)
+                    .field(elements)
+                    .field(s)
+                    .finish()
+            }
+            Ast::StructInterface(name, fields, s) => {
+                f.debug_tuple("StructInterface")
+                    .field(name)
+                    .field(fields)
+                    .field(s)
+                    .finish()
+            }
+            Ast::StructLit(name, fields, s) => {
+                f.debug_tuple("StructLit")
+                    .field(name)
+                    .field(fields)
+                    .field(s)
+                    .finish()
+            }
+            Ast::IndexAccess(target, index, s) => {
+                f.debug_tuple("IndexAccess")
+                    .field(target)
+                    .field(index)
+                    .field(s)
+                    .finish()
+            }
+            Ast::MemberAccess(target, member, s) => {
+                f.debug_tuple("MemberAccess")
+                    .field(target)
+                    .field(member)
+                    .field(s)
+                    .finish()
+            }
+            Ast::Assignment(lhs, rhs, s) => {
+                f.debug_tuple("Assignment")
+                    .field(lhs)
+                    .field(rhs)
+                    .field(s)
+                    .finish()
+            }
+            Ast::Not(expr, s) => {
+                f.debug_tuple("Not").field(expr).field(s).finish()
+            }
+            Ast::ImportStmt(path, s) => {
+                f.debug_tuple("ImportStmt").field(path).field(s).finish()
+            }
+            Ast::ExternFuncParam(name, ty, s) => {
+                f.debug_tuple("ExternFuncParam")
+                    .field(name)
+                    .field(ty)
+                    .field(s)
+                    .finish()
+            }
+        }
+    }
+}
+
