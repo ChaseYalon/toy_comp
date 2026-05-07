@@ -23,7 +23,6 @@ pub use crate::token::TypeTok;
 pub use crate::errors::Span;
 pub use crate::fuzzer::TestRunner;
 use ordered_float::OrderedFloat;
-use chrono::Local;
 fn run_repl() {
     loop {
         print!("> ");

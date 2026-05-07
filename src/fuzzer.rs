@@ -23,7 +23,9 @@ pub struct TestRunner {
     program: Vec<Ast>,
     type_tok_range: RangeInclusive<usize>,
     ///struct interfaces
-    interfaces: Vec<Ast>
+    interfaces: Vec<Ast>,
+    ///(ret type, param types, function name)
+    functions: Vec<(TypeTok, Vec<TypeTok>, String)>
 }
 
 impl TestRunner {
@@ -41,7 +43,8 @@ impl TestRunner {
             rng_seed: seed,
             type_tok_range: 0..=2,
             prgm_length: 10,
-            interfaces: vec![]
+            interfaces: vec![],
+            functions: vec![]
         };
     }
     fn _random_type(&mut self) -> TypeTok {
@@ -87,7 +90,7 @@ impl TestRunner {
         if depth > self.max_expr_depth {
             return Ast::BoolLit(self.rng.random_bool(0.5), Span::null_span());
         }
-        let val = match self.rng.random_range(0..=6) {//for right now it does not do function calls
+        let val = match self.rng.random_range(0..=7) {//for right now it does not do function calls
             0 => Ast::BoolLit(self.rng.random_bool(0.5), Span::null_span()),
             1 => Ast::InfixExpr(Box::new(self.gen_bool_expr(depth + 1)), Box::new(self.gen_bool_expr(depth + 1)), self._rand_bool_infix_op(), Span::null_span()),
             2 => Ast::InfixExpr(Box::new(self.gen_num_expr(depth + 1)), Box::new(self.gen_num_expr(depth + 1)), self._rand_comp_infix_op(), Span::null_span()),
@@ -131,6 +134,28 @@ impl TestRunner {
                 }
                 let (v, m) = candidate_variables[self.rng.random_range(0..candidate_variables.len())].clone();
                 Ast::MemberAccess(Box::new(Ast::VarRef(Box::new(v), Span::null_span())), m, Span::null_span())
+            }
+            7 => {
+                let screw_rust = self.functions.clone();
+                let candidate_variables: Vec<&(TypeTok, Vec<TypeTok>, String)> = screw_rust.iter().filter(|(r, _, _)| {
+                    *r == TypeTok::Bool
+                }).collect();
+                if candidate_variables.len() == 0{
+                    return self.gen_bool_expr(depth);
+                }
+
+                let (_, params, name) = candidate_variables[self.rng.random_range(0..candidate_variables.len())];
+                let mut ast_params: Vec<Ast> = vec![];
+                for p in params {
+                    let v = match *p {
+                        TypeTok::Int => self.gen_int_expr(depth + 1),
+                        TypeTok::Float => self.gen_float_expr(depth + 1),
+                        TypeTok::Bool => self.gen_bool_expr(depth + 1),
+                        _ => todo!("[ERROR] {:?} is unsupported for parameters", *p)
+                    };
+                    ast_params.push(v);
+                }
+                Ast::FuncCall(Box::new(name.clone()), ast_params, Span::null_span())
             }
             //arrays are hard because you have to make sure the access is in bound
             //functions are todo
@@ -230,18 +255,47 @@ impl TestRunner {
         self.scopes.pop();
         return Ast::WhileStmt(Box::new(expr), stmts, Span::null_span());
     }
-    fn gen_functions(&mut self) -> Ast {
+    fn gen_function(&mut self) -> Ast {
         let param_count = self.rng.random_range(0..=4);
         let ret_type = self._random_type();
-        let body: Vec<Ast> = vec![];
         self.scopes.push(Scope{vars: HashMap::new()});
-
-
-        ()
+        let mut param_names: Vec<String> = vec![];
+        for _ in 0..param_count {
+            param_names.push(Alphabetic.sample_string(&mut self.rng, 10));
+        }
+        let mut param_types: Vec<TypeTok> = vec![];
+        for _ in 0..param_count {
+            param_types.push(self._random_type());
+        }
+        let mut params: Vec<Ast> = vec![];
+        for i in 0..param_count {
+            params.push(Ast::FuncParam(Box::new(param_names[i].clone()), param_types[i].clone(), Span::null_span()));
+        }
+        let mut body: Vec<Ast> = vec![];
+        self.scopes.push(Scope {
+            vars: HashMap::new()
+        });
+        for i in 0..param_count {
+            self.scopes.last_mut().unwrap().vars.entry(param_types[i].clone()).or_insert_with(Vec::new).push(param_names[i].clone());
+        }
+        for _ in 0..self.rng.random_range(0..=10) {
+            body.push(self.gen_stmt(1));
+        }
+        let ret = match ret_type {
+            TypeTok::Int => self.gen_int_expr(0),
+            TypeTok::Bool => self.gen_bool_expr(0),
+            TypeTok::Float => self.gen_float_expr(0),
+            _ => todo!("{:?} is an invalid return type", ret_type)
+        };
+        body.push(ret);
+        let function_name = Alphabetic.sample_string(&mut self.rng, 10);
+        self.functions.push((ret_type.clone(), param_types.clone(), function_name.clone()));
+        return Ast::FuncDec(Box::new(function_name), params, ret_type, body, Span::null_span());
     }
     fn gen_stmt(&mut self, stmt_depth: usize) -> Ast {
         if stmt_depth == 0 {
-            //generate functions here
+            let f = self.gen_function();
+            self.program.push(f);
         }
         if stmt_depth > self.max_stmt_depth {
             return self.gen_var_dec(); //this is a bodge
@@ -258,7 +312,7 @@ impl TestRunner {
         if depth > self.max_expr_depth {
             return Ast::IntLit(self.rng.random_range(i64::MIN..i64::MAX), Span::null_span());
         }
-        let val = match self.rng.random_range(0..=4) {//for right now it does not do function calls
+        let val = match self.rng.random_range(0..=5) {//for right now it does not do function calls
             0 => Ast::IntLit(self.rng.random_range(i64::MIN..i64::MAX), Span::null_span()),
             1 => Ast::InfixExpr(Box::new(self.gen_int_expr(depth + 1)), Box::new(self.gen_int_expr(depth + 1)), self._rand_int_infix_op(), Span::null_span()),
             2 => Ast::EmptyExpr(Box::new(self.gen_int_expr(depth + 1)), Span::null_span()),
@@ -303,9 +357,32 @@ impl TestRunner {
                 let (v, m) = candidate_variables[self.rng.random_range(0..candidate_variables.len())].clone();
                 Ast::MemberAccess(Box::new(Ast::VarRef(Box::new(v), Span::null_span())), m, Span::null_span())
             }
+            5 => {
+                let screw_rust = self.functions.clone();
+                let candidate_variables: Vec<&(TypeTok, Vec<TypeTok>, String)> = screw_rust.iter().filter(|(r, _, _)| {
+                    *r == TypeTok::Bool
+                }).collect();
+                if candidate_variables.len() == 0{
+                    return self.gen_bool_expr(depth);
+                }
+
+                let (_, params, name) = candidate_variables[self.rng.random_range(0..candidate_variables.len())];
+                let mut ast_params: Vec<Ast> = vec![];
+                for p in params {
+                    let v = match *p {
+                        TypeTok::Int => self.gen_int_expr(depth + 1),
+                        TypeTok::Float => self.gen_float_expr(depth + 1),
+                        TypeTok::Bool => self.gen_bool_expr(depth + 1),
+                        _ => todo!("[ERROR] {:?} is unsupported for parameters", *p)
+                    };
+                    ast_params.push(v);
+                }
+                Ast::FuncCall(Box::new(name.clone()), ast_params, Span::null_span())
+            }
             //arrays are hard because you have to make sure the access is in bound
             //functions are todo
             _ => unreachable!()
+
         };
         return val
     }
@@ -321,7 +398,7 @@ impl TestRunner {
         if depth > self.max_expr_depth {
             return Ast::FloatLit(OrderedFloat(self.rng.random_range(-1_000_000.0..1_000_000.0)), Span::null_span());
         }
-        let val = match self.rng.random_range(0..=4) {//for right now it does not do function calls
+        let val = match self.rng.random_range(0..=5) {//for right now it does not do function calls
             0 => Ast::FloatLit(OrderedFloat(self.rng.random_range(-1_000_000.0..1_000_000.0)), Span::null_span()),
             1 => Ast::InfixExpr(Box::new(self.gen_float_expr(depth + 1)), Box::new(self.gen_float_expr(depth + 1)), self._rand_int_infix_op(), Span::null_span()),
             2 => Ast::EmptyExpr(Box::new(self.gen_float_expr(depth + 1)), Span::null_span()),
@@ -363,6 +440,29 @@ impl TestRunner {
                 }
                 let (v, m) = candidate_variables[self.rng.random_range(0..candidate_variables.len())].clone();
                 Ast::MemberAccess(Box::new(Ast::VarRef(Box::new(v), Span::null_span())), m, Span::null_span())
+            }
+            5 => {
+                let screw_rust = self.functions.clone();
+                let candidate_variables: Vec<&(TypeTok, Vec<TypeTok>, String)> = screw_rust.iter().filter(|(r, _, _)| {
+                    *r == TypeTok::Bool
+                }).collect();
+                if candidate_variables.len() == 0{
+                    return self.gen_bool_expr(depth);
+                }
+
+                let (_, params, name) = candidate_variables[self.rng.random_range(0..candidate_variables.len())];
+                let mut ast_params: Vec<Ast> = vec![];
+                for p in params {
+                    let v = match *p {
+                        TypeTok::Int => self.gen_int_expr(depth + 1),
+                        TypeTok::Float => self.gen_float_expr(depth + 1),
+                        TypeTok::Bool => self.gen_bool_expr(depth + 1),
+                        _ => todo!("[ERROR] {:?} is unsupported for parameters", *p)
+                    };
+                    ast_params.push(v);
+                }
+                Ast::FuncCall(Box::new(name.clone()), ast_params, Span::null_span())
+
             }
             //arrays are hard because you have to make sure the access is in bound
             //functions are todo
