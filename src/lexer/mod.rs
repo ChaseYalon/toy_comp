@@ -1,7 +1,7 @@
 use crate::debug;
 use crate::driver::Driver;
 use crate::errors::{Span, ToyError, ToyErrorType};
-use crate::token::{SpannedToken, Token, TypeTok, ExternType, QualifiedExternType};
+use crate::token::{ExternType, QualifiedExternType, SpannedToken, Token, TypeTok};
 use ordered_float::OrderedFloat;
 
 #[derive(Debug)]
@@ -148,7 +148,7 @@ impl Lexer {
         self.cursor = scan;
         return Ok(true);
     }
-    
+
     fn lex_extern_type(&mut self) -> Result<bool, ToyError> {
         let start_cursor = self.cursor;
 
@@ -192,9 +192,12 @@ impl Lexer {
                 }
             }
         }
-        
+
         self.cursor = scan;
-        self.push_tok(Token::ExternType(QualifiedExternType { ty, is_released }), final_start_cursor);
+        self.push_tok(
+            Token::ExternType(QualifiedExternType { ty, is_released }),
+            final_start_cursor,
+        );
         return Ok(true);
     }
 

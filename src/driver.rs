@@ -1,3 +1,4 @@
+use std::path;
 use std::{
     cell::RefCell,
     collections::{BTreeMap, HashMap, HashSet},
@@ -5,7 +6,6 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
 };
-use std::path;
 //this macro sucks
 thread_local! {
     static CURRENT_FILE_PATH: RefCell<Option<String>> = const { RefCell::new(None) };
@@ -306,6 +306,9 @@ impl Driver {
     pub fn set_build_dir(new_dir: String) {
         BUILD_DIR.with(|b| *b.borrow_mut() = new_dir);
     }
+    pub fn gen_lambda_name(module_prefix: Option<&str>, params: &[TypeTok], counter: u64) -> String {
+        return Driver::mangle_name(module_prefix, &format!("__lambda_{}", counter), params);
+    }
     pub fn mangle_name(module_prefix: Option<&str>, name: &str, params: &[TypeTok]) -> String {
         let prefixed_name = if let Some(prefix) = module_prefix {
             if prefix.is_empty() {
@@ -361,8 +364,8 @@ impl Driver {
         let segments: Vec<&str> = path.split(".").collect();
         return segments.join("/") + ".toy";
     }
-    pub fn extern_type_to_type_tok(ety: ExternType) -> TypeTok{
-        return match ety{
+    pub fn extern_type_to_type_tok(ety: ExternType) -> TypeTok {
+        return match ety {
             ExternType::c_int64_t(0) => TypeTok::Int,
             ExternType::c_double(0) => TypeTok::Float,
             ExternType::c_char(0) => TypeTok::Any,
@@ -373,7 +376,7 @@ impl Driver {
             ExternType::c_double(n) => TypeTok::FloatArr(n),
             ExternType::c_char(n) => TypeTok::StrArr(n - 1),
             ExternType::c_void(n) => TypeTok::AnyArr(n - 1),
-        }
+        };
     }
 
     fn feed_to_ast_gen(&mut self, ast_gen: &mut AstGenerator) {
@@ -449,22 +452,7 @@ impl Driver {
         }
         return Ok(());
     }
-    ///Finds and parses all dependencies from a list of TBoxes
-    ///Returns a list of paths to import
-    fn find_and_parse_dependencies(&mut self, boxes: Vec<TBox>) -> Result<(), ToyError> {
-        let mut import_list: Vec<(String, Span)> = vec![];
-        for t_box in boxes {
-            match t_box {
-                TBox::ImportStmt(import_name, import_span) => {
-                    let path = self.name_to_path(import_name.clone());
-                    import_list.push((path.clone(), import_span));
-                    self.table
-                        .alias_to_path
-                        .insert(path, import_name.split(".").last().unwrap().to_string());
-                }
-                _ => continue,
-            }
-        }
+    fn parse_import_list(&mut self, import_list: Vec<(String, Span)>) -> Result<(), ToyError> {
         //load lex and box each import
         for (import, import_span) in import_list {
             if self.parsed_modules.contains(&import) {
@@ -476,10 +464,7 @@ impl Driver {
             let contents = match fs::read_to_string(import.clone()) {
                 Ok(c) => c,
                 Err(_) => {
-                    return Err(ToyError::new(
-                        ToyErrorType::MissingFile,
-                        import_span,
-                    ));
+                    return Err(ToyError::new(ToyErrorType::MissingFile, import_span));
                 }
             };
 
@@ -530,7 +515,8 @@ impl Driver {
                         let mut param_types = Vec::new();
                         for p in params {
                             if let TBox::ExternFuncParam(_, qualified_type, _) = p {
-                                param_types.push(Driver::extern_type_to_type_tok(qualified_type.ty));
+                                param_types
+                                    .push(Driver::extern_type_to_type_tok(qualified_type.ty));
                             }
                         }
                         let ty = ModuleExportType::Function(param_types, return_type.clone());
@@ -566,6 +552,124 @@ impl Driver {
         }
 
         return Ok(());
+    }
+    ///Finds and parses all dependencies from a list of TBoxes
+    ///Returns a list of paths to import
+    fn find_and_parse_dependencies(&mut self, boxes: Vec<TBox>) -> Result<(), ToyError> {
+        let mut import_list: Vec<(String, Span)> = vec![];
+        for t_box in boxes {
+            match t_box {
+                TBox::ImportStmt(import_name, import_span) => {
+                    let path = self.name_to_path(import_name.clone());
+                    import_list.push((path.clone(), import_span));
+                    self.table
+                        .alias_to_path
+                        .insert(path, import_name.split(".").last().unwrap().to_string());
+                }
+                _ => continue,
+            }
+        }
+
+        self.parse_import_list(import_list)
+    }
+    #[allow(unused)]
+    fn collect_imports_from_ast(&mut self, nodes: &[Ast]) -> Vec<(String, Span)> {
+        let mut imports = Vec::new();
+        for node in nodes {
+            self.collect_imports_from_ast_node(node, &mut imports);
+        }
+        imports
+    }
+
+    #[allow(unused)]
+    fn collect_imports_from_ast_node(&mut self, node: &Ast, imports: &mut Vec<(String, Span)>) {
+        match node {
+            Ast::ImportStmt(import_name, import_span) => {
+                let path = self.name_to_path(import_name.clone());
+                imports.push((path.clone(), import_span.clone()));
+                if let Some(alias) = import_name.split('.').last() {
+                    self.table.alias_to_path.insert(path, alias.to_string());
+                }
+            }
+            Ast::InfixExpr(lhs, rhs, _, _) => {
+                self.collect_imports_from_ast_node(lhs, imports);
+                self.collect_imports_from_ast_node(rhs, imports);
+            }
+            Ast::EmptyExpr(child, _)
+            | Ast::Return(child, _)
+            | Ast::Not(child, _)
+            | Ast::MemberAccess(child, _, _) => {
+                self.collect_imports_from_ast_node(child, imports);
+            }
+            Ast::VarDec(_, _, value, _) => {
+                self.collect_imports_from_ast_node(value, imports);
+            }
+            Ast::IndexAccess(target, index, _) => {
+                self.collect_imports_from_ast_node(target, imports);
+                self.collect_imports_from_ast_node(index, imports);
+            }
+            Ast::Assignment(lhs, rhs, _) => {
+                self.collect_imports_from_ast_node(lhs, imports);
+                self.collect_imports_from_ast_node(rhs, imports);
+            }
+            Ast::IfStmt(cond, body, alt, _) => {
+                self.collect_imports_from_ast_node(cond, imports);
+                for stmt in body {
+                    self.collect_imports_from_ast_node(stmt, imports);
+                }
+                if let Some(alt_body) = alt {
+                    for stmt in alt_body {
+                        self.collect_imports_from_ast_node(stmt, imports);
+                    }
+                }
+            }
+            Ast::FuncDec(_, params, _, body, _)
+            | Ast::LambdaDec(params, _, body, _) => {
+                for param in params {
+                    self.collect_imports_from_ast_node(param, imports);
+                }
+                for stmt in body {
+                    self.collect_imports_from_ast_node(stmt, imports);
+                }
+            }
+            Ast::ExternFuncDec(_, params, _, _) => {
+                for param in params {
+                    self.collect_imports_from_ast_node(param, imports);
+                }
+            }
+            Ast::FuncCall(_, params, _) | Ast::ArrLit(_, params, _) => {
+                for param in params {
+                    self.collect_imports_from_ast_node(param, imports);
+                }
+            }
+            Ast::AnonFuncCall(callable, params, _) => {
+                self.collect_imports_from_ast_node(callable, imports);
+                for param in params {
+                    self.collect_imports_from_ast_node(param, imports);
+                }
+            }
+            Ast::WhileStmt(cond, body, _) => {
+                self.collect_imports_from_ast_node(cond, imports);
+                for stmt in body {
+                    self.collect_imports_from_ast_node(stmt, imports);
+                }
+            }
+            Ast::StructLit(_, fields, _) => {
+                for (_, (value, _)) in fields.iter() {
+                    self.collect_imports_from_ast_node(value, imports);
+                }
+            }
+            Ast::VarRef(_, _)
+            | Ast::BoolLit(_, _)
+            | Ast::IntLit(_, _)
+            | Ast::FloatLit(_, _)
+            | Ast::StringLit(_, _)
+            | Ast::FuncParam(_, _, _)
+            | Ast::ExternFuncParam(_, _, _)
+            | Ast::StructInterface(_, _, _)
+            | Ast::Break(_)
+            | Ast::Continue(_) => {}
+        }
     }
     ///Starts the main program compilation process
     ///Will automatically compile and build the program
@@ -685,6 +789,118 @@ impl Driver {
 
         Driver::set_current_file_path(&self.main_program_path.to_string_lossy());
         generator.compile_to_object(main_ast, self.name.clone(), true)?;
+        object_files.push(format!("{}.o", self.name));
+
+        //Link
+        let args = env::args().collect::<Vec<String>>();
+        let save_temps = args.contains(&"--save-temps".to_string());
+        let mut linker = Linker::new();
+        linker.link(object_files, self.name.clone(), save_temps)?;
+
+        Ok(())
+    }
+    #[allow(unused)]
+    pub fn start_with_ast(&mut self, ctx: &Context, main_ast: Vec<Ast>) -> Result<(), ToyError> {
+        let args: Vec<String> = env::args().collect();
+        let idx = args.iter().position(|r| r == "--build");
+        if idx.is_some() {
+            Driver::set_build_dir(args[idx.unwrap() + 1].clone());
+        }
+
+        let main_path = self.main_program_path.to_string_lossy().to_string();
+        Driver::set_current_file_path(&main_path);
+        if !self.file_path_to_text.contains_key(&main_path)
+            && self.main_program_path.exists()
+        {
+            if let Ok(text) = fs::read_to_string(&self.main_program_path) {
+                self.file_path_to_text.insert(main_path.clone(), text);
+            }
+        }
+
+        let import_list = self.collect_imports_from_ast(&main_ast);
+        self.parse_import_list(import_list)?;
+
+        let mut object_files = Vec::new();
+        println!("Imports collected");
+
+        //Compile Dependencies
+        for (path, ast) in &self.file_path_to_ast {
+            println!("Compiling dependency: {}", path);
+            let module_name = path.replace(".toy", "");
+
+            Driver::set_current_file_path(path);
+            let llvm_module = ctx.create_module(&module_name);
+            let mut generator = Generator::new(ctx, llvm_module);
+            if let Some(text) = self.file_path_to_text.get(path) {
+                generator.set_original_text(text.clone());
+            }
+
+            let mut external_modules = HashMap::new();
+            for (p, schema) in &self.file_path_to_ctla {
+                let p_str: &String = p;
+                if p_str != path {
+                    let m_name = p_str
+                        .replace("/", ".")
+                        .replace(".toy", "")
+                        .trim_start_matches('.')
+                        .to_string();
+                    external_modules.insert(m_name, schema.summaries.clone());
+                }
+            }
+            generator.set_external_modules(external_modules);
+
+            generator.compile_to_object(ast.clone(), module_name.clone(), false)?;
+            object_files.push(format!("{}.o", module_name));
+        }
+
+        let main_module = ctx.create_module("program");
+        let mut generator = Generator::new(ctx, main_module);
+        if let Some(text) = self.file_path_to_text.get(&main_path) {
+            generator.set_original_text(text.clone());
+        }
+
+        let mut external_modules = HashMap::new();
+        for (p, schema) in &self.file_path_to_ctla {
+            let p_str: &String = p;
+            let m_name = p_str
+                .replace("/", ".")
+                .replace(".toy", "")
+                .trim_start_matches('.')
+                .to_string();
+            external_modules.insert(m_name, schema.summaries.clone());
+        }
+        generator.set_external_modules(external_modules);
+
+        let module_name = self
+            .main_program_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("program")
+            .to_string();
+        Driver::set_current_file_path(&(module_name.clone() + ".toy"));
+
+        //Register imported functions so TIR knows about them
+        for (path, exports) in &self.table.path_to_exports {
+            let module_name = path
+                .replace("/", ".")
+                .replace(".toy", "")
+                .trim_start_matches('.')
+                .to_string();
+            let prefix = module_name.replace(".", "::");
+            for export in exports {
+                if let ModuleExportType::Function(_, ret) = &export.ty {
+                    // export.name is already mangled by Boxer (e.g., "abs_int")
+                    // Only add module prefix, don't re-add params
+                    let full_mangled = Driver::mangle_name(Some(&prefix), &export.name, &[]);
+                    generator.register_imported_func(full_mangled, ret.clone());
+                }
+            }
+        }
+
+        Driver::set_current_file_path(&main_path);
+        println!("Compiling main module...");
+        generator.compile_to_object(main_ast, self.name.clone(), true)?;
+        println!("Linked...");
         object_files.push(format!("{}.o", self.name));
 
         //Link

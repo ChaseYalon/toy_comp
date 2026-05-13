@@ -24,3 +24,9 @@ cc = "1.2.59"
 
 [features]
 debug = []
+
+[profile.release]
+split-debuginfo = "packed"
+debug = true
+debug-assertions = false
+strip = false

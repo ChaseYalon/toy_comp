@@ -3,6 +3,7 @@ use std::env;
 use std::io;
 use std::io::Write;
 use std::{collections::HashMap, os::raw::c_void, usize};
+use crate::ToyPtr;
 #[derive(Debug, Clone)]
 pub struct DebugHeap {
     ///ptr -> size
@@ -47,6 +48,24 @@ pub fn toy_free(buff: *mut c_void) {
         }
     }
     unsafe { libc::free(buff) };
+}
+#[unsafe(no_mangle)]
+pub fn toy_free_struct(ptr: ToyPtr) {
+    _check_pointer(ptr as *mut c_void);
+    let real_ptr = unsafe { (ptr as *mut u8).sub(8) as *mut c_void };
+    let val = env::var("TOY_DEBUG");
+    if let Ok(v) = val {
+        if v == "TRUE" {
+            let mut heap = DEBUG_HEAP.get().unwrap().lock().unwrap();
+            if let Some(&value) = heap.map.get(&(real_ptr as i64)) {
+                if value >= 0 {
+                    heap.total_live_allocations -= 1;
+                }
+            }
+            heap.map.insert(real_ptr as i64, -1);
+        }
+    }
+    unsafe { libc::free(real_ptr) };
 }
 #[unsafe(no_mangle)]
 pub fn _print_debug_heap() {

@@ -110,6 +110,87 @@ impl Boxer {
                     Ok((TypeTok::Struct(boxed_fields), 1))
                 }
             }
+            Token::LParen => {
+                // Lambda type: (type1, type2, ...): return_type [[][]...]
+                let mut depth = 1usize;
+                let mut close = None;
+                for (idx, t) in input[1..].iter().enumerate() {
+                    match &t.tok {
+                        Token::LParen => depth += 1,
+                        Token::RParen => {
+                            depth -= 1;
+                            if depth == 0 {
+                                close = Some(idx + 1);
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                let close = close.ok_or_else(|| {
+                    ToyError::new(ToyErrorType::MalformedType, cumulative_toks.clone())
+                })?;
+                // Parse param types inside the parens (depth-aware comma split)
+                let param_toks = &input[1..close];
+                let mut param_types: Vec<TypeTok> = Vec::new();
+                if !param_toks.is_empty() {
+                    let mut start = 0;
+                    let mut inner_depth = 0i32;
+                    for (idx, t) in param_toks.iter().enumerate() {
+                        match &t.tok {
+                            Token::LParen => inner_depth += 1,
+                            Token::RParen => inner_depth -= 1,
+                            Token::Comma if inner_depth == 0 => {
+                                let (ty, _) = self.parse_type(&param_toks[start..idx])?;
+                                param_types.push(ty);
+                                start = idx + 1;
+                            }
+                            _ => {}
+                        }
+                    }
+                    let (ty, _) = self.parse_type(&param_toks[start..])?;
+                    param_types.push(ty);
+                }
+                // After RParen expect Colon
+                if close + 1 >= input.len() || input[close + 1].tok != Token::Colon {
+                    return Err(ToyError::new(
+                        ToyErrorType::MalformedType,
+                        cumulative_toks.clone(),
+                    ));
+                }
+                let (ret_type, ret_consumed) = self.parse_type(&input[close + 2..])?;
+                // Check for array dimensions on the lambda type
+                let mut lam_consumed = close + 2 + ret_consumed;
+                let mut lam_dim = 0u64;
+                while lam_consumed + 1 < input.len()
+                    && input[lam_consumed].tok == Token::LBrack
+                    && input[lam_consumed + 1].tok == Token::RBrack
+                {
+                    lam_dim += 1;
+                    lam_consumed += 2;
+                }
+                let (ret_type, ret_dim) = match ret_type {
+                    TypeTok::IntArr(n) => (TypeTok::Int, n),
+                    TypeTok::BoolArr(n) => (TypeTok::Bool, n),
+                    TypeTok::StrArr(n) => (TypeTok::Str, n),
+                    TypeTok::FloatArr(n) => (TypeTok::Float, n),
+                    TypeTok::AnyArr(n) => (TypeTok::Any, n),
+                    TypeTok::StructArr(fields, n) => (TypeTok::Struct(fields), n),
+                    TypeTok::InterfaceArr(fields, methods, n) => {
+                        (TypeTok::Interface(fields, methods), n)
+                    }
+                    TypeTok::LambdaArr(params, ret, n) => (TypeTok::Lambda(params, ret), n),
+                    other => (other, 0),
+                };
+                lam_dim += ret_dim;
+                let total_consumed = lam_consumed;
+                let lambda_ty = if lam_dim == 0 {
+                    TypeTok::Lambda(param_types, Box::new(ret_type))
+                } else {
+                    TypeTok::LambdaArr(param_types, Box::new(ret_type), lam_dim)
+                };
+                Ok((lambda_ty, total_consumed))
+            }
             _ => Err(ToyError::new(
                 ToyErrorType::MalformedType,
                 cumulative_toks, //Some(format!("Expected type, found: {}", input[0])),
@@ -211,7 +292,7 @@ impl Boxer {
         return Ok(TBox::While(cond, boxed_body?, cumulative_span));
     }
 
-    fn box_group(&mut self, input: Vec<SpannedToken>) -> Result<Vec<TBox>, ToyError> {
+    pub fn box_group(&mut self, input: Vec<SpannedToken>) -> Result<Vec<TBox>, ToyError> {
         let cumulative_span = Boxer::total_span(input.clone());
         let mut boxes: Vec<TBox> = Vec::new();
         let mut curr: Vec<SpannedToken> = Vec::new();
@@ -452,13 +533,31 @@ impl Boxer {
             //no params
             return Ok(vec![]);
         }
-        //Split by comma
-        let triplets: Vec<&[SpannedToken]> =
-            input.as_slice().split(|t| t.tok == Token::Comma).collect();
+        // Depth-aware comma split so lambda param types like (int, int): int are not split
+        let mut groups: Vec<Vec<SpannedToken>> = Vec::new();
+        let mut current: Vec<SpannedToken> = Vec::new();
+        let mut depth = 0i32;
+        for t in &input {
+            match &t.tok {
+                Token::LParen => depth += 1,
+                Token::RParen => depth -= 1,
+                Token::Comma if depth == 0 => {
+                    groups.push(current);
+                    current = Vec::new();
+                    continue;
+                }
+                _ => {}
+            }
+            current.push(t.clone());
+        }
+        if !current.is_empty() {
+            groups.push(current);
+        }
         let mut func_params: Vec<TBox> = Vec::new();
-        for triple in triplets {
-            let (param_type, _) = self.parse_type(&triple[2..])?;
-            let param = TBox::FuncParam(triple[0].clone(), param_type, cumulative_span.clone());
+        for group in groups {
+            // group[0] = name, group[1] = Colon, group[2..] = type tokens
+            let (param_type, _) = self.parse_type(&group[2..])?;
+            let param = TBox::FuncParam(group[0].clone(), param_type, cumulative_span.clone());
             func_params.push(param);
         }
         return Ok(func_params);
@@ -534,12 +633,29 @@ impl Boxer {
 
         let mut unboxed_params: Vec<SpannedToken> = Vec::new();
         let mut return_type_begin: usize = 0;
+        let mut depth = 1i32;
         for i in 4..input.len() {
-            if input[i].tok.tok_type() == "RParen" {
-                return_type_begin = i;
-                break;
+            match input[i].tok.tok_type().as_str() {
+                "LParen" => {
+                    depth += 1;
+                    unboxed_params.push(input[i].clone());
+                }
+                "RParen" => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return_type_begin = i;
+                        break;
+                    }
+                    unboxed_params.push(input[i].clone());
+                }
+                _ => unboxed_params.push(input[i].clone()),
             }
-            unboxed_params.push(input[i].clone());
+        }
+        if depth != 0 {
+            return Err(ToyError::new(
+                ToyErrorType::UnclosedDelimiter,
+                cumulative_span.clone(),
+            ));
         }
         let boxed_params: Vec<TBox> = self.box_extern_params(unboxed_params)?;
 
@@ -596,12 +712,29 @@ impl Boxer {
         }
         let mut unboxed_params: Vec<SpannedToken> = Vec::new();
         let mut return_type_begin: usize = 0;
+        let mut depth = 1i32;
         for i in 3..input.len() {
-            if input[i].tok.tok_type() == "RParen" {
-                return_type_begin = i;
-                break;
+            match input[i].tok.tok_type().as_str() {
+                "LParen" => {
+                    depth += 1;
+                    unboxed_params.push(input[i].clone());
+                }
+                "RParen" => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return_type_begin = i;
+                        break;
+                    }
+                    unboxed_params.push(input[i].clone());
+                }
+                _ => unboxed_params.push(input[i].clone()),
             }
-            unboxed_params.push(input[i].clone());
+        }
+        if depth != 0 {
+            return Err(ToyError::new(
+                ToyErrorType::UnclosedDelimiter,
+                cumulative_span.clone(),
+            ));
         }
         let mut boxed_params: Vec<TBox> = self.box_params(unboxed_params)?;
 

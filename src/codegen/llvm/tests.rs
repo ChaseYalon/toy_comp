@@ -84,6 +84,17 @@ fn test_llvm_codegen_float_stuff() {
 }
 
 #[test]
+fn test_llvm_codegen_float_comparison() {
+    compile_code_aot!(
+        output,
+        "println(3.2 < 0.2); println(3.2 > 0.2); println(3.2 == 3.2); println(3.2 != 0.2); println(3.2 <= 3.2); println(3.2 >= 0.2);",
+        "float_comparison"
+    );
+    assert!(output.contains("false"));
+    assert!(output.contains("true"));
+}
+
+#[test]
 fn test_llvm_codegen_if_else() {
     compile_code_aot!(
         output,
@@ -329,8 +340,58 @@ fn test_llvm_string_conditional_assignment() {
 }
 
 #[test]
-fn test_llvm_fs(){
-    compile_code_aot!(output, r#"import std.fs; let d = fs.read_dir("."); println(d.to_str());"#, "fs_import");
-    assert!(!output.contains("error"));//should work??
+fn test_llvm_fs() {
+    compile_code_aot!(
+        output,
+        r#"import std.fs; let d = fs.read_dir("."); println(d.to_str());"#,
+        "fs_import"
+    );
+    assert!(!output.contains("error")); //should work??
     assert!(output.contains("Cargo.toml"), "output contained {}", output);
+}
+
+#[test]
+fn test_llvm_simple_lambda(){
+    compile_code_aot!(output, "let x = (a: int, b: int): int{ return a + b }; let y = x(3, 4); println(y);", "simple_lambda");
+    assert!(output.contains("7"));
+}
+
+#[test]
+fn test_llvm_lambda_in_array() {
+    compile_code_aot!(
+        output,
+        r#"let y = [(){println("hi")}]; let x = y[0]; x();"#,
+        "lambda_in_array"
+    );
+    assert!(output.contains("hi"));
+}
+
+#[test]
+fn test_llvm_higher_order_func() {
+    compile_code_aot!(
+        output,
+        "fn make_adder(): (int, int): int { return (x: int, y: int): int { return x + y; }; } let add = make_adder(); println(add(3, 5));",
+        "higher_order_func"
+    );
+    assert!(output.contains("8"));
+}
+
+#[test]
+fn test_llvm_lambda_as_arg() {
+    compile_code_aot!(
+        output,
+        "fn apply(f: (int, int): int, x: int, y: int): int { return f(x, y); } let mul = (a: int, b: int): int { return a * b; }; println(apply(mul, 6, 7));",
+        "lambda_as_arg"
+    );
+    assert!(output.contains("42"));
+}
+
+#[test]
+fn test_mem_dup_str() {
+    compile_code_aot!(
+        output,
+        r#"extern fn toy_mem_dup(src: retained c_char_ptr, ty: c_int64_t, degree: c_int64_t): str; let s = "hello world"; let s2 = toy_mem_dup(s, 0, 0); println(s2);"#,
+        "mem_dup_str"
+    );
+    assert!(output.contains("hello world"));
 }

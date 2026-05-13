@@ -22,7 +22,7 @@ pub use crate::parser::ast::*;
 pub use crate::token::TypeTok;
 pub use crate::errors::Span;
 pub use crate::fuzzer::TestRunner;
-use ordered_float::OrderedFloat;
+pub use ordered_float::OrderedFloat;
 fn run_repl() {
     loop {
         print!("> ");
@@ -53,7 +53,7 @@ fn compile_and_run(source: String) -> Result<(), Box<dyn std::error::Error>> {
     let mut driver = driver::Driver::new(repl_path);
     driver.start(&ctx)?;
     let exe_path = format!("./Program{}", driver::FILE_EXTENSION_EXE);
-    
+
     process::Command::new(exe_path)
         .stdin(process::Stdio::inherit())
         .stdout(process::Stdio::inherit())
@@ -99,12 +99,21 @@ fn main() {
             panic!("[ERROR] You should use --fuzz [NUMBER_OF_PROGRAMS]");
         }
         let num: u64 = args[idx + 1].parse().unwrap();
-        for _ in 0..num{
+        for i in 0..num {
+            println!("Fuzz iteration {}", i);
             let mut runner = TestRunner::new();
+            println!("Generating...");
             let prgm = runner.generate();
-            println!("{:#?}", prgm);
-            
+            println!("Generated.");
+            let mut d = Driver::new(PathBuf::from("temp.exe"));
+            let ctx = Context::create();
+            if args.contains(&"--save-temps".to_string()) {
+                fs::write("temp.txt", format!("{:#?}", prgm)).unwrap();
+            }
+            let _ = d.start_with_ast(&ctx, prgm).unwrap();
+            println!("Compiled.");
         }
+        println!("All fuzzers passed");
         return;
     }
     if args.contains(&"--repl".to_string()) {

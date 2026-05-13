@@ -38,7 +38,10 @@ fn main() {
         .status()
         .expect("Failed to build runtimeRS crate");
     if !runtime_build_status.success() {
-        panic!("runtimeRS build failed with status: {}", runtime_build_status);
+        panic!(
+            "runtimeRS build failed with status: {}",
+            runtime_build_status
+        );
     }
 
     let runtime_copy_status = Command::new("cargo")
@@ -75,7 +78,7 @@ fn main() {
     if cfg!(target_os = "windows") {
         let lib_dir = manifest_dir.join("lib").join(&target);
         println!("cargo:rustc-link-search=native={}", lib_dir.display());
-        
+
         println!("cargo:rustc-link-arg=lib/x86_64-pc-windows-gnu/cacert.o");
 
         println!("cargo:rustc-link-arg=-lntdll");

@@ -36,6 +36,7 @@ impl Scope {
         if self.parent.is_some() {
             return self.parent.as_ref().unwrap().borrow().get_var(name);
         }
+        eprintln!("[DEBUG] Searching for {name}");
         return unreachable!();
     }
     pub fn get_var_type(&self, name: &str) -> Result<TypeTok, ToyError> {
@@ -45,6 +46,7 @@ impl Scope {
         if self.parent.is_some() {
             return self.parent.as_ref().unwrap().borrow().get_var_type(name);
         }
+        eprintln!("[DEBUG] Searching for {name}");
         return unreachable!();
     }
     pub fn set_var(&mut self, name: String, val: SSAValue, ty: TypeTok) {
@@ -59,6 +61,7 @@ pub struct AstToIrConverter {
     interfaces: HashMap<String, (HashMap<String, usize>, TirType)>,
     main_func_name: String,
     loop_stack: Vec<LoopContext>,
+    lambda_counter: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -99,6 +102,7 @@ impl AstToIrConverter {
         Ok(snapshot)
     }
 
+
     pub fn new() -> AstToIrConverter {
         return AstToIrConverter {
             builder: TirBuilder::new(),
@@ -110,6 +114,7 @@ impl AstToIrConverter {
             interfaces: HashMap::new(),
             main_func_name: "user_main".to_string(),
             loop_stack: vec![],
+            lambda_counter: 0
         };
     }
     fn get_expr_type(&self, node: &Ast, scope: &Rc<RefCell<Scope>>) -> Result<TypeTok, ToyError> {
@@ -199,6 +204,13 @@ impl AstToIrConverter {
                             Ok(TypeTok::StructArr(fields, d - 1))
                         }
                     }
+                    TypeTok::LambdaArr(params, ret, d) => {
+                        if d == 1 {
+                            Ok(TypeTok::Lambda(params, ret))
+                        } else {
+                            Ok(TypeTok::LambdaArr(params, ret, d - 1))
+                        }
+                    }
                     _ => unreachable!(),
                 }
             }
@@ -217,6 +229,23 @@ impl AstToIrConverter {
                     _ => Err(ToyError::new(ToyErrorType::VariableNotAStruct, node.span())),
                 }
             }
+            Ast::LambdaDec(params, ret_ty, _, _) => {
+                let param_types = params
+                    .iter()
+                    .map(|p| match p {
+                        Ast::FuncParam(_, t, _) => t.clone(),
+                        _ => unreachable!(),
+                    })
+                    .collect();
+                Ok(TypeTok::Lambda(param_types, Box::new(ret_ty.clone())))
+            }
+            Ast::AnonFuncCall(callable, _, span) => {
+                let callable_ty = self.get_expr_type(callable, scope)?;
+                match callable_ty {
+                    TypeTok::Lambda(_, ret_ty) => Ok(*ret_ty),
+                    _ => Err(ToyError::new(ToyErrorType::TypeMismatch, span.clone())),
+                }
+            }
 
             _ => Err(ToyError::new(ToyErrorType::TypeIdNotAssigned, node.span())),
         }
@@ -227,7 +256,7 @@ impl AstToIrConverter {
         node: Ast,
         scope: &Rc<RefCell<Scope>>,
     ) -> Result<SSAValue, ToyError> {
-        let res = match node {
+        let res = match node.clone() {
             Ast::IntLit(v, _) => self.builder.iconst(v, TypeTok::Int),
             Ast::BoolLit(b, _) => self.builder.iconst(if b { 1 } else { 0 }, TypeTok::Bool),
             Ast::FloatLit(f, _) => self.builder.fconst(f.into()),
@@ -280,6 +309,7 @@ impl AstToIrConverter {
                             .builder
                             .call_extern("toy_concat".to_string(), vec![left, right]);
                     }
+                    eprintln!("[DEBUG] Node: {:?}", node);
                     unreachable!()
                 };
             }
@@ -453,6 +483,7 @@ impl AstToIrConverter {
                     TypeTok::FloatArr(d) => d,
                     TypeTok::AnyArr(d) => d,
                     TypeTok::StructArr(_, d) => d,
+                    TypeTok::LambdaArr(_, _, d) => d,
                     _ => panic!("Type {:?} does not have a degree", ty),
                 };
                 let mut params = vec![len];
@@ -518,6 +549,13 @@ impl AstToIrConverter {
                             TypeTok::StructArr(kv, n - 1)
                         }
                     }
+                    TypeTok::LambdaArr(params, ret, n) => {
+                        if n == 1 {
+                            TypeTok::Lambda(params, ret)
+                        } else {
+                            TypeTok::LambdaArr(params, ret, n - 1)
+                        }
+                    }
                     _ => unreachable!(),
                 };
 
@@ -546,9 +584,10 @@ impl AstToIrConverter {
                 let struct_size = self
                     .builder
                     .iconst(compiled_map.len() as i64 * 8, TypeTok::Int)?;
-                let mut heap_struct = self
-                    .builder
-                    .call_extern("toy_malloc_struct".to_string(), vec![struct_size, toy_struct])?;
+                let mut heap_struct = self.builder.call_extern(
+                    "toy_malloc_struct".to_string(),
+                    vec![struct_size, toy_struct],
+                )?;
                 heap_struct.ty = Some(ty);
                 Ok(heap_struct)
             }
@@ -585,6 +624,61 @@ impl AstToIrConverter {
             Ast::Not(v, _) => {
                 let val = self.compile_expr(*v, scope)?;
                 self.builder.not(val)
+            }
+            Ast::LambdaDec(params, ret_ty, body, _) => {
+                let lambda_scope = Scope::new_child(scope);
+                let mut ssa_params: Vec<SSAValue> = vec![];
+                let mut param_types: Vec<TypeTok> = vec![];
+
+                for p in params {
+                    let (name, param_type) = match p {
+                        Ast::FuncParam(n, t, _) => (*n, t),
+                        _ => unreachable!(),
+                    };
+                    let ssa_v = self.builder.generic_ssa(param_type.clone());
+                    lambda_scope
+                        .as_ref()
+                        .borrow_mut()
+                        .set_var(name, ssa_v.clone(), param_type.clone());
+                    param_types.push(param_type);
+                    ssa_params.push(ssa_v);
+                }
+                let curr_fn_name = self.builder.funcs[self.builder.curr_func.unwrap()].name.clone();
+                let module_prefix = curr_fn_name
+                    .rsplit_once("::")
+                    .map(|(prefix, _)| prefix.to_string());
+                let name = Driver::gen_lambda_name(module_prefix.as_deref(), &param_types, self.lambda_counter);
+                self.lambda_counter += 1;
+                let pos = self.builder.save_position();
+                self.builder.new_func(Box::new(name.clone()), ssa_params, ret_ty.clone());
+                for stmt in body {
+                    self.compile_stmt(stmt, &lambda_scope)?;
+                }
+                if ret_ty == TypeTok::Void {
+                    self.builder.ret(SSAValue { val: 0, ty: None });
+                }
+                self.builder.restore_position(pos);
+                Ok(self.builder.func_pointer(name.clone()))
+            }
+            Ast::AnonFuncCall(callable, args, span) => {
+                let callable_ty = self.get_expr_type(&callable, scope)?;
+                let ret_type_tok = match &callable_ty {
+                    TypeTok::Lambda(_, ret_ty) => (**ret_ty).clone(),
+                    _ => return Err(ToyError::new(ToyErrorType::TypeMismatch, span)),
+                };
+                let ret_type = self.builder.type_tok_to_tir_type(ret_type_tok);
+
+                let ssa_callable_expr = self.compile_expr(*callable, scope)?;
+                let mut ssa_params: Vec<SSAValue> = vec![];
+                for a in args {
+                    ssa_params.push(self.compile_expr(a, scope)?);
+                }
+
+                let mut call_res =
+                    self.builder
+                        .call_lambda(ssa_callable_expr, ssa_params, callable_ty)?;
+                call_res.ty = Some(ret_type);
+                Ok(call_res)
             }
             _ => todo!("Chase you have not implemented {} expressions yet", node),
         }?;
@@ -948,6 +1042,7 @@ impl AstToIrConverter {
         match node {
             Ast::IntLit(_, _)
             | Ast::BoolLit(_, _)
+            | Ast::FloatLit(_, _)
             | Ast::InfixExpr(_, _, _, _)
             | Ast::EmptyExpr(_, _)
             | Ast::FuncCall(_, _, _)
@@ -955,6 +1050,8 @@ impl AstToIrConverter {
             | Ast::StringLit(_, _)
             | Ast::ArrLit(_, _, _)
             | Ast::StructLit(_, _, _)
+            | Ast::AnonFuncCall(_, _, _)
+            | Ast::LambdaDec(_, _, _, _)
             | Ast::Not(_, _) => {
                 let _ = self.compile_expr(node, scope)?;
             }
@@ -1178,18 +1275,48 @@ impl AstToIrConverter {
     }
     fn register_extern_funcs(&mut self) {
         //everything is either void, int64_t (int) or float (double/f64)
-        self.builder
-            .register_extern("toy_print".to_string(), false, TypeTok::Void, vec![true, true, true], true); //builtins.c
-        self.builder
-            .register_extern("toy_println".to_string(), false, TypeTok::Void, vec![true, true, true], true);
-        self.builder
-            .register_extern("toy_malloc".to_string(), true, TypeTok::Str, vec![true], true);
-        self.builder
-            .register_extern("toy_concat".to_string(), true, TypeTok::Str, vec![true, true], true);
-        self.builder
-            .register_extern("toy_strequal".to_string(), false, TypeTok::Int, vec![true, true], true);
-        self.builder
-            .register_extern("toy_strlen".to_string(), false, TypeTok::Int, vec![true], true);
+        self.builder.register_extern(
+            "toy_print".to_string(),
+            false,
+            TypeTok::Void,
+            vec![true, true, true],
+            true,
+        ); //builtins.c
+        self.builder.register_extern(
+            "toy_println".to_string(),
+            false,
+            TypeTok::Void,
+            vec![true, true, true],
+            true,
+        );
+        self.builder.register_extern(
+            "toy_malloc".to_string(),
+            true,
+            TypeTok::Str,
+            vec![true],
+            true,
+        );
+        self.builder.register_extern(
+            "toy_concat".to_string(),
+            true,
+            TypeTok::Str,
+            vec![true, true],
+            true,
+        );
+        self.builder.register_extern(
+            "toy_strequal".to_string(),
+            false,
+            TypeTok::Int,
+            vec![true, true],
+            true,
+        );
+        self.builder.register_extern(
+            "toy_strlen".to_string(),
+            false,
+            TypeTok::Int,
+            vec![true],
+            true,
+        );
         self.builder.register_extern(
             "toy_type_to_str".to_string(),
             true,
@@ -1239,8 +1366,13 @@ impl AstToIrConverter {
             vec![true],
             true,
         );
-        self.builder
-            .register_extern("toy_malloc_arr".to_string(), true, TypeTok::Str, vec![true, true, true], true);
+        self.builder.register_extern(
+            "toy_malloc_arr".to_string(),
+            true,
+            TypeTok::Str,
+            vec![true, true, true],
+            true,
+        );
         self.builder.register_extern(
             "toy_write_to_arr".to_string(),
             false,
@@ -1255,12 +1387,27 @@ impl AstToIrConverter {
             vec![true, true],
             true,
         );
-        self.builder
-            .register_extern("toy_arrlen".to_string(), false, TypeTok::Int, vec![true], true);
-        self.builder
-            .register_extern("toy_input".to_string(), true, TypeTok::Str, vec![true], true);
-        self.builder
-            .register_extern("toy_free".to_string(), false, TypeTok::Void, vec![false], false); //ctla/ctla.c
+        self.builder.register_extern(
+            "toy_arrlen".to_string(),
+            false,
+            TypeTok::Int,
+            vec![true],
+            true,
+        );
+        self.builder.register_extern(
+            "toy_input".to_string(),
+            true,
+            TypeTok::Str,
+            vec![true],
+            true,
+        );
+        self.builder.register_extern(
+            "toy_free".to_string(),
+            false,
+            TypeTok::Void,
+            vec![false],
+            false,
+        ); //ctla/ctla.c
         self.builder.register_extern(
             "toy_free_arr".to_string(),
             false,
@@ -1273,6 +1420,13 @@ impl AstToIrConverter {
             true,
             TypeTok::Any,
             vec![true, true],
+            true,
+        );
+        self.builder.register_extern(
+            "toy_mem_dup".to_string(),
+            true,
+            TypeTok::Any,
+            vec![true, true, true],
             true,
         );
     }

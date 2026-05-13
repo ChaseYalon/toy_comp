@@ -308,6 +308,9 @@ impl CTLA {
             | TIR::CallExternFunction(_, _, params, _, _, _)
             | TIR::CreateStructLiteral(_, _, params)
             | TIR::Phi(_, _, params) => params.iter().any(uses),
+            TIR::CallFuncPtr(_, callable, params, _, _) => {
+                uses(callable) || params.iter().any(uses)
+            }
             TIR::ReadStructLiteral(_, struct_value, _) => uses(struct_value),
             TIR::WriteStructLiteral(_, struct_value, _, new_value) => {
                 uses(struct_value) || uses(new_value)
@@ -317,7 +320,8 @@ impl CTLA {
             | TIR::FConst(_, _, _)
             | TIR::JumpBlockUnCond(_, _)
             | TIR::CreateStructInterface(_, _, _)
-            | TIR::GlobalString(_, _) => false,
+            | TIR::GlobalString(_, _)
+            | TIR::FuncPtr(_, _) => false,
         };
     }
 
@@ -378,7 +382,10 @@ impl CTLA {
                             };
 
                             if is_alloc_ref {
-                                if let Some(summary) = self.alias_detector.get_external_summary(callee_name.as_ref()) {
+                                if let Some(summary) = self
+                                    .alias_detector
+                                    .get_external_summary(callee_name.as_ref())
+                                {
                                     if summary.escaped_parameters.contains(&idx) {
                                         return EscapeType::EscapesModule;
                                     }
@@ -445,8 +452,13 @@ impl CTLA {
     fn find_owning_function(&self, alloc: &HeapAllocation) -> (String, SSAValue) {
         let mut current_func = alloc.function.clone();
         let mut current_val = alloc.alloc_ins.clone();
+        let mut visited = HashSet::new();
 
         loop {
+            if !visited.insert(current_func.to_string()) {
+                return ((*current_func).clone(), current_val);
+            }
+
             // find all callers that receive a value from current_func via CallLocalFunction
             // this is ludicrous and needs to be refactored into like 5 separate things.
             let callers: Vec<(Function, Block, SSAValue)> = {
@@ -657,6 +669,25 @@ impl CTLA {
         }
         return false;
     }
+    fn function_returns_struct_allocation(&self, function_name: &str) -> bool {
+        let builder = self.builder.borrow();
+        let Some(func) = builder.funcs.iter().find(|f| *f.name == function_name) else {
+            return false;
+        };
+
+        for block in &func.body {
+            if let Some(TIR::Ret(_, ret_ssa)) = block.ins.last() {
+                if let Some(ins) = block.ins.iter().find(|i| i.get_id() == ret_ssa.val) {
+                    if let TIR::CallExternFunction(_, f_box, _, _, _, _) = ins {
+                        if f_box.as_ref() == "toy_malloc_struct" {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        return false;
+    }
     /// matches the allocation type to the type of free needed (regular or array), returns that function name
     fn alloc_type_to_free_func(&self, alloc: &HeapAllocation) -> String {
         let alloc_ins = self.get_alloc_ins(&alloc.function, alloc.block, alloc.alloc_ins.val);
@@ -670,6 +701,8 @@ impl CTLA {
                 //that argv thing is hacky but I dont know how to say under the hood it calls toy_malloc_arr
                 if self.is_array_allocation_call_name(f_box.as_ref()) {
                     return "toy_free_arr".to_string();
+                } else if f_box.as_ref() == "toy_malloc_struct" {
+                    return "toy_free_struct".to_string();
                 }
                 return "toy_free".to_string();
             }
@@ -677,10 +710,18 @@ impl CTLA {
             TIR::CallLocalFunction(_, callee_name, _, _, _) => {
                 if self.function_returns_array_allocation(callee_name.as_ref()) {
                     return "toy_free_arr".to_string();
+                } else if self.function_returns_struct_allocation(callee_name.as_ref()) {
+                    return "toy_free_struct".to_string();
                 }
                 return "toy_free".to_string();
             }
-            _ => unreachable!(),
+            TIR::CallFuncPtr(_, _, _, _, _) => {
+                // Pointer calls do not encode array-vs-scalar ownership metadata here.
+                // Default to scalar free to avoid dropping heap strings from lambdas.
+                //this will cause errors
+                return "toy_free".to_string();
+            }
+            _ => return "toy_free".to_string(),
         };
     }
 
@@ -690,6 +731,7 @@ impl CTLA {
         alloc: &mut HeapAllocation,
         insertion_points: &mut Vec<(String, BlockId, ValueId, SSAValue, String)>,
     ) {
+        println!("      => process_allocation for func: {}", alloc.function);
         let func = {
             let builder = self.builder.borrow();
             builder
@@ -699,26 +741,33 @@ impl CTLA {
                 .cloned()
                 .unwrap()
         };
+        println!("        - finding aliases...");
         self.alias_detector
             .find_aliases_and_encapsulators(alloc, &mut self.cfg_functions);
+        println!("        - checking is_param...");
         let is_param = func.params.iter().any(|p| p.val == alloc.alloc_ins.val);
         if is_param {
             return;
         }
+        println!("        - finding cfg_func...");
         let cfg_func = self
             .cfg_functions
             .iter()
             .find(|f| f.func.name == func.name)
             .unwrap();
+        println!("        - getting escape_type...");
         let escape_type = self.allocation_escapes(&alloc);
         if escape_type == EscapeType::EscapesProgram || escape_type == EscapeType::EscapesModule {
             //at this pont let it leak, it it escapes the program
             return;
-        } else if self.allocation_escapes(&alloc) == EscapeType::DoesNotEscape {
+        } else if escape_type == EscapeType::DoesNotEscape {
             //if in this branch, the allocation dies in ths function
+            println!("        - process_non_escaping_allocation...");
             self.process_non_escaping_allocation(cfg_func, &func, &alloc, insertion_points);
         } else {
+            println!("        - find_owning_function...");
             let (owning_func_name, owning_val) = self.find_owning_function(&alloc);
+            println!("        - found owning_func_name: {}", owning_func_name);
 
             let owning_func = {
                 let builder = self.builder.borrow();
@@ -790,7 +839,15 @@ impl CTLA {
                 let mut param_escapes_program = false;
                 for b in &new_cfg.func.body {
                     for ins in &b.ins {
-                        if let TIR::CallExternFunction(_, callee, args, _, _, doesnt_take_ownership) = ins {
+                        if let TIR::CallExternFunction(
+                            _,
+                            callee,
+                            args,
+                            _,
+                            _,
+                            doesnt_take_ownership,
+                        ) = ins
+                        {
                             for (arg_idx, arg) in args.iter().enumerate() {
                                 let mut visited = HashSet::new();
                                 if self.value_may_match_seed_via_phi(
@@ -799,7 +856,9 @@ impl CTLA {
                                     &seeds,
                                     &mut visited,
                                 ) {
-                                    if let Some(summary) = self.alias_detector.get_external_summary(callee.as_ref()) {
+                                    if let Some(summary) =
+                                        self.alias_detector.get_external_summary(callee.as_ref())
+                                    {
                                         if summary.escaped_parameters.contains(&arg_idx) {
                                             param_escapes_program = true;
                                         }
@@ -854,23 +913,31 @@ impl CTLA {
         self.cfg_functions.clear();
 
         //build per-function CFG graphs
+        println!("    -> building CFG...");
         {
             let mut builder = self.builder.borrow_mut();
             for f in &mut builder.funcs {
+                println!("      CFG for func: {}", f.name);
                 let mut cfg_f = CFGFunction::new(f.to_owned());
                 cfg_f.calc_cfg();
                 self.cfg_functions.push(cfg_f);
             }
         }
+        println!("    -> populate_return_alias_parameter_summaries...");
         self.alias_detector
             .populate_return_alias_parameter_summaries(&mut self.cfg_functions);
+        println!("    -> populate_parameter_escape_summary...");
         self.cfg_functions = self.populate_parameter_escape_summary(self.cfg_functions.clone());
+        println!("    -> detect_unique_heap_allocations...");
         let mut unique_allocations = self.builder.borrow().detect_unique_heap_allocations();
         let mut insertion_points: Vec<(String, BlockId, ValueId, SSAValue, String)> = vec![];
-        for a in &mut unique_allocations {
+        let num_allocs = unique_allocations.len();
+        println!("    -> processing {} allocations...", num_allocs);
+        for (i, a) in unique_allocations.iter_mut().enumerate() {
+            println!("      => [{}/{}] processing allocation", i + 1, num_allocs);
             self.process_allocation(a, &mut insertion_points);
         }
-        // in analyze, before the splice loop
+        println!("    -> deduping insertion points...");
         let dedup_set: HashSet<_> = insertion_points.into_iter().collect();
         insertion_points = dedup_set.into_iter().collect();
 
@@ -925,7 +992,6 @@ impl CTLA {
         use std::hash::Hasher;
         hasher.write(self.original_text.as_deref().unwrap_or("").as_bytes());
         let hash = format!("{:x}", hasher.finish());
-
 
         let schema = CTLASchema::new(1, summaries, hash, module_name.clone());
         let serialized = serde_json::to_string(&schema).unwrap(); //should fix ?

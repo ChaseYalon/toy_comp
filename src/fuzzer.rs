@@ -41,7 +41,7 @@ impl TestRunner {
             max_expr_depth: 3,
             program: vec![],
             rng_seed: seed,
-            type_tok_range: 0..=2,
+            type_tok_range: 0..=3,
             prgm_length: 10,
             interfaces: vec![],
             functions: vec![]
@@ -52,6 +52,7 @@ impl TestRunner {
             0 => TypeTok::Int,
             1 => TypeTok::Bool,
             2 => TypeTok::Float,
+            3 => TypeTok::Str,
             _ => unreachable!(),
         };
     }
@@ -77,13 +78,95 @@ impl TestRunner {
         };
     }
     fn _rand_bool_infix_op(&mut self) -> InfixOp {
-        return match self.rng.random_range(0..=3) {
+        return match self.rng.random_range(0..=1) {
             0 => InfixOp::And,
             1 => InfixOp::Or,
-            2 => InfixOp::Equals,
-            3 => InfixOp::NotEquals,
+            _ => unreachable!(),
+        };
+    }
+    fn gen_str_expr(&mut self, depth: usize) -> Ast {
+        if depth > self.max_expr_depth {
+            return Ast::StringLit(Box::new(Alphabetic.sample_string(&mut self.rng, 10)), Span::null_span());
+        }
+        let val = match self.rng.random_range(0..=5) {
+            0 => Ast::StringLit(Box::new(Alphabetic.sample_string(&mut self.rng, 10)), Span::null_span()),
+            1 => Ast::InfixExpr(Box::new(self.gen_str_expr(depth + 1)), Box::new(self.gen_str_expr(depth + 1)), InfixOp::Plus, Span::null_span()),
+            2 => Ast::EmptyExpr(Box::new(self.gen_str_expr(depth + 1)), Span::null_span()),
+            3 => {
+                let candidate_variables: Vec<String> = self.scopes.iter()
+                    .flat_map(|scope| scope.vars.get(&TypeTok::Str).into_iter().flatten())
+                    .cloned()
+                    .collect(); 
+                if candidate_variables.len() == 0 {
+                    return Ast::StringLit(
+                        Box::new(Alphabetic.sample_string(&mut self.rng, 10)),
+                        Span::null_span(),
+                    );
+                }
+                let v = candidate_variables[self.rng.random_range(0..candidate_variables.len())].clone();
+
+                Ast::VarRef(Box::new(v), Span::null_span())
+            }
+            4 => {
+                //nested structs are currently not handled, that should be done in the future
+                let candidate_variables: Vec<(String, String)> = self.scopes.iter()
+                    .flat_map(|scope| scope.vars.iter())
+                    .filter_map(|(ty, names)| {
+                        if let TypeTok::Struct(struct_ty) = ty {
+                            Some((struct_ty, names))
+                        } else {
+                            None
+                        }
+                    })
+                    .flat_map(|(struct_ty, names)| {
+                        names.iter().flat_map(move |var_name| {
+                            struct_ty.iter()
+                                .filter(|(_, t)| ***t == TypeTok::Str)
+                                .map(move |(field_name, _)| {
+                                    (var_name.clone(), field_name.clone())
+                                })
+                        })
+                    })
+                    .collect();
+                if candidate_variables.len() == 0 {
+                    return Ast::StringLit(
+                        Box::new(Alphabetic.sample_string(&mut self.rng, 10)),
+                        Span::null_span(),
+                    );
+                }
+                let (v, m) = candidate_variables[self.rng.random_range(0..candidate_variables.len())].clone();
+                Ast::MemberAccess(Box::new(Ast::VarRef(Box::new(v), Span::null_span())), m, Span::null_span())
+            }
+            5 => {
+                let screw_rust = self.functions.clone();
+                let candidate_variables: Vec<&(TypeTok, Vec<TypeTok>, String)> = screw_rust.iter().filter(|(r, _, _)| {
+                    *r == TypeTok::Str
+                }).collect();
+                if candidate_variables.len() == 0{
+                    return Ast::StringLit(
+                        Box::new(Alphabetic.sample_string(&mut self.rng, 10)),
+                        Span::null_span(),
+                    );
+                }
+
+                let (_, params, name) = candidate_variables[self.rng.random_range(0..candidate_variables.len())];
+                let mut ast_params: Vec<Ast> = vec![];
+                for p in params {
+                    let v = match *p {
+                        TypeTok::Int => self.gen_int_expr(depth + 1),
+                        TypeTok::Float => self.gen_float_expr(depth + 1),
+                        TypeTok::Bool => self.gen_bool_expr(depth + 1),
+                        TypeTok::Str => self.gen_str_expr(depth + 1),
+                        _ => todo!("[ERROR] {:?} is unsupported for parameters", *p)
+                    };
+                    ast_params.push(v);
+                }
+                Ast::FuncCall(Box::new(name.clone()), ast_params, Span::null_span())
+            }
+
             _ => unreachable!()
         };
+        return val;
     }
     fn gen_bool_expr(&mut self, depth: usize) -> Ast {
 
@@ -141,7 +224,7 @@ impl TestRunner {
                     *r == TypeTok::Bool
                 }).collect();
                 if candidate_variables.len() == 0{
-                    return self.gen_bool_expr(depth);
+                    return Ast::BoolLit(self.rng.random_bool(0.5), Span::null_span());
                 }
 
                 let (_, params, name) = candidate_variables[self.rng.random_range(0..candidate_variables.len())];
@@ -151,6 +234,7 @@ impl TestRunner {
                         TypeTok::Int => self.gen_int_expr(depth + 1),
                         TypeTok::Float => self.gen_float_expr(depth + 1),
                         TypeTok::Bool => self.gen_bool_expr(depth + 1),
+                        TypeTok::Str => self.gen_str_expr(depth + 1),
                         _ => todo!("[ERROR] {:?} is unsupported for parameters", *p)
                     };
                     ast_params.push(v);
@@ -224,6 +308,7 @@ impl TestRunner {
                 TypeTok::Int => self.gen_int_expr(depth + 1),
                 TypeTok::Bool => self.gen_bool_expr(depth + 1),
                 TypeTok::Float => self.gen_float_expr(depth + 1),
+                TypeTok::Str => self.gen_str_expr(depth + 1),
                 _ => todo!("{:?} is not supported for struct fields yet", t),
             };
 
@@ -245,10 +330,10 @@ impl TestRunner {
         }
         let block_len = self.rng.random_range(0..=3);
         let expr = self.gen_bool_expr(0);
-        let mut stmts: Vec<Ast> = vec![];
         self.scopes.push(Scope {
             vars: HashMap::new(),
         });
+        let mut stmts: Vec<Ast> = vec![];
         for _ in 0..block_len {
             stmts.push(self.gen_stmt(stmt_depth + 1));
         }
@@ -258,7 +343,6 @@ impl TestRunner {
     fn gen_function(&mut self) -> Ast {
         let param_count = self.rng.random_range(0..=4);
         let ret_type = self._random_type();
-        self.scopes.push(Scope{vars: HashMap::new()});
         let mut param_names: Vec<String> = vec![];
         for _ in 0..param_count {
             param_names.push(Alphabetic.sample_string(&mut self.rng, 10));
@@ -281,10 +365,12 @@ impl TestRunner {
         for _ in 0..self.rng.random_range(0..=10) {
             body.push(self.gen_stmt(1));
         }
+        self.scopes.pop();
         let ret = match ret_type {
             TypeTok::Int => self.gen_int_expr(0),
             TypeTok::Bool => self.gen_bool_expr(0),
             TypeTok::Float => self.gen_float_expr(0),
+            TypeTok::Str => self.gen_str_expr(0),
             _ => todo!("{:?} is an invalid return type", ret_type)
         };
         body.push(ret);
@@ -360,10 +446,10 @@ impl TestRunner {
             5 => {
                 let screw_rust = self.functions.clone();
                 let candidate_variables: Vec<&(TypeTok, Vec<TypeTok>, String)> = screw_rust.iter().filter(|(r, _, _)| {
-                    *r == TypeTok::Bool
+                    *r == TypeTok::Int
                 }).collect();
                 if candidate_variables.len() == 0{
-                    return self.gen_bool_expr(depth);
+                    return Ast::IntLit(self.rng.random_range(i64::MIN..i64::MAX), Span::null_span());
                 }
 
                 let (_, params, name) = candidate_variables[self.rng.random_range(0..candidate_variables.len())];
@@ -373,6 +459,7 @@ impl TestRunner {
                         TypeTok::Int => self.gen_int_expr(depth + 1),
                         TypeTok::Float => self.gen_float_expr(depth + 1),
                         TypeTok::Bool => self.gen_bool_expr(depth + 1),
+                        TypeTok::Str => self.gen_str_expr(depth + 1),
                         _ => todo!("[ERROR] {:?} is unsupported for parameters", *p)
                     };
                     ast_params.push(v);
@@ -444,10 +531,10 @@ impl TestRunner {
             5 => {
                 let screw_rust = self.functions.clone();
                 let candidate_variables: Vec<&(TypeTok, Vec<TypeTok>, String)> = screw_rust.iter().filter(|(r, _, _)| {
-                    *r == TypeTok::Bool
+                    *r == TypeTok::Float
                 }).collect();
                 if candidate_variables.len() == 0{
-                    return self.gen_bool_expr(depth);
+                    return Ast::FloatLit(ordered_float::OrderedFloat(self.rng.random_range(-1_000_000.0..1_000_000.0)), Span::null_span());
                 }
 
                 let (_, params, name) = candidate_variables[self.rng.random_range(0..candidate_variables.len())];
@@ -457,6 +544,7 @@ impl TestRunner {
                         TypeTok::Int => self.gen_int_expr(depth + 1),
                         TypeTok::Float => self.gen_float_expr(depth + 1),
                         TypeTok::Bool => self.gen_bool_expr(depth + 1),
+                        TypeTok::Str => self.gen_str_expr(depth + 1),
                         _ => todo!("[ERROR] {:?} is unsupported for parameters", *p)
                     };
                     ast_params.push(v);

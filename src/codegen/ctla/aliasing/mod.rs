@@ -10,7 +10,7 @@ pub struct AliasAndEncapsulationTracker {
     builder: Rc<RefCell<TirBuilder>>,
     pub aliases: HashSet<(u64, String, ValueId)>,
     pub encapsulators: HashSet<(u64, String, ValueId)>,
-    pub external_modules: HashMap<String, Vec<FunctionSummary>>
+    pub external_modules: HashMap<String, Vec<FunctionSummary>>,
 }
 impl AliasAndEncapsulationTracker {
     pub fn new(builder: &Rc<RefCell<TirBuilder>>) -> AliasAndEncapsulationTracker {
@@ -197,10 +197,11 @@ impl AliasAndEncapsulationTracker {
                     )
                 })
                 .collect();
-            
+
             for summaries in self.external_modules.values() {
                 for summary in summaries {
-                    summary_snapshot.insert(summary.name.clone(), summary.aliased_parameters.clone());
+                    summary_snapshot
+                        .insert(summary.name.clone(), summary.aliased_parameters.clone());
                 }
             }
 
@@ -234,7 +235,12 @@ impl AliasAndEncapsulationTracker {
         summary_by_func: HashMap<String, Vec<usize>>,
         encapsulator_values: &mut HashSet<(String, ValueId)>,
     ) {
+        let mut loop_count = 0;
         loop {
+            loop_count += 1;
+            if loop_count > 100 {
+                println!("Infinite loop detected in propagate_aliases! changed = true");
+            }
             let mut changed = false;
 
             let mut new_aliases = alias_values.clone();
@@ -266,10 +272,14 @@ impl AliasAndEncapsulationTracker {
                                         if alias_values.contains(&(function_name.clone(), arg.val))
                                             && callee_func.params.get(arg_idx).is_some_and(
                                                 |callee_param| {
-                                                    new_aliases.insert((
+                                                    let did_insert = new_aliases.insert((
                                                         (*callee_func.name).clone(),
                                                         callee_param.val,
-                                                    ))
+                                                    ));
+                                                    if did_insert {
+                                                        println!("inserted parameter {} from func {} as an alias", callee_param.val, callee_func.name);
+                                                    }
+                                                    did_insert
                                                 },
                                             )
                                         {
@@ -464,7 +474,7 @@ impl AliasAndEncapsulationTracker {
                 )
             })
             .collect();
-            
+
         for summaries in self.external_modules.values() {
             for summary in summaries {
                 summary_by_func.insert(summary.name.clone(), summary.aliased_parameters.clone());

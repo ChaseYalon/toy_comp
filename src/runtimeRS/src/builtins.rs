@@ -263,14 +263,18 @@ pub fn toy_double_to_float_bits(d: f64) -> i64 {
 }
 
 #[unsafe(no_mangle)]
-///Takes a pointer and its size in BYTES and copies that pointer to the heap.
+///copies a struct + an 8 byte size prefix into the heap. Returns a pointer to the struct, subtract 8 to get the prefix bytes
 pub fn toy_malloc_struct(size: i64, toy_struct: ToyPtr) -> ToyPtr {
-    let out = meta_malloc!(size as usize);
+    let total = size as usize + 8; // 8 bytes prefix for size
+    let out = meta_malloc!(total) as *mut u8;
     if out.is_null() {
         panic!("[ERROR] Meta malloc failed");
     }
-    unsafe { libc::memcpy(out, toy_struct as *mut c_void, size as usize) };
-    return out as i64;
+    unsafe {
+        *(out as *mut i64) = size; // write size as prefix
+        libc::memcpy(out.add(8) as *mut c_void, toy_struct as *mut c_void, size as usize);
+    }
+    return unsafe {out.add(8)} as ToyPtr; // return pointer PAST the prefix
 }
 #[unsafe(no_mangle)]
 pub fn toy_malloc_arr(len: i64, ty: i64, degree: i64) -> ToyPtr {
@@ -411,4 +415,40 @@ pub fn toy_input(i_prompt: ToyPtr) -> ToyPtr {
     let null_term_string = CString::new(input).unwrap();
     let out = toy_malloc(null_term_string.as_ptr() as i64);
     return out;
+}
+
+#[unsafe(no_mangle)]
+///takes the memory at buffer to_copy (assumes it is valid) and allocates a new version in the heap, then copies byte for byte
+///_degree is not read, it only exits because inject_type_params requires a degree and I dont want to write a new one
+pub fn toy_mem_dup(to_copy: ToyPtr, ty: i64, _degree: i64) ->ToyPtr{
+    let toy_type = ToyType::try_from(ty).unwrap();
+    if toy_type == ToyType::Struct {
+        // Structs are allocated with an 8-byte size prefix by toy_malloc_struct.
+        // Duplicate the full allocation (prefix + body) and return pointer past the prefix.
+        let size = unsafe { *((to_copy as *const u8).sub(8) as *const i64) };
+        let total = size as usize + 8;
+        let out = meta_malloc!(total) as *mut u8;
+        unsafe {
+            *(out as *mut i64) = size;
+            libc::memcpy(out.add(8) as *mut c_void, to_copy as *const c_void, size as usize);
+        }
+        return unsafe { out.add(8) } as ToyPtr;
+    }
+    // Strings need the null terminator included in the copy
+    if toy_type == ToyType::Str {
+        let len = toy_strlen(to_copy) as usize;
+        let new_buff = meta_malloc!(len + 1);
+        unsafe { libc::memcpy(new_buff, to_copy as *const c_void, len + 1) };
+        return new_buff as ToyPtr;
+    }
+    let len: u64 = match toy_type {
+        ToyType::BoolArr
+        | ToyType::FloatArr
+        | ToyType::IntArr
+        | ToyType::StrArr => toy_arrlen(to_copy) as u64,
+        _ => unreachable!()
+    };
+    let new_buff = meta_malloc!(len as usize);
+    unsafe {libc::memcpy(new_buff, to_copy as *const c_void, len as usize)};
+    return new_buff as ToyPtr;
 }

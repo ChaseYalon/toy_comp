@@ -121,7 +121,11 @@ impl CFGFunction {
                 self.visited_blocks.insert(id);
                 self.calc_block_cfg(bid);
             }
-            _ => unreachable!(),
+            _ => {
+                self.cfg_blocks.push(block_cfg);
+                self.visited_blocks.insert(id);
+                return;
+            }
         };
     }
 

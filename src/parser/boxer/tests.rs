@@ -1226,7 +1226,10 @@ fn test_boxer_extern_function_declaration() {
             SpannedToken::new_null(Token::VarName(Box::new("printf".to_string()))),
             vec![TBox::ExternFuncParam(
                 SpannedToken::new_null(Token::VarRef(Box::new("msg".to_string()))),
-                QualifiedExternType{ty: ExternType::c_char(1), is_released: true},
+                QualifiedExternType {
+                    ty: ExternType::c_char(1),
+                    is_released: true
+                },
                 Span::null_span()
             )],
             TypeTok::Int,
@@ -1249,7 +1252,10 @@ fn test_boxer_extern_function_declaration_void() {
             SpannedToken::new_null(Token::VarName(Box::new("puts".to_string()))),
             vec![TBox::ExternFuncParam(
                 SpannedToken::new_null(Token::VarRef(Box::new("msg".to_string()))),
-                QualifiedExternType{ty: ExternType::c_char(1), is_released: false},
+                QualifiedExternType {
+                    ty: ExternType::c_char(1),
+                    is_released: false
+                },
                 Span::null_span()
             )],
             TypeTok::Void,
@@ -1571,4 +1577,43 @@ fn test_boxer_export_function() {
             true
         )]
     ));
+}
+
+#[test]
+fn test_boxer_lambda_passes_through_as_expr() {
+    //"let add = (a: int, b: int): int { return a + b; };"
+    let input = String::from("let add = (a: int, b: int): int { return a + b; };");
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let toks = l.lex(input).unwrap();
+    let boxes = b.box_toks(toks);
+
+    assert!(compare_tbox_vecs(
+        boxes.unwrap(),
+        vec![TBox::VarDec(
+            SpannedToken::new_null(Token::VarName(Box::new("add".to_string()))),
+            None,
+            vec![
+                SpannedToken::new_null(Token::LParen),
+                SpannedToken::new_null(Token::VarRef(Box::new("a".to_string()))),
+                SpannedToken::new_null(Token::Colon),
+                SpannedToken::new_null(Token::Type(TypeTok::Int)),
+                SpannedToken::new_null(Token::Comma),
+                SpannedToken::new_null(Token::VarRef(Box::new("b".to_string()))),
+                SpannedToken::new_null(Token::Colon),
+                SpannedToken::new_null(Token::Type(TypeTok::Int)),
+                SpannedToken::new_null(Token::RParen),
+                SpannedToken::new_null(Token::Colon),
+                SpannedToken::new_null(Token::Type(TypeTok::Int)),
+                SpannedToken::new_null(Token::LBrace),
+                SpannedToken::new_null(Token::Return),
+                SpannedToken::new_null(Token::VarRef(Box::new("a".to_string()))),
+                SpannedToken::new_null(Token::Plus),
+                SpannedToken::new_null(Token::VarRef(Box::new("b".to_string()))),
+                SpannedToken::new_null(Token::Semicolon),
+                SpannedToken::new_null(Token::RBrace),
+            ],
+            Span::null_span()
+        )]
+    ))
 }
