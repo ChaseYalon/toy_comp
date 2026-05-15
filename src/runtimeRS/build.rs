@@ -24,7 +24,7 @@ fn main() {
         .join("libruntimers.a");
     let out_dir = root.join("lib").join(&target);
     let dest = out_dir.join("libruntime.a");
-
+    
     if !source.exists() {
         panic!("Missing runtime staticlib: {}", source.display());
     }
