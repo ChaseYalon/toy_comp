@@ -102,7 +102,6 @@ impl AstToIrConverter {
         Ok(snapshot)
     }
 
-
     pub fn new() -> AstToIrConverter {
         return AstToIrConverter {
             builder: TirBuilder::new(),
@@ -114,7 +113,7 @@ impl AstToIrConverter {
             interfaces: HashMap::new(),
             main_func_name: "user_main".to_string(),
             loop_stack: vec![],
-            lambda_counter: 0
+            lambda_counter: 0,
         };
     }
     fn get_expr_type(&self, node: &Ast, scope: &Rc<RefCell<Scope>>) -> Result<TypeTok, ToyError> {
@@ -636,21 +635,29 @@ impl AstToIrConverter {
                         _ => unreachable!(),
                     };
                     let ssa_v = self.builder.generic_ssa(param_type.clone());
-                    lambda_scope
-                        .as_ref()
-                        .borrow_mut()
-                        .set_var(name, ssa_v.clone(), param_type.clone());
+                    lambda_scope.as_ref().borrow_mut().set_var(
+                        name,
+                        ssa_v.clone(),
+                        param_type.clone(),
+                    );
                     param_types.push(param_type);
                     ssa_params.push(ssa_v);
                 }
-                let curr_fn_name = self.builder.funcs[self.builder.curr_func.unwrap()].name.clone();
+                let curr_fn_name = self.builder.funcs[self.builder.curr_func.unwrap()]
+                    .name
+                    .clone();
                 let module_prefix = curr_fn_name
                     .rsplit_once("::")
                     .map(|(prefix, _)| prefix.to_string());
-                let name = Driver::gen_lambda_name(module_prefix.as_deref(), &param_types, self.lambda_counter);
+                let name = Driver::gen_lambda_name(
+                    module_prefix.as_deref(),
+                    &param_types,
+                    self.lambda_counter,
+                );
                 self.lambda_counter += 1;
                 let pos = self.builder.save_position();
-                self.builder.new_func(Box::new(name.clone()), ssa_params, ret_ty.clone());
+                self.builder
+                    .new_func(Box::new(name.clone()), ssa_params, ret_ty.clone());
                 for stmt in body {
                     self.compile_stmt(stmt, &lambda_scope)?;
                 }

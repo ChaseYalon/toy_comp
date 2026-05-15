@@ -284,7 +284,10 @@ impl TirBuilder {
         let (ret_type, is_allocator) = match lambda_sig {
             TypeTok::Lambda(_, ret_ty) => {
                 let ret_type = self.type_tok_to_tir_type(*ret_ty.clone()).clone();
-                let is_function_ptr = matches!(*ret_ty.clone(), TypeTok::Lambda(_, _) | TypeTok::LambdaArr(_, _, _));
+                let is_function_ptr = matches!(
+                    *ret_ty.clone(),
+                    TypeTok::Lambda(_, _) | TypeTok::LambdaArr(_, _, _)
+                );
                 let is_allocator = ret_type == TirType::Ptr && !is_function_ptr;
                 (ret_type, is_allocator)
             }

@@ -222,7 +222,7 @@ elif os_name == "Linux":
             shell=True,
             check=True,
         )
-    subprocess.run(["rustup", "default", "nightly"], shell=True, check=True)
+    subprocess.run(["rustup default nightly"], shell=True, check=True)
     subprocess.run(
         "sudo wget -qO /etc/apt/trusted.gpg.d/apt.llvm.org.asc "
         "https://apt.llvm.org/llvm-snapshot.gpg.key",

@@ -306,7 +306,11 @@ impl Driver {
     pub fn set_build_dir(new_dir: String) {
         BUILD_DIR.with(|b| *b.borrow_mut() = new_dir);
     }
-    pub fn gen_lambda_name(module_prefix: Option<&str>, params: &[TypeTok], counter: u64) -> String {
+    pub fn gen_lambda_name(
+        module_prefix: Option<&str>,
+        params: &[TypeTok],
+        counter: u64,
+    ) -> String {
         return Driver::mangle_name(module_prefix, &format!("__lambda_{}", counter), params);
     }
     pub fn mangle_name(module_prefix: Option<&str>, name: &str, params: &[TypeTok]) -> String {
@@ -623,8 +627,7 @@ impl Driver {
                     }
                 }
             }
-            Ast::FuncDec(_, params, _, body, _)
-            | Ast::LambdaDec(params, _, body, _) => {
+            Ast::FuncDec(_, params, _, body, _) | Ast::LambdaDec(params, _, body, _) => {
                 for param in params {
                     self.collect_imports_from_ast_node(param, imports);
                 }
@@ -809,9 +812,7 @@ impl Driver {
 
         let main_path = self.main_program_path.to_string_lossy().to_string();
         Driver::set_current_file_path(&main_path);
-        if !self.file_path_to_text.contains_key(&main_path)
-            && self.main_program_path.exists()
-        {
+        if !self.file_path_to_text.contains_key(&main_path) && self.main_program_path.exists() {
             if let Ok(text) = fs::read_to_string(&self.main_program_path) {
                 self.file_path_to_text.insert(main_path.clone(), text);
             }

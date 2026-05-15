@@ -1,10 +1,10 @@
 #![feature(error_generic_member_access)]
 #![feature(backtrace_frames)]
-
 use crate::driver::Driver;
 use std::env;
 use std::fs;
 use std::io::{self, Write};
+use std::panic;
 use std::path::PathBuf;
 use std::process;
 mod lexer;
@@ -17,11 +17,11 @@ pub(crate) mod driver;
 mod errors;
 mod ffi;
 mod fuzzer;
-use inkwell::context::Context;
-pub use crate::parser::ast::*;
-pub use crate::token::TypeTok;
 pub use crate::errors::Span;
 pub use crate::fuzzer::TestRunner;
+pub use crate::parser::ast::*;
+pub use crate::token::TypeTok;
+use inkwell::context::Context;
 pub use ordered_float::OrderedFloat;
 fn run_repl() {
     loop {
@@ -89,33 +89,97 @@ fn compile_and_print(file_path: &str) -> Result<(), Box<dyn std::error::Error>> 
 fn compile_file(filename: &str) -> Result<(), Box<dyn std::error::Error>> {
     compile_and_print(filename)
 }
-
-
 fn main() {
     let args: Vec<String> = env::args().collect();
+    if args.contains(&"--from-ast-file".to_string()) {
+        let idx = args.iter().position(|f| f == "--from-ast-file").unwrap();
+        if args.len() < idx + 1 {
+            panic!("[ERROR] You should use --from-ast-file [FILE_PATH]");
+        }
+        let file_path = args[idx + 1].clone();
+        let prgm: Vec<Ast> = serde_json::from_str(fs::read_to_string(file_path).unwrap().as_str()).unwrap();
+        let mut d = Driver::new(PathBuf::from("temp.exe"));
+        let mut c = Context::create();
+        d.start_with_ast(&c, prgm).unwrap();
+
+        return;
+    }
     if args.contains(&"--fuzz".to_string()) {
-        let idx = args.iter().position(|f| f == &"--fuzz".to_string()).unwrap();
-        if idx + 1 > args.len() {
+        let idx = args.iter().position(|f| f == "--fuzz").unwrap();
+
+        if idx + 1 >= args.len() {
             panic!("[ERROR] You should use --fuzz [NUMBER_OF_PROGRAMS]");
         }
+
         let num: u64 = args[idx + 1].parse().unwrap();
+
         for i in 0..num {
             println!("Fuzz iteration {}", i);
+
             let mut runner = TestRunner::new();
+
             println!("Generating...");
             let prgm = runner.generate();
             println!("Generated.");
-            let mut d = Driver::new(PathBuf::from("temp.exe"));
-            let ctx = Context::create();
-            if args.contains(&"--save-temps".to_string()) {
-                fs::write("temp.txt", format!("{:#?}", prgm)).unwrap();
+
+            let crashed = panic::catch_unwind(
+                std::panic::AssertUnwindSafe(|| {
+                    let mut d = Driver::new(PathBuf::from("temp.exe"));
+                    let ctx = Context::create();
+
+                    if args.contains(&"--save-temps".to_string()) {
+                        fs::write("temp.txt", format!("{:#?}", prgm)).unwrap();
+                    }
+
+                    d.start_with_ast(&ctx, prgm.clone()).unwrap();
+                }),
+            )
+            .is_err();
+
+            if !crashed {
+                continue;
             }
-            let _ = d.start_with_ast(&ctx, prgm).unwrap();
-            println!("Compiled.");
+
+            println!("Crash detected. Starting delta debugging...");
+
+            let mut current = prgm.clone();
+
+            loop {
+                let reduced = runner.reduce(current.clone());
+
+                // fixpoint reached
+                if reduced == current {
+                    break;
+                }
+
+                let still_crashes = panic::catch_unwind(
+                    std::panic::AssertUnwindSafe(|| {
+                        let mut d = Driver::new(PathBuf::from("temp.exe"));
+                        let ctx = Context::create();
+                        d.start_with_ast(&ctx, reduced.clone()).unwrap();
+                    }),
+                )
+                .is_err();
+
+                if still_crashes {
+                    current = reduced;
+                    println!("Reduced...");
+                }
+            }
+
+            fs::write(
+                "reduced.txt",
+                format!("{:#?}", current),
+            )
+            .unwrap();
+
+            println!("Saved minimized crash.");
         }
-        println!("All fuzzers passed");
+
+        println!("Fuzzing complete.");
         return;
     }
+
     if args.contains(&"--repl".to_string()) {
         run_repl();
         return;
@@ -127,6 +191,7 @@ fn main() {
     }
 
     let filename = &args[1];
+
     if let Err(e) = compile_file(filename) {
         eprintln!("Error: {}", e);
         process::exit(1);

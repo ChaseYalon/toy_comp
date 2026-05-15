@@ -763,6 +763,9 @@ impl<'a> LlvmGenerator<'a> {
                     )?;
                 }
                 let val_ptr: BasicValueEnum<'_> = allocated_struct.into();
+                if id == 458 {
+                    println!("Adding value 458 to function {}", curr_func_name.clone());
+                }
                 self.tir_to_val.insert(
                     (
                         curr_func_name.clone(),
@@ -892,16 +895,26 @@ impl<'a> LlvmGenerator<'a> {
                 }
 
                 let fn_type = match ret_ty {
-                    TirType::I64 | TirType::Ptr => {
-                        self.ctx.i64_type().fn_type(compiled_types.as_slice(), false)
-                    }
-                    TirType::F64 => self.ctx.f64_type().fn_type(compiled_types.as_slice(), false),
-                    TirType::I1 => self.ctx.i64_type().fn_type(compiled_types.as_slice(), false),
+                    TirType::I64 | TirType::Ptr => self
+                        .ctx
+                        .i64_type()
+                        .fn_type(compiled_types.as_slice(), false),
+                    TirType::F64 => self
+                        .ctx
+                        .f64_type()
+                        .fn_type(compiled_types.as_slice(), false),
+                    TirType::I1 => self
+                        .ctx
+                        .i64_type()
+                        .fn_type(compiled_types.as_slice(), false),
                     TirType::StructInterface(_) => self
                         .ctx
                         .ptr_type(AddressSpace::default())
                         .fn_type(compiled_types.as_slice(), false),
-                    TirType::Void => self.ctx.void_type().fn_type(compiled_types.as_slice(), false),
+                    TirType::Void => self
+                        .ctx
+                        .void_type()
+                        .fn_type(compiled_types.as_slice(), false),
                 };
 
                 let fp_raw = self.get_ssa_val(&curr_func_name, fp.clone());
@@ -974,8 +987,12 @@ impl<'a> LlvmGenerator<'a> {
                     })
                     .collect();
 
-                let call_ins =
-                    builder.build_indirect_call(fn_type, fp_ptr, llvm_params.as_slice(), "call_fp")?;
+                let call_ins = builder.build_indirect_call(
+                    fn_type,
+                    fp_ptr,
+                    llvm_params.as_slice(),
+                    "call_fp",
+                )?;
                 let ret = if ret_ty != TirType::Void {
                     match call_ins.try_as_basic_value() {
                         ValueKind::Basic(v) => v,

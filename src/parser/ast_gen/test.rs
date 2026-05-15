@@ -2512,7 +2512,10 @@ fn test_ast_gen_void_lambda_in_array_and_call() {
                         TypeTok::Void,
                         vec![Ast::FuncCall(
                             Box::new("println".to_string()),
-                            vec![Ast::StringLit(Box::new("hi".to_string()), Span::null_span())],
+                            vec![Ast::StringLit(
+                                Box::new("hi".to_string()),
+                                Span::null_span()
+                            )],
                             Span::null_span(),
                         )],
                         Span::null_span(),

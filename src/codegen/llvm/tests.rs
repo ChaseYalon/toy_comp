@@ -351,8 +351,12 @@ fn test_llvm_fs() {
 }
 
 #[test]
-fn test_llvm_simple_lambda(){
-    compile_code_aot!(output, "let x = (a: int, b: int): int{ return a + b }; let y = x(3, 4); println(y);", "simple_lambda");
+fn test_llvm_simple_lambda() {
+    compile_code_aot!(
+        output,
+        "let x = (a: int, b: int): int{ return a + b }; let y = x(3, 4); println(y);",
+        "simple_lambda"
+    );
     assert!(output.contains("7"));
 }
 

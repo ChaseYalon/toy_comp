@@ -56,8 +56,7 @@ fn is_lambda_dec(toks: &[SpannedToken]) -> bool {
     if close + 1 >= toks.len() {
         return false;
     }
-    if !matches!(toks[close + 1].tok, Token::Colon)
-        && !matches!(toks[close + 1].tok, Token::LBrace)
+    if !matches!(toks[close + 1].tok, Token::Colon) && !matches!(toks[close + 1].tok, Token::LBrace)
     {
         return false;
     }
@@ -1258,10 +1257,7 @@ impl AstGenerator {
         let rbrace = match rbrace {
             Some(idx) => idx,
             None => {
-                return Err(ToyError::new(
-                    ToyErrorType::UnclosedDelimiter,
-                    span,
-                ));
+                return Err(ToyError::new(ToyErrorType::UnclosedDelimiter, span));
             }
         };
 

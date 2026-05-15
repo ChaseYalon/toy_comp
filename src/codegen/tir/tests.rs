@@ -58,7 +58,7 @@ fn panic_with_write(test_name: &str, a: Vec<Function>, b: Vec<Function>) {
 }
 ///ignores heap allocations
 fn compare_tir(test_name: &str, a: Vec<Function>, b: Vec<Function>) {
-    let mut a= a.clone();
+    let mut a = a.clone();
     let mut b = b.clone();
     a.sort_by(|a, b| a.name.cmp(&b.name));
     b.sort_by(|a, b| a.name.cmp(&b.name));
@@ -227,7 +227,7 @@ fn compare_tir(test_name: &str, a: Vec<Function>, b: Vec<Function>) {
                     })
                     .bold()
             );
-            eprintln!("Got the following blocks\n{:#?}",g_body);
+            eprintln!("Got the following blocks\n{:#?}", g_body);
             panic_with_write(test_name, a.clone(), b.clone());
         }
 
@@ -249,7 +249,7 @@ fn compare_tir(test_name: &str, a: Vec<Function>, b: Vec<Function>) {
                     r_block.ins.len().to_string().green().bold(),
                     g_block.ins.len().to_string().red().bold()
                 );
-                eprintln!("Got the following blocks\n{:#?}",g_body);
+                eprintln!("Got the following blocks\n{:#?}", g_body);
                 panic_with_write(test_name, a.clone(), b.clone());
             }
 
@@ -4182,52 +4182,58 @@ fn test_tirgen_basic_lambda() {
                             TirType::I64,
                         ),
                         TIR::IConst(6, 0, TirType::I64),
-                        TIR::Ret(7, SSAValue { val: 6, ty: Some(TirType::I64) })
-                        ],
-                    }],
-                    ins_counter: 8,
-                },
-                Function {
-                    name: Box::new("__lambda_0_int_int".to_string()),
-                    params: vec![
-                        SSAValue {
-                            val: 0,
-                            ty: Some(TirType::I64),
-                        },
-                        SSAValue {
-                            val: 1,
-                            ty: Some(TirType::I64),
-                        },
+                        TIR::Ret(
+                            7,
+                            SSAValue {
+                                val: 6,
+                                ty: Some(TirType::I64),
+                            },
+                        ),
                     ],
-                    ret_type: TirType::I64,
-                    body: vec![Block {
-                        id: 1,
-                        ins: vec![
-                            TIR::NumericInfix(
-                                2,
-                                SSAValue {
-                                    val: 0,
-                                    ty: Some(TirType::I64),
-                                },
-                                SSAValue {
-                                    val: 1,
-                                    ty: Some(TirType::I64),
-                                },
-                                NumericInfixOp::Plus,
-                            ),
-                            TIR::Ret(
-                                3,
-                                SSAValue {
-                                    val: 2,
-                                    ty: Some(TirType::I64),
-                                },
-                            ),
-                        ],
-                    }],
-                    ins_counter: 4,
-                    heap_allocations: vec![],
-                    heap_counter: 0,
-                },
+                }],
+                ins_counter: 8,
+            },
+            Function {
+                name: Box::new("__lambda_0_int_int".to_string()),
+                params: vec![
+                    SSAValue {
+                        val: 0,
+                        ty: Some(TirType::I64),
+                    },
+                    SSAValue {
+                        val: 1,
+                        ty: Some(TirType::I64),
+                    },
+                ],
+                ret_type: TirType::I64,
+                body: vec![Block {
+                    id: 1,
+                    ins: vec![
+                        TIR::NumericInfix(
+                            2,
+                            SSAValue {
+                                val: 0,
+                                ty: Some(TirType::I64),
+                            },
+                            SSAValue {
+                                val: 1,
+                                ty: Some(TirType::I64),
+                            },
+                            NumericInfixOp::Plus,
+                        ),
+                        TIR::Ret(
+                            3,
+                            SSAValue {
+                                val: 2,
+                                ty: Some(TirType::I64),
+                            },
+                        ),
+                    ],
+                }],
+                ins_counter: 4,
+                heap_allocations: vec![],
+                heap_counter: 0,
+            },
         ],
     );
 }

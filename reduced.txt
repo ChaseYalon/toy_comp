@@ -1,0 +1,1625 @@
+[
+    StructInterface(
+        "GnRXxjHIwB",
+        {
+            "KiUfEbguJF": Str,
+            "ShiRxBTHya": Bool,
+            "hQKPPCXCLh": Bool,
+            "klBBeKVmwz": Bool,
+            "stWIlTjmrx": Int,
+        },
+    ),
+    StructInterface(
+        "hazsNenKKh",
+        {
+            "FPuZSvVHZX": Float,
+            "WLfWCISMSC": Int,
+            "bUkaNbxxAK": Float,
+            "vtSyFPXyZz": Float,
+            "zbdeyFGIql": Float,
+        },
+    ),
+    StructInterface(
+        "aNkoQkqLYT",
+        {
+            "NxblcXxvDz": Float,
+        },
+    ),
+    StructInterface(
+        "QYzqKZeATz",
+        {
+            "BDXIAYwRQI": Float,
+            "CZZgMrzZcr": Int,
+            "TVpbrKpYzW": Int,
+            "YrzQxZMgXK": Float,
+            "hnVAXrjlAC": Bool,
+        },
+    ),
+    StructInterface(
+        "PGfYzLfahJ",
+        {
+            "BaeAPBgcka": Float,
+            "HmXJplwkDK": Bool,
+            "VAyxnupEjO": Bool,
+            "eBWvsiWSeb": Float,
+            "lNAgZwUQye": Int,
+        },
+    ),
+    StructInterface(
+        "XbpMwmenyC",
+        {
+            "ZtRsvwYNzm": Bool,
+            "cFQljFckwi": Str,
+            "fxaHxTdMJp": Bool,
+            "mFrDRURmfa": Str,
+        },
+    ),
+    StructInterface(
+        "wjUbvTHtQl",
+        {
+            "XGyxeODrYX": Str,
+            "YCSgspJKzV": Bool,
+            "pYLnAaimaL": Float,
+            "sMUgeRRLLX": Float,
+        },
+    ),
+    StructInterface(
+        "yifehvFvZJ",
+        {
+            "SJWwACKrIW": Str,
+            "WHcvlGDbSo": Float,
+            "aNkOSgeeil": Bool,
+            "eOFhtLQbfF": Str,
+            "xUbjJoUvvL": Float,
+        },
+    ),
+    StructInterface(
+        "oGOGwiVbSC",
+        {
+            "XqrEaeaZbJ": Int,
+        },
+    ),
+    StructInterface(
+        "smtRJyvfqb",
+        {
+            "JbguDqyrTJ": Str,
+            "cgislzbqHo": Int,
+            "nZYssmXvBe": Int,
+            "pvyRmYTKBk": Bool,
+            "ygkjIXLVxo": Bool,
+        },
+    ),
+    StructInterface(
+        "JnffpTwjPN",
+        {
+            "JqMGwUdBFE": Float,
+            "LWabVvVzyn": Int,
+            "OxebETmzlg": Float,
+            "YIsFEenLmg": Int,
+            "gvdIMdiKir": Str,
+        },
+    ),
+    StructInterface(
+        "dgeETMzNAC",
+        {
+            "kukwhcCqnK": Bool,
+        },
+    ),
+    StructInterface(
+        "fdJotMeJbu",
+        {
+            "BMdeNJEGJe": Float,
+            "JYdYYjSaOa": Bool,
+            "ptTRDJEZmk": Int,
+        },
+    ),
+    StructInterface(
+        "FfUeyHfkcH",
+        {
+            "aJhBGzJmSr": Str,
+        },
+    ),
+    StructInterface(
+        "bAhYSFcxaI",
+        {
+            "GGfkWunjPC": Bool,
+            "MXodhsHxDe": Int,
+            "UaVhRxGDHo": Int,
+            "dFPgfummsm": Str,
+            "zbTkTGhOcU": Float,
+        },
+    ),
+    StructInterface(
+        "ldCTJmorgs",
+        {
+            "BxnrUyYqPp": Float,
+            "YgiwUuwEFH": Bool,
+            "jfwyEIgRro": Bool,
+        },
+    ),
+    StructInterface(
+        "AqlCYaEXhf",
+        {
+            "KRmLhUqvUd": Int,
+        },
+    ),
+    StructInterface(
+        "EfJVFfnjQV",
+        {
+            "TMVxZhsdDS": Str,
+            "UPxwkydopT": Float,
+            "VMpgggsorA": Bool,
+            "XARzKedMdO": Bool,
+            "tqYcbyFEOa": Str,
+        },
+    ),
+    StructInterface(
+        "gCXuiGdxHs",
+        {
+            "MXgAejGEVu": Str,
+            "VOXBJrffce": Str,
+            "bLNQhXiFGL": Bool,
+            "uFIrwWpiuc": Str,
+        },
+    ),
+    StructInterface(
+        "caoKYBVtWv",
+        {
+            "YWNGnsWBhS": Int,
+        },
+    ),
+    StructInterface(
+        "ZykvkIUPqZ",
+        {
+            "vXGLvobrNj": Int,
+        },
+    ),
+    StructInterface(
+        "jxEavntfNX",
+        {
+            "IwNrHagSMo": Bool,
+            "RWchiUoTfl": Float,
+            "VDKaNJvzVQ": Float,
+            "kBWmezTqLE": Bool,
+        },
+    ),
+    StructInterface(
+        "noYXFozOcP",
+        {
+            "aGIJCsGBqg": Str,
+            "oVdBalDpTq": Str,
+            "xuQJsmfDMg": Bool,
+            "yXdkKdWwvE": Int,
+            "ythJLEchWt": Float,
+        },
+    ),
+    StructInterface(
+        "koyFkcuORS",
+        {
+            "iZWjUcqdqV": Str,
+            "leKOrMKLUF": Str,
+            "nnIshsumYy": Int,
+            "ybnKWILuZf": Int,
+        },
+    ),
+    StructInterface(
+        "CRVFObaaXp",
+        {
+            "ekbXLkBDvr": Float,
+        },
+    ),
+    StructInterface(
+        "hqYwVxgsJB",
+        {
+            "VdDoQfZbaS": Str,
+        },
+    ),
+    StructInterface(
+        "OGAUqdausX",
+        {
+            "LXHrpFkVyK": Float,
+            "VJkPvJblGV": Bool,
+            "WEChZBRTPa": Int,
+            "elwHbAwoBC": Str,
+        },
+    ),
+    StructInterface(
+        "pdMoornDPy",
+        {
+            "COmOqokQnB": Str,
+            "RcUznlOjdP": Str,
+            "ZsxnxcoFNw": Int,
+        },
+    ),
+    StructInterface(
+        "tJwptdiEEz",
+        {
+            "ArgagEaumU": Str,
+            "XSVEFywpaG": Float,
+            "cFtsYuvEAq": Int,
+            "gtEWQKTvGh": Float,
+        },
+    ),
+    StructInterface(
+        "mCZLKaYeRD",
+        {
+            "AShRlmPIqa": Str,
+            "AftDAmxkSP": Str,
+            "CCMOOalqNY": Bool,
+            "bbWnkOqwww": Bool,
+            "ilcQZjhZQC": Int,
+        },
+    ),
+    StructInterface(
+        "BCsGFSrpIO",
+        {
+            "SShWWNqYGN": Float,
+        },
+    ),
+    StructInterface(
+        "YQKhcLPVPn",
+        {
+            "DXHQbHNLvL": Str,
+            "FzsDCcXaGP": Bool,
+            "OBIBKNKPSy": Bool,
+            "UvqwjPbDtT": Bool,
+            "xufIaYaHkC": Str,
+        },
+    ),
+    StructInterface(
+        "NHlYvowPOw",
+        {
+            "IXaETxrXWi": Float,
+            "XXEJNQqRkx": Str,
+            "ZHHjoupazA": Float,
+        },
+    ),
+    StructInterface(
+        "BcKFMPULEK",
+        {
+            "cVzuVOGxlb": Bool,
+            "oPbunVbafb": Str,
+            "vOKhzAvkRA": Int,
+            "xhOjpJrPGI": Bool,
+        },
+    ),
+    StructInterface(
+        "guymOHhAKj",
+        {
+            "KjeWFPLoGN": Str,
+            "TcEkxUpYOt": Str,
+        },
+    ),
+    StructInterface(
+        "bqBaCWGmrj",
+        {
+            "hvnNoWcVkI": Int,
+        },
+    ),
+    StructInterface(
+        "HGUHHaZNpa",
+        {
+            "czalHvifaM": Float,
+        },
+    ),
+    StructInterface(
+        "JbxpUHKUkI",
+        {
+            "HgLiLfqkDA": Float,
+            "uOaxmNWlOO": Str,
+        },
+    ),
+    StructInterface(
+        "TnwGAWnzWq",
+        {
+            "DGwBdLgCNy": Int,
+            "IHHBByYCwu": Bool,
+            "kNuQPGXQlQ": Str,
+        },
+    ),
+    StructInterface(
+        "iNutxZDSkq",
+        {
+            "EjFBsimmaj": Str,
+            "GaGVqXPFjA": Bool,
+            "NBKsSERcIc": Float,
+            "RyZzaORCpr": Float,
+            "jGXKrMTHJv": Int,
+        },
+    ),
+    StructInterface(
+        "oWlEziiWZc",
+        {
+            "SjmQCIEcWB": Str,
+            "ZrpmiFDIMI": Str,
+            "lUhNHsRxml": Int,
+        },
+    ),
+    StructInterface(
+        "GUjFItMxMw",
+        {
+            "xQqfCeLIPs": Bool,
+        },
+    ),
+    StructInterface(
+        "EKCsBsPlOB",
+        {
+            "OreAmPyaAW": Int,
+            "behNEtgnzP": Str,
+            "iakyqPQtmC": Bool,
+            "nidossVxag": Bool,
+            "rxaKFMGKYR": Float,
+        },
+    ),
+    StructInterface(
+        "TFzwdHkYZi",
+        {
+            "IFInwUzgtZ": Str,
+            "dRXXrVdCBt": Float,
+            "nJorzZgeUV": Int,
+            "refhPYHQVV": Float,
+        },
+    ),
+    StructInterface(
+        "JcsnxLarYp",
+        {
+            "IDvlQhZEFn": Int,
+            "KOXSmpTxJv": Float,
+            "lTWPREIFlz": Int,
+            "ucCLIRNgay": Int,
+        },
+    ),
+    StructInterface(
+        "YPOLiYxtEG",
+        {
+            "QMhqjthfXZ": Float,
+            "kiXTtpnsYC": Str,
+        },
+    ),
+    StructInterface(
+        "aeiEAyakgN",
+        {
+            "FPXmiGeaUH": Float,
+            "SiPAXoNKeP": Int,
+            "oMFHegZoIb": Str,
+            "wctihjscQT": Float,
+        },
+    ),
+    StructInterface(
+        "OZwaCwCwPx",
+        {
+            "AZiqeiWdwi": Str,
+            "aWmFoTrWoI": Float,
+            "bOQeVnVtdk": Float,
+            "htiawSebaA": Bool,
+        },
+    ),
+    StructInterface(
+        "rJczSMXyaX",
+        {
+            "zQLhSvHMbp": Int,
+        },
+    ),
+    StructInterface(
+        "LmlwDgZYxY",
+        {
+            "GPZXyhFxMq": Bool,
+            "fQaDlixQUP": Bool,
+            "fYNGKLbTHc": Str,
+            "ipEmoDsfGN": Bool,
+        },
+    ),
+    StructInterface(
+        "vJfQRrckOr",
+        {
+            "DbuQKhtujz": Float,
+            "xKyunliHTX": Int,
+            "xQbvEbyfWo": Int,
+        },
+    ),
+    StructInterface(
+        "RoqkrhLNHd",
+        {
+            "TgAZhhKbAO": Float,
+            "UMBjwyQzIW": Float,
+            "iQMYtKSTQf": Bool,
+            "odLWmMxvAU": Str,
+            "xUChCziaIj": Str,
+        },
+    ),
+    StructInterface(
+        "AibwMILYje",
+        {
+            "GEhmQHSBHh": Float,
+            "mHelaDTsqC": Int,
+        },
+    ),
+    StructInterface(
+        "qMDyynkSbP",
+        {
+            "bHwAeFkZSt": Bool,
+            "hXXprPkKoc": Bool,
+        },
+    ),
+    StructInterface(
+        "zPUkcwSNki",
+        {
+            "XCnIKWkESl": Bool,
+            "XTwHfadVvn": Bool,
+            "cevjdEOVpT": Int,
+        },
+    ),
+    StructInterface(
+        "BtLZGxZQlU",
+        {
+            "bRXmxLKgiP": Float,
+            "fqKJvcabKq": Int,
+            "fxElDIcDbg": Str,
+            "hqaQkkWZNG": Float,
+        },
+    ),
+    StructInterface(
+        "lkoTdNzKth",
+        {
+            "ECFBDdaYRp": Bool,
+            "JbkXdzoctc": Float,
+            "UgNPLsEElx": Bool,
+            "lPdnPJhLXn": Bool,
+            "spyVnUHGSo": Str,
+        },
+    ),
+    StructInterface(
+        "cQitpaOAJK",
+        {
+            "PjbjTFoyrx": Float,
+            "QCslWGUvmW": Bool,
+            "ZRXjtwDNnS": Bool,
+            "cDDANfGtDa": Bool,
+        },
+    ),
+    StructInterface(
+        "DenwqBcDnN",
+        {
+            "PCDAqBoPQk": Float,
+            "bBjAjYxkeV": Int,
+            "hPZFHUyfwI": Bool,
+            "mubSgazHCY": Int,
+            "rnyIuBmNpT": Int,
+        },
+    ),
+    StructInterface(
+        "CwanNzSVyh",
+        {
+            "GlmddaZLRS": Int,
+            "lkCgNfAsdm": Bool,
+            "qdsuubGAQs": Bool,
+        },
+    ),
+    StructInterface(
+        "wZnrYRbYcX",
+        {
+            "CrWzDdVZXi": Int,
+            "FAgonvZrwF": Float,
+            "HzXsnyBUUm": Bool,
+            "XnkxIIIgON": Float,
+            "ycETgIFNMo": Int,
+        },
+    ),
+    StructInterface(
+        "lZlvMQAcNa",
+        {
+            "ZLpJVNuSnd": Bool,
+            "mLhvDvkbqF": Str,
+        },
+    ),
+    StructInterface(
+        "MheIycjOtD",
+        {
+            "DhSvBViMUm": Float,
+            "GLYmcYMeyl": Bool,
+            "pRPjZtiRKV": Str,
+            "rfeGLQPSTs": Str,
+        },
+    ),
+    StructInterface(
+        "HAJUkGYccC",
+        {
+            "TlNGGMvprf": Str,
+            "vXHkxIDckr": Int,
+            "yccQChQZEz": Float,
+        },
+    ),
+    StructInterface(
+        "vSoqrnAyiJ",
+        {
+            "QtXAJVlGAK": Int,
+            "hyetLPYHVy": Float,
+            "rNVAZXBRwO": Float,
+        },
+    ),
+    StructInterface(
+        "WffIrytAHO",
+        {
+            "rnTNUMgEHf": Str,
+            "rpudSFabXF": Bool,
+            "wIuyhSegpo": Float,
+        },
+    ),
+    StructInterface(
+        "GEsBNKQtGb",
+        {
+            "fWMPmueSXw": Float,
+            "hDgKRBmaDZ": Int,
+            "obpdLHMZXy": Bool,
+        },
+    ),
+    StructInterface(
+        "JSniSMYoLP",
+        {
+            "AssBkVDhlq": Bool,
+            "MzxYLfcoPJ": Int,
+            "jvEpCHJrmk": Int,
+        },
+    ),
+    StructInterface(
+        "aWDUkGNqYN",
+        {
+            "FgTMKogInH": Bool,
+            "lqsSdGrVpZ": Int,
+            "mIUByQHOFC": Bool,
+            "tjHvISoUtI": Float,
+        },
+    ),
+    StructInterface(
+        "yKviIFtMCM",
+        {
+            "ascIQXtRBZ": Float,
+            "bvzmSxpElt": Str,
+        },
+    ),
+    StructInterface(
+        "LOrlzTzvuF",
+        {
+            "PvvlmlFJwo": Int,
+            "eBTuaulrqy": Str,
+        },
+    ),
+    StructInterface(
+        "yxuCiuwNyS",
+        {
+            "vlWzRgiaFg": Float,
+        },
+    ),
+    StructInterface(
+        "pixyYxXNOt",
+        {
+            "CIctVicypC": Bool,
+            "ccIkpewwZU": Str,
+            "hzbbNbQygJ": Str,
+            "sBXLEowmEA": Str,
+            "vFuLNWIYdo": Bool,
+        },
+    ),
+    StructInterface(
+        "UBCtBgplZO",
+        {
+            "zjcFJMYUsP": Float,
+        },
+    ),
+    StructInterface(
+        "oNyrDMSUua",
+        {
+            "PYRupzjTzY": Bool,
+            "ZxjEmUYgtx": Float,
+            "txztGrbLWT": Str,
+        },
+    ),
+    StructInterface(
+        "ezXLqKdHXg",
+        {
+            "xvoFrYCAvc": Bool,
+        },
+    ),
+    StructInterface(
+        "yHHqBajIbu",
+        {
+            "AKDpCHwTdb": Str,
+            "IkBjwRCSne": Int,
+            "NBAtfsmXTu": Float,
+            "gKrnGoahtj": Bool,
+            "rbTzXCtFIM": Int,
+        },
+    ),
+    StructInterface(
+        "HVWswvjoyy",
+        {
+            "VVgKNyZfGO": Float,
+            "dzPXupuQEJ": Str,
+        },
+    ),
+    StructInterface(
+        "uLGXGdteAB",
+        {
+            "jScylDteqU": Str,
+        },
+    ),
+    StructInterface(
+        "QUzzPIYiEg",
+        {
+            "NrmQQsfIER": Str,
+            "QCxIibqKqO": Str,
+            "abxWDhpcWk": Float,
+        },
+    ),
+    StructInterface(
+        "BukZuCddlh",
+        {
+            "QHoreGiWmD": Bool,
+            "TwCEGZjJex": Bool,
+            "ebKwJbiweh": Int,
+            "goFmrehblI": Bool,
+            "zdUoilyBnm": Bool,
+        },
+    ),
+    StructInterface(
+        "wuhHrcSmlZ",
+        {
+            "JkgzEiDBjX": Int,
+            "lmQGZxmahS": Str,
+            "vKdoGbmjOL": Float,
+        },
+    ),
+    StructInterface(
+        "oPTnGPjusR",
+        {
+            "kfSLMTKwtw": Int,
+        },
+    ),
+    StructInterface(
+        "fxycCzZPhT",
+        {
+            "DXvXyfRxmJ": Int,
+            "XofJJuJPKc": Bool,
+            "iNTIDMCAmV": Float,
+        },
+    ),
+    StructInterface(
+        "lCRpXWZFxd",
+        {
+            "AYmTzLewvm": Int,
+            "CPDefnmdBW": Float,
+            "HdTouBSMCK": Str,
+            "PrHjJFSqdi": Float,
+            "SStUEbDTYl": Float,
+        },
+    ),
+    StructInterface(
+        "uBNjBPUEPq",
+        {
+            "YCyKcSGADx": Int,
+            "zqDJhIGzed": Bool,
+        },
+    ),
+    StructInterface(
+        "bEUCgqXToX",
+        {
+            "EsXzgQuJRc": Bool,
+            "OEdsveYvAP": Str,
+        },
+    ),
+    StructInterface(
+        "qRtpdRpAwH",
+        {
+            "ApjIpVygaa": Int,
+            "KpvJGheypG": Bool,
+            "OJKOpGKqvx": Bool,
+        },
+    ),
+    StructInterface(
+        "VCBOldYvvk",
+        {
+            "aIZuVwBNqI": Bool,
+            "jpMLVysVPM": Int,
+        },
+    ),
+    StructInterface(
+        "umqlAnLMCb",
+        {
+            "KYxePbLnmn": Float,
+            "ObWESTWRdc": Bool,
+            "TcbfMYmTVx": Int,
+        },
+    ),
+    StructInterface(
+        "loYeyDAuuy",
+        {
+            "cTfHmmiqmR": Int,
+        },
+    ),
+    StructInterface(
+        "ESRVWIwNin",
+        {
+            "LJXDwvCwgS": Int,
+            "WBcGQRWctZ": Int,
+            "YeihvPjDft": Float,
+            "eJFwCNjWLQ": Str,
+            "qZOXaakUIi": Int,
+        },
+    ),
+    StructInterface(
+        "QIaAKOiKcR",
+        {
+            "ivppYaAIJP": Int,
+        },
+    ),
+    StructInterface(
+        "DXZzHrwaWP",
+        {
+            "AcJKWZXVMk": Int,
+            "gIDnyLUpsP": Bool,
+        },
+    ),
+    StructInterface(
+        "GnpVBYRhHl",
+        {
+            "aeybWuJXke": Bool,
+            "mscaUcvQAD": Float,
+            "nAraDNmxNZ": Float,
+            "rtdulktJMu": Bool,
+            "uGatlXzdbi": Float,
+        },
+    ),
+    StructInterface(
+        "cOwHuiJtdu",
+        {
+            "XqPUCAKeIF": Int,
+        },
+    ),
+    StructInterface(
+        "aStxadHeBS",
+        {
+            "FmdngqYKRX": Int,
+            "GdUSOILClf": Float,
+            "MFDfQhhORS": Str,
+            "cuifoAvrNK": Int,
+        },
+    ),
+    StructInterface(
+        "KvkQKmAtOs",
+        {
+            "DkPfoCiKfc": Str,
+            "VncjrkBrxu": Int,
+            "XjUWFiixOl": Int,
+            "gosZMNHvHT": Bool,
+        },
+    ),
+    StructInterface(
+        "liREFciwxU",
+        {
+            "BiJthdIHuu": Bool,
+            "DrHMeXEyER": Str,
+            "gCqbCTLbco": Str,
+            "yhGidLxGgm": Float,
+        },
+    ),
+    StructInterface(
+        "gBrujBZJJb",
+        {
+            "BTgiKTBrxD": Bool,
+            "eclNdnIJvi": Bool,
+            "tkOXrFzcGY": Float,
+        },
+    ),
+    StructInterface(
+        "sEDUWCOpco",
+        {
+            "FaYnAwzjEQ": Int,
+            "HpbBCLKlAC": Int,
+            "TgztpGnAtB": Float,
+            "gmVhGglwUp": Float,
+            "tTvULlDYZE": Bool,
+        },
+    ),
+    StructInterface(
+        "oVXJzfWtZk",
+        {
+            "QPCgYFNJiO": Bool,
+            "mqFfEIbpLj": Bool,
+            "pKRzWPVWES": Str,
+            "tMxGhZToIP": Str,
+            "vbmcvVCWcb": Str,
+        },
+    ),
+    StructInterface(
+        "uhNHllijHU",
+        {
+            "XwrOpZxOwn": Int,
+            "hhsDLGUmim": Float,
+            "kpaNHKIAFQ": Bool,
+        },
+    ),
+    StructInterface(
+        "mUxJSuNwoo",
+        {
+            "IMbOlPEGKG": Float,
+            "PRmBvETxjl": Bool,
+            "eIBOLxYodg": Str,
+            "jxFscFjaXf": Str,
+            "ujcJUBcBam": Str,
+        },
+    ),
+    StructInterface(
+        "wvsmvqrCBK",
+        {
+            "jXrshrmJJD": Bool,
+            "vRpSyoCrEO": Bool,
+        },
+    ),
+    StructInterface(
+        "bXmDrHUtES",
+        {
+            "euxZZITVUc": Str,
+            "rZnbKXojNV": Int,
+        },
+    ),
+    StructInterface(
+        "XoSzAGRAaK",
+        {
+            "CCieLVLIcg": Float,
+            "TwXYWUZuLh": Str,
+            "fXFbNaoWQB": Float,
+            "gemkKvaEFc": Bool,
+        },
+    ),
+    StructInterface(
+        "zcIORTrWmB",
+        {
+            "AZYidnBdlI": Int,
+            "WMuahrjkEO": Int,
+            "XZopCaeCaC": Int,
+            "ZeVbKUjWla": Bool,
+            "zNGYmJDsMK": Bool,
+        },
+    ),
+    StructInterface(
+        "RNTzEPrysJ",
+        {
+            "DYlnbimGDN": Str,
+            "GcWDxnyLoX": Float,
+            "YztSnfVvTu": Float,
+            "kFLshFhNhL": Bool,
+        },
+    ),
+    StructInterface(
+        "FeIdNHUosP",
+        {
+            "PAQpEtYJTe": Str,
+        },
+    ),
+    StructInterface(
+        "XBMLggIQiV",
+        {
+            "ABPRCFaEUd": Str,
+            "APxmCyOCUG": Float,
+            "WvUKwJidyd": Bool,
+            "gPRagjJQaV": Bool,
+        },
+    ),
+    StructInterface(
+        "TPuDXHHkTO",
+        {
+            "CmaTkTMjRz": Float,
+            "MGFtlbJkaP": Float,
+            "VrYYdjewZA": Int,
+            "rYKElUkzrW": Float,
+            "rYeEjUZpco": Bool,
+        },
+    ),
+    StructInterface(
+        "mmdxOQqOoI",
+        {
+            "kBpevWeSFC": Bool,
+            "kHMmaVHpLw": Bool,
+            "kHPIUOIsdO": Int,
+        },
+    ),
+    StructInterface(
+        "HIxOxWYEyh",
+        {
+            "JVxsRJhWXY": Float,
+        },
+    ),
+    StructInterface(
+        "RrbzJDqwDH",
+        {
+            "SbjSLSDZtw": Int,
+            "VQncHLHyMc": Bool,
+            "YZsJRtjQvn": Float,
+            "qlRcwVOdcP": Str,
+            "slnDzWgHTK": Str,
+        },
+    ),
+    StructInterface(
+        "PQNiBvqeXH",
+        {
+            "PrXlTdXZLS": Str,
+            "UhxiwAlKXj": Str,
+            "imOeyHPAye": Float,
+        },
+    ),
+    StructInterface(
+        "TWUYuMkCSv",
+        {
+            "GHswuubTeo": Str,
+            "lugNrIWVUx": Float,
+        },
+    ),
+    StructInterface(
+        "OuLsiVUXeY",
+        {
+            "gsHUwswoLG": Int,
+        },
+    ),
+    StructInterface(
+        "PnzrppAgGn",
+        {
+            "wrjEaEyveo": Int,
+        },
+    ),
+    StructInterface(
+        "RrAVUaFJbo",
+        {
+            "ESMMkxwJlO": Str,
+        },
+    ),
+    StructInterface(
+        "dWXcwKQamM",
+        {
+            "DmiGImQifI": Bool,
+            "lsEDOfDWxo": Str,
+            "pwWJeEqhbY": Float,
+            "wYWrTSBOWb": Float,
+            "xdkMmXvPKn": Int,
+        },
+    ),
+    StructInterface(
+        "wyNVpbNIqY",
+        {
+            "JFFUilJgfz": Float,
+            "JvnEVYnrOE": Str,
+            "XCYLoNWOpd": Int,
+            "aCefsegCyR": Bool,
+            "nZlTPZtgBK": Int,
+        },
+    ),
+    StructInterface(
+        "jVxOsoyRZz",
+        {
+            "STKppfHEit": Int,
+            "SfOcnyDdfB": Int,
+            "UmuDRlYgDj": Float,
+            "ZkgHDNVBRV": Int,
+            "doWksQNzjq": Int,
+        },
+    ),
+    StructInterface(
+        "UADLPpqPjM",
+        {
+            "AZkYCmAHip": Bool,
+            "hcMFpQpecl": Float,
+        },
+    ),
+    StructInterface(
+        "CVKTiKmMSw",
+        {
+            "ZycfQKyWyZ": Float,
+            "mLlDPVlrcF": Int,
+        },
+    ),
+    StructInterface(
+        "tEwOzgFHWZ",
+        {
+            "ClXytaygsI": Int,
+        },
+    ),
+    StructInterface(
+        "iwiinQsTxz",
+        {
+            "CzbwRmowCs": Bool,
+            "QiXYHuakgE": Str,
+            "TCxiiwbpYp": Str,
+            "jrszvYMXVR": Str,
+        },
+    ),
+    StructInterface(
+        "OYkCbRKNOI",
+        {
+            "AOZdUzFzGa": Bool,
+            "ARmJCEGbDa": Int,
+            "lmgEyPqZBu": Int,
+        },
+    ),
+    StructInterface(
+        "ZGcMgfqSZo",
+        {
+            "AeFbGPtvNw": Str,
+            "BXLsSoATzl": Int,
+            "QZCpWWrfUz": Bool,
+            "jZjdPsMJQc": Int,
+            "mmXopZftfg": Float,
+        },
+    ),
+    StructInterface(
+        "GjfBNzHVZz",
+        {
+            "BeKSqarsvG": Int,
+            "DsFnHegOTi": Float,
+            "zPoYVyCdLm": Bool,
+        },
+    ),
+    StructInterface(
+        "WBaUDKjvpe",
+        {
+            "PLXnokFKyk": Str,
+            "RsyylKqcRH": Bool,
+            "ynEtQqjYqh": Int,
+        },
+    ),
+    StructInterface(
+        "cHhAyJsAcw",
+        {
+            "EwCwXQlKNv": Int,
+            "KcKBkYsytd": Bool,
+        },
+    ),
+    StructInterface(
+        "fzqazqbmsT",
+        {
+            "KaKFGpKGVL": Float,
+            "LaKaaiqWYl": Float,
+            "MgIvbvvNIK": Int,
+            "bRxjxwMPos": Bool,
+            "ummIANfgYa": Float,
+        },
+    ),
+    StructInterface(
+        "URzcvFCPhm",
+        {
+            "owrODcDjJT": Bool,
+        },
+    ),
+    StructInterface(
+        "CGYStPrHCq",
+        {
+            "JWfojTYvXP": Int,
+            "OctwjagmlP": Float,
+            "YkskOGeMAB": Str,
+            "mhpAqjbusj": Float,
+        },
+    ),
+    StructInterface(
+        "VagmlexFJf",
+        {
+            "KOrZGktpjh": Float,
+        },
+    ),
+    StructInterface(
+        "HPategejZE",
+        {
+            "JgsaZkZXZO": Bool,
+            "vUfWPoVpge": Str,
+        },
+    ),
+    StructInterface(
+        "ehPSQgKdAy",
+        {
+            "rBpOXQrEyZ": Bool,
+            "wwLEbygXHV": Int,
+        },
+    ),
+    StructInterface(
+        "qeACHspHSq",
+        {
+            "BuOaFAcVEE": Float,
+            "hWVQDGmUIQ": Str,
+            "kjWconMrfK": Int,
+            "soYhvCQSMC": Int,
+        },
+    ),
+    StructInterface(
+        "vHZtWaMhBM",
+        {
+            "INkVhurqpm": Str,
+            "KOVDlgVGSk": Float,
+            "qnGJiKijzu": Int,
+        },
+    ),
+    StructInterface(
+        "QScqADfCsv",
+        {
+            "BzpswdNagE": Bool,
+            "OWeOSyODfW": Float,
+            "VwyxGQGyDC": Int,
+            "ayPqtNNlKO": Bool,
+            "uJxeXpDUJr": Float,
+        },
+    ),
+    StructInterface(
+        "pmCOWDgLYO",
+        {
+            "GNNNvVYjlu": Bool,
+            "teOMKiMZLI": Str,
+        },
+    ),
+    StructInterface(
+        "abrrAANGsT",
+        {
+            "KUfdVnXewx": Float,
+        },
+    ),
+    StructInterface(
+        "ZnhetJWkZJ",
+        {
+            "ixCxcOyvOO": Int,
+        },
+    ),
+    StructInterface(
+        "ixeSublOKv",
+        {
+            "JLChyPRGQH": Float,
+            "mDnlnamurt": Float,
+        },
+    ),
+    StructInterface(
+        "BDvALWfIFh",
+        {
+            "EGCnWHwuNI": Int,
+            "OluJfjEEdT": Int,
+            "UThPhsarjT": Float,
+            "goadfRxtld": Int,
+            "jqWESKyrOV": Int,
+        },
+    ),
+    StructInterface(
+        "PFEeHWvMAv",
+        {
+            "jMOoPmYRTa": Str,
+        },
+    ),
+    StructInterface(
+        "nyMRDxXOlX",
+        {
+            "MryeagHZVE": Float,
+            "UWGwkTECoK": Int,
+            "jWOkHAExLX": Int,
+            "tvwYQwBDlh": Float,
+            "xUKmjjYwAW": Int,
+        },
+    ),
+    StructInterface(
+        "MYNnQzkiAX",
+        {
+            "dzyRQgjEoO": Int,
+            "obnjYWeWvN": Str,
+            "yGOBgQtXAQ": Bool,
+        },
+    ),
+    StructInterface(
+        "pGDPrlfVHj",
+        {
+            "vOxCgimiDH": Float,
+        },
+    ),
+    StructInterface(
+        "KmJBsXivck",
+        {
+            "AuefGeYIeA": Bool,
+            "fzTonFwkrF": Int,
+        },
+    ),
+    StructInterface(
+        "nhUKrshgaI",
+        {
+            "AZjxKzpCXQ": Bool,
+            "PzozrdNvxk": Str,
+            "SKKCDTYAhJ": Float,
+            "WsYhfVOWyJ": Int,
+            "aEPgMZgCZy": Float,
+        },
+    ),
+    StructInterface(
+        "bBcewuXeyT",
+        {
+            "SloBaefMfh": Float,
+            "WhIxkIHjIz": Str,
+            "hYXgMfsWfe": Float,
+            "odAKApNGHZ": Str,
+        },
+    ),
+    StructInterface(
+        "eSrGNxaDyB",
+        {
+            "QUkkRiLbOO": Float,
+        },
+    ),
+    StructInterface(
+        "SmdyzzkLGa",
+        {
+            "ADDwuXXJYl": Int,
+            "cXyLJQwxKr": Float,
+            "mMbKFuMncc": Bool,
+            "qTUCLzQjKP": Float,
+        },
+    ),
+    StructInterface(
+        "OJTqMqmZPL",
+        {
+            "CvygTSbttl": Str,
+            "JoGMIGkzDZ": Bool,
+            "VESVXoxgye": Int,
+        },
+    ),
+    StructInterface(
+        "fDqTnSIUMp",
+        {
+            "bBpDtldisI": Bool,
+        },
+    ),
+    StructInterface(
+        "ypOSSIcwYx",
+        {
+            "DQDopwrEgR": Float,
+            "GCmMqfUDsh": Int,
+            "JvBwhicjZk": Bool,
+            "NqYrulKErt": Bool,
+            "vAJklQqeGR": Bool,
+        },
+    ),
+    StructInterface(
+        "GZBwDwiCYz",
+        {
+            "CVVfWbbhef": Str,
+            "XHQFtehfvs": Str,
+            "hxqpSujuNl": Bool,
+            "ySvbheUeuH": Str,
+        },
+    ),
+    StructInterface(
+        "LTUPzVKhWH",
+        {
+            "AzUQuPndaq": Int,
+        },
+    ),
+    StructInterface(
+        "sNPGfwFLwC",
+        {
+            "BzaoCQbQqK": Bool,
+            "dhsHJfYvug": Float,
+            "mNAjLDRDOs": Str,
+            "oItQAzGycl": Int,
+            "vTZHAOEXvk": Bool,
+        },
+    ),
+    StructInterface(
+        "YlPrrdfwjQ",
+        {
+            "dDqGOweusw": Float,
+            "dOVqZbQaSY": Int,
+        },
+    ),
+    StructInterface(
+        "wngKDFVqeG",
+        {
+            "IAteFWVjAJ": Str,
+            "IMkNzeShQo": Int,
+            "jwlLheTZlj": Float,
+            "nJwflrXIVR": Str,
+            "yavaveidMd": Float,
+        },
+    ),
+    StructInterface(
+        "YrgdjBCwBE",
+        {
+            "lVwEJLcWkp": Int,
+            "pwNPXNEOKD": Str,
+            "rhhNKpzHAa": Str,
+        },
+    ),
+    StructInterface(
+        "RTwPhDcxNP",
+        {
+            "YAviPUGkxS": Int,
+            "ZVEqWTeSJA": Str,
+            "hkWsVPrZJk": Str,
+        },
+    ),
+    StructInterface(
+        "GGWLOWGLxq",
+        {
+            "FndVShmWjT": Float,
+            "JWoEewnOPl": Str,
+            "YywEQyoZEV": Bool,
+            "bgBMdEMCeM": Bool,
+        },
+    ),
+    StructInterface(
+        "FFwhZCMQYx",
+        {
+            "avFNbKhFUZ": Bool,
+            "fFVNFcktAW": Bool,
+            "izGibIxJDW": Bool,
+            "yRxYHfVkSH": Bool,
+            "yhgRifhCom": Float,
+        },
+    ),
+    StructInterface(
+        "lvsbjnSqkk",
+        {
+            "FwOzYsPPsi": Float,
+            "SEOaoKdGnx": Str,
+            "dLXDUYlxur": Bool,
+        },
+    ),
+    StructInterface(
+        "SNyAawzeXl",
+        {
+            "RROYQNMolO": Float,
+            "ulWMqLAzZg": Str,
+        },
+    ),
+    StructInterface(
+        "dssYANKcxn",
+        {
+            "KBwojzxnqu": Str,
+            "vnkVhfTBVq": Bool,
+        },
+    ),
+    StructInterface(
+        "PDhUCbglAR",
+        {
+            "LUEBnMVkeg": Float,
+            "QEJajFnxqT": Float,
+            "XZsToDBCRR": Str,
+            "bXyNkfeTFQ": Float,
+            "ilsEvCpgsW": Int,
+        },
+    ),
+    StructInterface(
+        "vlIBTigXWI",
+        {
+            "VmyyTFjMkw": Bool,
+            "kBOzJGDifx": Int,
+            "lZYIvwjMpI": Int,
+            "pQILiUsidJ": Float,
+            "zOiaueSwUg": Bool,
+        },
+    ),
+    StructInterface(
+        "cZgFWwAJra",
+        {
+            "wvjFsjPTxs": Bool,
+            "wvokyOdllz": Float,
+        },
+    ),
+    StructInterface(
+        "sPdKUZvHDI",
+        {
+            "MrgjBFNpbG": Float,
+            "VolKfEjlBN": Str,
+            "aSjDjrKsVw": Int,
+            "jZBDDrNcrJ": Int,
+            "lHExIaajXf": Str,
+        },
+    ),
+    StructInterface(
+        "sQJfisqBTn",
+        {
+            "IqPTDSzAyv": Int,
+            "OtXcLWrnbu": Bool,
+        },
+    ),
+    StructInterface(
+        "lLRzZZCKlQ",
+        {
+            "PuelrewQfn": Int,
+            "dsroNcfsWP": Bool,
+            "gdXWaLYScp": Bool,
+            "jQcsRSBnhA": Float,
+        },
+    ),
+    StructInterface(
+        "jgBdvKOagL",
+        {
+            "RvaJJwxcwn": Bool,
+            "VANAjjYfun": Bool,
+            "WWxkDvvWEi": Str,
+            "yQVjeIKVHa": Str,
+        },
+    ),
+    StructInterface(
+        "ZpogMbrAqw",
+        {
+            "AAgfCqJLeA": Int,
+            "AKWNzjcuKH": Float,
+            "piCWTctIro": Bool,
+            "wpiTBbWvwQ": Bool,
+            "xXvtyEragU": Int,
+        },
+    ),
+    StructInterface(
+        "VsldpFvVCj",
+        {
+            "HtVXZeViHu": Bool,
+            "bulnhpRjRH": Float,
+            "cTMHHcSVUb": Float,
+            "frrZuHmCmj": Float,
+            "upVProXQUP": Bool,
+        },
+    ),
+    StructInterface(
+        "PlYWJWxCWl",
+        {
+            "GsnAedJMGf": Int,
+            "cNroqJgoHE": Str,
+            "qFBdGzBTvZ": Int,
+            "thFASDYarc": Bool,
+            "yzACkQIihW": Int,
+        },
+    ),
+    StructInterface(
+        "Tpuyvqervq",
+        {
+            "LwzTYwwrCQ": Float,
+            "TfhcjLOvNX": Str,
+            "UsgBzrcEHq": Int,
+        },
+    ),
+    StructInterface(
+        "zSLpWgpqYt",
+        {
+            "MulqLiBvND": Float,
+            "acijXAgIWg": Bool,
+            "tdNtqYeWSw": Bool,
+        },
+    ),
+    StructInterface(
+        "yLnMyJEFWy",
+        {
+            "BwmyftyUko": Str,
+            "KpYpuCqSLt": Bool,
+            "YyNrWxKYPy": Bool,
+        },
+    ),
+    StructInterface(
+        "PUSOgfKlxM",
+        {
+            "CEYzcZUdaq": Int,
+            "ytRYpVtbox": Bool,
+        },
+    ),
+    StructInterface(
+        "RKEwQehbEI",
+        {
+            "YbUjBjiFTo": Bool,
+        },
+    ),
+    StructInterface(
+        "xqEYVEixXI",
+        {
+            "bffNzNvZsW": Bool,
+            "vkuhEhSWEi": Float,
+        },
+    ),
+    StructInterface(
+        "joqiPAuLzF",
+        {
+            "mQXcZJzDEa": Float,
+            "wLHhZpigkX": Bool,
+        },
+    ),
+    StructInterface(
+        "WAVXEonaEW",
+        {
+            "FrdGZTVRIe": Str,
+            "NHuVcXCtBD": Str,
+        },
+    ),
+    StructInterface(
+        "GRmKjLbnWB",
+        {
+            "FyAMkysHoN": Str,
+            "dFRsWPdrkr": Bool,
+            "gGBKfgvoKz": Str,
+            "khAKAlPuZo": Int,
+            "pHRVAdqhgC": Int,
+        },
+    ),
+    StructInterface(
+        "LcFgXylFoo",
+        {
+            "UcCVHEdfwl": Bool,
+        },
+    ),
+    StructInterface(
+        "FBsssEVmxF",
+        {
+            "UOtvvItOba": Float,
+            "XTdILFQopL": Float,
+            "ZWbpxSjylg": Int,
+            "byfPufCyMb": Int,
+        },
+    ),
+    StructInterface(
+        "BobYIGHYhF",
+        {
+            "BcADhKANPN": Int,
+            "OeyXoraDMf": Float,
+        },
+    ),
+    StructInterface(
+        "wqQLVdFBFd",
+        {
+            "CKVeWrRvSk": Float,
+            "qCUQpYRKID": Int,
+            "rdzmgcJpMD": Float,
+        },
+    ),
+    StructInterface(
+        "OXmwilfLJC",
+        {
+            "FUphVZtphN": Bool,
+            "NRurDwlcBf": Bool,
+            "dPCQSDNobu": Bool,
+            "yAPJzZRuHb": Float,
+        },
+    ),
+    StructInterface(
+        "uPeEWfJhJH",
+        {
+            "XFlgiIbybl": Str,
+            "xGvcbZGCPK": Str,
+        },
+    ),
+    StructInterface(
+        "dsLSBnyUab",
+        {
+            "DullODWNhg": Int,
+            "OcBswsZgto": Float,
+            "bMwAKPsojR": Bool,
+            "fXyimpvspD": Float,
+            "tXHUWoOrYz": Int,
+        },
+    ),
+    StructInterface(
+        "cGVDVCYhaZ",
+        {
+            "fxTWZQCfpk": Float,
+        },
+    ),
+    StructInterface(
+        "ijuzSDNULt",
+        {
+            "CLdyyDvoTm": Str,
+            "EbPNqHSZuU": Float,
+            "cUsmLIKulH": Int,
+            "lIpVAMQEnK": Bool,
+            "pwRbfygpBM": Int,
+        },
+    ),
+    StructInterface(
+        "kJNJprqlQy",
+        {
+            "FAhxZvLgzj": Str,
+            "npyHcjiuAM": Bool,
+            "rcbKUBIrJr": Float,
+        },
+    ),
+    StructInterface(
+        "fojwSALYWK",
+        {
+            "LESUQfiRgf": Str,
+            "axVaMNSirb": Bool,
+            "xpZrUWaMSp": Float,
+        },
+    ),
+]
