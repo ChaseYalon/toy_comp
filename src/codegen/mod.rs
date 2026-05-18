@@ -71,22 +71,18 @@ impl<'a> Generator<'a> {
         name: String,
         is_main: bool,
     ) -> Result<(), ToyError> {
-        println!("  -> converting pre_ctla_ir...");
         let pre_ctla_ir = self.converter.convert(ast, is_main, &name)?;
         let args: Vec<String> = env::args().collect();
         if args.contains(&"--debug-tir".to_string()) || args.contains(&"--debug-ALL".to_string()) {
             let s = Generator::pretty_print_tir(&pre_ctla_ir)?;
             fs::write("./debug/TIR.json", s).unwrap(); //rly should be an io error -> toy error conversion
         }
-        println!("  -> analyzing (CTLA)...");
         let ir = self.analyzer.analyze(self.converter.builder.clone())?;
         if args.contains(&"--debug-cfg".to_string()) || args.contains(&"--debug-ALL".to_string()) {
             let s = Generator::pretty_print_cfg(self.analyzer.cfg_functions())?;
             fs::write("./debug/CFG.json", s).unwrap(); //rly should be an io error -> toy error conversion
         }
-        println!("  -> generating LLVM IR...");
         self.generator.generate(ir, name)?;
-        println!("  -> done generating LLVM IR.");
         Ok(())
     }
 }

@@ -3,6 +3,7 @@ use itertools::Itertools;
 use std::collections::{BTreeSet, HashMap, HashSet};
 type AllocationId = u64;
 use crate::{
+    Span,
     errors::{ToyError, ToyErrorType},
     parser::ast::InfixOp,
     token::TypeTok,
@@ -753,8 +754,10 @@ impl TirBuilder {
         if self.extern_funcs.contains_key(&name) {
             return self.call_extern(name, params);
         }
-        println!("Name: {name}");
-        unreachable!(); // parser validated
+        return Err(ToyError::new(
+            ToyErrorType::UndefinedFunction,
+            Span::null_span_with_msg(&format!("Name: {name}")),
+        ));
     }
     pub fn call_extern_void(
         &mut self,
@@ -936,7 +939,12 @@ impl TirBuilder {
                         ty: Some(TirType::I1),
                     });
                 }
-                _ => unreachable!(), // parser validated
+                _ => {
+                    return Err(ToyError::new(
+                        ToyErrorType::ExpressionNotBoolean,
+                        Span::null_span_with_msg(format!("{:?}", v).as_str()),
+                    ));
+                } // parser validated
             };
         }
         //this should be unreachable

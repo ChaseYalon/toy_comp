@@ -34,3 +34,6 @@ Program
 
 #core dumps
 core.*
+
+#delta debugging stuff
+reduced.txt

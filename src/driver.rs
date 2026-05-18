@@ -822,11 +822,9 @@ impl Driver {
         self.parse_import_list(import_list)?;
 
         let mut object_files = Vec::new();
-        println!("Imports collected");
 
         //Compile Dependencies
         for (path, ast) in &self.file_path_to_ast {
-            println!("Compiling dependency: {}", path);
             let module_name = path.replace(".toy", "");
 
             Driver::set_current_file_path(path);
@@ -899,9 +897,7 @@ impl Driver {
         }
 
         Driver::set_current_file_path(&main_path);
-        println!("Compiling main module...");
         generator.compile_to_object(main_ast, self.name.clone(), true)?;
-        println!("Linked...");
         object_files.push(format!("{}.o", self.name));
 
         //Link

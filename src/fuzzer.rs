@@ -29,14 +29,19 @@ pub struct TestRunner {
     interfaces: Vec<Ast>,
     ///(ret type, param types, function name)
     functions: Vec<(TypeTok, Vec<TypeTok>, String)>,
+    ///only used for delta debugging, Var Name -> Var Type
+    var_names_to_types: HashMap<String, TypeTok>,
 }
 
 impl TestRunner {
     pub fn new() -> TestRunner {
+        Self::new_with_seed(100u64)
+    }
+
+    pub fn new_with_seed(seed: u64) -> TestRunner {
         let root = Scope {
             vars: HashMap::new(),
         };
-        let seed = 100u64; //this is sketchy
         return TestRunner {
             scopes: vec![root],
             rng: StdRng::seed_from_u64(seed),
@@ -48,6 +53,7 @@ impl TestRunner {
             prgm_length: 10,
             interfaces: vec![],
             functions: vec![],
+            var_names_to_types: HashMap::new(),
         };
     }
     fn _random_type(&mut self) -> TypeTok {
@@ -425,14 +431,16 @@ impl TestRunner {
             body.push(self.gen_stmt(1));
         }
         self.scopes.pop();
-        let ret = match ret_type {
-            TypeTok::Int => self.gen_int_expr(0),
-            TypeTok::Bool => self.gen_bool_expr(0),
-            TypeTok::Float => self.gen_float_expr(0),
-            TypeTok::Str => self.gen_str_expr(0),
-            _ => todo!("{:?} is an invalid return type", ret_type),
-        };
-        body.push(ret);
+        if ret_type != TypeTok::Void {
+            let ret = match ret_type {
+                TypeTok::Int => self.gen_int_expr(0),
+                TypeTok::Bool => self.gen_bool_expr(0),
+                TypeTok::Float => self.gen_float_expr(0),
+                TypeTok::Str => self.gen_str_expr(0),
+                _ => todo!("{:?} is an invalid return type", ret_type),
+            };
+            body.push(Ast::Return(Box::new(ret), Span::null_span()));
+        }
         let function_name = Alphabetic.sample_string(&mut self.rng, 10);
         self.functions
             .push((ret_type.clone(), param_types.clone(), function_name.clone()));
@@ -713,6 +721,55 @@ impl TestRunner {
             _ => todo!("unsupported replacement type {:?}", ty),
         }
     }
+    //Will always return Int, Float, Bool, or None
+    fn typeof_node(&self, node: &Ast) -> Option<TypeTok> {
+        return match node {
+            Ast::IntLit(_, _) => Some(TypeTok::Int),
+            Ast::FloatLit(_, _) => Some(TypeTok::Float),
+            Ast::BoolLit(_, _) => Some(TypeTok::Bool),
+            Ast::InfixExpr(l, r, op, _) => {
+                if matches!(
+                    op,
+                    InfixOp::And
+                        | InfixOp::Or
+                        | InfixOp::NotEquals
+                        | InfixOp::Equals
+                        | InfixOp::LessThan
+                        | InfixOp::LessThanEqt
+                        | InfixOp::GreaterThan
+                        | InfixOp::GreaterThanEqt
+                ) {
+                    Some(TypeTok::Bool)
+                } else if self.typeof_node(&(**l)) == Some(TypeTok::Float)
+                    || self.typeof_node(&(**r)) == Some(TypeTok::Float)
+                {
+                    Some(TypeTok::Float)
+                } else {
+                    Some(TypeTok::Int) //infix expr is always bool, float, int
+                }
+            }
+            Ast::EmptyExpr(sub, _) => self.typeof_node(&(**sub)),
+            Ast::Not(_, _) => Some(TypeTok::Bool),
+            Ast::VarDec(_, t, _, _) => {
+                if matches!(t, TypeTok::Int | TypeTok::Float | TypeTok::Bool) {
+                    Some(t.clone())
+                } else {
+                    None
+                }
+            }
+            Ast::VarRef(n, _) => {
+                let res = self.var_names_to_types.get(&(**n).clone());
+                if res.is_some()
+                    && matches!(res.unwrap(), TypeTok::Int | TypeTok::Float | TypeTok::Bool)
+                {
+                    Some(res.unwrap().clone())
+                } else {
+                    None
+                }
+            }
+            _ => None, //probably more edge cases not accounted for
+        };
+    }
     fn rewrite_expr(&mut self, expr: Ast, removed_name: &str, removed_ret: &TypeTok) -> Ast {
         match expr {
             Ast::FuncCall(name, args, span) => {
@@ -729,23 +786,70 @@ impl TestRunner {
                 )
             }
 
-            Ast::InfixExpr(lhs, rhs, op, span) => Ast::InfixExpr(
-                Box::new(self.rewrite_expr(*lhs, removed_name, removed_ret)),
-                Box::new(self.rewrite_expr(*rhs, removed_name, removed_ret)),
-                op,
-                span,
-            ),
+            Ast::InfixExpr(lhs, rhs, op, span) => {
+                if self.rng.random_range(0..=4) == 0 {
+                    if matches!(
+                        op,
+                        InfixOp::And
+                            | InfixOp::Or
+                            | InfixOp::Equals
+                            | InfixOp::NotEquals
+                            | InfixOp::GreaterThan
+                            | InfixOp::GreaterThanEqt
+                            | InfixOp::LessThan
+                            | InfixOp::LessThanEqt
+                    ) {
+                        Ast::BoolLit(self.rng.random_bool(0.5), Span::null_span())
+                    } else if self.typeof_node(&*lhs) == Some(TypeTok::Float)
+                        || self.typeof_node(&*rhs) == Some(TypeTok::Float)
+                    {
+                        Ast::FloatLit(
+                            OrderedFloat::from(self.rng.random_range(-1_000_000.0f64..1_000_000.0)),
+                            Span::null_span(),
+                        )
+                    } else {
+                        Ast::IntLit(self.rng.random_range(i64::MIN..i64::MAX), Span::null_span())
+                    }
+                } else {
+                    Ast::InfixExpr(
+                        Box::new(self.rewrite_expr(*lhs, removed_name, removed_ret)),
+                        Box::new(self.rewrite_expr(*rhs, removed_name, removed_ret)),
+                        op,
+                        span,
+                    )
+                }
+            }
 
-            Ast::EmptyExpr(expr, span) => Ast::EmptyExpr(
-                Box::new(self.rewrite_expr(*expr, removed_name, removed_ret)),
-                span,
-            ),
+            Ast::EmptyExpr(expr, span) => {
+                if self.rng.random_range(0..=4) == 0 {
+                    if self.typeof_node(&*expr) == Some(TypeTok::Bool) {
+                        Ast::BoolLit(self.rng.random_bool(0.5), Span::null_span())
+                    } else if self.typeof_node(&*expr) == Some(TypeTok::Float) {
+                        Ast::FloatLit(
+                            OrderedFloat::from(self.rng.random_range(-1_000_000.0f64..1_000_000.0)),
+                            Span::null_span(),
+                        )
+                    } else {
+                        Ast::IntLit(self.rng.random_range(i64::MIN..i64::MAX), Span::null_span())
+                    }
+                } else {
+                    Ast::EmptyExpr(
+                        Box::new(self.rewrite_expr(*expr, removed_name, removed_ret)),
+                        span,
+                    )
+                }
+            }
 
-            Ast::Not(expr, span) => Ast::Not(
-                Box::new(self.rewrite_expr(*expr, removed_name, removed_ret)),
-                span,
-            ),
-
+            Ast::Not(expr, span) => {
+                if self.rng.random_range(0..=4) == 0 {
+                    Ast::BoolLit(self.rng.random_bool(0.5), Span::null_span())
+                } else {
+                    Ast::Not(
+                        Box::new(self.rewrite_expr(*expr, removed_name, removed_ret)),
+                        span,
+                    )
+                }
+            }
             Ast::MemberAccess(expr, field, span) => Ast::MemberAccess(
                 Box::new(self.rewrite_expr(*expr, removed_name, removed_ret)),
                 field,
@@ -786,40 +890,58 @@ impl TestRunner {
                 Some(Ast::FuncDec(name, params, ret, body, span))
             }
 
-            Ast::VarDec(name, ty, expr, span) => Some(Ast::VarDec(
-                name,
-                ty,
-                Box::new(self.rewrite_expr(*expr, removed_name, removed_ret)),
-                span,
-            )),
+            Ast::VarDec(name, ty, expr, span) => {
+                self.var_names_to_types.insert((*name).clone(), ty.clone());
+                Some(Ast::VarDec(
+                    name,
+                    ty,
+                    Box::new(self.rewrite_expr(*expr, removed_name, removed_ret)),
+                    span,
+                ))
+            }
 
             Ast::IfStmt(cond, body, else_body, span) => {
-                let cond = Box::new(self.rewrite_expr(*cond, removed_name, removed_ret));
+                //give every if stmt a 1/6 chance of being removed
+                if self.rng.random_range(0..=5) == 0 {
+                    None
+                } else {
+                    let cond = Box::new(self.rewrite_expr(*cond, removed_name, removed_ret));
 
-                let body = body
-                    .into_iter()
-                    .filter_map(|s| self.rewrite_stmt(s, removed_name, removed_ret))
-                    .collect();
-
-                let else_body = else_body.map(|body| {
-                    body.into_iter()
+                    let body = body
+                        .into_iter()
                         .filter_map(|s| self.rewrite_stmt(s, removed_name, removed_ret))
-                        .collect()
-                });
+                        .collect();
 
-                Some(Ast::IfStmt(cond, body, else_body, span))
+                    let else_body = else_body.map(|body| {
+                        body.into_iter()
+                            .filter_map(|s| self.rewrite_stmt(s, removed_name, removed_ret))
+                            .collect()
+                    });
+
+                    Some(Ast::IfStmt(cond, body, else_body, span))
+                }
             }
 
             Ast::WhileStmt(cond, body, span) => {
-                let cond = Box::new(self.rewrite_expr(*cond, removed_name, removed_ret));
+                //same as if
+                if self.rng.random_range(0..=5) == 0 {
+                    None
+                } else {
+                    let cond = Box::new(self.rewrite_expr(*cond, removed_name, removed_ret));
 
-                let body = body
-                    .into_iter()
-                    .filter_map(|s| self.rewrite_stmt(s, removed_name, removed_ret))
-                    .collect();
+                    let body = body
+                        .into_iter()
+                        .filter_map(|s| self.rewrite_stmt(s, removed_name, removed_ret))
+                        .collect();
 
-                Some(Ast::WhileStmt(cond, body, span))
+                    Some(Ast::WhileStmt(cond, body, span))
+                }
             }
+
+            Ast::Return(expr, span) => Some(Ast::Return(
+                Box::new(self.rewrite_expr(*expr, removed_name, removed_ret)),
+                span,
+            )),
 
             _ => Some(stmt),
         }
@@ -842,6 +964,7 @@ impl TestRunner {
             _ => unreachable!(),
         };
 
+        self.functions.retain(|(_, _, n)| *n != removed_name);
         input
             .into_iter()
             .filter_map(|stmt| self.rewrite_stmt(stmt, &removed_name, &removed_ret))

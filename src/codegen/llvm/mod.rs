@@ -632,10 +632,24 @@ impl<'a> LlvmGenerator<'a> {
             TIR::Phi(id, block_ids, vals) => {
                 let first_val_ssa = &vals[0];
                 let mut ty = None;
-                for val in &vals {
+                'type_search: for val in &vals {
                     if let Some(v) = self.tir_to_val.get(&(curr_func_name.clone(), val.clone())) {
                         ty = Some(v.get_type());
                         break;
+                    }
+                    // Struct values are stored under TirType::Ptr (as i64), so try alt types.
+                    let alt_tys: Vec<TirType> = match &val.ty {
+                        Some(TirType::StructInterface(_)) => vec![TirType::Ptr, TirType::I64],
+                        Some(TirType::I64) => vec![TirType::Ptr],
+                        Some(TirType::Ptr) => vec![TirType::I64],
+                        _ => vec![],
+                    };
+                    for at in alt_tys {
+                        let alt_ssa = SSAValue { val: val.val, ty: Some(at) };
+                        if let Some(v) = self.tir_to_val.get(&(curr_func_name.clone(), alt_ssa)) {
+                            ty = Some(v.get_type());
+                            break 'type_search;
+                        }
                     }
                 }
 
@@ -660,12 +674,13 @@ impl<'a> LlvmGenerator<'a> {
                         // Try alternative type lookup for phi incoming values
                         let mut found = false;
                         if let Some(ty) = &ssa_val.ty {
-                            let alt_ty = match ty {
-                                TirType::I64 => Some(TirType::Ptr),
-                                TirType::Ptr => Some(TirType::I64),
-                                _ => None,
+                            let alt_tys: Vec<TirType> = match ty {
+                                TirType::I64 => vec![TirType::Ptr],
+                                TirType::Ptr => vec![TirType::I64],
+                                TirType::StructInterface(_) => vec![TirType::Ptr, TirType::I64],
+                                _ => vec![],
                             };
-                            if let Some(at) = alt_ty {
+                            for at in alt_tys {
                                 let alt_ssa = SSAValue {
                                     val: ssa_val.val,
                                     ty: Some(at),
@@ -675,6 +690,7 @@ impl<'a> LlvmGenerator<'a> {
                                 {
                                     phi.add_incoming(&[(&*val, *block)]);
                                     found = true;
+                                    break;
                                 }
                             }
                         }

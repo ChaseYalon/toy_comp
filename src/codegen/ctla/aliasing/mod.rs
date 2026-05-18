@@ -235,12 +235,7 @@ impl AliasAndEncapsulationTracker {
         summary_by_func: HashMap<String, Vec<usize>>,
         encapsulator_values: &mut HashSet<(String, ValueId)>,
     ) {
-        let mut loop_count = 0;
         loop {
-            loop_count += 1;
-            if loop_count > 100 {
-                println!("Infinite loop detected in propagate_aliases! changed = true");
-            }
             let mut changed = false;
 
             let mut new_aliases = alias_values.clone();
@@ -276,9 +271,6 @@ impl AliasAndEncapsulationTracker {
                                                         (*callee_func.name).clone(),
                                                         callee_param.val,
                                                     ));
-                                                    if did_insert {
-                                                        println!("inserted parameter {} from func {} as an alias", callee_param.val, callee_func.name);
-                                                    }
                                                     did_insert
                                                 },
                                             )

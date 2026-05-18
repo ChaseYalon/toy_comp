@@ -731,7 +731,6 @@ impl CTLA {
         alloc: &mut HeapAllocation,
         insertion_points: &mut Vec<(String, BlockId, ValueId, SSAValue, String)>,
     ) {
-        println!("      => process_allocation for func: {}", alloc.function);
         let func = {
             let builder = self.builder.borrow();
             builder
@@ -741,33 +740,26 @@ impl CTLA {
                 .cloned()
                 .unwrap()
         };
-        println!("        - finding aliases...");
         self.alias_detector
             .find_aliases_and_encapsulators(alloc, &mut self.cfg_functions);
-        println!("        - checking is_param...");
         let is_param = func.params.iter().any(|p| p.val == alloc.alloc_ins.val);
         if is_param {
             return;
         }
-        println!("        - finding cfg_func...");
         let cfg_func = self
             .cfg_functions
             .iter()
             .find(|f| f.func.name == func.name)
             .unwrap();
-        println!("        - getting escape_type...");
         let escape_type = self.allocation_escapes(&alloc);
         if escape_type == EscapeType::EscapesProgram || escape_type == EscapeType::EscapesModule {
             //at this pont let it leak, it it escapes the program
             return;
         } else if escape_type == EscapeType::DoesNotEscape {
             //if in this branch, the allocation dies in ths function
-            println!("        - process_non_escaping_allocation...");
             self.process_non_escaping_allocation(cfg_func, &func, &alloc, insertion_points);
         } else {
-            println!("        - find_owning_function...");
             let (owning_func_name, owning_val) = self.find_owning_function(&alloc);
-            println!("        - found owning_func_name: {}", owning_func_name);
 
             let owning_func = {
                 let builder = self.builder.borrow();
@@ -913,31 +905,22 @@ impl CTLA {
         self.cfg_functions.clear();
 
         //build per-function CFG graphs
-        println!("    -> building CFG...");
         {
             let mut builder = self.builder.borrow_mut();
             for f in &mut builder.funcs {
-                println!("      CFG for func: {}", f.name);
                 let mut cfg_f = CFGFunction::new(f.to_owned());
                 cfg_f.calc_cfg();
                 self.cfg_functions.push(cfg_f);
             }
         }
-        println!("    -> populate_return_alias_parameter_summaries...");
         self.alias_detector
             .populate_return_alias_parameter_summaries(&mut self.cfg_functions);
-        println!("    -> populate_parameter_escape_summary...");
         self.cfg_functions = self.populate_parameter_escape_summary(self.cfg_functions.clone());
-        println!("    -> detect_unique_heap_allocations...");
         let mut unique_allocations = self.builder.borrow().detect_unique_heap_allocations();
         let mut insertion_points: Vec<(String, BlockId, ValueId, SSAValue, String)> = vec![];
-        let num_allocs = unique_allocations.len();
-        println!("    -> processing {} allocations...", num_allocs);
-        for (i, a) in unique_allocations.iter_mut().enumerate() {
-            println!("      => [{}/{}] processing allocation", i + 1, num_allocs);
+        for a in unique_allocations.iter_mut() {
             self.process_allocation(a, &mut insertion_points);
         }
-        println!("    -> deduping insertion points...");
         let dedup_set: HashSet<_> = insertion_points.into_iter().collect();
         insertion_points = dedup_set.into_iter().collect();
 
