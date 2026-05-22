@@ -63,7 +63,14 @@ impl<'a> LlvmGenerator<'a> {
         // Try alternative type views for the same SSA ID
         if let Some(ty) = &ssa.ty {
             let alt_tys: Vec<TirType> = match ty {
-                TirType::I64 => vec![TirType::Ptr],
+                // Bools are represented as i64 in this backend, so an I1 SSA and the
+                // i64 it was produced from (e.g. the raw result of toy_read_from_arr)
+                // are interchangeable. Floats are stored as raw i64 bits inside arrays,
+                // so a float element read also surfaces as an i64 here; consumers
+                // bitcast it back to f64 as needed.
+                TirType::I64 => vec![TirType::Ptr, TirType::I1, TirType::F64],
+                TirType::I1 => vec![TirType::I64, TirType::Ptr],
+                TirType::F64 => vec![TirType::I64],
                 TirType::Ptr => vec![TirType::I64],
                 TirType::StructInterface(_) => vec![TirType::Ptr, TirType::I64],
                 _ => vec![],
@@ -308,6 +315,15 @@ impl<'a> LlvmGenerator<'a> {
                                 )
                                 .unwrap()
                                 .into()
+                        } else if expected_type.is_float_type() && v.is_int_value() {
+                            builder
+                                .build_bit_cast(
+                                    v.into_int_value(),
+                                    self.ctx.f64_type(),
+                                    "i64_to_double_bitcast",
+                                )
+                                .unwrap()
+                                .into()
                         } else if expected_type.is_int_type() && v.is_pointer_value() {
                             builder
                                 .build_ptr_to_int(
@@ -376,6 +392,16 @@ impl<'a> LlvmGenerator<'a> {
                                     val.into_pointer_value(),
                                     ret_ty.into_int_type(),
                                     "ret_ptr_to_i64",
+                                )?
+                                .into();
+                        } else if ret_ty.is_float_type() && val.is_int_value() {
+                            // The value carries raw i64 bits (e.g. a float read out of
+                            // an array via toy_read_from_arr); reinterpret as f64.
+                            val = builder
+                                .build_bit_cast(
+                                    val.into_int_value(),
+                                    ret_ty.into_float_type(),
+                                    "ret_i64_to_double",
                                 )?
                                 .into();
                         }

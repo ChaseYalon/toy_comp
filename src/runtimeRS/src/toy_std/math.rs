@@ -1,3 +1,4 @@
+use rand::RngExt;
 // trig
 #[unsafe(no_mangle)]
 pub extern "C" fn toy_math_sin(value: i64) -> i64 {
@@ -375,4 +376,10 @@ pub extern "C" fn toy_math_min(x: i64, y: i64) -> i64 {
 #[unsafe(no_mangle)]
 pub extern "C" fn toy_math_minf(x: f64, y: f64) -> f64 {
     x.min(y)
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn toy_math_rand() -> f64 {
+    //this is not efficient. I do not care
+    let x: f64= rand::rng().random();
+    return x
 }

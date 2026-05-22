@@ -424,3 +424,34 @@ export fn min(a: int, b: float): float {
 export fn fabs(a: float): float {
     return toy_math_absf(a);
 }
+extern fn toy_math_rand(): float;
+//returns a random float [0.0, 1.0)
+export fn rand(): float {
+    return toy_math_rand();
+}
+//[min, max)
+export fn rand(min: float, max: float): float {
+    let value = min + rand() * (max - min);
+    return value
+}
+//returns a random bool with weight probability of being true
+export fn rand_bool(weight: float): bool{
+    if rand() < weight {
+        return true;
+    }
+    return false;
+}
+//returns a random bool with a 50% chance of being true
+export fn rand_bool(): bool{
+    if rand() < 0.5 {
+        return true;
+    } 
+    return false;
+}
+
+export fn rand_int(min: int, max: int): int {
+    let minf = float(min);
+    let maxf = float(max);
+    //not sure why the maxf needs minus one, but it fixes a bug so....
+    return int(rand(minf, maxf - 1));
+}

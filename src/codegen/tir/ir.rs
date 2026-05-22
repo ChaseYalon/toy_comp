@@ -464,7 +464,7 @@ impl TirBuilder {
             } else if is_logical {
                 // Logical operators: both operands must be I1
                 if left_t != TirType::I1 || right_t != TirType::I1 {
-                    unreachable!(); // parser validated
+                    return Err(ToyError::new(ToyErrorType::ExpressionNotBoolean, Span::null_span_with_msg(&format!("left_t: {:?}, right_t: {:?}", left_t, right_t))))
                 }
             } else {
                 unreachable!(); // parser validated

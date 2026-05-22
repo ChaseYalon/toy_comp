@@ -1,15 +1,11 @@
 #![feature(error_generic_member_access)]
 #![feature(backtrace_frames)]
-use crate::driver::Driver;
 use std::env;
 use std::fs;
 use std::io::{self, Write};
 use std::panic;
 use std::path::PathBuf;
 use std::process;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
-use std::thread;
 mod lexer;
 pub mod parser;
 mod token;
@@ -26,8 +22,13 @@ pub use crate::parser::ast::*;
 pub use crate::token::TypeTok;
 use inkwell::context::Context;
 pub use ordered_float::OrderedFloat;
+pub use crate::driver::{Driver, FILE_EXTENSION_EXE};
+use std::time::{UNIX_EPOCH, SystemTime};
+use std::process::{Command, Child};
+use std::time::{Duration, Instant};
+use std::thread;
 //sort of arbitrary, tune for best results
-static MAX_DELTA_DEBUG_ITERS: usize = 100;
+static MAX_DELTA_DEBUG_ITERS: usize = 300;
 fn run_repl() {
     loop {
         print!("> ");
@@ -89,7 +90,31 @@ fn compile_and_print(file_path: &str) -> Result<(), Box<dyn std::error::Error>> 
 
     Ok(())
 }
+/// will return if the process failed or not
+fn run_for_30_seconds(mut child: Child) -> bool {
+    let start = Instant::now();
+    let timeout = Duration::from_secs(30);
 
+    loop {
+        match child.try_wait().expect("failed to poll process") {
+            Some(status) => {
+                if status.success() {
+                    return true;
+                }
+                return false;
+            }
+            None => {
+                // Still running
+                if start.elapsed() >= timeout {
+                    // Still running after 30s — this is also acceptable
+                    child.kill().ok(); // clean up
+                    return true;
+                }
+                thread::sleep(Duration::from_millis(100));
+            }
+        }
+    }
+}
 fn compile_file(filename: &str) -> Result<(), Box<dyn std::error::Error>> {
     compile_and_print(filename)
 }
@@ -119,84 +144,39 @@ fn main() {
         if idx + 1 >= args.len() {
             panic!("[ERROR] You should use --fuzz [NUMBER_OF_PROGRAMS]");
         }
-
+        let mut seed: i64 = -1;
         let num: u64 = args[idx + 1].parse().unwrap();
-        let num_threads = thread::available_parallelism()
-            .map(|n| n.get())
-            .unwrap_or(4)
-            .min(num as usize);
-
-        let stop = Arc::new(AtomicBool::new(false));
-        let counter = Arc::new(AtomicU64::new(0));
-        let crash_result: Arc<Mutex<Option<Vec<Ast>>>> = Arc::new(Mutex::new(None));
-
-        let handles: Vec<_> = (0..num_threads)
-            .map(|t| {
-                let stop = Arc::clone(&stop);
-                let counter = Arc::clone(&counter);
-                let crash_result = Arc::clone(&crash_result);
-
-                thread::spawn(move || {
-                    let r = panic::catch_unwind(std::panic::AssertUnwindSafe(|| loop {
-                        if stop.load(Ordering::Acquire) {
-                            return;
-                        }
-                        let i = counter.fetch_add(1, Ordering::Relaxed);
-                        if i >= num {
-                            return;
-                        }
-
-                        let seed = (t as u64)
-                            .wrapping_mul(0x9e3779b97f4a7c15)
-                            .wrapping_add(i);
-                        let mut runner = TestRunner::new_with_seed(seed);
-                        let prgm = runner.generate();
-                        let thread_name = format!("fuzz_thread_{}", t);
-                        let exe_path =
-                            format!("{}{}", thread_name, driver::FILE_EXTENSION_EXE);
-
-                        let prgm_clone = prgm.clone();
-                        let thread_name_clone = thread_name.clone();
-                        let crashed =
-                            panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                                let mut d = Driver::new_with_name(
-                                    PathBuf::from(format!("{}.toy", thread_name_clone)),
-                                    thread_name_clone,
-                                );
-                                let ctx = Context::create();
-                                d.start_with_ast(&ctx, prgm_clone).unwrap();
-                            }))
-                            .is_err();
-
-                        let _ = fs::remove_file(&exe_path);
-
-                        if stop.load(Ordering::Acquire) {
-                            return;
-                        }
-
-                        if crashed {
-                            let mut lock = crash_result.lock().unwrap();
-                            if lock.is_none() {
-                                *lock = Some(prgm);
-                            }
-                            stop.store(true, Ordering::Release);
-                            return;
-                        }
-
-                        println!("[thread {}] fuzz {} ok", t, i);
-                    }));
-                    if r.is_err() {
-                        stop.store(true, Ordering::Release);
-                    }
-                })
-            })
-            .collect();
-
-        for h in handles {
-            let _ = h.join();
+        let mut crash = None;
+        let mut name = String::new();
+        for i in 0..num {
+            let ms_since_epoch = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
+            let mut runner = TestRunner::new_with_seed(i * (ms_since_epoch as u64));
+            seed = ((ms_since_epoch as u64) * i) as i64;
+            let prgm = runner.generate();
+            
+            let prgm_clone = prgm.clone();
+            name = format!("temp/fuzz{i}{}", FILE_EXTENSION_EXE);
+            let crashed = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let mut d = Driver::new(PathBuf::from(name.clone()));
+                let ctx = Context::create();
+                d.start_with_ast(&ctx, prgm_clone).unwrap();
+            }))
+            .is_err();
+            fs::write("temp.txt", serde_json::to_string_pretty(&prgm).unwrap()).unwrap();
+            if crashed {
+                crash = Some(prgm);
+                break;
+            }
+            let child = Command::new(&name.clone())
+                .spawn()
+                .expect("failed to start process");
+            if !run_for_30_seconds(child) {
+                crash = Some(prgm);
+                break;
+            }
+            println!("fuzz {} ok", i);
         }
 
-        let crash = crash_result.lock().unwrap().take();
         if let Some(prgm) = crash {
             let mut runner = TestRunner::new();
             let mut current = prgm;
@@ -209,13 +189,17 @@ fn main() {
                 }
 
                 let still_crashes = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    let mut d = Driver::new(PathBuf::from("temp.exe"));
+                    let mut d = Driver::new(PathBuf::from(name.clone()));
                     let ctx = Context::create();
                     d.start_with_ast(&ctx, reduced.clone()).unwrap();
                 }))
                 .is_err();
 
-                if still_crashes {
+                if still_crashes || {
+                    //this should short circuit
+                    let child = Command::new(name.clone()).spawn().expect("failed to start child");
+                    run_for_30_seconds(child)
+                } {
                     current = reduced;
                 }
                 count += 1;
@@ -228,7 +212,7 @@ fn main() {
                 serde_json::to_string_pretty(&current).unwrap(),
             )
             .unwrap();
-
+            println!("[FATAL] Fuzz failed, failing seed: {seed}");
             return;
         }
 

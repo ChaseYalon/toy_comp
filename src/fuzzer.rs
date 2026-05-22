@@ -774,13 +774,36 @@ impl TestRunner {
         match expr {
             Ast::FuncCall(name, args, span) => {
                 if *name == removed_name {
-                    return self.gen_expr_of_type(removed_ret.clone(), 0);
+                    return self.gen_expr_of_type(removed_ret.clone(), self.max_expr_depth + 1);
                 }
+
+                let param_types: Vec<TypeTok> = self
+                    .functions
+                    .iter()
+                    .find(|(_, _, n)| n == &*name)
+                    .map(|(_, params, _)| params.clone())
+                    .unwrap_or_default();
 
                 Ast::FuncCall(
                     name,
                     args.into_iter()
-                        .map(|a| self.rewrite_expr(a, removed_name, removed_ret))
+                        .enumerate()
+                        .map(|(i, a)| {
+                            let rewritten = self.rewrite_expr(a, removed_name, removed_ret);
+                            if let Some(expected_ty) = param_types.get(i) {
+                                match self.typeof_node(&rewritten) {
+                                    Some(actual_ty) if actual_ty != *expected_ty => {
+                                        self.gen_expr_of_type(
+                                            expected_ty.clone(),
+                                            self.max_expr_depth + 1,
+                                        )
+                                    }
+                                    _ => rewritten,
+                                }
+                            } else {
+                                rewritten
+                            }
+                        })
                         .collect(),
                     span,
                 )
@@ -807,8 +830,18 @@ impl TestRunner {
                             OrderedFloat::from(self.rng.random_range(-1_000_000.0f64..1_000_000.0)),
                             Span::null_span(),
                         )
-                    } else {
+                    } else if self.typeof_node(&*lhs) == Some(TypeTok::Int)
+                        || self.typeof_node(&*rhs) == Some(TypeTok::Int)
+                    {
                         Ast::IntLit(self.rng.random_range(i64::MIN..i64::MAX), Span::null_span())
+                    } else {
+                        // Type unknown (e.g. FuncCall) — rewrite recursively instead of guessing
+                        Ast::InfixExpr(
+                            Box::new(self.rewrite_expr(*lhs, removed_name, removed_ret)),
+                            Box::new(self.rewrite_expr(*rhs, removed_name, removed_ret)),
+                            op,
+                            span,
+                        )
                     }
                 } else {
                     Ast::InfixExpr(
@@ -821,16 +854,16 @@ impl TestRunner {
             }
 
             Ast::EmptyExpr(expr, span) => {
-                if self.rng.random_range(0..=4) == 0 {
-                    if self.typeof_node(&*expr) == Some(TypeTok::Bool) {
-                        Ast::BoolLit(self.rng.random_bool(0.5), Span::null_span())
-                    } else if self.typeof_node(&*expr) == Some(TypeTok::Float) {
-                        Ast::FloatLit(
+                //higher change to remove EmptyExpr, it is useless
+                let ty = self.typeof_node(&*expr);
+                if self.rng.random_range(0..=1) == 0 && ty.is_some() {
+                    match ty.unwrap() {
+                        TypeTok::Bool => Ast::BoolLit(self.rng.random_bool(0.5), Span::null_span()),
+                        TypeTok::Float => Ast::FloatLit(
                             OrderedFloat::from(self.rng.random_range(-1_000_000.0f64..1_000_000.0)),
                             Span::null_span(),
-                        )
-                    } else {
-                        Ast::IntLit(self.rng.random_range(i64::MIN..i64::MAX), Span::null_span())
+                        ),
+                        _ => Ast::IntLit(self.rng.random_range(i64::MIN..i64::MAX), Span::null_span()),
                     }
                 } else {
                     Ast::EmptyExpr(
@@ -892,17 +925,19 @@ impl TestRunner {
 
             Ast::VarDec(name, ty, expr, span) => {
                 self.var_names_to_types.insert((*name).clone(), ty.clone());
-                Some(Ast::VarDec(
-                    name,
-                    ty,
-                    Box::new(self.rewrite_expr(*expr, removed_name, removed_ret)),
-                    span,
-                ))
+                let rewritten = self.rewrite_expr(*expr, removed_name, removed_ret);
+                let fixed = match self.typeof_node(&rewritten) {
+                    Some(actual_ty) if actual_ty != ty => {
+                        self.gen_expr_of_type(ty.clone(), self.max_expr_depth + 1)
+                    }
+                    _ => rewritten,
+                };
+                Some(Ast::VarDec(name, ty, Box::new(fixed), span))
             }
 
             Ast::IfStmt(cond, body, else_body, span) => {
                 //give every if stmt a 1/6 chance of being removed
-                if self.rng.random_range(0..=5) == 0 {
+                if self.rng.random_range(0..=5) == 0 || body.len() == 0 {
                     None
                 } else {
                     let cond = Box::new(self.rewrite_expr(*cond, removed_name, removed_ret));
@@ -924,7 +959,7 @@ impl TestRunner {
 
             Ast::WhileStmt(cond, body, span) => {
                 //same as if
-                if self.rng.random_range(0..=5) == 0 {
+                if self.rng.random_range(0..=5) == 0 || body.len() == 0 {
                     None
                 } else {
                     let cond = Box::new(self.rewrite_expr(*cond, removed_name, removed_ret));
@@ -955,6 +990,26 @@ impl TestRunner {
 
         if funcs.is_empty() {
             return input;
+        }
+
+        // Repopulate self.functions from the current AST so rewrite_expr can
+        // look up expected param types and avoid generating type mismatches.
+        self.functions.clear();
+        for f in &funcs {
+            if let Ast::FuncDec(name, params, ret_type, _, _) = f {
+                let param_types: Vec<TypeTok> = params
+                    .iter()
+                    .filter_map(|p| {
+                        if let Ast::FuncParam(_, ty, _) = p {
+                            Some(ty.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                self.functions
+                    .push((ret_type.clone(), param_types, (**name).clone()));
+            }
         }
 
         let removed = funcs[self.rng.random_range(0..funcs.len())].clone();

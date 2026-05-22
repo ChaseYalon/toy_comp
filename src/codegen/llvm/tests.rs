@@ -399,3 +399,13 @@ fn test_mem_dup_str() {
     );
     assert!(output.contains("hello world"));
 }
+
+#[test]
+fn test_float_int_compiles_stuff(){
+    compile_code_aot!(
+        output,
+        "import std.math; let x = float(1); let y = int(x); let z = math.rand_int(9, 13); println(float(z));",
+        "int_float_cast"
+    );
+    assert!(output.len() != 0);//if it compiles it is fine
+}

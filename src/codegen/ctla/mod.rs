@@ -259,6 +259,17 @@ impl CTLA {
             insertion_idx = terminator_idx.unwrap_or(block.ins.len());
         }
 
+        // LLVM requires phi nodes to be grouped at the top of a basic block. If the
+        // chosen insertion point lands inside the phi prologue, advance past it.
+        let first_non_phi_idx = block
+            .ins
+            .iter()
+            .position(|ins| !matches!(ins, TIR::Phi(_, _, _)))
+            .unwrap_or(block.ins.len());
+        if insertion_idx < first_non_phi_idx {
+            insertion_idx = first_non_phi_idx;
+        }
+
         if let Some(term_idx) = terminator_idx {
             if insertion_idx > term_idx {
                 insertion_idx = term_idx;

@@ -7,7 +7,7 @@ use std::backtrace::Backtrace;
 use std::fmt::*;
 use std::{fmt, fs};
 use thiserror::Error;
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Span {
     pub file_path: String,
     ///number of bytes before the code in question is started. INCLUSIVE
@@ -103,6 +103,20 @@ impl Span {
         ((start_line, start_col), (end_line, end_col))
     }
 }
+
+impl serde::Serialize for Span {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        serializer.serialize_none()
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Span {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
+        serde::de::IgnoredAny::deserialize(deserializer)?;
+        Ok(Span::null_span())
+    }
+}
+
 #[derive(Debug)]
 pub enum ToyErrorType {
     InternalFunctionUndefined,

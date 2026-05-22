@@ -433,10 +433,10 @@ impl Driver {
     pub fn verify_module(module: &Module) -> Result<(), ToyError> {
         if let Err(e) = module.verify() {
             eprintln!("=== LLVM module verify failed ===");
-            eprintln!("{e}");
-            module.print_to_stderr();
+            //eprintln!("{e}");
+            //module.print_to_stderr();
             return Err(ToyError::new(
-                ToyErrorType::InternalLinkerFailure,
+                ToyErrorType::LlvmError(e.to_string()),
                 Span::null_span_with_msg(&format!("Module failed to verify, {:?}", e)),
             ));
         }
@@ -449,7 +449,7 @@ impl Driver {
                 );
                 module.print_to_stderr();
                 return Err(ToyError::new(
-                    ToyErrorType::InternalLinkerFailure,
+                    ToyErrorType::LlvmError(f.get_name().to_string_lossy().into()),
                     Span::null_span_with_msg(&format!("Function {:?} failed to verify", f)),
                 ));
             }
