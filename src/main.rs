@@ -27,6 +27,11 @@ use std::time::{UNIX_EPOCH, SystemTime};
 use std::process::{Command, Child};
 use std::time::{Duration, Instant};
 use std::thread;
+#[cfg(feature = "profile")]
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;
+
+
 //sort of arbitrary, tune for best results
 static MAX_DELTA_DEBUG_ITERS: usize = 300;
 fn run_repl() {
@@ -119,6 +124,9 @@ fn compile_file(filename: &str) -> Result<(), Box<dyn std::error::Error>> {
     compile_and_print(filename)
 }
 fn main() {
+    #[cfg(feature = "profile")]
+    let _profiler = dhat::Profiler::new_heap();
+
     let args: Vec<String> = env::args().collect();
     if args.contains(&"--from-ast-file".to_string()) {
         let idx = args.iter().position(|f| f == "--from-ast-file").unwrap();
@@ -148,20 +156,24 @@ fn main() {
         let num: u64 = args[idx + 1].parse().unwrap();
         let mut crash = None;
         let mut name = String::new();
+        let mut base = String::new();
         for i in 0..num {
             let ms_since_epoch = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
-            let mut runner = TestRunner::new_with_seed(i * (ms_since_epoch as u64));
-            seed = ((ms_since_epoch as u64) * i) as i64;
+            let mut runner = TestRunner::new_with_seed(ms_since_epoch as u64 + i);
+            seed = (ms_since_epoch as u64 + i) as i64;
             let prgm = runner.generate();
             
             let prgm_clone = prgm.clone();
-            name = format!("temp/fuzz{i}{}", FILE_EXTENSION_EXE);
+            println!("Done generating");    
+            base = format!("temp/fuzz{i}");
+            name = format!("{base}{}", FILE_EXTENSION_EXE);
             let crashed = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                let mut d = Driver::new(PathBuf::from(name.clone()));
+                let mut d = Driver::new_with_name(PathBuf::from(base.clone()), base.clone());
                 let ctx = Context::create();
                 d.start_with_ast(&ctx, prgm_clone).unwrap();
             }))
             .is_err();
+            println!("Done compiling");
             fs::write("temp.txt", serde_json::to_string_pretty(&prgm).unwrap()).unwrap();
             if crashed {
                 crash = Some(prgm);
@@ -189,16 +201,15 @@ fn main() {
                 }
 
                 let still_crashes = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    let mut d = Driver::new(PathBuf::from(name.clone()));
+                    let mut d = Driver::new_with_name(PathBuf::from(base.clone()), base.clone());
                     let ctx = Context::create();
                     d.start_with_ast(&ctx, reduced.clone()).unwrap();
                 }))
                 .is_err();
 
                 if still_crashes || {
-                    //this should short circuit
                     let child = Command::new(name.clone()).spawn().expect("failed to start child");
-                    run_for_30_seconds(child)
+                    !run_for_30_seconds(child)
                 } {
                     current = reduced;
                 }

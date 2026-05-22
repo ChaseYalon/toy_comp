@@ -16,6 +16,8 @@ serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 ahash = "0.8.12"
 rand = "0.10.1"
+fxhash = "0.2.1"
+dhat = { version = "0.3", optional = true }
 [build-dependencies]
 cmake = "0.1.54"
 bindgen = "0.70"
@@ -24,9 +26,12 @@ cc = "1.2.59"
 
 [features]
 debug = []
+profile = ["dhat"]
 
-[profile.release]
-split-debuginfo = "packed"
-debug = true
-debug-assertions = false
+[profile.release-prof]
+inherits = "release"
+debug = 2                  # full debug info
+split-debuginfo = "off"    # embed everything, no split
 strip = false
+debug-assertions = false
+opt-level = 3

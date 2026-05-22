@@ -8,7 +8,7 @@ use crate::{
     driver::Driver,
     errors::ToyError,
 };
-use std::cell::RefCell;
+use std::{cell::RefCell, io::Write};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::rc::Rc;
 pub mod aliasing;
@@ -21,6 +21,11 @@ pub struct CTLA {
     cfg_functions: Vec<CFGFunction>,
     alias_detector: AliasAndEncapsulationTracker,
     original_text: Option<String>,
+    /// function name -> (phi result value id -> (predecessor block, operand value id) list).
+    /// Cached so phi-chain walks are O(1) lookups instead of scanning all instructions per step.
+    phi_operands_by_func: HashMap<String, HashMap<ValueId, Vec<(BlockId, ValueId)>>>,
+    /// function name -> set of blocks containing a non-returning panic call.
+    panic_blocks_by_func: HashMap<String, HashSet<BlockId>>,
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FunctionSummary {
@@ -77,7 +82,52 @@ impl CTLA {
             cfg_functions: vec![],
             alias_detector,
             original_text: None,
+            phi_operands_by_func: HashMap::new(),
+            panic_blocks_by_func: HashMap::new(),
         }
+    }
+
+    /// Builds the per-function phi-operand and panic-block indexes from the current builder.
+    /// Must be called after `self.builder` is populated and before any phi-chain walks.
+    fn build_phi_index(&mut self) {
+        let mut phi_operands_by_func: HashMap<String, HashMap<ValueId, Vec<(BlockId, ValueId)>>> =
+            HashMap::new();
+        let mut panic_blocks_by_func: HashMap<String, HashSet<BlockId>> = HashMap::new();
+
+        let builder = self.builder.borrow();
+        for f in &builder.funcs {
+            let func_name = (*f.name).clone();
+            let phi_map = phi_operands_by_func.entry(func_name.clone()).or_default();
+            let panic_set = panic_blocks_by_func.entry(func_name).or_default();
+            for block in &f.body {
+                let mut block_has_panic = false;
+                for ins in &block.ins {
+                    match ins {
+                        TIR::Phi(out_id, block_ids, vals) => {
+                            let operands: Vec<(BlockId, ValueId)> = block_ids
+                                .iter()
+                                .zip(vals.iter())
+                                .map(|(bid, v)| (*bid, v.val))
+                                .collect();
+                            phi_map.insert(*out_id, operands);
+                        }
+                        TIR::CallExternFunction(_, name, _, _, _, _)
+                            if **name == *"std::sys::panic_str" =>
+                        {
+                            block_has_panic = true;
+                        }
+                        _ => {}
+                    }
+                }
+                if block_has_panic {
+                    panic_set.insert(block.id);
+                }
+            }
+        }
+        drop(builder);
+
+        self.phi_operands_by_func = phi_operands_by_func;
+        self.panic_blocks_by_func = panic_blocks_by_func;
     }
 
     pub fn set_external_modules(&mut self, modules: HashMap<String, Vec<FunctionSummary>>) {
@@ -126,28 +176,22 @@ impl CTLA {
         }
         visited.insert(value_id);
 
-        let maybe_ins = func
-            .body
-            .iter()
-            .flat_map(|b| b.ins.iter())
-            .find(|ins| ins.get_id() == value_id);
-
-        let Some(ins) = maybe_ins else {
+        let Some(func_phis) = self.phi_operands_by_func.get(func.name.as_str()) else {
+            return false;
+        };
+        // A value id absent from the phi index is either not a phi or doesn't exist;
+        // either way it cannot match a seed by following phi chains.
+        let Some(operands) = func_phis.get(&value_id) else {
             return false;
         };
 
-        match ins {
-            TIR::Phi(_, block_ids, vals) => block_ids.iter().zip(vals.iter()).any(|(bid, v)| {
-                if self
-                    .alias_detector
-                    .block_has_non_returning_panic_call(func, *bid)
-                {
-                    return false;
-                }
-                self.value_may_match_seed_via_phi(func, v.val, seeds, visited)
-            }),
-            _ => false,
-        }
+        let panic_blocks = self.panic_blocks_by_func.get(func.name.as_str());
+        operands.iter().any(|(bid, v)| {
+            if panic_blocks.is_some_and(|pb| pb.contains(bid)) {
+                return false;
+            }
+            self.value_may_match_seed_via_phi(func, *v, seeds, visited)
+        })
     }
     fn allocation_protected_values_in_function(
         &self,
@@ -338,15 +382,13 @@ impl CTLA {
 
     /// Determines if a given allocation escapes the function it was created in, escapes the program as a whole, or dies in the function
     fn allocation_escapes(&self, alloc: &HeapAllocation) -> EscapeType {
-        let func = {
-            let builder = self.builder.borrow();
+        let builder = self.builder.borrow();
+        let func = 
             builder
                 .funcs
                 .iter()
                 .find(|f| *f.name == *alloc.function)
-                .cloned()
-                .unwrap()
-        };
+                .unwrap();
         let protected_ids = self.allocation_protected_values_in_function(alloc, func.name.as_ref());
         let is_param = func.params.iter().any(|p| p.val == alloc.alloc_ins.val);
         //params always freed by the caller
@@ -924,14 +966,21 @@ impl CTLA {
                 self.cfg_functions.push(cfg_f);
             }
         }
+        self.build_phi_index();
         self.alias_detector
             .populate_return_alias_parameter_summaries(&mut self.cfg_functions);
         self.cfg_functions = self.populate_parameter_escape_summary(self.cfg_functions.clone());
         let mut unique_allocations = self.builder.borrow().detect_unique_heap_allocations();
         let mut insertion_points: Vec<(String, BlockId, ValueId, SSAValue, String)> = vec![];
-        for a in unique_allocations.iter_mut() {
+        let len = unique_allocations.len();
+        for (i, a) in unique_allocations.iter_mut().enumerate() {
             self.process_allocation(a, &mut insertion_points);
+            print!("process allocations for {i} completed, {:.2}%\r", (i as f64)/(len as f64) * 100.0);
+            std::io::stdout().flush().unwrap();
         }
+        //this is all terrible, but just clears the line
+        print!("                                                                                                    \r");
+        std::io::stdout().flush().unwrap();
         let dedup_set: HashSet<_> = insertion_points.into_iter().collect();
         insertion_points = dedup_set.into_iter().collect();
 

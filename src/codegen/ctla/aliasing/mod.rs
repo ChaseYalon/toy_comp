@@ -235,11 +235,56 @@ impl AliasAndEncapsulationTracker {
         summary_by_func: HashMap<String, Vec<usize>>,
         encapsulator_values: &mut HashSet<(String, ValueId)>,
     ) {
+        let builder = self.builder.borrow();
+
+        // O(1) function lookup instead of linear scan on every call instruction.
+        let func_by_name: HashMap<&str, &Function> = builder
+            .funcs
+            .iter()
+            .map(|f| (f.name.as_ref().as_str(), f))
+            .collect();
+
+        // Precompute the static part of the callee_returns_encapsulating_array check.
+        // For each function, store the set of value IDs that are written to a returned
+        // array via toy_write_to_arr. Only the alias_values.contains() part is dynamic,
+        // so this avoids re-scanning all callee instructions on every fixed-point iteration.
+        let mut arr_write_vals_by_callee: HashMap<String, HashSet<ValueId>> = HashMap::new();
+        for func in &builder.funcs {
+            let returned_values: HashSet<ValueId> = func
+                .body
+                .iter()
+                .filter_map(|b| match b.ins.last() {
+                    Some(TIR::Ret(_, ret_val)) => Some(ret_val.val),
+                    _ => None,
+                })
+                .collect();
+            if returned_values.is_empty() {
+                continue;
+            }
+            let write_vals: HashSet<ValueId> = func
+                .body
+                .iter()
+                .flat_map(|b| b.ins.iter())
+                .filter_map(|ins| match ins {
+                    TIR::CallExternFunction(_, name, wp, _, _, _)
+                        if name.as_ref() == "toy_write_to_arr"
+                            && wp.len() >= 2
+                            && returned_values.contains(&wp[0].val) =>
+                    {
+                        Some(wp[1].val)
+                    }
+                    _ => None,
+                })
+                .collect();
+            if !write_vals.is_empty() {
+                arr_write_vals_by_callee.insert((*func.name).clone(), write_vals);
+            }
+        }
+
         loop {
             let mut changed = false;
 
             let mut new_aliases = alias_values.clone();
-            let builder = self.builder.borrow();
             for f in &builder.funcs {
                 let function_name = (*f.name).clone();
                 for block in &f.body {
@@ -258,10 +303,8 @@ impl AliasAndEncapsulationTracker {
                                 }
                             }
                             TIR::CallLocalFunction(out_id, callee_name, params, _, _) => {
-                                if let Some(callee_func) = builder
-                                    .funcs
-                                    .iter()
-                                    .find(|f| f.name.as_ref() == callee_name.as_ref())
+                                if let Some(callee_func) =
+                                    func_by_name.get(callee_name.as_ref().as_str())
                                 {
                                     for (arg_idx, arg) in params.iter().enumerate() {
                                         if alias_values.contains(&(function_name.clone(), arg.val))
@@ -384,37 +427,19 @@ impl AliasAndEncapsulationTracker {
                             }
                             TIR::CallLocalFunction(out_id, callee_name, params, _, _)
                             | TIR::CallExternFunction(out_id, callee_name, params, _, _, _) => {
-                                // Propagate encapsulation through call returns when the callee
-                                // returns an array value that was written with an aliased value.
-                                let callee_returns_encapsulating_array = builder
-                                    .funcs
-                                    .iter()
-                                    .find(|f| f.name.as_ref() == callee_name.as_ref())
-                                    .is_some_and(|callee| {
-                                        let returned_values: HashSet<ValueId> = callee
-                                            .body
-                                            .iter()
-                                            .filter_map(|b| match b.ins.last() {
-                                                Some(TIR::Ret(_, ret_val)) => Some(ret_val.val),
-                                                _ => None,
+                                // Use precomputed map: O(precomputed_pairs) instead of
+                                // O(functions × instructions) per call per iteration.
+                                let callee_returns_encapsulating_array =
+                                    arr_write_vals_by_callee
+                                        .get(callee_name.as_ref())
+                                        .map_or(false, |write_vals| {
+                                            write_vals.iter().any(|v| {
+                                                alias_values.contains(&(
+                                                    (**callee_name).clone(),
+                                                    *v,
+                                                ))
                                             })
-                                            .collect();
-
-                                        if returned_values.is_empty() {
-                                            return false;
-                                        }
-
-                                        callee.body.iter().flat_map(|b| b.ins.iter()).any(|ins| {
-                                            matches!(
-                                                ins,
-                                                TIR::CallExternFunction(_, name, write_params, _, _, _)
-                                                    if name.as_ref() == "toy_write_to_arr"
-                                                        && write_params.len() >= 2
-                                                        && returned_values.contains(&write_params[0].val)
-                                                        && alias_values.contains(&((*callee.name).clone(), write_params[1].val))
-                                            )
-                                        })
-                                    });
+                                        });
                                 if callee_returns_encapsulating_array
                                     && enc_alias_closure.insert((function_name.clone(), *out_id))
                                 {
@@ -473,8 +498,13 @@ impl AliasAndEncapsulationTracker {
             }
         }
 
-        let mut value_to_block: HashMap<(String, ValueId), BlockId> = HashMap::new();
         let builder = self.builder.borrow();
+        let capacity = builder.funcs.iter()
+            .flat_map(|f| &f.body)
+            .map(|block| block.ins.len())
+            .sum();
+
+        let mut value_to_block: HashMap<(String, ValueId), BlockId> = HashMap::with_capacity(capacity);
         for f in &builder.funcs {
             let function_name = (*f.name).clone();
             for block in &f.body {

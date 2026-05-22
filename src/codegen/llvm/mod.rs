@@ -1321,7 +1321,7 @@ impl<'a> LlvmGenerator<'a> {
         Target::initialize_x86(&InitializationConfig::default());
         //opts can conflict with CTLA
         let opt_level =
-            if args.contains(&"--repl".to_string()) || args.contains(&"--no-op".to_string()) {
+            if args.contains(&"--repl".to_string()) || args.contains(&"--no-op".to_string()) || args.contains(&"--fuzz".to_string()) {
                 OptimizationLevel::None
             } else {
                 OptimizationLevel::Aggressive

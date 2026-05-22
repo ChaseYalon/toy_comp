@@ -100,7 +100,7 @@ impl TestRunner {
                 Span::null_span(),
             );
         }
-        let val = match self.rng.random_range(0..=5) {
+        let val = match self.rng.random_range(0..=6) {
             0 => Ast::StringLit(
                 Box::new(Alphabetic.sample_string(&mut self.rng, 10)),
                 Span::null_span(),
@@ -194,6 +194,13 @@ impl TestRunner {
                 }
                 Ast::FuncCall(Box::new(name.clone()), ast_params, Span::null_span())
             }
+            6 => match self.gen_rand_read(&TypeTok::Str) {
+                Some(expr) => expr,
+                None => Ast::StringLit(
+                    Box::new(Alphabetic.sample_string(&mut self.rng, 10)),
+                    Span::null_span(),
+                ),
+            },
 
             _ => unreachable!(),
         };
@@ -203,7 +210,7 @@ impl TestRunner {
         if depth > self.max_expr_depth {
             return Ast::BoolLit(self.rng.random_bool(0.5), Span::null_span());
         }
-        let val = match self.rng.random_range(0..=7) {
+        let val = match self.rng.random_range(0..=8) {
             //for right now it does not do function calls
             0 => Ast::BoolLit(self.rng.random_bool(0.5), Span::null_span()),
             1 => Ast::InfixExpr(
@@ -293,8 +300,10 @@ impl TestRunner {
                 }
                 Ast::FuncCall(Box::new(name.clone()), ast_params, Span::null_span())
             }
-            //arrays are hard because you have to make sure the access is in bound
-            //functions are todo
+            8 => match self.gen_rand_read(&TypeTok::Bool) {
+                Some(expr) => expr,
+                None => Ast::BoolLit(self.rng.random_bool(0.5), Span::null_span()),
+            },
             _ => unreachable!(),
         };
         return val;
@@ -471,7 +480,7 @@ impl TestRunner {
         if depth > self.max_expr_depth {
             return Ast::IntLit(self.rng.random_range(i64::MIN..i64::MAX), Span::null_span());
         }
-        let val = match self.rng.random_range(0..=5) {
+        let val = match self.rng.random_range(0..=6) {
             //for right now it does not do function calls
             0 => Ast::IntLit(self.rng.random_range(i64::MIN..i64::MAX), Span::null_span()),
             1 => Ast::InfixExpr(
@@ -559,8 +568,10 @@ impl TestRunner {
                 }
                 Ast::FuncCall(Box::new(name.clone()), ast_params, Span::null_span())
             }
-            //arrays are hard because you have to make sure the access is in bound
-            //functions are todo
+            6 => match self.gen_rand_read(&TypeTok::Int) {
+                Some(expr) => expr,
+                None => Ast::IntLit(self.rng.random_range(i64::MIN..i64::MAX), Span::null_span()),
+            },
             _ => unreachable!(),
         };
         return val;
@@ -579,7 +590,7 @@ impl TestRunner {
                 Span::null_span(),
             );
         }
-        let val = match self.rng.random_range(0..=5) {
+        let val = match self.rng.random_range(0..=6) {
             //for right now it does not do function calls
             0 => Ast::FloatLit(
                 OrderedFloat(self.rng.random_range(-1_000_000.0..1_000_000.0)),
@@ -671,20 +682,40 @@ impl TestRunner {
                 }
                 Ast::FuncCall(Box::new(name.clone()), ast_params, Span::null_span())
             }
-            //arrays are hard because you have to make sure the access is in bound
-            //functions are todo
+            6 => match self.gen_rand_read(&TypeTok::Float) {
+                Some(expr) => expr,
+                None => Ast::FloatLit(
+                    OrderedFloat(self.rng.random_range(-1_000_000.0..1_000_000.0)),
+                    Span::null_span(),
+                ),
+            },
             _ => unreachable!(),
         };
         return val;
     }
     fn gen_expr(&mut self) -> (Ast, TypeTok) {
-        let n = self.rng.random_range(0..=3);
+        let n = self.rng.random_range(0..=7);
         return match n {
-            //should include structs and arrays
             0 => (self.gen_int_expr(0), TypeTok::Int),
             1 => (self.gen_float_expr(0), TypeTok::Float),
             2 => (self.gen_bool_expr(0), TypeTok::Bool),
             3 => self.gen_struct_expr(0),
+            4 => {
+                let len = self.rng.random_range(1..=25usize);
+                (self.gen_arr_expr(TypeTok::Int, len), TypeTok::IntArr(1))
+            }
+            5 => {
+                let len = self.rng.random_range(1..=25usize);
+                (self.gen_arr_expr(TypeTok::Bool, len), TypeTok::BoolArr(1))
+            }
+            6 => {
+                let len = self.rng.random_range(1..=25usize);
+                (self.gen_arr_expr(TypeTok::Float, len), TypeTok::FloatArr(1))
+            }
+            7 => {
+                let len = self.rng.random_range(1..=25usize);
+                (self.gen_arr_expr(TypeTok::Str, len), TypeTok::StrArr(1))
+            }
             _ => todo!("{:?} is unimplemented", n),
         };
     }
@@ -710,7 +741,9 @@ impl TestRunner {
             self.program.push(v);
         }
         self.interfaces.append(&mut self.program);
-        return self.interfaces.clone();
+        let mut result = vec![Ast::ImportStmt("std.fuzz".to_string(), Span::null_span())];
+        result.extend(self.interfaces.iter().cloned());
+        return result;
     }
     fn gen_expr_of_type(&mut self, ty: TypeTok, depth: usize) -> Ast {
         match ty {
@@ -718,15 +751,31 @@ impl TestRunner {
             TypeTok::Float => self.gen_float_expr(depth),
             TypeTok::Bool => self.gen_bool_expr(depth),
             TypeTok::Str => self.gen_str_expr(depth),
+            TypeTok::IntArr(_) => {
+                let len = self.rng.random_range(1..=25usize);
+                self.gen_arr_expr(TypeTok::Int, len)
+            }
+            TypeTok::BoolArr(_) => {
+                let len = self.rng.random_range(1..=25usize);
+                self.gen_arr_expr(TypeTok::Bool, len)
+            }
+            TypeTok::FloatArr(_) => {
+                let len = self.rng.random_range(1..=25usize);
+                self.gen_arr_expr(TypeTok::Float, len)
+            }
+            TypeTok::StrArr(_) => {
+                let len = self.rng.random_range(1..=25usize);
+                self.gen_arr_expr(TypeTok::Str, len)
+            }
             _ => todo!("unsupported replacement type {:?}", ty),
         }
     }
-    //Will always return Int, Float, Bool, or None
     fn typeof_node(&self, node: &Ast) -> Option<TypeTok> {
         return match node {
             Ast::IntLit(_, _) => Some(TypeTok::Int),
             Ast::FloatLit(_, _) => Some(TypeTok::Float),
             Ast::BoolLit(_, _) => Some(TypeTok::Bool),
+            Ast::ArrLit(ty, _, _) => Some(ty.clone()),
             Ast::InfixExpr(l, r, op, _) => {
                 if matches!(
                     op,
@@ -900,6 +949,14 @@ impl TestRunner {
                 Ast::StructLit(name, Box::new(new_fields), span)
             }
 
+            Ast::ArrLit(ty, elems, span) => {
+                let new_elems = elems
+                    .into_iter()
+                    .map(|e| self.rewrite_expr(e, removed_name, removed_ret))
+                    .collect();
+                Ast::ArrLit(ty, new_elems, span)
+            }
+
             _ => expr,
         }
     }
@@ -980,6 +1037,61 @@ impl TestRunner {
 
             _ => Some(stmt),
         }
+    }
+    fn gen_arr_expr(&mut self, elem_type: TypeTok, length: usize) -> Ast {
+        let mut elements: Vec<Ast> = Vec::with_capacity(length);
+        for _ in 0..length {
+            let elem = match elem_type {
+                TypeTok::Int => self.gen_int_expr(0),
+                TypeTok::Bool => self.gen_bool_expr(0),
+                TypeTok::Float => self.gen_float_expr(0),
+                TypeTok::Str => self.gen_str_expr(0),
+                _ => unreachable!(),
+            };
+            elements.push(elem);
+        }
+        let arr_type = match elem_type {
+            TypeTok::Int => TypeTok::IntArr(1),
+            TypeTok::Bool => TypeTok::BoolArr(1),
+            TypeTok::Float => TypeTok::FloatArr(1),
+            TypeTok::Str => TypeTok::StrArr(1),
+            _ => unreachable!(),
+        };
+        Ast::ArrLit(arr_type, elements, Span::null_span())
+    }
+    /// Returns a `fuzz.read_rand` call (fully mangled) for a random in-scope array of the given
+    /// element type, or `None` if no such variable exists yet.
+    fn gen_rand_read(&mut self, elem_type: &TypeTok) -> Option<Ast> {
+        let arr_type = match elem_type {
+            TypeTok::Int => TypeTok::IntArr(1),
+            TypeTok::Bool => TypeTok::BoolArr(1),
+            TypeTok::Float => TypeTok::FloatArr(1),
+            TypeTok::Str => TypeTok::StrArr(1),
+            _ => return None,
+        };
+        let candidates: Vec<String> = self
+            .scopes
+            .iter()
+            .flat_map(|scope| scope.vars.get(&arr_type).into_iter().flatten())
+            .cloned()
+            .collect();
+        if candidates.is_empty() {
+            return None;
+        }
+        let v = candidates[self.rng.random_range(0..candidates.len())].clone();
+        // Bypass AstGenerator alias resolution by computing the mangled name directly.
+        // fuzz.toy is compiled with module prefix "std::fuzz", so read_rand(int[]) →
+        // std::fuzz::read_rand_intarr (and similarly for the other element types).
+        let mangled = crate::driver::Driver::mangle_name(
+            Some("std::fuzz"),
+            "read_rand",
+            &[arr_type.clone()],
+        );
+        Some(Ast::FuncCall(
+            Box::new(mangled),
+            vec![Ast::VarRef(Box::new(v), Span::null_span())],
+            Span::null_span(),
+        ))
     }
     pub fn reduce(&mut self, input: Vec<Ast>) -> Vec<Ast> {
         let funcs: Vec<Ast> = input
