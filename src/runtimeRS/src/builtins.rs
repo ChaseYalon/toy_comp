@@ -298,7 +298,16 @@ pub fn toy_malloc_arr(len: i64, ty: i64, degree: i64) -> ToyPtr {
         arr,
     });
 
-    return Box::into_raw(toy_arr) as ToyPtr;
+    let ptr = Box::into_raw(toy_arr) as ToyPtr;
+    if let Ok(v) = std::env::var("TOY_DEBUG") {
+        if v == "TRUE" {
+            let mut heap = DEBUG_HEAP.get().unwrap().lock().unwrap();
+            heap.map.insert(ptr, std::mem::size_of::<ToyArr>() as i64);
+            heap.total_live_allocations += 1;
+            heap.total_allocations += 1;
+        }
+    }
+    return ptr;
 }
 
 #[unsafe(no_mangle)]
@@ -351,31 +360,19 @@ pub fn toy_free_arr(arr_ptr_int: ToyPtr) {
             }
         }
     }
-    //this is a bodge
-    if let Some(&v) = DEBUG_HEAP
-        .get()
-        .unwrap()
-        .lock()
-        .unwrap()
-        .map
-        .get(&arr_ptr_int)
-    {
-        if v != -1 {
-            DEBUG_HEAP
-                .get()
-                .unwrap()
-                .lock()
-                .unwrap()
-                .total_live_allocations -= 1;
+
+    if let Ok(v) = std::env::var("TOY_DEBUG") {
+        if v == "TRUE" {
+            let mut heap = DEBUG_HEAP.get().unwrap().lock().unwrap();
+            if let Some(&val) = heap.map.get(&arr_ptr_int) {
+                if val != -1 {
+                    heap.total_live_allocations -= 1;
+                }
+            }
+            heap.map.insert(arr_ptr_int, -1);
         }
     }
-    DEBUG_HEAP
-        .get()
-        .unwrap()
-        .lock()
-        .unwrap()
-        .map
-        .insert(arr_ptr_int, -1);
+
     unsafe { drop(Box::from_raw(arr_ptr_int as *mut ToyArr)) };
 }
 #[unsafe(no_mangle)]

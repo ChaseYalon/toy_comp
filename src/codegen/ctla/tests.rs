@@ -280,3 +280,53 @@ fn test_ctla_str_lambda() {
     );
     assert!(output.contains("hello world"));
 }
+
+#[test]
+fn test_ctla_bug_1(){
+    compile_code_aot!(
+        output,
+        r#"
+        struct s1 {
+            f1: bool[],
+            f2: float[],
+            f3: str,
+            f4: int[],
+            f5: int[]
+        }
+
+        fn func1(): int[]{
+            let v3 = s1{
+                f1: [false],
+                f2: [1.0],
+                f3: "", 
+                f4: [-1],
+                f5: [1]
+            };
+            v3.f1 = [false];
+            return [-2];
+        }
+
+        func1();
+        "#,
+        "ctla_bug_1"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_bug_2(){
+    compile_code_aot!(
+        output,
+        r#"
+        import std.fuzz;
+        fn func1(p1: str[][]): str[] {
+            let v1: str[] = fuzz.read_rand(p1);
+            fuzz.write_arr(p1, v1);
+            return ["z"];
+        }
+        func1([["n"]]);
+        "#,
+        "ctla_bug_2"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+}

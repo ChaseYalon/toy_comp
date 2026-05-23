@@ -1,6 +1,7 @@
-use crate::ctla::{_print_debug_heap, DebugHeap};
+use crate::{TOTAL_ALLOCATION_SIZES, ctla::{_print_debug_heap, DebugHeap}};
 use ctor::ctor;
 use std::sync::{Mutex, OnceLock};
+use std::fs;
 unsafe extern "C" {
     fn user_main() -> i64;
 }
@@ -63,6 +64,13 @@ pub extern "C" fn main() -> i32 {
             println!("\nFAIL_TST");
         }
     }
-
+    let val = *&TOTAL_ALLOCATION_SIZES.lock().unwrap().clone();
+    let current_val: u64 = fs::read_to_string("./temp/FUZZ_ALLOC_SIZES.txt")
+        .unwrap_or("0".to_string())
+        .trim()
+        .parse()
+        .unwrap_or(0);
+    eprintln!("Val is {val}");
+    fs::write("./temp/FUZZ_ALLOC_SIZES.txt", (current_val + val).to_string()).unwrap();
     return res as i32;
 }

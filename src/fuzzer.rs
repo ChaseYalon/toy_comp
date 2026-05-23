@@ -46,11 +46,11 @@ impl TestRunner {
             scopes: vec![root],
             rng: StdRng::seed_from_u64(seed),
             max_stmt_depth: 6,
-            max_expr_depth: 3,
+            max_expr_depth: 2,
             program: vec![],
             rng_seed: seed,
             type_tok_range: 0..=3,
-            prgm_length: 10,
+            prgm_length: 20,
             interfaces: vec![],
             functions: vec![],
             var_names_to_types: HashMap::new(),
@@ -64,6 +64,46 @@ impl TestRunner {
             3 => TypeTok::Str,
             _ => unreachable!(),
         };
+    }
+    fn _random_field_type(&mut self) -> TypeTok {
+        match self.rng.random_range(0..=7) {
+            0 => TypeTok::Int,
+            1 => TypeTok::Bool,
+            2 => TypeTok::Float,
+            3 => TypeTok::Str,
+            4 => TypeTok::IntArr(1),
+            5 => TypeTok::BoolArr(1),
+            6 => TypeTok::FloatArr(1),
+            7 => TypeTok::StrArr(1),
+            _ => unreachable!(),
+        }
+    }
+    fn _random_param_type(&mut self) -> TypeTok {
+        match self.rng.random_range(0..=8) {
+            0 => TypeTok::Int,
+            1 => TypeTok::Bool,
+            2 => TypeTok::Float,
+            3 => TypeTok::Str,
+            4 => TypeTok::IntArr(1),
+            5 => TypeTok::BoolArr(1),
+            6 => TypeTok::FloatArr(1),
+            7 => TypeTok::StrArr(1),
+            8 => TypeTok::StrArr(2),
+            _ => unreachable!(),
+        }
+    }
+    fn _random_return_type(&mut self) -> TypeTok {
+        match self.rng.random_range(0..=7) {
+            0 => TypeTok::Int,
+            1 => TypeTok::Bool,
+            2 => TypeTok::Float,
+            3 => TypeTok::Str,
+            4 => TypeTok::IntArr(1),
+            5 => TypeTok::BoolArr(1),
+            6 => TypeTok::FloatArr(1),
+            7 => TypeTok::StrArr(1),
+            _ => unreachable!(),
+        }
     }
     fn _rand_int_infix_op(&mut self) -> InfixOp {
         return match self.rng.random_range(0..=4) {
@@ -181,18 +221,14 @@ impl TestRunner {
 
                 let (_, params, name) =
                     candidate_variables[self.rng.random_range(0..candidate_variables.len())];
+                let params = params.clone();
+                let name = name.clone();
                 let mut ast_params: Vec<Ast> = vec![];
-                for p in params {
-                    let v = match *p {
-                        TypeTok::Int => self.gen_int_expr(depth + 1),
-                        TypeTok::Float => self.gen_float_expr(depth + 1),
-                        TypeTok::Bool => self.gen_bool_expr(depth + 1),
-                        TypeTok::Str => self.gen_str_expr(depth + 1),
-                        _ => todo!("[ERROR] {:?} is unsupported for parameters", *p),
-                    };
+                for p in &params {
+                    let v = self.gen_arg_for_type(p, depth + 1);
                     ast_params.push(v);
                 }
-                Ast::FuncCall(Box::new(name.clone()), ast_params, Span::null_span())
+                Ast::FuncCall(Box::new(name), ast_params, Span::null_span())
             }
             6 => match self.gen_rand_read(&TypeTok::Str) {
                 Some(expr) => expr,
@@ -287,18 +323,14 @@ impl TestRunner {
 
                 let (_, params, name) =
                     candidate_variables[self.rng.random_range(0..candidate_variables.len())];
+                let params = params.clone();
+                let name = name.clone();
                 let mut ast_params: Vec<Ast> = vec![];
-                for p in params {
-                    let v = match *p {
-                        TypeTok::Int => self.gen_int_expr(depth + 1),
-                        TypeTok::Float => self.gen_float_expr(depth + 1),
-                        TypeTok::Bool => self.gen_bool_expr(depth + 1),
-                        TypeTok::Str => self.gen_str_expr(depth + 1),
-                        _ => todo!("[ERROR] {:?} is unsupported for parameters", *p),
-                    };
+                for p in &params {
+                    let v = self.gen_arg_for_type(p, depth + 1);
                     ast_params.push(v);
                 }
-                Ast::FuncCall(Box::new(name.clone()), ast_params, Span::null_span())
+                Ast::FuncCall(Box::new(name), ast_params, Span::null_span())
             }
             8 => match self.gen_rand_read(&TypeTok::Bool) {
                 Some(expr) => expr,
@@ -347,7 +379,7 @@ impl TestRunner {
 
         for _ in 0..field_count {
             let field_name = Alphabetic.sample_string(&mut self.rng, 10);
-            field_types.insert(field_name, self._random_type());
+            field_types.insert(field_name, self._random_field_type());
         }
 
         let interface_name = Alphabetic.sample_string(&mut self.rng, 10);
@@ -365,16 +397,11 @@ impl TestRunner {
 
         let mut fields: BTreeMap<String, (Ast, TypeTok)> = BTreeMap::new();
 
-        for (n, t) in &field_types {
-            let v = match t {
-                TypeTok::Int => self.gen_int_expr(depth + 1),
-                TypeTok::Bool => self.gen_bool_expr(depth + 1),
-                TypeTok::Float => self.gen_float_expr(depth + 1),
-                TypeTok::Str => self.gen_str_expr(depth + 1),
-                _ => todo!("{:?} is not supported for struct fields yet", t),
-            };
-
-            fields.insert(n.clone(), (v, t.clone()));
+        let field_entries: Vec<(String, TypeTok)> =
+            field_types.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        for (n, t) in field_entries {
+            let v = self.gen_arg_for_type(&t, depth + 1);
+            fields.insert(n, (v, t));
         }
 
         let struct_ty = TypeTok::Struct(ty);
@@ -406,14 +433,19 @@ impl TestRunner {
     }
     fn gen_function(&mut self) -> Ast {
         let param_count = self.rng.random_range(0..=4);
-        let ret_type = self._random_type();
+        // 6g: occasionally make the return type StrArr(2) for the tri-level encapsulation case
+        let ret_type = if self.rng.random_range(0..=9) == 0 {
+            TypeTok::StrArr(2)
+        } else {
+            self._random_return_type()
+        };
         let mut param_names: Vec<String> = vec![];
         for _ in 0..param_count {
             param_names.push(Alphabetic.sample_string(&mut self.rng, 10));
         }
         let mut param_types: Vec<TypeTok> = vec![];
         for _ in 0..param_count {
-            param_types.push(self._random_type());
+            param_types.push(self._random_param_type());
         }
         let mut params: Vec<Ast> = vec![];
         for i in 0..param_count {
@@ -441,13 +473,7 @@ impl TestRunner {
         }
         self.scopes.pop();
         if ret_type != TypeTok::Void {
-            let ret = match ret_type {
-                TypeTok::Int => self.gen_int_expr(0),
-                TypeTok::Bool => self.gen_bool_expr(0),
-                TypeTok::Float => self.gen_float_expr(0),
-                TypeTok::Str => self.gen_str_expr(0),
-                _ => todo!("{:?} is an invalid return type", ret_type),
-            };
+            let ret = self.gen_arg_for_type(&ret_type.clone(), 0);
             body.push(Ast::Return(Box::new(ret), Span::null_span()));
         }
         let function_name = Alphabetic.sample_string(&mut self.rng, 10);
@@ -469,10 +495,12 @@ impl TestRunner {
         if stmt_depth > self.max_stmt_depth {
             return self.gen_var_dec(); //this is a bodge
         }
-        return match self.rng.random_range(0..=2) {
+        return match self.rng.random_range(0..=4) {
             0 => self.gen_var_dec(),
             1 => self.gen_if_stmt(stmt_depth),
             2 => self.gen_while_stmt(stmt_depth),
+            3 => self.gen_arr_elem_write().unwrap_or_else(|| self.gen_var_dec()),
+            4 => self.gen_struct_field_write().unwrap_or_else(|| self.gen_var_dec()),
             _ => unreachable!(),
         };
     }
@@ -555,18 +583,14 @@ impl TestRunner {
 
                 let (_, params, name) =
                     candidate_variables[self.rng.random_range(0..candidate_variables.len())];
+                let params = params.clone();
+                let name = name.clone();
                 let mut ast_params: Vec<Ast> = vec![];
-                for p in params {
-                    let v = match *p {
-                        TypeTok::Int => self.gen_int_expr(depth + 1),
-                        TypeTok::Float => self.gen_float_expr(depth + 1),
-                        TypeTok::Bool => self.gen_bool_expr(depth + 1),
-                        TypeTok::Str => self.gen_str_expr(depth + 1),
-                        _ => todo!("[ERROR] {:?} is unsupported for parameters", *p),
-                    };
+                for p in &params {
+                    let v = self.gen_arg_for_type(p, depth + 1);
                     ast_params.push(v);
                 }
-                Ast::FuncCall(Box::new(name.clone()), ast_params, Span::null_span())
+                Ast::FuncCall(Box::new(name), ast_params, Span::null_span())
             }
             6 => match self.gen_rand_read(&TypeTok::Int) {
                 Some(expr) => expr,
@@ -669,18 +693,14 @@ impl TestRunner {
 
                 let (_, params, name) =
                     candidate_variables[self.rng.random_range(0..candidate_variables.len())];
+                let params = params.clone();
+                let name = name.clone();
                 let mut ast_params: Vec<Ast> = vec![];
-                for p in params {
-                    let v = match *p {
-                        TypeTok::Int => self.gen_int_expr(depth + 1),
-                        TypeTok::Float => self.gen_float_expr(depth + 1),
-                        TypeTok::Bool => self.gen_bool_expr(depth + 1),
-                        TypeTok::Str => self.gen_str_expr(depth + 1),
-                        _ => todo!("[ERROR] {:?} is unsupported for parameters", *p),
-                    };
+                for p in &params {
+                    let v = self.gen_arg_for_type(p, depth + 1);
                     ast_params.push(v);
                 }
-                Ast::FuncCall(Box::new(name.clone()), ast_params, Span::null_span())
+                Ast::FuncCall(Box::new(name), ast_params, Span::null_span())
             }
             6 => match self.gen_rand_read(&TypeTok::Float) {
                 Some(expr) => expr,
@@ -694,7 +714,7 @@ impl TestRunner {
         return val;
     }
     fn gen_expr(&mut self) -> (Ast, TypeTok) {
-        let n = self.rng.random_range(0..=7);
+        let n = self.rng.random_range(0..=8);
         return match n {
             0 => (self.gen_int_expr(0), TypeTok::Int),
             1 => (self.gen_float_expr(0), TypeTok::Float),
@@ -715,6 +735,10 @@ impl TestRunner {
             7 => {
                 let len = self.rng.random_range(1..=25usize);
                 (self.gen_arr_expr(TypeTok::Str, len), TypeTok::StrArr(1))
+            }
+            8 => {
+                let len = self.rng.random_range(1..=10usize);
+                (self.gen_nested_str_arr_expr(len), TypeTok::StrArr(2))
             }
             _ => todo!("{:?} is unimplemented", n),
         };
@@ -740,9 +764,27 @@ impl TestRunner {
             let v = self.gen_stmt(0);
             self.program.push(v);
         }
+        let funcs = self.program.clone();
         self.interfaces.append(&mut self.program);
         let mut result = vec![Ast::ImportStmt("std.fuzz".to_string(), Span::null_span())];
         result.extend(self.interfaces.iter().cloned());
+        for f in &funcs {
+            //every top level program is a func
+            let (func_name, func_params) = match f {
+                Ast::FuncDec(n, p, _, _, _) => (*n.clone(), p),
+                _ => {continue}
+            };
+            let mut params: Vec<Ast> = vec![];
+            for p in func_params {
+                let (_, param_type) = match p {
+                    Ast::FuncParam(n, t, _) => (*n.clone(), t),
+                    _ => unreachable!()
+                };
+                params.push(self.gen_expr_of_type(param_type.clone(), 0));
+            }
+            result.push(Ast::FuncCall(Box::new(func_name), params, Span::null_span()));
+        }
+
         return result;
     }
     fn gen_expr_of_type(&mut self, ty: TypeTok, depth: usize) -> Ast {
@@ -762,6 +804,14 @@ impl TestRunner {
             TypeTok::FloatArr(_) => {
                 let len = self.rng.random_range(1..=25usize);
                 self.gen_arr_expr(TypeTok::Float, len)
+            }
+            TypeTok::StrArr(1) => {
+                let len = self.rng.random_range(1..=25usize);
+                self.gen_arr_expr(TypeTok::Str, len)
+            }
+            TypeTok::StrArr(2) => {
+                let len = self.rng.random_range(1..=10usize);
+                self.gen_nested_str_arr_expr(len)
             }
             TypeTok::StrArr(_) => {
                 let len = self.rng.random_range(1..=25usize);
@@ -912,7 +962,11 @@ impl TestRunner {
                             OrderedFloat::from(self.rng.random_range(-1_000_000.0f64..1_000_000.0)),
                             Span::null_span(),
                         ),
-                        _ => Ast::IntLit(self.rng.random_range(i64::MIN..i64::MAX), Span::null_span()),
+                        TypeTok::Int => Ast::IntLit(self.rng.random_range(i64::MIN..i64::MAX), Span::null_span()),
+                        _ => Ast::EmptyExpr(
+                            Box::new(self.rewrite_expr(*expr, removed_name, removed_ret)),
+                            span,
+                        ),
                     }
                 } else {
                     Ast::EmptyExpr(
@@ -950,11 +1004,27 @@ impl TestRunner {
             }
 
             Ast::ArrLit(ty, elems, span) => {
-                let new_elems = elems
+                let mut new_elems: Vec<Ast> = elems
                     .into_iter()
                     .map(|e| self.rewrite_expr(e, removed_name, removed_ret))
                     .collect();
+                // shrink arrays toward length 1
+                if new_elems.len() > 1 {
+                    let keep = self.rng.random_range(1..=new_elems.len());
+                    new_elems.truncate(keep);
+                }
                 Ast::ArrLit(ty, new_elems, span)
+            }
+
+            Ast::StringLit(s, span) => {
+                if s.len() > 1 {
+                    let new_len = self.rng.random_range(1..=s.len());
+                    Ast::StringLit(Box::new(s[..new_len].to_string()), span)
+                } else if s.is_empty() {
+                    Ast::StringLit(Box::new(Alphabetic.sample_string(&mut self.rng, 1)), span)
+                } else {
+                    Ast::StringLit(s, span)
+                }
             }
 
             _ => expr,
@@ -1035,8 +1105,236 @@ impl TestRunner {
                 span,
             )),
 
+            Ast::FuncCall(name, args, span) => {
+                if *name == removed_name {
+                    return None;
+                }
+                let rewritten_args = args
+                    .into_iter()
+                    .map(|a| self.rewrite_expr(a, removed_name, removed_ret))
+                    .collect();
+                Some(Ast::FuncCall(name, rewritten_args, span))
+            }
+
             _ => Some(stmt),
         }
+    }
+    fn gen_arr_elem_write(&mut self) -> Option<Ast> {
+        let array_vars: Vec<(TypeTok, String)> = self
+            .scopes
+            .iter()
+            .flat_map(|s| s.vars.iter())
+            .filter_map(|(ty, names)| match ty {
+                TypeTok::IntArr(1)
+                | TypeTok::BoolArr(1)
+                | TypeTok::FloatArr(1)
+                | TypeTok::StrArr(1)
+                | TypeTok::StrArr(2) => Some(
+                    names
+                        .iter()
+                        .map(|n| (ty.clone(), n.clone()))
+                        .collect::<Vec<_>>(),
+                ),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        if array_vars.is_empty() {
+            return None;
+        }
+        let (arr_type, arr_name) =
+            array_vars[self.rng.random_range(0..array_vars.len())].clone();
+        let elem_type = match &arr_type {
+            TypeTok::IntArr(1) => TypeTok::Int,
+            TypeTok::BoolArr(1) => TypeTok::Bool,
+            TypeTok::FloatArr(1) => TypeTok::Float,
+            TypeTok::StrArr(1) => TypeTok::Str,
+            TypeTok::StrArr(2) => TypeTok::StrArr(1),
+            _ => return None,
+        };
+        let val_expr = self.gen_arg_for_type(&elem_type.clone(), 0);
+        let mangled = crate::driver::Driver::mangle_name(
+            Some("std::fuzz"),
+            "write_arr",
+            &[arr_type.clone(), elem_type],
+        );
+        Some(Ast::FuncCall(
+            Box::new(mangled),
+            vec![
+                Ast::VarRef(Box::new(arr_name), Span::null_span()),
+                val_expr,
+            ],
+            Span::null_span(),
+        ))
+    }
+    fn gen_struct_field_write(&mut self) -> Option<Ast> {
+        let struct_vars: Vec<(TypeTok, String)> = self
+            .scopes
+            .iter()
+            .flat_map(|s| s.vars.iter())
+            .filter_map(|(ty, names)| {
+                if matches!(ty, TypeTok::Struct(_)) {
+                    Some(names.iter().map(|n| (ty.clone(), n.clone())).collect::<Vec<_>>())
+                } else {
+                    None
+                }
+            })
+            .flatten()
+            .collect();
+        if struct_vars.is_empty() {
+            return None;
+        }
+        let (struct_type, var_name) =
+            struct_vars[self.rng.random_range(0..struct_vars.len())].clone();
+        let TypeTok::Struct(fields) = &struct_type else {
+            return None;
+        };
+        let fields_vec: Vec<(String, TypeTok)> = fields
+            .iter()
+            .map(|(k, v)| (k.clone(), *v.clone()))
+            .collect();
+        if fields_vec.is_empty() {
+            return None;
+        }
+        let (field_name, field_type) =
+            fields_vec[self.rng.random_range(0..fields_vec.len())].clone();
+        let val_expr = self.gen_arg_for_type(&field_type, 0);
+        Some(Ast::Assignment(
+            Box::new(Ast::MemberAccess(
+                Box::new(Ast::VarRef(Box::new(var_name), Span::null_span())),
+                field_name,
+                Span::null_span(),
+            )),
+            Box::new(val_expr),
+            Span::null_span(),
+        ))
+    }
+    fn gen_nested_str_arr_expr(&mut self, outer_len: usize) -> Ast {
+        let mut elements: Vec<Ast> = Vec::with_capacity(outer_len);
+        for _ in 0..outer_len {
+            let inner_len = self.rng.random_range(1..=8usize);
+            elements.push(self.gen_arr_expr(TypeTok::Str, inner_len));
+        }
+        Ast::ArrLit(TypeTok::StrArr(2), elements, Span::null_span())
+    }
+    /// Generates an expression of any type, including array types, for use as a function argument
+    /// or array element. Prefers referencing in-scope variables over generating fresh literals.
+    fn gen_arg_for_type(&mut self, ty: &TypeTok, depth: usize) -> Ast {
+        match ty {
+            TypeTok::Int => self.gen_int_expr(depth),
+            TypeTok::Float => self.gen_float_expr(depth),
+            TypeTok::Bool => self.gen_bool_expr(depth),
+            TypeTok::Str => self.gen_str_expr(depth),
+            TypeTok::StrArr(2) => {
+                let candidates: Vec<String> = self
+                    .scopes
+                    .iter()
+                    .flat_map(|s| s.vars.get(&TypeTok::StrArr(2)).into_iter().flatten())
+                    .cloned()
+                    .collect();
+                if !candidates.is_empty() && self.rng.random_bool(0.6) {
+                    let v = candidates[self.rng.random_range(0..candidates.len())].clone();
+                    return Ast::VarRef(Box::new(v), Span::null_span());
+                }
+                if let Some(expr) = self.gen_rand_read(&TypeTok::StrArr(1)) {
+                    let outer_len = self.rng.random_range(1..=5usize);
+                    let mut elements = vec![expr];
+                    for _ in 1..outer_len {
+                        let inner_len = self.rng.random_range(1..=6usize);
+                        elements.push(self.gen_literal_arr(TypeTok::Str, inner_len));
+                    }
+                    return Ast::ArrLit(TypeTok::StrArr(2), elements, Span::null_span());
+                }
+                let n = self.rng.random_range(1..=5usize);
+                let mut elements: Vec<Ast> = Vec::with_capacity(n);
+                for _ in 0..n {
+                    let inner_len = self.rng.random_range(1..=6usize);
+                    elements.push(self.gen_literal_arr(TypeTok::Str, inner_len));
+                }
+                Ast::ArrLit(TypeTok::StrArr(2), elements, Span::null_span())
+            }
+            TypeTok::StrArr(1) => {
+                let candidates: Vec<String> = self
+                    .scopes
+                    .iter()
+                    .flat_map(|s| s.vars.get(&TypeTok::StrArr(1)).into_iter().flatten())
+                    .cloned()
+                    .collect();
+                if !candidates.is_empty() && self.rng.random_bool(0.6) {
+                    let v = candidates[self.rng.random_range(0..candidates.len())].clone();
+                    return Ast::VarRef(Box::new(v), Span::null_span());
+                }
+                if let Some(expr) = self.gen_rand_read(&TypeTok::StrArr(1)) {
+                    return expr;
+                }
+                let n = self.rng.random_range(1..=10usize);
+                self.gen_literal_arr(TypeTok::Str, n)
+            }
+            TypeTok::IntArr(_) => {
+                let candidates: Vec<String> = self
+                    .scopes
+                    .iter()
+                    .flat_map(|s| s.vars.get(&TypeTok::IntArr(1)).into_iter().flatten())
+                    .cloned()
+                    .collect();
+                if !candidates.is_empty() && self.rng.random_bool(0.6) {
+                    let v = candidates[self.rng.random_range(0..candidates.len())].clone();
+                    return Ast::VarRef(Box::new(v), Span::null_span());
+                }
+                let n = self.rng.random_range(1..=10usize);
+                self.gen_literal_arr(TypeTok::Int, n)
+            }
+            TypeTok::BoolArr(_) => {
+                let candidates: Vec<String> = self
+                    .scopes
+                    .iter()
+                    .flat_map(|s| s.vars.get(&TypeTok::BoolArr(1)).into_iter().flatten())
+                    .cloned()
+                    .collect();
+                if !candidates.is_empty() && self.rng.random_bool(0.6) {
+                    let v = candidates[self.rng.random_range(0..candidates.len())].clone();
+                    return Ast::VarRef(Box::new(v), Span::null_span());
+                }
+                let n = self.rng.random_range(1..=10usize);
+                self.gen_literal_arr(TypeTok::Bool, n)
+            }
+            TypeTok::FloatArr(_) => {
+                let candidates: Vec<String> = self
+                    .scopes
+                    .iter()
+                    .flat_map(|s| s.vars.get(&TypeTok::FloatArr(1)).into_iter().flatten())
+                    .cloned()
+                    .collect();
+                if !candidates.is_empty() && self.rng.random_bool(0.6) {
+                    let v = candidates[self.rng.random_range(0..candidates.len())].clone();
+                    return Ast::VarRef(Box::new(v), Span::null_span());
+                }
+                let n = self.rng.random_range(1..=10usize);
+                self.gen_literal_arr(TypeTok::Float, n)
+            }
+            _ => todo!("unsupported arg type {:?}", ty),
+        }
+    }
+    fn gen_literal_arr(&mut self, elem_type: TypeTok, length: usize) -> Ast {
+        let mut elements: Vec<Ast> = Vec::with_capacity(length);
+        for _ in 0..length {
+            let elem = match elem_type {
+                TypeTok::Int => Ast::IntLit(self.rng.random_range(i64::MIN..i64::MAX), Span::null_span()),
+                TypeTok::Bool => Ast::BoolLit(self.rng.random_bool(0.5), Span::null_span()),
+                TypeTok::Float => Ast::FloatLit(OrderedFloat(self.rng.random_range(-1_000_000.0..1_000_000.0)), Span::null_span()),
+                TypeTok::Str => Ast::StringLit(Box::new(Alphabetic.sample_string(&mut self.rng, 10)), Span::null_span()),
+                _ => unreachable!(),
+            };
+            elements.push(elem);
+        }
+        let arr_type = match elem_type {
+            TypeTok::Int => TypeTok::IntArr(1),
+            TypeTok::Bool => TypeTok::BoolArr(1),
+            TypeTok::Float => TypeTok::FloatArr(1),
+            TypeTok::Str => TypeTok::StrArr(1),
+            _ => unreachable!(),
+        };
+        Ast::ArrLit(arr_type, elements, Span::null_span())
     }
     fn gen_arr_expr(&mut self, elem_type: TypeTok, length: usize) -> Ast {
         let mut elements: Vec<Ast> = Vec::with_capacity(length);
@@ -1057,16 +1355,15 @@ impl TestRunner {
             TypeTok::Str => TypeTok::StrArr(1),
             _ => unreachable!(),
         };
-        Ast::ArrLit(arr_type, elements, Span::null_span())
+        return Ast::ArrLit(arr_type, elements, Span::null_span());
     }
-    /// Returns a `fuzz.read_rand` call (fully mangled) for a random in-scope array of the given
-    /// element type, or `None` if no such variable exists yet.
     fn gen_rand_read(&mut self, elem_type: &TypeTok) -> Option<Ast> {
         let arr_type = match elem_type {
             TypeTok::Int => TypeTok::IntArr(1),
             TypeTok::Bool => TypeTok::BoolArr(1),
             TypeTok::Float => TypeTok::FloatArr(1),
             TypeTok::Str => TypeTok::StrArr(1),
+            TypeTok::StrArr(1) => TypeTok::StrArr(2),
             _ => return None,
         };
         let candidates: Vec<String> = self
@@ -1079,19 +1376,16 @@ impl TestRunner {
             return None;
         }
         let v = candidates[self.rng.random_range(0..candidates.len())].clone();
-        // Bypass AstGenerator alias resolution by computing the mangled name directly.
-        // fuzz.toy is compiled with module prefix "std::fuzz", so read_rand(int[]) →
-        // std::fuzz::read_rand_intarr (and similarly for the other element types).
         let mangled = crate::driver::Driver::mangle_name(
             Some("std::fuzz"),
             "read_rand",
             &[arr_type.clone()],
         );
-        Some(Ast::FuncCall(
+        return Some(Ast::FuncCall(
             Box::new(mangled),
             vec![Ast::VarRef(Box::new(v), Span::null_span())],
             Span::null_span(),
-        ))
+        ));
     }
     pub fn reduce(&mut self, input: Vec<Ast>) -> Vec<Ast> {
         let funcs: Vec<Ast> = input

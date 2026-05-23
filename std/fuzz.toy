@@ -16,29 +16,31 @@ fn read_rand(arr: str[]): str{
     let idx: int = math.rand_int(0, len(arr) - 1);
     return arr[idx];
 }
-//just for good measure, nested int[]
-//fn read_rand(arr: int[][]): int[] {
-//    let idx = math.rand_int(0, len(arr) - 1);
-//    return arr[idx];
-//}
-//will need to fix name mangling before this will work
-fn read_arr(arr: int[], elem: int) {
+fn read_rand(arr: str[][]): str[] {
+    let idx: int = math.rand_int(0, len(arr) - 1);
+    return arr[idx];
+}
+fn write_arr(arr: int[], elem: int) {
     let idx: int = math.rand_int(0, len(arr) - 1);
     arr[idx] = elem;
 }
-fn read_arr(arr: bool[], elem: bool){
+fn write_arr(arr: bool[], elem: bool){
     let idx: int = math.rand_int(0, len(arr) - 1);
     arr[idx] = elem;
 }
-fn read_arr(arr: float[], elem: float){
+fn write_arr(arr: float[], elem: float){
     let idx: int = math.rand_int(0, len(arr) - 1);
     arr[idx] = elem;
 }
-fn read_arr(arr: str[], elem: str){
+fn write_arr(arr: str[], elem: str){
     let idx: int = math.rand_int(0, len(arr) - 1);
     arr[idx] = elem;
 }
-fn read_arr(arr: int[][], elem: int[]){
+fn write_arr(arr: int[][], elem: int[]){
+    let idx: int = math.rand_int(0, len(arr) - 1);
+    arr[idx] = elem;
+}
+fn write_arr(arr: str[][], elem: str[]){
     let idx: int = math.rand_int(0, len(arr) - 1);
     arr[idx] = elem;
 }

@@ -34,6 +34,101 @@ static ALLOC: dhat::Alloc = dhat::Alloc;
 
 //sort of arbitrary, tune for best results
 static MAX_DELTA_DEBUG_ITERS: usize = 300;
+fn collect_used_structs(nodes: &[Ast], used: &mut std::collections::HashSet<String>) {
+    for node in nodes {
+        match node {
+            Ast::StructLit(name, fields, _) => {
+                used.insert(*name.clone());
+                for (_, (expr, _)) in fields.iter() {
+                    collect_used_structs(&[expr.clone()], used);
+                }
+            }
+            Ast::FuncDec(_, _, _, body, _) => collect_used_structs(body, used),
+            Ast::IfStmt(cond, body, else_body, _) => {
+                collect_used_structs(&[*cond.clone()], used);
+                collect_used_structs(body, used);
+                if let Some(eb) = else_body {
+                    collect_used_structs(eb, used);
+                }
+            }
+            Ast::WhileStmt(cond, body, _) => {
+                collect_used_structs(&[*cond.clone()], used);
+                collect_used_structs(body, used);
+            }
+            Ast::VarDec(_, _, expr, _) => collect_used_structs(&[*expr.clone()], used),
+            Ast::Return(expr, _) => collect_used_structs(&[*expr.clone()], used),
+            Ast::InfixExpr(l, r, _, _) => {
+                collect_used_structs(&[*l.clone()], used);
+                collect_used_structs(&[*r.clone()], used);
+            }
+            Ast::FuncCall(_, args, _) => collect_used_structs(args, used),
+            Ast::EmptyExpr(e, _) | Ast::Not(e, _) => collect_used_structs(&[*e.clone()], used),
+            Ast::Assignment(_, rhs, _) => collect_used_structs(&[*rhs.clone()], used),
+            _ => {}
+        }
+    }
+}
+fn collect_used_vars(nodes: &[Ast], used: &mut std::collections::HashSet<String>) {
+    for node in nodes {
+        match node {
+            Ast::VarRef(name, _) => { used.insert(*name.clone()); }
+            Ast::FuncDec(_, _, _, body, _) => collect_used_vars(body, used),
+            Ast::IfStmt(cond, body, else_body, _) => {
+                collect_used_vars(&[*cond.clone()], used);
+                collect_used_vars(body, used);
+                if let Some(eb) = else_body { collect_used_vars(eb, used); }
+            }
+            Ast::WhileStmt(cond, body, _) => {
+                collect_used_vars(&[*cond.clone()], used);
+                collect_used_vars(body, used);
+            }
+            Ast::VarDec(_, _, expr, _) => collect_used_vars(&[*expr.clone()], used),
+            Ast::Return(expr, _) => collect_used_vars(&[*expr.clone()], used),
+            Ast::InfixExpr(l, r, _, _) => {
+                collect_used_vars(&[*l.clone()], used);
+                collect_used_vars(&[*r.clone()], used);
+            }
+            Ast::FuncCall(_, args, _) => collect_used_vars(args, used),
+            Ast::EmptyExpr(e, _) | Ast::Not(e, _) => collect_used_vars(&[*e.clone()], used),
+            Ast::Assignment(lhs, rhs, _) => {
+                collect_used_vars(&[*lhs.clone()], used);
+                collect_used_vars(&[*rhs.clone()], used);
+            }
+            Ast::MemberAccess(expr, _, _) => collect_used_vars(&[*expr.clone()], used),
+            Ast::IndexAccess(expr, idx, _) => {
+                collect_used_vars(&[*expr.clone()], used);
+                collect_used_vars(&[*idx.clone()], used);
+            }
+            Ast::StructLit(_, fields, _) => {
+                for (_, (expr, _)) in fields.iter() {
+                    collect_used_vars(&[expr.clone()], used);
+                }
+            }
+            Ast::ArrLit(_, elems, _) => collect_used_vars(elems, used),
+            _ => {}
+        }
+    }
+}
+fn strip_unused_vars(nodes: &mut Vec<Ast>, used: &std::collections::HashSet<String>) {
+    nodes.retain(|node| {
+        if let Ast::VarDec(name, _, _, _) = node {
+            used.contains(&**name)
+        } else {
+            true
+        }
+    });
+    for node in nodes.iter_mut() {
+        match node {
+            Ast::FuncDec(_, _, _, body, _) => strip_unused_vars(body, used),
+            Ast::IfStmt(_, body, else_body, _) => {
+                strip_unused_vars(body, used);
+                if let Some(eb) = else_body { strip_unused_vars(eb, used); }
+            }
+            Ast::WhileStmt(_, body, _) => strip_unused_vars(body, used),
+            _ => {}
+        }
+    }
+}
 fn run_repl() {
     loop {
         print!("> ");
@@ -164,7 +259,6 @@ fn main() {
             let prgm = runner.generate();
             
             let prgm_clone = prgm.clone();
-            println!("Done generating");    
             base = format!("temp/fuzz{i}");
             name = format!("{base}{}", FILE_EXTENSION_EXE);
             let crashed = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -173,7 +267,6 @@ fn main() {
                 d.start_with_ast(&ctx, prgm_clone).unwrap();
             }))
             .is_err();
-            println!("Done compiling");
             fs::write("temp.txt", serde_json::to_string_pretty(&prgm).unwrap()).unwrap();
             if crashed {
                 crash = Some(prgm);
@@ -186,36 +279,95 @@ fn main() {
                 crash = Some(prgm);
                 break;
             }
-            println!("fuzz {} ok", i);
         }
 
         if let Some(prgm) = crash {
             let mut runner = TestRunner::new();
             let mut current = prgm;
             let mut count = 0;
+            let mut consecutive_failures = 0;
+            // compile the crashing version so fuzz0.exe on disk matches `current`
+            let _ = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let mut d = Driver::new_with_name(PathBuf::from(base.clone()), base.clone());
+                let ctx = Context::create();
+                d.start_with_ast(&ctx, current.clone())
+            }));
             loop {
                 let reduced = runner.reduce(current.clone());
 
-                if reduced == current || count > MAX_DELTA_DEBUG_ITERS {
+                if reduced == current || count > MAX_DELTA_DEBUG_ITERS || consecutive_failures > 20 {
                     break;
                 }
 
-                let still_crashes = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    let mut d = Driver::new_with_name(PathBuf::from(base.clone()), base.clone());
+                let delta_base = format!("{base}_delta");
+                let delta_name = format!("{delta_base}{}", FILE_EXTENSION_EXE);
+                let compile_result = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let mut d = Driver::new_with_name(PathBuf::from(delta_base.clone()), delta_base.clone());
                     let ctx = Context::create();
-                    d.start_with_ast(&ctx, reduced.clone()).unwrap();
-                }))
-                .is_err();
+                    d.start_with_ast(&ctx, reduced.clone())
+                }));
 
-                if still_crashes || {
-                    let child = Command::new(name.clone()).spawn().expect("failed to start child");
-                    !run_for_30_seconds(child)
-                } {
+                let still_crashes = match compile_result {
+                    Err(_) | Ok(Err(_)) => { consecutive_failures += 1; count += 1; continue; }
+                    Ok(Ok(_)) => {
+                        let child = Command::new(delta_name.clone()).spawn().expect("failed to start child");
+                        !run_for_30_seconds(child)
+                    }
+                };
+
+                if still_crashes {
                     current = reduced;
+                    consecutive_failures = 0;
+                    // recompile to the real binary path so fuzz0.exe matches `current`
+                    let _ = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        let mut d = Driver::new_with_name(PathBuf::from(base.clone()), base.clone());
+                        let ctx = Context::create();
+                        d.start_with_ast(&ctx, current.clone())
+                    }));
+                } else {
+                    consecutive_failures += 1;
                 }
                 count += 1;
                 print!("Delta debugging at iteration {count}\r");
                 io::stdout().flush().unwrap();
+            }
+
+            // Try removing unused struct interfaces and var decs, but only keep if crash still reproduces
+            let mut cleaned = current.clone();
+
+            let mut used_interfaces = std::collections::HashSet::new();
+            collect_used_structs(&cleaned, &mut used_interfaces);
+            cleaned.retain(|node| {
+                if let Ast::StructInterface(name, _, _) = node {
+                    used_interfaces.contains(&**name)
+                } else {
+                    true
+                }
+            });
+
+            let mut used_vars = std::collections::HashSet::new();
+            collect_used_vars(&cleaned, &mut used_vars);
+            strip_unused_vars(&mut cleaned, &used_vars);
+
+            // Verify the cleaned version still crashes
+            let delta_base = format!("{base}_delta");
+            let delta_name = format!("{delta_base}{}", FILE_EXTENSION_EXE);
+            let clean_ok = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let mut d = Driver::new_with_name(PathBuf::from(delta_base.clone()), delta_base.clone());
+                let ctx = Context::create();
+                d.start_with_ast(&ctx, cleaned.clone())
+            }));
+            if let Ok(Ok(_)) = clean_ok {
+                let child = Command::new(delta_name).spawn().expect("failed to start child");
+                if !run_for_30_seconds(child) {
+                    current = cleaned;
+                    // recompile to real path
+                    let _ = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        let mut d = Driver::new_with_name(PathBuf::from(base.clone()), base.clone());
+                        let ctx = Context::create();
+                        d.start_with_ast(&ctx, current.clone())
+                    }));
+                }
             }
 
             fs::write(

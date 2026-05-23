@@ -4,6 +4,7 @@ use std::io;
 use std::io::Write;
 use std::{collections::HashMap, os::raw::c_void, usize};
 use crate::ToyPtr;
+use crate::TOTAL_ALLOCATION_SIZES;
 #[derive(Debug, Clone)]
 pub struct DebugHeap {
     ///ptr -> size
@@ -27,6 +28,7 @@ pub fn _toy_malloc_debug(size: usize) -> *mut c_void {
     heap.map.insert(buff as i64, size as i64);
     heap.total_live_allocations += 1;
     heap.total_allocations += 1;
+    *TOTAL_ALLOCATION_SIZES.lock().unwrap() += size as u64;
     return buff;
 }
 #[unsafe(no_mangle)]
