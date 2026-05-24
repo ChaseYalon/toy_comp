@@ -37,6 +37,7 @@ pub fn toy_free(buff: *mut c_void) {
         eprintln!("[ERROR] Tried to free a null buffer");
         unsafe { libc::abort() };
     }
+    _check_pointer(buff);
     let val = env::var("TOY_DEBUG");
     if let Ok(v) = val {
         if v == "TRUE" {

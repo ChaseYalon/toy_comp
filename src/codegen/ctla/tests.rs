@@ -282,7 +282,7 @@ fn test_ctla_str_lambda() {
 }
 
 #[test]
-fn test_ctla_bug_1(){
+fn test_ctla_bug_1() {
     compile_code_aot!(
         output,
         r#"
@@ -314,7 +314,7 @@ fn test_ctla_bug_1(){
 }
 
 #[test]
-fn test_ctla_bug_2(){
+fn test_ctla_bug_2() {
     compile_code_aot!(
         output,
         r#"
@@ -327,6 +327,57 @@ fn test_ctla_bug_2(){
         func1([["n"]]);
         "#,
         "ctla_bug_2"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_bug_3() {
+    compile_code_aot!(
+        output,
+        r#"
+        import std.fuzz;
+        fn func1(){
+            let v1: str[][] = [["z"]];
+            let v2: str[] = fuzz.read_rand(v1);
+            fuzz.write_arr(v1, v2);
+            let v3: str[] = fuzz.read_rand(v1);
+            fuzz.write_arr(v1, v3);
+        }
+        func1();
+        "#,
+        "ctla_bug_3"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_bug_4() {
+    compile_code_aot!(
+        output,
+        r#"
+            import std.fuzz;
+            let v1: str[][] = [["m"]];
+            if false {}
+            let v2: str[] = fuzz.read_rand(v1);
+        "#,
+        "ctla_bug_4"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_bug_5(){
+    compile_code_aot!(
+        output,
+        r#"
+        import std.fuzz;
+        fn func1(): str[] {
+            return ["B"];
+        }
+        func1();
+        "#,
+        "ctla_bug_5"
     );
     assert!(!output.contains("FAIL_TEST"));
 }

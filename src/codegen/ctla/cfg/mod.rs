@@ -37,6 +37,8 @@ pub struct CFGFunction {
     pub parameter_encapsulates: Vec<usize>,
     /// returns the idx's of any parameters who escape the program
     pub parameter_escapes: Vec<usize>,
+    /// which struct field indexes (of the return type) hold owned heap allocations
+    pub return_owned_fields: Vec<usize>,
     ///block id -> index in funcs.block
     pub block_id_to_index: HashMap<BlockId, usize>,
     pub cfg_blocks: Vec<CFGBlock>,
@@ -55,6 +57,7 @@ impl CFGFunction {
             func,
             returns_alias_of_parameter: vec![],
             parameter_encapsulates: vec![],
+            return_owned_fields: vec![],
             block_id_to_index: id_to_idx,
             cfg_blocks: vec![],
             block_id_to_inputs: HashMap::new(),

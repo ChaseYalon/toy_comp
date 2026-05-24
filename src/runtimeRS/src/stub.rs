@@ -46,7 +46,6 @@ fn init() {
 #[unsafe(no_mangle)]
 pub extern "C" fn main() -> i32 {
     let res = unsafe { user_main() };
-
     unsafe {
         for i in 0..GLOBAL_ARGC {
             libc::free(*GLOBAL_ARGV.add(i as usize) as *mut libc::c_void);
@@ -62,6 +61,7 @@ pub extern "C" fn main() -> i32 {
         if live_allocs != 0 {
             _print_debug_heap();
             println!("\nFAIL_TST");
+            std::process::exit(-1); 
         }
     }
     let val = *&TOTAL_ALLOCATION_SIZES.lock().unwrap().clone();
@@ -70,7 +70,7 @@ pub extern "C" fn main() -> i32 {
         .trim()
         .parse()
         .unwrap_or(0);
-    eprintln!("Val is {val}");
     fs::write("./temp/FUZZ_ALLOC_SIZES.txt", (current_val + val).to_string()).unwrap();
+
     return res as i32;
 }

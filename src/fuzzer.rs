@@ -340,7 +340,7 @@ impl TestRunner {
         };
         return val;
     }
-    fn gen_if_stmt(&mut self, stmt_depth: usize) -> Ast {
+    fn gen_if_stmt(&mut self, stmt_depth: usize) -> Vec<Ast> {
         if stmt_depth > self.max_stmt_depth {
             return self.gen_stmt(stmt_depth);
         }
@@ -351,7 +351,7 @@ impl TestRunner {
             vars: HashMap::new(),
         });
         for _ in 0..block_len {
-            stmts.push(self.gen_stmt(stmt_depth + 1));
+            stmts.extend(self.gen_stmt(stmt_depth + 1));
         }
         self.scopes.pop();
 
@@ -361,7 +361,7 @@ impl TestRunner {
             });
             let mut else_stmts = vec![];
             for _ in 0..block_len {
-                else_stmts.push(self.gen_stmt(stmt_depth + 1));
+                else_stmts.extend(self.gen_stmt(stmt_depth + 1));
             }
             self.scopes.pop();
             Some(else_stmts)
@@ -369,7 +369,7 @@ impl TestRunner {
             None
         };
 
-        return Ast::IfStmt(Box::new(expr), stmts, else_stmts, Span::null_span());
+        return vec![Ast::IfStmt(Box::new(expr), stmts, else_stmts, Span::null_span())];
     }
     fn gen_struct_expr(&mut self, depth: usize) -> (Ast, TypeTok) {
         //make a struct interface - right now each struct has its own interface
@@ -397,8 +397,10 @@ impl TestRunner {
 
         let mut fields: BTreeMap<String, (Ast, TypeTok)> = BTreeMap::new();
 
-        let field_entries: Vec<(String, TypeTok)> =
-            field_types.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        let field_entries: Vec<(String, TypeTok)> = field_types
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
         for (n, t) in field_entries {
             let v = self.gen_arg_for_type(&t, depth + 1);
             fields.insert(n, (v, t));
@@ -415,7 +417,7 @@ impl TestRunner {
             struct_ty,
         );
     }
-    fn gen_while_stmt(&mut self, stmt_depth: usize) -> Ast {
+    fn gen_while_stmt(&mut self, stmt_depth: usize) -> Vec<Ast> {
         if stmt_depth > self.max_stmt_depth {
             return self.gen_stmt(stmt_depth);
         }
@@ -426,10 +428,39 @@ impl TestRunner {
         });
         let mut stmts: Vec<Ast> = vec![];
         for _ in 0..block_len {
-            stmts.push(self.gen_stmt(stmt_depth + 1));
+            stmts.extend(self.gen_stmt(stmt_depth + 1));
         }
         self.scopes.pop();
-        return Ast::WhileStmt(Box::new(expr), stmts, Span::null_span());
+        //counter stuff
+        let name = Alphabetic.sample_string(&mut self.rng, 10);
+        let counter = Ast::VarDec(
+            Box::new(name.clone()),
+            TypeTok::Int,
+            Box::new(Ast::IntLit(0, Span::null_span())),
+            Span::null_span(),
+        );
+        let if_stmt = Ast::IfStmt(
+            Box::new(Ast::InfixExpr(
+                Box::new(Ast::VarRef(Box::new(name.clone()), Span::null_span())),
+                Box::new(Ast::IntLit(100, Span::null_span())),
+                InfixOp::GreaterThanEqt,
+                Span::null_span(),
+            )),
+            vec![Ast::Break(Span::null_span())],
+            Some(vec![Ast::Assignment(
+                Box::new(Ast::VarRef(Box::new(name.clone()), Span::null_span())),
+                Box::new(Ast::InfixExpr(
+                    Box::new(Ast::VarRef(Box::new(name), Span::null_span())),
+                    Box::new(Ast::IntLit(1, Span::null_span())),
+                    InfixOp::Plus,
+                    Span::null_span(),
+                )),
+                Span::null_span(),
+            )]),
+            Span::null_span(),
+        );
+        stmts.push(if_stmt);
+        return vec![counter, Ast::WhileStmt(Box::new(expr), stmts, Span::null_span())];
     }
     fn gen_function(&mut self) -> Ast {
         let param_count = self.rng.random_range(0..=4);
@@ -469,7 +500,7 @@ impl TestRunner {
                 .push(param_names[i].clone());
         }
         for _ in 0..self.rng.random_range(0..=10) {
-            body.push(self.gen_stmt(1));
+            body.extend(self.gen_stmt(1));
         }
         self.scopes.pop();
         if ret_type != TypeTok::Void {
@@ -487,20 +518,24 @@ impl TestRunner {
             Span::null_span(),
         );
     }
-    fn gen_stmt(&mut self, stmt_depth: usize) -> Ast {
+    fn gen_stmt(&mut self, stmt_depth: usize) -> Vec<Ast> {
         if stmt_depth == 0 {
             let f = self.gen_function();
-            return f;
+            return vec![f];
         }
         if stmt_depth > self.max_stmt_depth {
-            return self.gen_var_dec(); //this is a bodge
+            return vec![self.gen_var_dec()]; //this is a bodge
         }
         return match self.rng.random_range(0..=4) {
-            0 => self.gen_var_dec(),
+            0 => vec![self.gen_var_dec()],
             1 => self.gen_if_stmt(stmt_depth),
             2 => self.gen_while_stmt(stmt_depth),
-            3 => self.gen_arr_elem_write().unwrap_or_else(|| self.gen_var_dec()),
-            4 => self.gen_struct_field_write().unwrap_or_else(|| self.gen_var_dec()),
+            3 => vec![self
+                .gen_arr_elem_write()
+                .unwrap_or_else(|| self.gen_var_dec())],
+            4 => vec![self
+                .gen_struct_field_write()
+                .unwrap_or_else(|| self.gen_var_dec())],
             _ => unreachable!(),
         };
     }
@@ -762,7 +797,7 @@ impl TestRunner {
         for _ in 0..self.prgm_length {
             //for now only var dec
             let v = self.gen_stmt(0);
-            self.program.push(v);
+            self.program.extend(v);
         }
         let funcs = self.program.clone();
         self.interfaces.append(&mut self.program);
@@ -772,17 +807,21 @@ impl TestRunner {
             //every top level program is a func
             let (func_name, func_params) = match f {
                 Ast::FuncDec(n, p, _, _, _) => (*n.clone(), p),
-                _ => {continue}
+                _ => continue,
             };
             let mut params: Vec<Ast> = vec![];
             for p in func_params {
                 let (_, param_type) = match p {
                     Ast::FuncParam(n, t, _) => (*n.clone(), t),
-                    _ => unreachable!()
+                    _ => unreachable!(),
                 };
                 params.push(self.gen_expr_of_type(param_type.clone(), 0));
             }
-            result.push(Ast::FuncCall(Box::new(func_name), params, Span::null_span()));
+            result.push(Ast::FuncCall(
+                Box::new(func_name),
+                params,
+                Span::null_span(),
+            ));
         }
 
         return result;
@@ -891,12 +930,11 @@ impl TestRunner {
                             let rewritten = self.rewrite_expr(a, removed_name, removed_ret);
                             if let Some(expected_ty) = param_types.get(i) {
                                 match self.typeof_node(&rewritten) {
-                                    Some(actual_ty) if actual_ty != *expected_ty => {
-                                        self.gen_expr_of_type(
+                                    Some(actual_ty) if actual_ty != *expected_ty => self
+                                        .gen_expr_of_type(
                                             expected_ty.clone(),
                                             self.max_expr_depth + 1,
-                                        )
-                                    }
+                                        ),
                                     _ => rewritten,
                                 }
                             } else {
@@ -962,7 +1000,10 @@ impl TestRunner {
                             OrderedFloat::from(self.rng.random_range(-1_000_000.0f64..1_000_000.0)),
                             Span::null_span(),
                         ),
-                        TypeTok::Int => Ast::IntLit(self.rng.random_range(i64::MIN..i64::MAX), Span::null_span()),
+                        TypeTok::Int => Ast::IntLit(
+                            self.rng.random_range(i64::MIN..i64::MAX),
+                            Span::null_span(),
+                        ),
                         _ => Ast::EmptyExpr(
                             Box::new(self.rewrite_expr(*expr, removed_name, removed_ret)),
                             span,
@@ -1084,17 +1125,36 @@ impl TestRunner {
                 }
             }
 
-            Ast::WhileStmt(cond, body, span) => {
+            Ast::WhileStmt(cond, mut body, span) => {
                 //same as if
                 if self.rng.random_range(0..=5) == 0 || body.len() == 0 {
                     None
                 } else {
                     let cond = Box::new(self.rewrite_expr(*cond, removed_name, removed_ret));
 
-                    let body = body
+                    // Detect the counter-guard if-stmt (last stmt: if with break
+                    // in true branch + assignment in else branch) and preserve it
+                    // so the reducer never removes the infinite-loop safeguard.
+                    let guard = match body.last() {
+                        Some(Ast::IfStmt(_, if_body, Some(else_body), _))
+                            if if_body.len() == 1
+                                && matches!(if_body[0], Ast::Break(_))
+                                && else_body.len() == 1
+                                && matches!(else_body[0], Ast::Assignment(..)) =>
+                        {
+                            Some(body.pop().unwrap())
+                        }
+                        _ => None,
+                    };
+
+                    let mut body: Vec<Ast> = body
                         .into_iter()
                         .filter_map(|s| self.rewrite_stmt(s, removed_name, removed_ret))
                         .collect();
+
+                    if let Some(g) = guard {
+                        body.push(g);
+                    }
 
                     Some(Ast::WhileStmt(cond, body, span))
                 }
@@ -1142,8 +1202,7 @@ impl TestRunner {
         if array_vars.is_empty() {
             return None;
         }
-        let (arr_type, arr_name) =
-            array_vars[self.rng.random_range(0..array_vars.len())].clone();
+        let (arr_type, arr_name) = array_vars[self.rng.random_range(0..array_vars.len())].clone();
         let elem_type = match &arr_type {
             TypeTok::IntArr(1) => TypeTok::Int,
             TypeTok::BoolArr(1) => TypeTok::Bool,
@@ -1160,10 +1219,7 @@ impl TestRunner {
         );
         Some(Ast::FuncCall(
             Box::new(mangled),
-            vec![
-                Ast::VarRef(Box::new(arr_name), Span::null_span()),
-                val_expr,
-            ],
+            vec![Ast::VarRef(Box::new(arr_name), Span::null_span()), val_expr],
             Span::null_span(),
         ))
     }
@@ -1174,7 +1230,12 @@ impl TestRunner {
             .flat_map(|s| s.vars.iter())
             .filter_map(|(ty, names)| {
                 if matches!(ty, TypeTok::Struct(_)) {
-                    Some(names.iter().map(|n| (ty.clone(), n.clone())).collect::<Vec<_>>())
+                    Some(
+                        names
+                            .iter()
+                            .map(|n| (ty.clone(), n.clone()))
+                            .collect::<Vec<_>>(),
+                    )
                 } else {
                     None
                 }
@@ -1319,10 +1380,18 @@ impl TestRunner {
         let mut elements: Vec<Ast> = Vec::with_capacity(length);
         for _ in 0..length {
             let elem = match elem_type {
-                TypeTok::Int => Ast::IntLit(self.rng.random_range(i64::MIN..i64::MAX), Span::null_span()),
+                TypeTok::Int => {
+                    Ast::IntLit(self.rng.random_range(i64::MIN..i64::MAX), Span::null_span())
+                }
                 TypeTok::Bool => Ast::BoolLit(self.rng.random_bool(0.5), Span::null_span()),
-                TypeTok::Float => Ast::FloatLit(OrderedFloat(self.rng.random_range(-1_000_000.0..1_000_000.0)), Span::null_span()),
-                TypeTok::Str => Ast::StringLit(Box::new(Alphabetic.sample_string(&mut self.rng, 10)), Span::null_span()),
+                TypeTok::Float => Ast::FloatLit(
+                    OrderedFloat(self.rng.random_range(-1_000_000.0..1_000_000.0)),
+                    Span::null_span(),
+                ),
+                TypeTok::Str => Ast::StringLit(
+                    Box::new(Alphabetic.sample_string(&mut self.rng, 10)),
+                    Span::null_span(),
+                ),
                 _ => unreachable!(),
             };
             elements.push(elem);
@@ -1376,11 +1445,8 @@ impl TestRunner {
             return None;
         }
         let v = candidates[self.rng.random_range(0..candidates.len())].clone();
-        let mangled = crate::driver::Driver::mangle_name(
-            Some("std::fuzz"),
-            "read_rand",
-            &[arr_type.clone()],
-        );
+        let mangled =
+            crate::driver::Driver::mangle_name(Some("std::fuzz"), "read_rand", &[arr_type.clone()]);
         return Some(Ast::FuncCall(
             Box::new(mangled),
             vec![Ast::VarRef(Box::new(v), Span::null_span())],

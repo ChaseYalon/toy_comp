@@ -568,7 +568,7 @@ impl AstToIrConverter {
                 res.ty = Some(self.builder.type_tok_to_tir_type(elem_ty));
                 Ok(res)
             }
-            Ast::StructLit(interface_name, kv, _) => {
+            Ast::StructLit(interface_name, kv, s) => {
                 let mut compiled_map: BTreeMap<String, SSAValue> = BTreeMap::new();
                 for (key, (val, _)) in *kv {
                     compiled_map.insert(key, self.compile_expr(val, scope)?);
@@ -577,7 +577,10 @@ impl AstToIrConverter {
                 val_vec.resize(compiled_map.len(), SSAValue { val: 0, ty: None }); //placeholders
                 let (m, ty) = self.interfaces.get(&*interface_name).unwrap().clone();
                 for (key, val) in m {
-                    val_vec[val] = compiled_map.get(&key).unwrap().clone();
+                    val_vec[val] = match compiled_map.get(&key) {
+                        Some(t) => t.clone(),
+                        None => {return Err(ToyError::new(ToyErrorType::UndefinedStruct, s))}
+                    };
                 }
                 let toy_struct = self.builder.create_struct_literal(val_vec, ty.clone())?;
                 let struct_size = self
@@ -807,21 +810,39 @@ impl AstToIrConverter {
                     .unwrap_or(&pre_val.0);
 
                 if *true_val != pre_val.0 || *false_val != pre_val.0 {
-                    let phi_id = self.builder.alloc_value_id();
-                    self.builder.insert_phi(
-                        merge_id,
-                        phi_id,
-                        vec![true_end_block, false_end_block],
-                        vec![true_val.clone(), false_val.clone()],
-                    )?;
-                    scope.as_ref().borrow_mut().set_var(
-                        var_name.clone(),
-                        SSAValue {
-                            val: phi_id,
-                            ty: pre_val.0.ty.clone(),
-                        },
-                        pre_val.1.clone(),
-                    );
+                    if true_terminated && false_terminated {
+                        // Both branches terminated (break/return), no one reaches merge
+                    } else if true_terminated {
+                        // Only false branch reaches merge
+                        scope.as_ref().borrow_mut().set_var(
+                            var_name.clone(),
+                            false_val.clone(),
+                            pre_val.1.clone(),
+                        );
+                    } else if false_terminated {
+                        // Only true branch reaches merge
+                        scope.as_ref().borrow_mut().set_var(
+                            var_name.clone(),
+                            true_val.clone(),
+                            pre_val.1.clone(),
+                        );
+                    } else {
+                        let phi_id = self.builder.alloc_value_id();
+                        self.builder.insert_phi(
+                            merge_id,
+                            phi_id,
+                            vec![true_end_block, false_end_block],
+                            vec![true_val.clone(), false_val.clone()],
+                        )?;
+                        scope.as_ref().borrow_mut().set_var(
+                            var_name.clone(),
+                            SSAValue {
+                                val: phi_id,
+                                ty: pre_val.0.ty.clone(),
+                            },
+                            pre_val.1.clone(),
+                        );
+                    }
                 }
             }
         }
@@ -1181,7 +1202,8 @@ impl AstToIrConverter {
                                                     | TypeTok::BoolArr(_)
                                                     | TypeTok::StrArr(_)
                                                     | TypeTok::FloatArr(_)
-                                                    | TypeTok::StructArr(_, _) => true,
+                                                    | TypeTok::StructArr(_, _)
+                                                    | TypeTok::Struct(_) => true,
                                                     TypeTok::Str => true,
                                                     _ => false,
                                                 },
@@ -1206,7 +1228,8 @@ impl AstToIrConverter {
                                                     | TypeTok::BoolArr(_)
                                                     | TypeTok::StrArr(_)
                                                     | TypeTok::FloatArr(_)
-                                                    | TypeTok::StructArr(_, _) => true,
+                                                    | TypeTok::StructArr(_, _)
+                                                    | TypeTok::Struct(_) => true,
                                                     TypeTok::Str => true,
                                                     _ => false,
                                                 },

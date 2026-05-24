@@ -81,6 +81,9 @@ unsafe extern "C" {
     pub fn toy_free_arr(arr_ptr_int: ToyPtr);
 }
 unsafe extern "C" {
+    pub fn toy_deep_free_arr(arr_ptr_int: ToyPtr);
+}
+unsafe extern "C" {
     pub fn toy_net_init();
 }
 unsafe extern "C" {

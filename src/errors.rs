@@ -105,13 +105,18 @@ impl Span {
 }
 
 impl serde::Serialize for Span {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
         serializer.serialize_none()
     }
 }
 
 impl<'de> serde::Deserialize<'de> for Span {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
         serde::de::IgnoredAny::deserialize(deserializer)?;
         Ok(Span::null_span())
     }

@@ -8,9 +8,9 @@ use crate::{
     driver::Driver,
     errors::ToyError,
 };
-use std::{cell::RefCell, io::Write};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::rc::Rc;
+use std::{cell::RefCell, io::Write};
 pub mod aliasing;
 pub mod cfg;
 use cfg::{CFGBlock, CFGFunction, EscapeType};
@@ -33,6 +33,7 @@ pub struct FunctionSummary {
     pub aliased_parameters: Vec<usize>,
     pub encapsulated_parameters: Vec<usize>,
     pub escaped_parameters: Vec<usize>,
+    pub return_owned_fields: Vec<usize>,
 }
 impl FunctionSummary {
     pub fn new(
@@ -40,12 +41,14 @@ impl FunctionSummary {
         aliased_parameters: Vec<usize>,
         encapsulated_parameters: Vec<usize>,
         escaped_parameters: Vec<usize>,
+        return_owned_fields: Vec<usize>,
     ) -> FunctionSummary {
         return FunctionSummary {
             name: name,
             aliased_parameters,
             encapsulated_parameters,
             escaped_parameters,
+            return_owned_fields,
         };
     }
 }
@@ -383,17 +386,46 @@ impl CTLA {
     /// Determines if a given allocation escapes the function it was created in, escapes the program as a whole, or dies in the function
     fn allocation_escapes(&self, alloc: &HeapAllocation) -> EscapeType {
         let builder = self.builder.borrow();
-        let func = 
-            builder
-                .funcs
-                .iter()
-                .find(|f| *f.name == *alloc.function)
-                .unwrap();
+        let func = builder
+            .funcs
+            .iter()
+            .find(|f| *f.name == *alloc.function)
+            .unwrap();
         let protected_ids = self.allocation_protected_values_in_function(alloc, func.name.as_ref());
         let is_param = func.params.iter().any(|p| p.val == alloc.alloc_ins.val);
         //params always freed by the caller
         if is_param {
             return EscapeType::EscapesFunction;
+        }
+
+        // Check if the allocation was created by a call that returns an alias of one
+        // of its arguments. If so, this is not a new allocation — it aliases something
+        // the caller (or another local allocation) already owns.
+        let alloc_ins = func
+            .body
+            .iter()
+            .flat_map(|b| b.ins.iter())
+            .find(|ins| ins.get_id() == alloc.alloc_ins.val);
+        if let Some(
+            TIR::CallLocalFunction(_, callee_name, params, _, _)
+            | TIR::CallExternFunction(_, callee_name, params, _, _, _),
+        ) = alloc_ins
+        {
+            let summary = self
+                .cfg_functions
+                .iter()
+                .find(|f| *f.func.name == **callee_name)
+                .map(|f| f.returns_alias_of_parameter.clone())
+                .or_else(|| {
+                    self.alias_detector
+                        .get_external_summary(callee_name.as_ref())
+                        .map(|s| s.aliased_parameters.clone())
+                });
+            if let Some(aliased_params) = summary {
+                if aliased_params.iter().any(|idx| params.get(*idx).is_some()) {
+                    return EscapeType::EscapesProgram;
+                }
+            }
         }
 
         //alloc is returned
@@ -471,15 +503,16 @@ impl CTLA {
             return false;
         }
         visited.insert(cfg_b.block);
-        if cfg_b.possible_output_blocks.is_empty() {
-            return false;
-        }
 
         // only check refs in non-root blocks (successors, not the candidate block itself)
         if !is_root {
             if tracked_blocks.contains(&cfg_b.block) {
                 return true;
             }
+        }
+
+        if cfg_b.possible_output_blocks.is_empty() {
+            return false;
         }
 
         for possible_output_block in &cfg_b.possible_output_blocks {
@@ -615,7 +648,27 @@ impl CTLA {
         };
 
         let mut visited: HashSet<BlockId> = HashSet::new();
-        let tracked_blocks = self.allocation_tracked_blocks_in_function(alloc, func.name.as_ref());
+        let mut tracked_blocks =
+            self.allocation_tracked_blocks_in_function(alloc, func.name.as_ref());
+
+        // Also track blocks where encapsulator values are used — if an encapsulator
+        // (e.g. an outer array holding this allocation) is still live in a child block,
+        // this allocation must not be freed until the encapsulator is.
+        for (enc_func, _, enc_vid) in &alloc.encapsulators {
+            if enc_func.as_str() == func.name.as_ref() {
+                let enc_set = HashSet::from([*enc_vid]);
+                for block in &func.body {
+                    if block
+                        .ins
+                        .iter()
+                        .any(|ins| self.instruction_uses_any_value(ins, &enc_set))
+                    {
+                        tracked_blocks.insert(block.id);
+                    }
+                }
+            }
+        }
+
         let has_child_refs = self.block_children_reference_allocation(
             cfg_func,
             origin_cfg_block,
@@ -629,7 +682,7 @@ impl CTLA {
             if self.block_returns_allocation_or_alias(func, origin_block_id, alloc) {
                 return;
             }
-            let insertion_idx = if free_func == "toy_free_arr" {
+            let insertion_idx = if free_func == "toy_free_arr" || free_func == "toy_deep_free_arr" {
                 func.body
                     .iter()
                     .find(|b| b.id == origin_block_id)
@@ -655,7 +708,7 @@ impl CTLA {
                     if self.block_returns_allocation_or_alias(func, block.id, alloc) {
                         continue;
                     }
-                    let insertion_idx = if free_func == "toy_free_arr" {
+                    let insertion_idx = if free_func == "toy_free_arr" || free_func == "toy_deep_free_arr" {
                         block.ins.len().saturating_sub(1)
                     } else {
                         self.free_insertion_index_for_block(func, block.id, alloc)
@@ -750,11 +803,15 @@ impl CTLA {
         };
 
         match alloc_ins {
-            TIR::CallExternFunction(_, f_box, _, _, _, _) => {
+            TIR::CallExternFunction(_, f_box, _, _, ret_type, _) => {
                 //that argv thing is hacky but I dont know how to say under the hood it calls toy_malloc_arr
                 if self.is_array_allocation_call_name(f_box.as_ref()) {
                     return "toy_free_arr".to_string();
                 } else if f_box.as_ref() == "toy_malloc_struct" {
+                    return "toy_free_struct".to_string();
+                }
+                // Non-allocator extern funcs: check return type to pick the right free
+                if matches!(ret_type, TirType::StructInterface(_)) {
                     return "toy_free_struct".to_string();
                 }
                 return "toy_free".to_string();
@@ -762,7 +819,7 @@ impl CTLA {
             // For local function calls that return heap-allocated values (strings),
             TIR::CallLocalFunction(_, callee_name, _, _, _) => {
                 if self.function_returns_array_allocation(callee_name.as_ref()) {
-                    return "toy_free_arr".to_string();
+                    return "toy_deep_free_arr".to_string();
                 } else if self.function_returns_struct_allocation(callee_name.as_ref()) {
                     return "toy_free_struct".to_string();
                 }
@@ -969,17 +1026,24 @@ impl CTLA {
         self.build_phi_index();
         self.alias_detector
             .populate_return_alias_parameter_summaries(&mut self.cfg_functions);
+        self.alias_detector
+            .populate_return_owned_fields(&mut self.cfg_functions);
         self.cfg_functions = self.populate_parameter_escape_summary(self.cfg_functions.clone());
         let mut unique_allocations = self.builder.borrow().detect_unique_heap_allocations();
         let mut insertion_points: Vec<(String, BlockId, ValueId, SSAValue, String)> = vec![];
         let len = unique_allocations.len();
         for (i, a) in unique_allocations.iter_mut().enumerate() {
             self.process_allocation(a, &mut insertion_points);
-            print!("process allocations for {i} completed, {:.2}%\r", (i as f64)/(len as f64) * 100.0);
+            print!(
+                "process allocations for {i} completed, {:.2}%\r",
+                (i as f64) / (len as f64) * 100.0
+            );
             std::io::stdout().flush().unwrap();
         }
         //this is all terrible, but just clears the line
-        print!("                                                                                                    \r");
+        print!(
+            "                                                                                                    \r"
+        );
         std::io::stdout().flush().unwrap();
         let dedup_set: HashSet<_> = insertion_points.into_iter().collect();
         insertion_points = dedup_set.into_iter().collect();
@@ -1002,7 +1066,7 @@ impl CTLA {
             .collect();
 
         let free_sort_rank = |free_name: &str| {
-            if free_name == "toy_free_arr" {
+            if free_name == "toy_free_arr" || free_name == "toy_deep_free_arr" {
                 1usize
             } else {
                 0usize
@@ -1028,6 +1092,7 @@ impl CTLA {
                 func.returns_alias_of_parameter.clone(),
                 func.parameter_encapsulates.clone(),
                 func.parameter_escapes.clone(),
+                func.return_owned_fields.clone(),
             ));
         }
 
@@ -1036,7 +1101,7 @@ impl CTLA {
         hasher.write(self.original_text.as_deref().unwrap_or("").as_bytes());
         let hash = format!("{:x}", hasher.finish());
 
-        let schema = CTLASchema::new(1, summaries, hash, module_name.clone());
+        let schema = CTLASchema::new(2, summaries, hash, module_name.clone());
         let serialized = serde_json::to_string(&schema).unwrap(); //should fix ?
 
         let _ = fs::create_dir_all(&build_dir);

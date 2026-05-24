@@ -351,12 +351,18 @@ pub fn toy_free_arr(arr_ptr_int: ToyPtr) {
     let arr = unsafe { &mut *(arr_ptr_int as *mut ToyArr) };
 
     if arr.should_free_subelements {
-        for &val in &arr.arr {
-            let elem_type = arr.ty.clone();
-            if elem_type.is_arr_type() {
-                toy_free_arr(val);
-            } else if elem_type == ToyType::Str || elem_type == ToyType::Struct {
-                toy_free(val as *mut c_void);
+        if arr.degree > 1 {
+            // Elements are nested arrays — recursively free them
+            for &val in &arr.arr {
+                toy_deep_free_arr(val);
+            }
+        } else {
+            // Elements are scalars — only free heap-allocated types
+            let elem_type = arr.ty.to_elem_type();
+            for &val in &arr.arr {
+                if elem_type == ToyType::Str || elem_type == ToyType::Struct {
+                    toy_free(val as *mut c_void);
+                }
             }
         }
     }
@@ -374,6 +380,13 @@ pub fn toy_free_arr(arr_ptr_int: ToyPtr) {
     }
 
     unsafe { drop(Box::from_raw(arr_ptr_int as *mut ToyArr)) };
+}
+#[unsafe(no_mangle)]
+pub fn toy_deep_free_arr(arr_ptr_int: ToyPtr) {
+    _check_pointer(arr_ptr_int as *mut c_void);
+    let arr = unsafe { &mut *(arr_ptr_int as *mut ToyArr) };
+    arr.should_free_subelements = true;
+    toy_free_arr(arr_ptr_int);
 }
 #[unsafe(no_mangle)]
 pub fn toy_arr_concat(arr1: ToyPtr, arr2: ToyPtr) -> ToyPtr {

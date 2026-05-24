@@ -671,7 +671,10 @@ impl<'a> LlvmGenerator<'a> {
                         _ => vec![],
                     };
                     for at in alt_tys {
-                        let alt_ssa = SSAValue { val: val.val, ty: Some(at) };
+                        let alt_ssa = SSAValue {
+                            val: val.val,
+                            ty: Some(at),
+                        };
                         if let Some(v) = self.tir_to_val.get(&(curr_func_name.clone(), alt_ssa)) {
                             ty = Some(v.get_type());
                             break 'type_search;
@@ -1289,6 +1292,7 @@ impl<'a> LlvmGenerator<'a> {
             TirType::Void,
         );
         self.declare_individual_function("toy_free_arr", vec![TirType::I64], TirType::Void);
+        self.declare_individual_function("toy_deep_free_arr", vec![TirType::I64], TirType::Void);
         self.declare_individual_function(
             "toy_mem_dup",
             vec![TirType::I64, TirType::I64, TirType::I64],
@@ -1320,12 +1324,15 @@ impl<'a> LlvmGenerator<'a> {
         let args: Vec<String> = env::args().collect();
         Target::initialize_x86(&InitializationConfig::default());
         //opts can conflict with CTLA
-        let opt_level =
-            if args.contains(&"--repl".to_string()) || args.contains(&"--no-op".to_string()) || args.contains(&"--fuzz".to_string()) || args.contains(&"--from-ast-file".to_string()) {
-                OptimizationLevel::None
-            } else {
-                OptimizationLevel::Aggressive
-            };
+        let opt_level = if args.contains(&"--repl".to_string())
+            || args.contains(&"--no-op".to_string())
+            || args.contains(&"--fuzz".to_string())
+            || args.contains(&"--from-ast-file".to_string())
+        {
+            OptimizationLevel::None
+        } else {
+            OptimizationLevel::Aggressive
+        };
         let triple = TargetTriple::create(if cfg!(target_os = "windows") {
             "x86_64-pc-windows-gnu"
         } else {

@@ -423,6 +423,40 @@ impl Boxer {
                 i = for_end;
                 continue;
             }
+            if ty == "Struct" && brace_depth == 0 && paren_depth == 0 {
+                if !curr.is_empty() {
+                    boxes.push(self.box_statement(curr.clone())?);
+                    curr.clear();
+                }
+
+                let mut struct_end = i + 1;
+                // Find the opening brace
+                while struct_end < input.len() && input[struct_end].tok.tok_type() != "LBrace" {
+                    struct_end += 1;
+                }
+                if struct_end >= input.len() {
+                    return Err(ToyError::new(
+                        ToyErrorType::MalformedStructInterface,
+                        cumulative_span,
+                    ));
+                }
+                // Find the matching closing brace
+                let mut depth = 1;
+                struct_end += 1;
+                while struct_end < input.len() && depth > 0 {
+                    if input[struct_end].tok.tok_type() == "LBrace" {
+                        depth += 1;
+                    } else if input[struct_end].tok.tok_type() == "RBrace" {
+                        depth -= 1;
+                    }
+                    struct_end += 1;
+                }
+
+                let struct_slice = input[i..struct_end].to_vec();
+                boxes.push(self.box_statement(struct_slice)?);
+                i = struct_end;
+                continue;
+            }
             if (ty == "Func" || ty == "Extern" || ty == "Export")
                 && brace_depth == 0
                 && paren_depth == 0
@@ -839,7 +873,10 @@ impl Boxer {
             let value: TypeTok = match group[2].tok.clone() {
                 Token::Type(t) => t,
                 Token::VarRef(v) => {
-                    let temp = self.interfaces.get(&*v).unwrap().clone();
+                    let temp = match self.interfaces.get(&*v) {
+                        None => {return Err(ToyError::new(ToyErrorType::UndefinedInterface, cumulative_span.clone()))},
+                        Some(i) => i
+                    };
                     let boxed: BTreeMap<String, Box<TypeTok>> = temp
                         .clone()
                         .into_iter()

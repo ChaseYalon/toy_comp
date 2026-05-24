@@ -343,6 +343,7 @@ impl TirBuilder {
                 | TypeTok::BoolArr(_)
                 | TypeTok::StructArr(_, _)
                 | TypeTok::LambdaArr(_, _, _)
+                | TypeTok::Struct(_)
         );
         self.extern_funcs.insert(
             name,
@@ -464,7 +465,13 @@ impl TirBuilder {
             } else if is_logical {
                 // Logical operators: both operands must be I1
                 if left_t != TirType::I1 || right_t != TirType::I1 {
-                    return Err(ToyError::new(ToyErrorType::ExpressionNotBoolean, Span::null_span_with_msg(&format!("left_t: {:?}, right_t: {:?}", left_t, right_t))))
+                    return Err(ToyError::new(
+                        ToyErrorType::ExpressionNotBoolean,
+                        Span::null_span_with_msg(&format!(
+                            "left_t: {:?}, right_t: {:?}",
+                            left_t, right_t
+                        )),
+                    ));
                 }
             } else {
                 unreachable!(); // parser validated

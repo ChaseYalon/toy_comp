@@ -35,6 +35,16 @@ impl AliasAndEncapsulationTracker {
         if let Some(summaries) = self.external_modules.get(&module_name) {
             return summaries.iter().find(|s| s.name == callee_name);
         }
+        // Struct methods embed the struct name (e.g. "std::time::Date:::to_str_struct")
+        // which produces module key "std.time.Date" instead of "std.time". Try shorter prefixes.
+        for end in (2..parts.len()).rev() {
+            let shorter = parts[..end].join(".");
+            if let Some(summaries) = self.external_modules.get(&shorter) {
+                if let Some(s) = summaries.iter().find(|s| s.name == callee_name) {
+                    return Some(s);
+                }
+            }
+        }
         None
     }
 
@@ -107,13 +117,26 @@ impl AliasAndEncapsulationTracker {
             }),
             TIR::CallLocalFunction(_, callee_name, params, _, _)
             | TIR::CallExternFunction(_, callee_name, params, _, _, _) => {
-                let Some(return_alias_param_indexes) = summary_by_func.get(callee_name.as_ref())
-                else {
-                    return false;
-                };
+                if let Some(return_alias_param_indexes) = summary_by_func.get(callee_name.as_ref())
+                {
+                    return return_alias_param_indexes.iter().any(|arg_idx| {
+                        params.get(*arg_idx).is_some_and(|arg| {
+                            AliasAndEncapsulationTracker::value_may_alias_param_with_summaries(
+                                func,
+                                arg.val,
+                                param_value_id,
+                                visited,
+                                summary_by_func,
+                            )
+                        })
+                    });
+                }
 
-                return_alias_param_indexes.iter().any(|arg_idx| {
-                    params.get(*arg_idx).is_some_and(|arg| {
+                // No summary available. For non-allocator extern functions,
+                // conservatively assume the return may alias any pointer argument.
+                let is_allocator = matches!(ins, TIR::CallExternFunction(_, _, _, true, _, _));
+                if !is_allocator {
+                    params.iter().any(|arg| {
                         AliasAndEncapsulationTracker::value_may_alias_param_with_summaries(
                             func,
                             arg.val,
@@ -122,7 +145,9 @@ impl AliasAndEncapsulationTracker {
                             summary_by_func,
                         )
                     })
-                })
+                } else {
+                    false
+                }
             }
             TIR::CreateStructLiteral(_, _, fields) => fields.iter().any(|field| {
                 AliasAndEncapsulationTracker::value_may_alias_param_with_summaries(
@@ -224,6 +249,143 @@ impl AliasAndEncapsulationTracker {
                 }
             }
 
+            if !changed {
+                break;
+            }
+        }
+    }
+        fn collect_owned_fields(
+        func: &Function,
+        value_id: ValueId,
+        visited: &mut HashSet<ValueId>,
+        summary_by_func: &HashMap<String, Vec<usize>>,
+        owned_fields_by_func: &HashMap<String, Vec<usize>>
+    ) -> Vec<usize> {
+        if visited.contains(&value_id) {
+            return vec![];
+        }
+        visited.insert(value_id);
+
+        let maybe_ins = func
+            .body
+            .iter()
+            .flat_map(|b| b.ins.iter())
+            .find(|ins| ins.get_id() == value_id);
+
+        let Some(ins) = maybe_ins else {
+            return vec![];
+        };
+
+        match ins {
+            TIR::Phi(_, _, vals) => {
+                let mut res = vec![];
+                for v in vals {
+                    res.extend(AliasAndEncapsulationTracker::collect_owned_fields(
+                        func, v.val, visited, summary_by_func, owned_fields_by_func,
+                    ));
+                }
+                res
+            }
+            TIR::CallLocalFunction(_, callee_name, _, _, _)
+            | TIR::CallExternFunction(_, callee_name, _, _, _, _) => {
+                owned_fields_by_func
+                    .get(callee_name.as_ref())
+                    .cloned()
+                    .unwrap_or_default()
+            }
+            TIR::CreateStructLiteral(_, ty, args) => {
+                let mut res = vec![];
+                if let TirType::StructInterface(types) = ty {
+                    for (i, (arg, field_ty)) in args.iter().zip(types.iter()).enumerate() {
+                        // if it's a pointer type
+                        if matches!(field_ty, TirType::Ptr | TirType::StructInterface(_)) {
+                            // check if it aliases any parameter
+                            let mut aliases_param = false;
+                            for param in &func.params {
+                                let mut v2 = HashSet::new();
+                                if AliasAndEncapsulationTracker::value_may_alias_param_with_summaries(
+                                    func,
+                                    arg.val,
+                                    param.val,
+                                    &mut v2,
+                                    summary_by_func,
+                                ) {
+                                    aliases_param = true;
+                                    break;
+                                }
+                            }
+                            if !aliases_param {
+                                res.push(i);
+                            }
+                        }
+                    }
+                }
+                res
+            }
+            _ => vec![],
+        }
+    }
+    pub fn populate_return_owned_fields(&self, cfg_functions: &mut [CFGFunction]) {
+        let summary_by_func: HashMap<String, Vec<usize>> = cfg_functions
+            .iter()
+            .map(|cfg_f| {
+                (
+                    (*cfg_f.func.name).clone(),
+                    cfg_f.returns_alias_of_parameter.clone(),
+                )
+            })
+            .collect();
+            
+        loop {
+            let mut owned_fields_snapshot: HashMap<String, Vec<usize>> = cfg_functions
+                .iter()
+                .map(|cfg_f| {
+                    (
+                        (*cfg_f.func.name).clone(),
+                        cfg_f.return_owned_fields.clone(),
+                    )
+                })
+                .collect();
+
+            for summaries in self.external_modules.values() {
+                for summary in summaries {
+                    owned_fields_snapshot
+                        .insert(summary.name.clone(), summary.return_owned_fields.clone());
+                }
+            }
+
+            let mut changed = false;
+            for cfg_f in cfg_functions.iter_mut() {
+                let mut new_owned_fields = vec![];
+                
+                let return_values: Vec<ValueId> = cfg_f.func
+                    .body
+                    .iter()
+                    .filter_map(|b| match b.ins.last() {
+                        Some(TIR::Ret(_, ret_val)) => Some(ret_val.val),
+                        _ => None,
+                    })
+                    .collect();
+                    
+                for ret_val in return_values {
+                    let mut visited = HashSet::new();
+                    new_owned_fields.extend(AliasAndEncapsulationTracker::collect_owned_fields(
+                        &cfg_f.func,
+                        ret_val,
+                        &mut visited,
+                        &summary_by_func,
+                        &owned_fields_snapshot,
+                    ));
+                }
+                
+                new_owned_fields.sort_unstable();
+                new_owned_fields.dedup();
+                
+                if cfg_f.return_owned_fields != new_owned_fields {
+                    cfg_f.return_owned_fields = new_owned_fields;
+                    changed = true;
+                }
+            }
             if !changed {
                 break;
             }
@@ -429,17 +591,13 @@ impl AliasAndEncapsulationTracker {
                             | TIR::CallExternFunction(out_id, callee_name, params, _, _, _) => {
                                 // Use precomputed map: O(precomputed_pairs) instead of
                                 // O(functions × instructions) per call per iteration.
-                                let callee_returns_encapsulating_array =
-                                    arr_write_vals_by_callee
-                                        .get(callee_name.as_ref())
-                                        .map_or(false, |write_vals| {
-                                            write_vals.iter().any(|v| {
-                                                alias_values.contains(&(
-                                                    (**callee_name).clone(),
-                                                    *v,
-                                                ))
-                                            })
-                                        });
+                                let callee_returns_encapsulating_array = arr_write_vals_by_callee
+                                    .get(callee_name.as_ref())
+                                    .map_or(false, |write_vals| {
+                                        write_vals.iter().any(|v| {
+                                            alias_values.contains(&((**callee_name).clone(), *v))
+                                        })
+                                    });
                                 if callee_returns_encapsulating_array
                                     && enc_alias_closure.insert((function_name.clone(), *out_id))
                                 {
@@ -499,12 +657,15 @@ impl AliasAndEncapsulationTracker {
         }
 
         let builder = self.builder.borrow();
-        let capacity = builder.funcs.iter()
+        let capacity = builder
+            .funcs
+            .iter()
             .flat_map(|f| &f.body)
             .map(|block| block.ins.len())
             .sum();
 
-        let mut value_to_block: HashMap<(String, ValueId), BlockId> = HashMap::with_capacity(capacity);
+        let mut value_to_block: HashMap<(String, ValueId), BlockId> =
+            HashMap::with_capacity(capacity);
         for f in &builder.funcs {
             let function_name = (*f.name).clone();
             for block in &f.body {
