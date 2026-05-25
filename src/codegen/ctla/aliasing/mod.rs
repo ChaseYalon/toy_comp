@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
+use crate::codegen::TirType;
 use crate::codegen::ctla::FunctionSummary;
 use crate::codegen::ctla::cfg::CFGFunction;
 use crate::codegen::tir::ir::{BlockId, Function, HeapAllocation, TIR, TirBuilder, ValueId};
@@ -254,13 +255,35 @@ impl AliasAndEncapsulationTracker {
             }
         }
     }
+        fn value_is_array(func: &Function, value_id: ValueId, visited: &mut HashSet<ValueId>) -> bool {
+            if visited.contains(&value_id) {
+                return false;
+            }
+            visited.insert(value_id);
+            let maybe_ins = func.body.iter().flat_map(|b| b.ins.iter()).find(|ins| ins.get_id() == value_id);
+            match maybe_ins {
+                Some(TIR::CallExternFunction(_, name, _, _, _, _)) => {
+                    name.as_ref() == "toy_read_from_arr" || name.as_ref() == "toy_malloc_arr"
+                }
+                Some(TIR::Phi(_, _, vals)) => {
+                    vals.iter().any(|v| Self::value_is_array(func, v.val, visited))
+                }
+                Some(TIR::CallLocalFunction(_, _, _, true, _)) => {
+                    // Conservative: local function returning an allocator could be array or string.
+                    // Check if its return type looks array-ish by looking at what flows into it.
+                    false
+                }
+                _ => false,
+            }
+        }
+
         fn collect_owned_fields(
         func: &Function,
         value_id: ValueId,
         visited: &mut HashSet<ValueId>,
         summary_by_func: &HashMap<String, Vec<usize>>,
-        owned_fields_by_func: &HashMap<String, Vec<usize>>
-    ) -> Vec<usize> {
+        owned_fields_by_func: &HashMap<String, Vec<super::OwnedField>>
+    ) -> Vec<super::OwnedField> {
         if visited.contains(&value_id) {
             return vec![];
         }
@@ -286,20 +309,34 @@ impl AliasAndEncapsulationTracker {
                 }
                 res
             }
-            TIR::CallLocalFunction(_, callee_name, _, _, _)
-            | TIR::CallExternFunction(_, callee_name, _, _, _, _) => {
-                owned_fields_by_func
-                    .get(callee_name.as_ref())
-                    .cloned()
-                    .unwrap_or_default()
+            TIR::CallLocalFunction(_, callee_name, args, _, _)
+            | TIR::CallExternFunction(_, callee_name, args, _, _, _) => {
+                // If the callee has known owned fields, use those
+                if let Some(fields) = owned_fields_by_func.get(callee_name.as_ref()) {
+                    if !fields.is_empty() {
+                        return fields.clone();
+                    }
+                }
+                // If the return aliases a parameter, follow through to that argument
+                if let Some(alias_params) = summary_by_func.get(callee_name.as_ref()) {
+                    let mut res = vec![];
+                    for &param_idx in alias_params {
+                        if let Some(arg) = args.get(param_idx) {
+                            res.extend(AliasAndEncapsulationTracker::collect_owned_fields(
+                                func, arg.val, visited, summary_by_func, owned_fields_by_func,
+                            ));
+                        }
+                    }
+                    res
+                } else {
+                    vec![]
+                }
             }
             TIR::CreateStructLiteral(_, ty, args) => {
                 let mut res = vec![];
                 if let TirType::StructInterface(types) = ty {
                     for (i, (arg, field_ty)) in args.iter().zip(types.iter()).enumerate() {
-                        // if it's a pointer type
                         if matches!(field_ty, TirType::Ptr | TirType::StructInterface(_)) {
-                            // check if it aliases any parameter
                             let mut aliases_param = false;
                             for param in &func.params {
                                 let mut v2 = HashSet::new();
@@ -315,7 +352,9 @@ impl AliasAndEncapsulationTracker {
                                 }
                             }
                             if !aliases_param {
-                                res.push(i);
+                                let mut arr_visited = HashSet::new();
+                                let is_array = Self::value_is_array(func, arg.val, &mut arr_visited);
+                                res.push(super::OwnedField { index: i, is_array });
                             }
                         }
                     }
@@ -326,7 +365,7 @@ impl AliasAndEncapsulationTracker {
         }
     }
     pub fn populate_return_owned_fields(&self, cfg_functions: &mut [CFGFunction]) {
-        let summary_by_func: HashMap<String, Vec<usize>> = cfg_functions
+        let mut summary_by_func: HashMap<String, Vec<usize>> = cfg_functions
             .iter()
             .map(|cfg_f| {
                 (
@@ -335,9 +374,16 @@ impl AliasAndEncapsulationTracker {
                 )
             })
             .collect();
+        for summaries in self.external_modules.values() {
+            for summary in summaries {
+                summary_by_func
+                    .entry(summary.name.clone())
+                    .or_insert_with(|| summary.aliased_parameters.clone());
+            }
+        }
             
         loop {
-            let mut owned_fields_snapshot: HashMap<String, Vec<usize>> = cfg_functions
+            let mut owned_fields_snapshot: HashMap<String, Vec<super::OwnedField>> = cfg_functions
                 .iter()
                 .map(|cfg_f| {
                     (
@@ -357,7 +403,7 @@ impl AliasAndEncapsulationTracker {
             let mut changed = false;
             for cfg_f in cfg_functions.iter_mut() {
                 let mut new_owned_fields = vec![];
-                
+
                 let return_values: Vec<ValueId> = cfg_f.func
                     .body
                     .iter()
@@ -366,7 +412,7 @@ impl AliasAndEncapsulationTracker {
                         _ => None,
                     })
                     .collect();
-                    
+
                 for ret_val in return_values {
                     let mut visited = HashSet::new();
                     new_owned_fields.extend(AliasAndEncapsulationTracker::collect_owned_fields(
@@ -377,10 +423,10 @@ impl AliasAndEncapsulationTracker {
                         &owned_fields_snapshot,
                     ));
                 }
-                
-                new_owned_fields.sort_unstable();
+
+                new_owned_fields.sort_by_key(|f| f.index);
                 new_owned_fields.dedup();
-                
+
                 if cfg_f.return_owned_fields != new_owned_fields {
                     cfg_f.return_owned_fields = new_owned_fields;
                     changed = true;

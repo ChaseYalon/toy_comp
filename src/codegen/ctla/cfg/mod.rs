@@ -38,7 +38,7 @@ pub struct CFGFunction {
     /// returns the idx's of any parameters who escape the program
     pub parameter_escapes: Vec<usize>,
     /// which struct field indexes (of the return type) hold owned heap allocations
-    pub return_owned_fields: Vec<usize>,
+    pub return_owned_fields: Vec<super::OwnedField>,
     ///block id -> index in funcs.block
     pub block_id_to_index: HashMap<BlockId, usize>,
     pub cfg_blocks: Vec<CFGBlock>,

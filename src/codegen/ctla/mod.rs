@@ -27,13 +27,20 @@ pub struct CTLA {
     /// function name -> set of blocks containing a non-returning panic call.
     panic_blocks_by_func: HashMap<String, HashSet<BlockId>>,
 }
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct OwnedField {
+    pub index: usize,
+    pub is_array: bool,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FunctionSummary {
     pub name: String,
     pub aliased_parameters: Vec<usize>,
     pub encapsulated_parameters: Vec<usize>,
     pub escaped_parameters: Vec<usize>,
-    pub return_owned_fields: Vec<usize>,
+    #[serde(default)]
+    pub return_owned_fields: Vec<OwnedField>,
 }
 impl FunctionSummary {
     pub fn new(
@@ -41,7 +48,7 @@ impl FunctionSummary {
         aliased_parameters: Vec<usize>,
         encapsulated_parameters: Vec<usize>,
         escaped_parameters: Vec<usize>,
-        return_owned_fields: Vec<usize>,
+        return_owned_fields: Vec<OwnedField>,
     ) -> FunctionSummary {
         return FunctionSummary {
             name: name,
@@ -398,9 +405,9 @@ impl CTLA {
             return EscapeType::EscapesFunction;
         }
 
-        // Check if the allocation was created by a call that returns an alias of one
-        // of its arguments. If so, this is not a new allocation — it aliases something
-        // the caller (or another local allocation) already owns.
+        // If the allocation was created by a call that returns an alias of one of its
+        // arguments (and has no owned fields of its own), it is not a fresh allocation —
+        // it points into existing memory and must not be freed separately.
         let alloc_ins = func
             .body
             .iter()
@@ -415,14 +422,16 @@ impl CTLA {
                 .cfg_functions
                 .iter()
                 .find(|f| *f.func.name == **callee_name)
-                .map(|f| f.returns_alias_of_parameter.clone())
+                .map(|f| (f.returns_alias_of_parameter.clone(), f.return_owned_fields.clone()))
                 .or_else(|| {
                     self.alias_detector
                         .get_external_summary(callee_name.as_ref())
-                        .map(|s| s.aliased_parameters.clone())
+                        .map(|s| (s.aliased_parameters.clone(), s.return_owned_fields.clone()))
                 });
-            if let Some(aliased_params) = summary {
-                if aliased_params.iter().any(|idx| params.get(*idx).is_some()) {
+            if let Some((aliased_params, owned_fields)) = summary {
+                if owned_fields.is_empty()
+                    && aliased_params.iter().any(|idx| params.get(*idx).is_some())
+                {
                     return EscapeType::EscapesProgram;
                 }
             }
@@ -835,6 +844,36 @@ impl CTLA {
         };
     }
 
+    /// Look up return_owned_fields for a struct allocation by finding its allocating call
+    /// and checking the external summary for that function.
+    fn get_return_owned_fields_for_alloc(&self, func_name: &str, alloc_val: ValueId) -> Vec<OwnedField> {
+        let builder = self.builder.borrow();
+        let func = builder.funcs.iter().find(|f| *f.name == func_name);
+        let Some(func) = func else { return vec![] };
+        let alloc_ins = func
+            .body
+            .iter()
+            .flat_map(|b| b.ins.iter())
+            .find(|ins| ins.get_id() == alloc_val);
+        match alloc_ins {
+            Some(TIR::CallLocalFunction(_, callee_name, _, _, _))
+            | Some(TIR::CallExternFunction(_, callee_name, _, _, _, _)) => {
+                // Check local cfg_functions first
+                if let Some(cfg_f) = self.cfg_functions.iter().find(|f| *f.func.name == **callee_name) {
+                    if !cfg_f.return_owned_fields.is_empty() {
+                        return cfg_f.return_owned_fields.clone();
+                    }
+                }
+                // Check external summaries
+                if let Some(summary) = self.alias_detector.get_external_summary(callee_name.as_ref()) {
+                    return summary.return_owned_fields.clone();
+                }
+                vec![]
+            }
+            _ => vec![],
+        }
+    }
+
     /// runs the full pipeline to mark (or intentionally leak) a given allocation
     fn process_allocation(
         &mut self,
@@ -1010,6 +1049,7 @@ impl CTLA {
                 vec![1],
                 vec![],
                 vec![],
+                vec![],
             ));
         self.alias_detector.set_external_modules(external_modules);
         self.cfg_functions.clear();
@@ -1080,6 +1120,28 @@ impl CTLA {
                 .then_with(|| a.3.val.cmp(&b.3.val))
         });
         for (name, bid, vid, val, free_name) in insertion_points {
+            if free_name == "toy_free_struct" {
+                // Check if the struct allocation has owned fields that need freeing
+                let owned_fields = self.get_return_owned_fields_for_alloc(&name, val.val);
+                if !owned_fields.is_empty() {
+                    let inserted = self.builder.borrow_mut().splice_struct_field_frees_before(
+                        name.clone(),
+                        bid,
+                        vid,
+                        val.clone(),
+                        &owned_fields,
+                    );
+                    // The struct free goes after the field frees
+                    self.builder.borrow_mut().splice_free_before(
+                        name,
+                        bid,
+                        vid + inserted,
+                        val,
+                        free_name,
+                    );
+                    continue;
+                }
+            }
             self.builder
                 .borrow_mut()
                 .splice_free_before(name, bid, vid, val, free_name);

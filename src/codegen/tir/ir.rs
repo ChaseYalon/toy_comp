@@ -1268,4 +1268,48 @@ impl TirBuilder {
         let block = func.body.iter_mut().find(|b| b.id == block_id).unwrap();
         block.ins.insert(before_ins, ins);
     }
+
+    /// Insert ReadStructLiteral + free calls for each owned field of a struct,
+    /// before the struct itself is freed. Returns the number of instructions inserted.
+    pub fn splice_struct_field_frees_before(
+        &mut self,
+        func_name: String,
+        block_id: BlockId,
+        before_ins: usize,
+        struct_val: SSAValue,
+        owned_fields: &[crate::codegen::ctla::OwnedField],
+    ) -> usize {
+        let mut instructions = Vec::new();
+        for field in owned_fields {
+            let read_id = self._next_value_id();
+            let read_ins = TIR::ReadStructLiteral(read_id, struct_val.clone(), field.index as u64);
+            let read_val = SSAValue {
+                val: read_id,
+                ty: Some(TirType::Ptr),
+            };
+            let free_id = self._next_value_id();
+            let free_fn = if field.is_array { "toy_free_arr" } else { "toy_free" };
+            let free_ins = TIR::CallExternFunction(
+                free_id,
+                Box::new(free_fn.to_string()),
+                vec![read_val],
+                false,
+                TirType::Void,
+                vec![false],
+            );
+            instructions.push(read_ins);
+            instructions.push(free_ins);
+        }
+        let count = instructions.len();
+        let func = self
+            .funcs
+            .iter_mut()
+            .find(|f| *f.name == func_name)
+            .unwrap();
+        let block = func.body.iter_mut().find(|b| b.id == block_id).unwrap();
+        for (i, ins) in instructions.into_iter().enumerate() {
+            block.ins.insert(before_ins + i, ins);
+        }
+        count
+    }
 }
