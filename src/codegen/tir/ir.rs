@@ -1288,7 +1288,7 @@ impl TirBuilder {
                 ty: Some(TirType::Ptr),
             };
             let free_id = self._next_value_id();
-            let free_fn = if field.is_array { "toy_free_arr" } else { "toy_free" };
+            let free_fn = if field.is_array { "toy_deep_free_arr" } else { "toy_free" };
             let free_ins = TIR::CallExternFunction(
                 free_id,
                 Box::new(free_fn.to_string()),
