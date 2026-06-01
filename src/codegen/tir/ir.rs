@@ -1286,17 +1286,28 @@ impl TirBuilder {
                 }
             }
             if replacements.is_empty() { break; }
-            for (fi, old, new) in &replacements {
+            // Resolve transitive chains: if A->B and B->C, make A->C
+            let mut remap: HashMap<ValueId, ValueId> = replacements.iter().map(|&(_, old, new)| (old, new)).collect();
+            for &(_, old, _) in &replacements {
+                let mut target = remap[&old];
+                while let Some(&next) = remap.get(&target) {
+                    if next == target { break; }
+                    target = next;
+                }
+                remap.insert(old, target);
+            }
+            for (fi, old, _) in &replacements {
+                let resolved_new = remap[old];
                 let func = &mut self.funcs[*fi];
                 for block in &mut func.body {
                     block.ins.retain(|ins| ins.get_id() != *old);
                     for ins in &mut block.ins {
-                        ins.replace_operand(*old, *new);
+                        ins.replace_operand(*old, resolved_new);
                     }
                 }
                 for alloc in &mut func.heap_allocations {
-                    if alloc.alloc_ins.val == *old { alloc.alloc_ins.val = *new; }
-                    for r in &mut alloc.refs { if r.2 == *old { r.2 = *new; } }
+                    if alloc.alloc_ins.val == *old { alloc.alloc_ins.val = resolved_new; }
+                    for r in &mut alloc.refs { if r.2 == *old { r.2 = resolved_new; } }
                 }
             }
         }

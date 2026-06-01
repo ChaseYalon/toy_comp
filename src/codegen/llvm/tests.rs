@@ -435,3 +435,40 @@ fn test_llvm_bug_1(){
     );
     assert!(output.contains(r#"[["W"]]"#))
 }
+
+#[test]
+fn test_llvm_bug_2(){
+    compile_code_aot!(
+        output,
+        r#"
+            import std.fuzz;
+            let p1: str[] = ["A"];
+            let v1: int = 0;
+
+            while true {
+                fuzz.write_arr(p1, "h");
+                if v1 >= 100 {
+                    break;
+                } else {
+                    v1++;
+                }
+            }
+
+            if true {
+                if false {
+                    let v2: int = 0;
+                    while false {
+                        if v2 >= 100 {
+                            break;
+                        } else {
+                            v2++;
+                        }
+                    }
+                }
+            }
+            println(p1);
+        "#,
+        "llvm_test_2"
+    );
+    assert!(output.contains(r#"["h"]"#), "output was: {}", output);
+}

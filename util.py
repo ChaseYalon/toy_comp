@@ -381,4 +381,4 @@ elif sys.argv[1] == "--sum":
 
     total = existing + new
     open(alloc_file, "w").write(str(total))
-    print(f"Total bytes appended: {total}")
+    print(f"Total bytes appended: {new}")
