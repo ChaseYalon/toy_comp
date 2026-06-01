@@ -15,7 +15,10 @@
       "Bash(sed -i 's/let mut owned_fields_snapshot: HashMap<String, Vec<usize>>/let mut owned_fields_snapshot: HashMap<String, Vec<super::OwnedField>>/' src/codegen/ctla/aliasing/mod.rs)",
       "Bash(sed -i 's/new_owned_fields.sort_unstable\\(\\)/new_owned_fields.sort_by_key\\(|f| f.index\\)/' src/codegen/ctla/aliasing/mod.rs)",
       "Bash(PATH=/c/msys64/mingw64/bin:__TRACKED_VAR__ cargo nextest run)",
-      "Bash(PATH=/c/msys64/mingw64/bin:__TRACKED_VAR__ cargo nextest run codegen::ctla::tests::test_ctla_fs_read_dir_to_str)"
+      "Bash(PATH=/c/msys64/mingw64/bin:__TRACKED_VAR__ cargo nextest run codegen::ctla::tests::test_ctla_fs_read_dir_to_str)",
+      "Bash(PATH=/c/msys64/mingw64/bin:__TRACKED_VAR__ cargo nextest run test_ctla_bug_6)",
+      "Bash(cargo build:*)",
+      "Bash(cargo test:*)"
     ]
   }
 }

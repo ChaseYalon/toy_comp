@@ -409,3 +409,29 @@ fn test_float_int_compiles_stuff() {
     );
     assert!(output.len() != 0); //if it compiles it is fine
 }
+
+#[test]
+fn test_llvm_bug_1(){
+    compile_code_aot!(
+        output,
+        r#"
+            import std.fuzz;
+
+            fn func1(iywGjONxEE: int): str[][] {
+                let v1: int = 0;
+                while false { //idk why this is nesscary
+                    if v1 >= 100 {
+                        break;
+                    } else {
+                        v1 = v1 + 1;
+                    }
+                }
+                return [["W"]];
+            }
+
+            println(func1(2));
+        "#,
+        "llvm_bug_1"
+    );
+    assert!(output.contains(r#"[["W"]]"#))
+}

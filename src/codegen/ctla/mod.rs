@@ -1063,6 +1063,7 @@ impl CTLA {
                 self.cfg_functions.push(cfg_f);
             }
         }
+        self.builder.borrow_mut().eliminate_trivial_phis();
         self.build_phi_index();
         self.alias_detector
             .populate_return_alias_parameter_summaries(&mut self.cfg_functions);

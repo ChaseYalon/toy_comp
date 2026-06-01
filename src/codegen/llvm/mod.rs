@@ -21,7 +21,7 @@ use crate::{
         tir::ir::{BlockId, BoolInfixOp, NumericInfixOp},
     },
     driver::Driver,
-    errors::ToyError,
+    errors::{Span, ToyError, ToyErrorType},
 };
 use inkwell::{
     OptimizationLevel,
@@ -174,65 +174,65 @@ impl<'a> LlvmGenerator<'a> {
                 let llvm_params: Vec<BasicMetadataValueEnum> = params
                     .iter()
                     .zip(param_types.iter())
-                    .map(|(p, expected_type)| {
+                    .map(|(p, expected_type)| -> Result<BasicMetadataValueEnum<'_>, ToyError> {
                         let v = self.get_ssa_val(&curr_func_name, p.clone());
 
                         if expected_type.is_int_type() && v.is_float_value() {
-                            builder
+                            Ok(builder
                                 .build_bit_cast(
                                     v.into_float_value(),
                                     self.ctx.i64_type(),
                                     "double_to_i64_bitcast",
                                 )
                                 .unwrap()
-                                .into()
+                                .into())
                         } else if expected_type.is_pointer_type() && v.is_int_value() {
-                            builder
+                            Ok(builder
                                 .build_int_to_ptr(
                                     v.into_int_value(),
                                     expected_type.into_pointer_type(),
                                     "i64_to_ptr",
                                 )
                                 .unwrap()
-                                .into()
+                                .into())
                         } else if expected_type.is_float_type() && v.is_int_value() {
-                            builder
+                            Ok(builder
                                 .build_bit_cast(
                                     v.into_int_value(),
                                     self.ctx.f64_type(),
                                     "i64_to_double_bitcast",
                                 )
                                 .unwrap()
-                                .into()
+                                .into())
                         } else if expected_type.is_float_type() && v.is_int_value() {
-                            builder
+                            Ok(builder
                                 .build_bit_cast(
                                     v.into_int_value(),
                                     self.ctx.f64_type(),
                                     "i64_to_double_bitcast",
                                 )
                                 .unwrap()
-                                .into()
+                                .into())
                         } else if expected_type.is_float_type() && v.is_int_value() {
-                            builder
+                            Ok(builder
                                 .build_bit_cast(
                                     v.into_int_value(),
                                     self.ctx.f64_type(),
                                     "i64_to_double_bitcast",
                                 )
                                 .unwrap()
-                                .into()
+                                .into())
                         } else if expected_type.is_int_type() && v.is_pointer_value() {
-                            builder
+                            Ok(builder
                                 .build_ptr_to_int(
                                     v.into_pointer_value(),
                                     self.ctx.i64_type(),
                                     "ptr_to_i64",
                                 )
                                 .unwrap()
-                                .into()
+                                .into())
                         } else {
-                            match p.ty.clone().unwrap() {
+                            Ok(match p.ty.clone().unwrap() {
                                 TirType::I1 => builder
                                     .build_int_z_extend(
                                         v.into_int_value(),
@@ -242,10 +242,10 @@ impl<'a> LlvmGenerator<'a> {
                                     .unwrap()
                                     .into(),
                                 _ => v.to_owned().into(),
-                            }
+                            })
                         }
                     })
-                    .collect();
+                    .collect::<Result<Vec<_>, _>>()?;
 
                 let call_ins = builder.build_call(func_body, llvm_params.as_slice(), &*name)?;
                 let ret = if ret_type != TirType::Void {
@@ -294,47 +294,47 @@ impl<'a> LlvmGenerator<'a> {
                 let llvm_params: Vec<BasicMetadataValueEnum> = params
                     .iter()
                     .zip(param_types.iter())
-                    .map(|(p, expected_type)| {
+                    .map(|(p, expected_type)| -> Result<BasicMetadataValueEnum<'_>, ToyError> {
                         let v = self.get_ssa_val(&curr_func_name, p.clone());
 
                         if expected_type.is_int_type() && v.is_float_value() {
-                            builder
+                            Ok(builder
                                 .build_bit_cast(
                                     v.into_float_value(),
                                     self.ctx.i64_type(),
                                     "double_to_i64_bitcast",
                                 )
                                 .unwrap()
-                                .into()
+                                .into())
                         } else if expected_type.is_pointer_type() && v.is_int_value() {
-                            builder
+                            Ok(builder
                                 .build_int_to_ptr(
                                     v.into_int_value(),
                                     expected_type.into_pointer_type(),
                                     "i64_to_ptr",
                                 )
                                 .unwrap()
-                                .into()
+                                .into())
                         } else if expected_type.is_float_type() && v.is_int_value() {
-                            builder
+                            Ok(builder
                                 .build_bit_cast(
                                     v.into_int_value(),
                                     self.ctx.f64_type(),
                                     "i64_to_double_bitcast",
                                 )
                                 .unwrap()
-                                .into()
+                                .into())
                         } else if expected_type.is_int_type() && v.is_pointer_value() {
-                            builder
+                            Ok(builder
                                 .build_ptr_to_int(
                                     v.into_pointer_value(),
                                     self.ctx.i64_type(),
                                     "ptr_to_i64",
                                 )
                                 .unwrap()
-                                .into()
+                                .into())
                         } else {
-                            match p.ty.clone().unwrap() {
+                            Ok(match p.ty.clone().unwrap() {
                                 TirType::I1 => builder
                                     .build_int_z_extend(
                                         v.into_int_value(),
@@ -344,10 +344,10 @@ impl<'a> LlvmGenerator<'a> {
                                     .unwrap()
                                     .into(),
                                 _ => v.to_owned().into(),
-                            }
+                            })
                         }
                     })
-                    .collect();
+                    .collect::<Result<Vec<_>, _>>()?;
 
                 let call_ins = builder.build_call(func_body, llvm_params.as_slice(), &*name)?;
                 let ret = if ret_type != TirType::Void {

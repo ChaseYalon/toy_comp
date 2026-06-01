@@ -65,12 +65,12 @@ pub extern "C" fn main() -> i32 {
         }
     }
     let val = *&TOTAL_ALLOCATION_SIZES.lock().unwrap().clone();
-    let current_val: u64 = fs::read_to_string("./temp/FUZZ_ALLOC_SIZES.txt")
-        .unwrap_or("0".to_string())
-        .trim()
-        .parse()
-        .unwrap_or(0);
-    fs::write("./temp/FUZZ_ALLOC_SIZES.txt", (current_val + val).to_string()).unwrap();
+    let _ = fs::create_dir_all("./temp/FUZZ_BYTES");
+    let ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let _ = fs::write(format!("./temp/FUZZ_BYTES/{}.txt", ms), val.to_string());
 
     return res as i32;
 }

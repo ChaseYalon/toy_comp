@@ -8,6 +8,43 @@ use rand::{
 };
 use std::collections::{BTreeMap, HashMap};
 use std::ops::RangeInclusive;
+fn var_referenced_in(name: &str, node: &Ast) -> bool {
+    match node {
+        Ast::VarRef(n, _) => **n == name,
+        Ast::VarDec(_, _, expr, _) => var_referenced_in(name, expr),
+        Ast::FuncDec(_, _, _, body, _) => body.iter().any(|s| var_referenced_in(name, s)),
+        Ast::IfStmt(cond, body, else_body, _) => {
+            var_referenced_in(name, cond)
+                || body.iter().any(|s| var_referenced_in(name, s))
+                || else_body
+                    .as_ref()
+                    .map(|b| b.iter().any(|s| var_referenced_in(name, s)))
+                    .unwrap_or(false)
+        }
+        Ast::WhileStmt(cond, body, _) => {
+            var_referenced_in(name, cond) || body.iter().any(|s| var_referenced_in(name, s))
+        }
+        Ast::Return(expr, _) => var_referenced_in(name, expr),
+        Ast::Assignment(lhs, rhs, _) => {
+            var_referenced_in(name, lhs) || var_referenced_in(name, rhs)
+        }
+        Ast::FuncCall(_, args, _) => args.iter().any(|a| var_referenced_in(name, a)),
+        Ast::InfixExpr(l, r, _, _) => {
+            var_referenced_in(name, l) || var_referenced_in(name, r)
+        }
+        Ast::Not(e, _) | Ast::EmptyExpr(e, _) => var_referenced_in(name, e),
+        Ast::ArrLit(_, elems, _) => elems.iter().any(|e| var_referenced_in(name, e)),
+        Ast::StructLit(_, fields, _) => {
+            fields.values().any(|(e, _)| var_referenced_in(name, e))
+        }
+        Ast::MemberAccess(e, _, _) => var_referenced_in(name, e),
+        Ast::IndexAccess(e, idx, _) => {
+            var_referenced_in(name, e) || var_referenced_in(name, idx)
+        }
+        _ => false,
+    }
+}
+
 struct Scope {
     /// type -> Vec<VarNames>. The names are in no particular order, and one should be selected at random
     /// Also included here are any function parameters that are in scope
@@ -1453,6 +1490,56 @@ impl TestRunner {
             Span::null_span(),
         ));
     }
+    /// Removes a single statement from a randomly chosen function body.
+    /// Only removes VarDec nodes whose variable is not referenced anywhere
+    /// else in the body, so the result is always a valid, well-scoped program.
+    pub fn reduce_body(&mut self, input: Vec<Ast>) -> Vec<Ast> {
+        let func_indices: Vec<usize> = input
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| n.node_type() == "FuncDec")
+            .map(|(i, _)| i)
+            .collect();
+
+        if func_indices.is_empty() {
+            return input;
+        }
+
+        let func_idx = func_indices[self.rng.random_range(0..func_indices.len())];
+        let mut result = input;
+
+        if let Ast::FuncDec(name, params, ret, body, span) = result[func_idx].clone() {
+            let removable: Vec<usize> = (0..body.len())
+                .filter(|&i| {
+                    if matches!(body[i], Ast::Return(..)) {
+                        return false;
+                    }
+                    // Don't remove a VarDec whose variable is still referenced
+                    // by other statements — that would leave a dangling VarRef.
+                    if let Ast::VarDec(var_name, _, _, _) = &body[i] {
+                        !body
+                            .iter()
+                            .enumerate()
+                            .any(|(j, s)| j != i && var_referenced_in(var_name, s))
+                    } else {
+                        true
+                    }
+                })
+                .collect();
+
+            if removable.is_empty() {
+                return result;
+            }
+
+            let stmt_idx = removable[self.rng.random_range(0..removable.len())];
+            let mut new_body = body;
+            new_body.remove(stmt_idx);
+            result[func_idx] = Ast::FuncDec(name, params, ret, new_body, span);
+        }
+
+        result
+    }
+
     pub fn reduce(&mut self, input: Vec<Ast>) -> Vec<Ast> {
         let funcs: Vec<Ast> = input
             .iter()

@@ -149,6 +149,50 @@ impl TIR {
             TIR::CallFuncPtr(id, _, _, _, _) => *id,
         }
     }
+
+    /// Replace all operand references to `old` with `new` (does not change the instruction's own output id).
+    pub fn replace_operand(&mut self, old: ValueId, new: ValueId) {
+        let sub = |v: &mut SSAValue| { if v.val == old { v.val = new; } };
+        match self {
+            TIR::ItoF(_, v, _) => sub(v),
+            TIR::NumericInfix(_, l, r, _) => { sub(l); sub(r); }
+            TIR::BoolInfix(_, l, r, _) => { sub(l); sub(r); }
+            TIR::JumpCond(_, c, _, _) => sub(c),
+            TIR::Ret(_, v) => sub(v),
+            TIR::CallLocalFunction(_, _, ps, _, _)
+            | TIR::CallExternFunction(_, _, ps, _, _, _)
+            | TIR::CreateStructLiteral(_, _, ps)
+            | TIR::Phi(_, _, ps) => ps.iter_mut().for_each(sub),
+            TIR::CallFuncPtr(_, callable, ps, _, _) => { sub(callable); ps.iter_mut().for_each(sub); }
+            TIR::ReadStructLiteral(_, sv, _) => sub(sv),
+            TIR::WriteStructLiteral(_, sv, _, nv) => { sub(sv); sub(nv); }
+            TIR::Not(_, v) => sub(v),
+            _ => {}
+        }
+    }
+
+    pub fn get_operand_ids(&self) -> Vec<ValueId> {
+        match self {
+            TIR::ItoF(_, v, _) => vec![v.val],
+            TIR::NumericInfix(_, l, r, _) => vec![l.val, r.val],
+            TIR::BoolInfix(_, l, r, _) => vec![l.val, r.val],
+            TIR::JumpCond(_, c, _, _) => vec![c.val],
+            TIR::Ret(_, v) => vec![v.val],
+            TIR::CallLocalFunction(_, _, ps, _, _)
+            | TIR::CallExternFunction(_, _, ps, _, _, _)
+            | TIR::CreateStructLiteral(_, _, ps)
+            | TIR::Phi(_, _, ps) => ps.iter().map(|v| v.val).collect(),
+            TIR::CallFuncPtr(_, callable, ps, _, _) => {
+                let mut ids = vec![callable.val];
+                ids.extend(ps.iter().map(|v| v.val));
+                ids
+            }
+            TIR::ReadStructLiteral(_, sv, _) => vec![sv.val],
+            TIR::WriteStructLiteral(_, sv, _, nv) => vec![sv.val, nv.val],
+            TIR::Not(_, v) => vec![v.val],
+            _ => vec![],
+        }
+    }
 }
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub struct Block {
@@ -555,7 +599,8 @@ impl TirBuilder {
         let id = self._next_value_id();
         let ins = TIR::Ret(id, val.clone());
         let curr_func_name = self.funcs[self.curr_func.unwrap()].name.clone();
-        let curr_block = self.curr_block.unwrap();
+        let curr_block_idx = self.curr_block.unwrap();
+        let curr_block = self.funcs[self.curr_func.unwrap()].body[curr_block_idx].id;
         self.funcs.iter_mut().for_each(|f| {
             f.heap_allocations
                 .iter_mut()
@@ -565,7 +610,7 @@ impl TirBuilder {
                     }
                 })
         });
-        self.funcs[self.curr_func.unwrap()].body[self.curr_block.unwrap()]
+        self.funcs[self.curr_func.unwrap()].body[curr_block_idx]
             .ins
             .push(ins);
         return Ok(SSAValue {
@@ -1217,6 +1262,65 @@ impl TirBuilder {
         self.curr_func = Some(func);
         return self.curr_block = Some(0);
     }
+    /// Remove trivial phi nodes (all non-self operands are the same value).
+    /// Replaces every use of the phi's output with that single value, then drops the phi instruction.
+    /// Iterates to fixpoint so cascading trivial phis are also eliminated.
+    pub fn eliminate_trivial_phis(&mut self) {
+        loop {
+            // (func_index, old_phi_id, replacement_id)
+            let mut replacements: Vec<(usize, ValueId, ValueId)> = vec![];
+            for (fi, func) in self.funcs.iter().enumerate() {
+                for block in &func.body {
+                    for ins in &block.ins {
+                        if let TIR::Phi(phi_id, _, vals) = ins {
+                            let non_self: Vec<ValueId> = vals.iter()
+                                .map(|v| v.val)
+                                .filter(|&v| v != *phi_id)
+                                .collect();
+                            if non_self.is_empty() { continue; }
+                            if non_self.windows(2).all(|w| w[0] == w[1]) {
+                                replacements.push((fi, *phi_id, non_self[0]));
+                            }
+                        }
+                    }
+                }
+            }
+            if replacements.is_empty() { break; }
+            for (fi, old, new) in &replacements {
+                let func = &mut self.funcs[*fi];
+                for block in &mut func.body {
+                    block.ins.retain(|ins| ins.get_id() != *old);
+                    for ins in &mut block.ins {
+                        ins.replace_operand(*old, *new);
+                    }
+                }
+                for alloc in &mut func.heap_allocations {
+                    if alloc.alloc_ins.val == *old { alloc.alloc_ins.val = *new; }
+                    for r in &mut alloc.refs { if r.2 == *old { r.2 = *new; } }
+                }
+            }
+        }
+        // Remove refs that are no longer anchored: v must either be produced in block b,
+        // or used as an operand by some instruction in block b.
+        for func in &mut self.funcs {
+            let produced: HashSet<(BlockId, ValueId)> = func.body.iter()
+                .flat_map(|b| b.ins.iter().map(move |ins| (b.id, ins.get_id())))
+                .collect();
+            let consumed: HashSet<(BlockId, ValueId)> = func.body.iter()
+                .flat_map(|b| {
+                    b.ins.iter().flat_map(move |ins| {
+                        ins.get_operand_ids().into_iter().map(move |v| (b.id, v))
+                    })
+                })
+                .collect();
+            for alloc in &mut func.heap_allocations {
+                alloc.refs.retain(|(_, b, v)| {
+                    produced.contains(&(*b, *v)) || consumed.contains(&(*b, *v))
+                });
+            }
+        }
+    }
+
     pub fn detect_heap_allocations(&self) -> Vec<HeapAllocation> {
         let mut allocs: Vec<HeapAllocation> = vec![];
         for func in self.funcs.clone() {

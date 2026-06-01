@@ -32,7 +32,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 static ALLOC: dhat::Alloc = dhat::Alloc;
 
 //sort of arbitrary, tune for best results
-static MAX_DELTA_DEBUG_ITERS: usize = 300;
+static MAX_DELTA_DEBUG_ITERS: usize = 5000;
+static MAX_CONSECUTIVE_FAILURES: usize = 100;
+static MAX_REDUCE_SECS: u64 = 300; // 5-minute wall-clock limit per reduction run
 fn collect_used_structs(nodes: &[Ast], used: &mut std::collections::HashSet<String>) {
     for node in nodes {
         match node {
@@ -132,6 +134,87 @@ fn strip_unused_vars(nodes: &mut Vec<Ast>, used: &std::collections::HashSet<Stri
             Ast::WhileStmt(_, body, _) => strip_unused_vars(body, used),
             _ => {}
         }
+    }
+}
+/// Returns `(stmt_count, expr_count)` by recursively walking the AST.
+/// Statements: VarDec, IfStmt, WhileStmt, FuncDec, Return, Assignment, Break, Continue
+/// Expressions: literals, VarRef, InfixExpr, Not, EmptyExpr, FuncCall, ArrLit, StructLit,
+///              MemberAccess, IndexAccess
+fn count_nodes(nodes: &[Ast]) -> (usize, usize) {
+    nodes.iter().fold((0, 0), |(s, e), n| {
+        let (ns, ne) = count_node(n);
+        (s + ns, e + ne)
+    })
+}
+fn count_node(node: &Ast) -> (usize, usize) {
+    match node {
+        Ast::VarDec(_, _, expr, _) => {
+            let (s, e) = count_node(expr);
+            (1 + s, e)
+        }
+        Ast::IfStmt(cond, body, else_body, _) => {
+            let (cs, ce) = count_node(cond);
+            let (bs, be) = count_nodes(body);
+            let (es, ee) = else_body.as_ref().map(|b| count_nodes(b)).unwrap_or((0, 0));
+            (1 + cs + bs + es, ce + be + ee)
+        }
+        Ast::WhileStmt(cond, body, _) => {
+            let (cs, ce) = count_node(cond);
+            let (bs, be) = count_nodes(body);
+            (1 + cs + bs, ce + be)
+        }
+        Ast::FuncDec(_, _, _, body, _) => {
+            let (bs, be) = count_nodes(body);
+            (1 + bs, be)
+        }
+        Ast::Return(expr, _) => {
+            let (s, e) = count_node(expr);
+            (1 + s, e)
+        }
+        Ast::Assignment(lhs, rhs, _) => {
+            let (ls, le) = count_node(lhs);
+            let (rs, re) = count_node(rhs);
+            (1 + ls + rs, le + re)
+        }
+        Ast::Break(_) | Ast::Continue(_) => (1, 0),
+        Ast::IntLit(..) | Ast::FloatLit(..) | Ast::BoolLit(..) | Ast::StringLit(..)
+        | Ast::VarRef(..) => (0, 1),
+        Ast::InfixExpr(l, r, _, _) => {
+            let (ls, le) = count_node(l);
+            let (rs, re) = count_node(r);
+            (ls + rs, 1 + le + re)
+        }
+        Ast::Not(e, _) | Ast::EmptyExpr(e, _) => {
+            let (s, e2) = count_node(e);
+            (s, 1 + e2)
+        }
+        Ast::FuncCall(_, args, _) => {
+            let (s, e) = count_nodes(args);
+            (s, 1 + e)
+        }
+        Ast::ArrLit(_, elems, _) => {
+            let (s, e) = count_nodes(elems);
+            (s, 1 + e)
+        }
+        Ast::StructLit(_, fields, _) => {
+            let (s, e) = fields
+                .values()
+                .fold((0, 0), |(s, e), (expr, _)| {
+                    let (ns, ne) = count_node(expr);
+                    (s + ns, e + ne)
+                });
+            (s, 1 + e)
+        }
+        Ast::MemberAccess(expr, _, _) => {
+            let (s, e) = count_node(expr);
+            (s, 1 + e)
+        }
+        Ast::IndexAccess(expr, idx, _) => {
+            let (s1, e1) = count_node(expr);
+            let (s2, e2) = count_node(idx);
+            (s1 + s2, 1 + e1 + e2)
+        }
+        _ => (0, 0),
     }
 }
 fn run_repl() {
@@ -246,14 +329,18 @@ fn main() {
         let file_path = args[idx + 1].clone();
         let prgm: Vec<Ast> =
             serde_json::from_str(fs::read_to_string(file_path).unwrap().as_str()).unwrap();
-        let mut d = Driver::new(PathBuf::from("temp.exe"));
-        let c = Context::create();
-        let e = d.start_with_ast(&c, prgm);
-        match e {
-            Err(t) => eprintln!("{}", t),
-            Ok(_) => {}
-        };
 
+        let base = "temp/from_ast".to_string();
+        let name = format!("{base}{}", FILE_EXTENSION_EXE);
+
+        let mut d = Driver::new_with_name(PathBuf::from(base.clone()), base.clone());
+        let ctx = Context::create();
+        d.start_with_ast(&ctx, prgm).unwrap();
+
+        let child = Command::new(&name)
+            .spawn()
+            .expect("failed to start process");
+        run_for_30_seconds(child);
         return;
     }
     if args.contains(&"--fuzz".to_string()) {
@@ -264,7 +351,7 @@ fn main() {
         }
         let mut seed: i64 = -1;
         let num: u64 = args[idx + 1].parse().unwrap();
-        let mut crash = None;
+        let mut crash: Option<(Vec<Ast>, bool)> = None; // (program, crash_is_compile_panic)
         let mut name = String::new();
         let mut base = String::new();
         for i in 0..num {
@@ -288,32 +375,33 @@ fn main() {
             let prgm_clone = prgm.clone();
             base = format!("temp/fuzz{i}");
             name = format!("{base}{}", FILE_EXTENSION_EXE);
-            let crashed = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let compile_result = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let mut d = Driver::new_with_name(PathBuf::from(base.clone()), base.clone());
                 let ctx = Context::create();
                 d.start_with_ast(&ctx, prgm_clone).unwrap();
-            }))
-            .is_err();
+            }));
+            let crashed = compile_result.is_err();
             fs::write("temp.txt", serde_json::to_string_pretty(&prgm).unwrap()).unwrap();
             if crashed {
-                crash = Some(prgm);
+                crash = Some((prgm, true));
                 break;
             }
             let child = Command::new(&name.clone())
                 .spawn()
                 .expect("failed to start process");
             if !run_for_30_seconds(child) {
-                crash = Some(prgm);
+                crash = Some((prgm, false));
                 break;
             }
             println!("Fuzz {i} completed");
         }
 
-        if let Some(prgm) = crash {
+        if let Some((prgm, crash_is_compile_panic)) = crash {
             let mut runner = TestRunner::new();
             let mut current = prgm;
             let mut count = 0;
             let mut consecutive_failures = 0;
+            let reduce_start = Instant::now();
             // compile the crashing version so fuzz0.exe on disk matches `current`
             let _ = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let mut d = Driver::new_with_name(PathBuf::from(base.clone()), base.clone());
@@ -321,11 +409,25 @@ fn main() {
                 d.start_with_ast(&ctx, current.clone())
             }));
             loop {
-                let reduced = runner.reduce(current.clone());
+                // Alternate: even iterations shrink whole functions, odd iterations
+                // prune individual statements from within function bodies.
+                let reduced = if count % 2 == 0 {
+                    runner.reduce(current.clone())
+                } else {
+                    runner.reduce_body(current.clone())
+                };
 
-                if reduced == current || count > MAX_DELTA_DEBUG_ITERS || consecutive_failures > 20
+                if count > MAX_DELTA_DEBUG_ITERS
+                    || consecutive_failures > MAX_CONSECUTIVE_FAILURES
+                    || reduce_start.elapsed() > Duration::from_secs(MAX_REDUCE_SECS)
                 {
                     break;
+                }
+
+                if reduced == current {
+                    consecutive_failures += 1;
+                    count += 1;
+                    continue;
                 }
 
                 let delta_base = format!("{base}_delta");
@@ -340,22 +442,37 @@ fn main() {
                 }));
 
                 let still_crashes = match compile_result {
-                    Err(_) | Ok(Err(_)) => {
-                        consecutive_failures += 1;
-                        count += 1;
-                        continue;
-                    }
+                    Err(_) | Ok(Err(_)) => crash_is_compile_panic,
                     Ok(Ok(_)) => {
-                        let child = Command::new(delta_name.clone())
-                            .spawn()
-                            .expect("failed to start child");
-                        !run_for_30_seconds(child)
+                        if crash_is_compile_panic {
+                            // compiled successfully — no longer triggers the compiler crash
+                            false
+                        } else {
+                            let child = Command::new(delta_name.clone())
+                                .spawn()
+                                .expect("failed to start child");
+                            !run_for_30_seconds(child)
+                        }
                     }
                 };
 
                 if still_crashes {
                     current = reduced;
                     consecutive_failures = 0;
+                    // Strip unused vars and struct interfaces — safe because unused
+                    // nodes can't affect execution, so the crash still reproduces.
+                    let mut used_vars = std::collections::HashSet::new();
+                    collect_used_vars(&current, &mut used_vars);
+                    strip_unused_vars(&mut current, &used_vars);
+                    let mut used_ifaces = std::collections::HashSet::new();
+                    collect_used_structs(&current, &mut used_ifaces);
+                    current.retain(|node| {
+                        if let Ast::StructInterface(name, _, _) = node {
+                            used_ifaces.contains(&**name)
+                        } else {
+                            true
+                        }
+                    });
                     // recompile to the real binary path so fuzz0.exe matches `current`
                     let _ = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                         let mut d =
@@ -367,8 +484,12 @@ fn main() {
                     consecutive_failures += 1;
                 }
                 count += 1;
-                print!("Delta debugging at iteration {count}\r");
+                let (stmts, exprs) = count_nodes(&current);
+                print!("Delta debugging at iteration {count} ({stmts} stmts, {exprs} exprs)\r");
                 io::stdout().flush().unwrap();
+                if stmts < 10 && exprs < 5 {
+                    break;
+                }
             }
 
             // Try removing unused struct interfaces and var decs, but only keep if crash still reproduces
@@ -439,12 +560,13 @@ fn main() {
         let base = "temp/reduce".to_string();
         let name = format!("{base}{}", FILE_EXTENSION_EXE);
 
-        // verify it actually crashes first
+        // verify it actually crashes first, and record whether it's a compile panic
         let compile_result = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let mut d = Driver::new_with_name(PathBuf::from(base.clone()), base.clone());
             let ctx = Context::create();
             d.start_with_ast(&ctx, prgm.clone())
         }));
+        let crash_is_compile_panic = matches!(compile_result, Err(_) | Ok(Err(_)));
         let crashes = match compile_result {
             Err(_) | Ok(Err(_)) => true,
             Ok(Ok(_)) => {
@@ -458,16 +580,34 @@ fn main() {
             println!("AST does not crash, nothing to reduce");
             return;
         }
+        println!(
+            "Crash type: {}",
+            if crash_is_compile_panic { "compiler panic" } else { "runtime crash" }
+        );
 
         let mut runner = TestRunner::new();
         let mut current = prgm;
         let mut count = 0;
         let mut consecutive_failures = 0;
+        let reduce_start = Instant::now();
         loop {
-            let reduced = runner.reduce(current.clone());
+            let reduced = if count % 2 == 0 {
+                runner.reduce(current.clone())
+            } else {
+                runner.reduce_body(current.clone())
+            };
 
-            if reduced == current || count > MAX_DELTA_DEBUG_ITERS || consecutive_failures > 20 {
+            if count > MAX_DELTA_DEBUG_ITERS
+                || consecutive_failures > MAX_CONSECUTIVE_FAILURES
+                || reduce_start.elapsed() > Duration::from_secs(MAX_REDUCE_SECS)
+            {
                 break;
+            }
+
+            if reduced == current {
+                consecutive_failures += 1;
+                count += 1;
+                continue;
             }
 
             let delta_base = format!("{base}_delta");
@@ -482,22 +622,36 @@ fn main() {
             }));
 
             let still_crashes = match compile_result {
-                Err(_) | Ok(Err(_)) => {
-                    consecutive_failures += 1;
-                    count += 1;
-                    continue;
-                }
+                Err(_) | Ok(Err(_)) => crash_is_compile_panic,
                 Ok(Ok(_)) => {
-                    let child = Command::new(delta_name.clone())
-                        .spawn()
-                        .expect("failed to start child");
-                    !run_for_30_seconds(child)
+                    if crash_is_compile_panic {
+                        false
+                    } else {
+                        let child = Command::new(delta_name.clone())
+                            .spawn()
+                            .expect("failed to start child");
+                        !run_for_30_seconds(child)
+                    }
                 }
             };
 
             if still_crashes {
                 current = reduced;
                 consecutive_failures = 0;
+                // Strip unused vars and struct interfaces — safe because unused
+                // nodes can't affect execution, so the crash still reproduces.
+                let mut used_vars = std::collections::HashSet::new();
+                collect_used_vars(&current, &mut used_vars);
+                strip_unused_vars(&mut current, &used_vars);
+                let mut used_ifaces = std::collections::HashSet::new();
+                collect_used_structs(&current, &mut used_ifaces);
+                current.retain(|node| {
+                    if let Ast::StructInterface(name, _, _) = node {
+                        used_ifaces.contains(&**name)
+                    } else {
+                        true
+                    }
+                });
                 let _ = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     let mut d =
                         Driver::new_with_name(PathBuf::from(base.clone()), base.clone());
@@ -508,8 +662,12 @@ fn main() {
                 consecutive_failures += 1;
             }
             count += 1;
-            print!("Delta debugging at iteration {count}\r");
+            let (stmts, exprs) = count_nodes(&current);
+            print!("Delta debugging at iteration {count} ({stmts} stmts, {exprs} exprs)\r");
             io::stdout().flush().unwrap();
+            if stmts < 10 && exprs < 5 {
+                break;
+            }
         }
 
         // cleanup pass

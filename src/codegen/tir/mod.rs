@@ -1,7 +1,7 @@
 #![allow(unused)]
 use crate::codegen::tir::ir::{BlockId, Function, SSAValue, TirBuilder, ValueId};
 use crate::driver::Driver;
-use crate::errors::ToyErrorType;
+use crate::errors::{Span, ToyErrorType};
 use crate::lexer::Lexer;
 use crate::parser::ast::InfixOp;
 use crate::parser::boxer::Boxer;
@@ -36,8 +36,7 @@ impl Scope {
         if self.parent.is_some() {
             return self.parent.as_ref().unwrap().borrow().get_var(name);
         }
-        eprintln!("[DEBUG] Searching for {name}");
-        return unreachable!();
+        return Err(ToyError::new(ToyErrorType::UndefinedVariable, Span::null_span()));
     }
     pub fn get_var_type(&self, name: &str) -> Result<TypeTok, ToyError> {
         if self.vars.contains_key(name) {
@@ -46,8 +45,7 @@ impl Scope {
         if self.parent.is_some() {
             return self.parent.as_ref().unwrap().borrow().get_var_type(name);
         }
-        eprintln!("[DEBUG] Searching for {name}");
-        return unreachable!();
+        return Err(ToyError::new(ToyErrorType::UndefinedVariable, Span::null_span()));
     }
     pub fn set_var(&mut self, name: String, val: SSAValue, ty: TypeTok) {
         self.vars.insert(name, (val, ty));
@@ -62,6 +60,8 @@ pub struct AstToIrConverter {
     main_func_name: String,
     loop_stack: Vec<LoopContext>,
     lambda_counter: u64,
+    /// func name -> original TypeTok return type (preserves array dimension info lost by TirType)
+    func_ret_types: HashMap<String, TypeTok>,
 }
 
 #[derive(Debug, Clone)]
@@ -114,6 +114,7 @@ impl AstToIrConverter {
             main_func_name: "user_main".to_string(),
             loop_stack: vec![],
             lambda_counter: 0,
+            func_ret_types: HashMap::new(),
         };
     }
     fn get_expr_type(&self, node: &Ast, scope: &Rc<RefCell<Scope>>) -> Result<TypeTok, ToyError> {
@@ -148,6 +149,8 @@ impl AstToIrConverter {
                         self.builder.extern_funcs.get(&*n.to_string())
                     {
                         Ok(type_tok.clone())
+                    } else if let Some(ret_tok) = self.func_ret_types.get(&*n.to_string()) {
+                        Ok(ret_tok.clone())
                     } else if let Some(f) =
                         self.builder.funcs.iter().find(|f| *f.name == *n.clone())
                     {
@@ -1053,6 +1056,7 @@ impl AstToIrConverter {
                 .set_var(name, ssa_v.clone(), param_type);
             ssa_params.push(ssa_v);
         }
+        self.func_ret_types.insert(name.clone(), ret_type.clone());
         self.builder
             .new_func(Box::new(name), ssa_params, ret_type.clone());
         for stmt in body {

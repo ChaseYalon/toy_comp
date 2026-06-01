@@ -54,7 +54,13 @@ pub fn _toy_format(input: ToyPtr, datatype: ToyType, degree: i64) -> *mut i8 {
         }
         _ => {
             let array = unsafe { &*(input as *const ToyArr) };
-            let elem_type = array.ty.to_elem_type(); // convert array type to element type
+            // When degree > 1, elements are still sub-arrays, so keep the array type.
+            // When degree == 1, elements are scalars, so use the element type.
+            let elem_type = if degree > 1 {
+                array.ty.clone()
+            } else {
+                array.ty.to_elem_type()
+            };
 
             let mut element_strs: Vec<String> = Vec::with_capacity(array.arr.len());
 
@@ -75,9 +81,12 @@ pub fn _toy_format(input: ToyPtr, datatype: ToyType, degree: i64) -> *mut i8 {
                     },
             );
 
+            let quote_elems = elem_type == ToyType::Str;
             buff.push('[');
             for (i, s) in element_strs.iter().enumerate() {
+                if quote_elems { buff.push('"'); }
                 buff.push_str(s);
+                if quote_elems { buff.push('"'); }
                 if i != element_strs.len() - 1 {
                     buff.push_str(", ");
                 }

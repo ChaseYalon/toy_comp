@@ -599,8 +599,10 @@ impl AliasAndEncapsulationTracker {
                                 if callee_name.as_ref() == "toy_write_to_arr" =>
                             {
                                 if params.len() >= 2
-                                    && alias_values
+                                    && (alias_values
                                         .contains(&(function_name.clone(), params[1].val))
+                                        || encapsulator_values
+                                            .contains(&(function_name.clone(), params[1].val)))
                                 {
                                     if new_encapsulators
                                         .insert((function_name.clone(), params[0].val))
