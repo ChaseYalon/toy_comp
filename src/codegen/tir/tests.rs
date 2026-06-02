@@ -4510,3 +4510,339 @@ fn test_tirgen_lambda_arr() {
         ],
     );
 }
+
+
+#[test]
+fn test_tir_bug_1(){
+    setup_tir!(
+        ir,
+        r#"
+            import std.fuzz;
+
+            fn func1() {
+                let v1: bool[] = [false && true];
+                let v2: int = 0;
+                while true {
+                    if v2 >= 100 {
+                        break;
+                    } else {
+                        v2++;;
+                    }
+                }
+                fuzz.write_arr(v1, true);
+            }
+
+            fn func2(p1: int, p2: bool) {
+                let v1: int = 0;
+                while true {
+                    if v1 >= 100 {
+                        break;
+                    } else {
+                        v1 = v1 + 1;
+                    }
+                }
+            }
+
+            func1();
+            func2(1, true);
+        "#
+    );
+    compare_tir(
+        "tir_bug_1",
+        ir,
+        vec![
+            Function {
+                name: Box::new("func1".to_string()),
+                params: vec![],
+                ret_type: TirType::Void,
+                ins_counter: 28,
+                heap_allocations: vec![],
+                heap_counter: 0,
+                body: vec![
+                    Block {
+                        id: 1,
+                        ins: vec![
+                            TIR::IConst(0, 0, TirType::I1),
+                            TIR::IConst(1, 1, TirType::I1),
+                            TIR::BoolInfix(
+                                2,
+                                SSAValue { val: 0, ty: Some(TirType::I1) },
+                                SSAValue { val: 1, ty: Some(TirType::I1) },
+                                BoolInfixOp::And,
+                            ),
+                            TIR::IConst(3, 1, TirType::I64),
+                            TIR::IConst(4, 1, TirType::I64),
+                            TIR::IConst(5, 1, TirType::I64),
+                            TIR::CallExternFunction(
+                                6,
+                                Box::new("toy_malloc_arr".to_string()),
+                                vec![
+                                    SSAValue { val: 3, ty: Some(TirType::I64) },
+                                    SSAValue { val: 4, ty: Some(TirType::I64) },
+                                    SSAValue { val: 5, ty: Some(TirType::I64) },
+                                ],
+                                true,
+                                TirType::Ptr,
+                                vec![true],
+                            ),
+                            TIR::IConst(7, 0, TirType::I64),
+                            TIR::IConst(8, 1, TirType::I64),
+                            TIR::CallExternFunction(
+                                9,
+                                Box::new("toy_write_to_arr".to_string()),
+                                vec![
+                                    SSAValue { val: 6, ty: Some(TirType::Ptr) },
+                                    SSAValue { val: 2, ty: Some(TirType::I1) },
+                                    SSAValue { val: 7, ty: Some(TirType::I64) },
+                                    SSAValue { val: 8, ty: Some(TirType::I64) },
+                                ],
+                                false,
+                                TirType::Void,
+                                vec![true],
+                            ),
+                            TIR::IConst(10, 0, TirType::I64),
+                            TIR::JumpBlockUnCond(11, 2),
+                        ],
+                    },
+                    Block {
+                        id: 2,
+                        ins: vec![
+                            TIR::Phi(
+                                12,
+                                vec![1, 5],
+                                vec![
+                                    SSAValue { val: 10, ty: Some(TirType::I64) },
+                                    SSAValue { val: 21, ty: Some(TirType::I64) },
+                                ],
+                            ),
+                            TIR::Phi(
+                                13,
+                                vec![1, 5],
+                                vec![
+                                    SSAValue { val: 6, ty: Some(TirType::Ptr) },
+                                    SSAValue { val: 13, ty: Some(TirType::Ptr) },
+                                ],
+                            ),
+                            TIR::IConst(14, 1, TirType::I1),
+                            TIR::JumpCond(
+                                15,
+                                SSAValue { val: 14, ty: Some(TirType::I1) },
+                                3,
+                                4,
+                            ),
+                        ],
+                    },
+                    Block {
+                        id: 3,
+                        ins: vec![
+                            TIR::IConst(16, 100, TirType::I64),
+                            TIR::BoolInfix(
+                                17,
+                                SSAValue { val: 12, ty: Some(TirType::I64) },
+                                SSAValue { val: 16, ty: Some(TirType::I64) },
+                                BoolInfixOp::GreaterThanEqt,
+                            ),
+                            TIR::JumpCond(
+                                18,
+                                SSAValue { val: 17, ty: Some(TirType::I1) },
+                                6,
+                                7,
+                            ),
+                        ],
+                    },
+                    Block {
+                        id: 4,
+                        ins: vec![
+                            TIR::IConst(25, 1, TirType::I1),
+                            TIR::CallExternFunction(
+                                26,
+                                Box::new("std::fuzz::write_arr_bool_arr_1_bool".to_string()),
+                                vec![
+                                    SSAValue { val: 13, ty: Some(TirType::Ptr) },
+                                    SSAValue { val: 25, ty: Some(TirType::I1) },
+                                ],
+                                false,
+                                TirType::Void,
+                                vec![true, true],
+                            ),
+                            TIR::Ret(
+                                27,
+                                SSAValue { val: 0, ty: None },
+                            ),
+                        ],
+                    },
+                    Block {
+                        id: 5,
+                        ins: vec![TIR::JumpBlockUnCond(24, 2)],
+                    },
+                    Block {
+                        id: 6,
+                        ins: vec![TIR::JumpBlockUnCond(19, 4)],
+                    },
+                    Block {
+                        id: 7,
+                        ins: vec![
+                            TIR::IConst(20, 1, TirType::I64),
+                            TIR::NumericInfix(
+                                21,
+                                SSAValue { val: 12, ty: Some(TirType::I64) },
+                                SSAValue { val: 20, ty: Some(TirType::I64) },
+                                NumericInfixOp::Plus,
+                            ),
+                            TIR::JumpBlockUnCond(22, 8),
+                        ],
+                    },
+                    Block {
+                        id: 8,
+                        ins: vec![TIR::JumpBlockUnCond(23, 5)],
+                    },
+                ],
+            },
+            Function {
+                name: Box::new("func2_int_bool".to_string()),
+                params: vec![
+                    SSAValue { val: 0, ty: Some(TirType::I64) },
+                    SSAValue { val: 1, ty: Some(TirType::I1) },
+                ],
+                ret_type: TirType::Void,
+                ins_counter: 19,
+                heap_allocations: vec![],
+                heap_counter: 0,
+                body: vec![
+                    Block {
+                        id: 9,
+                        ins: vec![
+                            TIR::IConst(2, 0, TirType::I64),
+                            TIR::JumpBlockUnCond(3, 10),
+                        ],
+                    },
+                    Block {
+                        id: 10,
+                        ins: vec![
+                            TIR::Phi(
+                                4,
+                                vec![9, 13],
+                                vec![
+                                    SSAValue { val: 2, ty: Some(TirType::I64) },
+                                    SSAValue { val: 14, ty: Some(TirType::I64) },
+                                ],
+                            ),
+                            TIR::Phi(
+                                5,
+                                vec![9, 13],
+                                vec![
+                                    SSAValue { val: 1, ty: Some(TirType::I1) },
+                                    SSAValue { val: 5, ty: Some(TirType::I1) },
+                                ],
+                            ),
+                            TIR::Phi(
+                                6,
+                                vec![9, 13],
+                                vec![
+                                    SSAValue { val: 0, ty: Some(TirType::I64) },
+                                    SSAValue { val: 6, ty: Some(TirType::I64) },
+                                ],
+                            ),
+                            TIR::IConst(7, 1, TirType::I1),
+                            TIR::JumpCond(
+                                8,
+                                SSAValue { val: 7, ty: Some(TirType::I1) },
+                                11,
+                                12,
+                            ),
+                        ],
+                    },
+                    Block {
+                        id: 11,
+                        ins: vec![
+                            TIR::IConst(9, 100, TirType::I64),
+                            TIR::BoolInfix(
+                                10,
+                                SSAValue { val: 4, ty: Some(TirType::I64) },
+                                SSAValue { val: 9, ty: Some(TirType::I64) },
+                                BoolInfixOp::GreaterThanEqt,
+                            ),
+                            TIR::JumpCond(
+                                11,
+                                SSAValue { val: 10, ty: Some(TirType::I1) },
+                                14,
+                                15,
+                            ),
+                        ],
+                    },
+                    Block {
+                        id: 12,
+                        ins: vec![
+                            TIR::Ret(
+                                18,
+                                SSAValue { val: 0, ty: None },
+                            ),
+                        ],
+                    },
+                    Block {
+                        id: 13,
+                        ins: vec![TIR::JumpBlockUnCond(17, 10)],
+                    },
+                    Block {
+                        id: 14,
+                        ins: vec![TIR::JumpBlockUnCond(12, 12)],
+                    },
+                    Block {
+                        id: 15,
+                        ins: vec![
+                            TIR::IConst(13, 1, TirType::I64),
+                            TIR::NumericInfix(
+                                14,
+                                SSAValue { val: 4, ty: Some(TirType::I64) },
+                                SSAValue { val: 13, ty: Some(TirType::I64) },
+                                NumericInfixOp::Plus,
+                            ),
+                            TIR::JumpBlockUnCond(15, 16),
+                        ],
+                    },
+                    Block {
+                        id: 16,
+                        ins: vec![TIR::JumpBlockUnCond(16, 13)],
+                    },
+                ],
+            },
+            Function {
+                name: Box::new("user_main".to_string()),
+                params: vec![],
+                ret_type: TirType::I64,
+                ins_counter: 8,
+                heap_allocations: vec![],
+                heap_counter: 0,
+                body: vec![Block {
+                    id: 0,
+                    ins: vec![
+                        TIR::CallLocalFunction(
+                            2,
+                            Box::new("func1".to_string()),
+                            vec![],
+                            false,
+                            TirType::Void,
+                        ),
+                        TIR::IConst(3, 1, TirType::I64),
+                        TIR::IConst(4, 1, TirType::I1),
+                        TIR::CallLocalFunction(
+                            5,
+                            Box::new("func2_int_bool".to_string()),
+                            vec![
+                                SSAValue { val: 3, ty: Some(TirType::I64) },
+                                SSAValue { val: 4, ty: Some(TirType::I1) },
+                            ],
+                            false,
+                            TirType::Void,
+                        ),
+                        TIR::IConst(6, 0, TirType::I64),
+                        TIR::Ret(
+                            7,
+                            SSAValue { val: 6, ty: Some(TirType::I64) },
+                        ),
+                    ],
+                }],
+            },
+        ],
+    );
+}

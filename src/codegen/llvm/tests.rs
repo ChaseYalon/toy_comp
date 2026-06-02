@@ -472,3 +472,45 @@ fn test_llvm_bug_2(){
     );
     assert!(output.contains(r#"["h"]"#), "output was: {}", output);
 }
+
+#[test]
+fn test_llvm_bug_3(){
+    compile_code_aot!(
+        output,
+        r#"
+            import std.fuzz;
+
+            fn func1() {
+                let v1: bool[] = [false && true];
+                let v2: int = 0;
+                while true {
+                    if v2 >= 100 {
+                        break;
+                    } else {
+                        v2++;;
+                    }
+                }
+                fuzz.write_arr(v1, true);
+            }
+
+            fn func2(p1: int, p2: bool): int {
+                let v1: int = 0;
+                while true {
+                    if v1 >= 100 {
+                        break;
+                    } else {
+                        v1 = v1 + 1;
+                    }
+                }
+                return p1;
+            }
+
+            func1();
+            println(func2(1, true));
+            
+        
+        "#,
+        "llvm_bug_3"
+    );
+    assert!(output.contains("1"));
+}
