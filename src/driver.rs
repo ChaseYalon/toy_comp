@@ -743,6 +743,25 @@ impl Driver {
             object_files.push(format!("{}.o", module_name));
         }
 
+        // Reload freshly-compiled CTLA summaries so the main program uses updated escape info.
+        {
+            let build_dir = Driver::get_build_dir();
+            let paths: Vec<String> = self.file_path_to_ast.keys().cloned().collect();
+            for path in paths {
+                let module_stem = std::path::Path::new(&path)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let ctla_path = format!("{}/{}.ctla", build_dir, module_stem);
+                if let Ok(ctla_content) = fs::read_to_string(&ctla_path) {
+                    if let Ok(ctla_schema) = serde_json::from_str::<CTLASchema>(&ctla_content) {
+                        self.file_path_to_ctla.insert(path, ctla_schema);
+                    }
+                }
+            }
+        }
+
         let main_module = ctx.create_module("program");
         let mut generator = Generator::new(ctx, main_module);
         if let Some(text) = self

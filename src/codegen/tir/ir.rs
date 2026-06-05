@@ -630,6 +630,9 @@ impl TirBuilder {
         let curr_func_name = self.funcs[self.curr_func.unwrap()].name.clone();
         let curr_block_idx = self.curr_block.unwrap();
         let curr_block = self.funcs[self.curr_func.unwrap()].body[curr_block_idx].id;
+        if std::env::var("TOY_DEBUG_REFS").is_ok() {
+            eprintln!("[REF_DEBUG_LOCAL] call_local '{}' in func='{}' block={} params={:?}", name, curr_func_name, curr_block, params);
+        }
         let id = self._next_value_id();
         self.funcs.iter_mut().for_each(|f| {
             if f.name == curr_func_name {
@@ -713,6 +716,9 @@ impl TirBuilder {
         let curr_func_name = self.funcs[self.curr_func.unwrap()].name.clone();
         let curr_block_idx = self.curr_block.unwrap();
         let curr_block = self.funcs[self.curr_func.unwrap()].body[curr_block_idx].id;
+        if std::env::var("TOY_DEBUG_REFS").is_ok() {
+            eprintln!("[REF_DEBUG] call_extern '{}' in func='{}' block={} params={:?}", name, curr_func_name, curr_block, params);
+        }
         self.funcs.iter_mut().for_each(|f| {
             if f.name == curr_func_name {
                 f.heap_allocations
@@ -1286,18 +1292,20 @@ impl TirBuilder {
                 }
             }
             if replacements.is_empty() { break; }
-            // Resolve transitive chains: if A->B and B->C, make A->C
-            let mut remap: HashMap<ValueId, ValueId> = replacements.iter().map(|&(_, old, new)| (old, new)).collect();
-            for &(_, old, _) in &replacements {
-                let mut target = remap[&old];
-                while let Some(&next) = remap.get(&target) {
+            // Resolve transitive chains per-function: if A->B and B->C within the
+            // same function, make A->C.  ValueIds are per-function, so chains must
+            // never cross function boundaries.
+            let mut remap: HashMap<(usize, ValueId), ValueId> = replacements.iter().map(|&(fi, old, new)| ((fi, old), new)).collect();
+            for &(fi, old, _) in &replacements {
+                let mut target = remap[&(fi, old)];
+                while let Some(&next) = remap.get(&(fi, target)) {
                     if next == target { break; }
                     target = next;
                 }
-                remap.insert(old, target);
+                remap.insert((fi, old), target);
             }
             for (fi, old, _) in &replacements {
-                let resolved_new = remap[old];
+                let resolved_new = remap[&(*fi, *old)];
                 let func = &mut self.funcs[*fi];
                 for block in &mut func.body {
                     block.ins.retain(|ins| ins.get_id() != *old);
@@ -1330,6 +1338,34 @@ impl TirBuilder {
                 });
             }
         }
+
+        // Rebuild refs that were missed because phi placeholders hid allocations from the
+        // ref-tracking logic during TIR generation. Now that phis are eliminated, operands
+        // use the original allocation IDs, so we can find all remaining uses.
+        for fi in 0..self.funcs.len() {
+            let func_name = self.funcs[fi].name.clone();
+            let mut refs_to_add: Vec<(usize, (Box<String>, BlockId, ValueId))> = vec![];
+
+            for block in &self.funcs[fi].body {
+                for ins in &block.ins {
+                    let operand_ids = ins.get_operand_ids();
+                    for (ai, alloc) in self.funcs[fi].heap_allocations.iter().enumerate() {
+                        for &op in &operand_ids {
+                            if op == alloc.alloc_ins.val || alloc.refs.iter().any(|r| r.2 == op) {
+                                let entry = (func_name.clone(), block.id, op);
+                                if !alloc.refs.contains(&entry) {
+                                    refs_to_add.push((ai, (Box::new(*func_name.clone()), block.id, op)));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            for (ai, ref_entry) in refs_to_add {
+                self.funcs[fi].heap_allocations[ai].refs.push(ref_entry);
+            }
+        }
     }
 
     pub fn detect_heap_allocations(&self) -> Vec<HeapAllocation> {
@@ -1356,6 +1392,12 @@ impl TirBuilder {
         }
         return seen.into_values().collect();
     }
+    fn _next_value_id_for_func(&mut self, func_name: &str) -> ValueId {
+        let func = self.funcs.iter_mut().find(|f| *f.name == func_name).unwrap();
+        func.ins_counter += 1;
+        func.ins_counter - 1
+    }
+
     ///Will add a manually created TIR instruction before the specified instruction
     ///Will NOT move the cursor
     pub fn splice_free_before(
@@ -1366,8 +1408,9 @@ impl TirBuilder {
         to_free_val: SSAValue,
         free_func_name: String,
     ) {
+        let id = self._next_value_id_for_func(&func_name);
         let ins = TIR::CallExternFunction(
-            self._next_value_id(),
+            id,
             Box::new(free_func_name),
             vec![to_free_val],
             false,
@@ -1396,13 +1439,13 @@ impl TirBuilder {
     ) -> usize {
         let mut instructions = Vec::new();
         for field in owned_fields {
-            let read_id = self._next_value_id();
+            let read_id = self._next_value_id_for_func(&func_name);
             let read_ins = TIR::ReadStructLiteral(read_id, struct_val.clone(), field.index as u64);
             let read_val = SSAValue {
                 val: read_id,
                 ty: Some(TirType::Ptr),
             };
-            let free_id = self._next_value_id();
+            let free_id = self._next_value_id_for_func(&func_name);
             let free_fn = if field.is_array { "toy_deep_free_arr" } else { "toy_free" };
             let free_ins = TIR::CallExternFunction(
                 free_id,

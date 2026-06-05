@@ -355,7 +355,7 @@ elif sys.argv[1] == "--lldb":
             print("Usage: python debug.py <executable> [extra lldb commands...]")
             sys.exit(1)
 
-        exe = sys.argv[1]
+        exe = sys.argv[2]
         extras = sys.argv[2:]  # e.g. "b toy_fs_read_dir" "run"
         run_lldb(exe, extras)
 

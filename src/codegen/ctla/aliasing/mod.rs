@@ -442,6 +442,7 @@ impl AliasAndEncapsulationTracker {
         alias_values: &mut HashSet<(String, ValueId)>,
         summary_by_func: HashMap<String, Vec<usize>>,
         encapsulator_values: &mut HashSet<(String, ValueId)>,
+        encapsulates_pairs_by_func: &HashMap<String, Vec<(usize, usize)>>,
     ) {
         let builder = self.builder.borrow();
 
@@ -488,6 +489,7 @@ impl AliasAndEncapsulationTracker {
                 arr_write_vals_by_callee.insert((*func.name).clone(), write_vals);
             }
         }
+
 
         loop {
             let mut changed = false;
@@ -595,19 +597,19 @@ impl AliasAndEncapsulationTracker {
                                     }
                                 }
                             }
-                            TIR::CallExternFunction(_, callee_name, params, _, _, _)
-                                if callee_name.as_ref() == "toy_write_to_arr" =>
-                            {
-                                if params.len() >= 2
-                                    && (alias_values
-                                        .contains(&(function_name.clone(), params[1].val))
-                                        || encapsulator_values
-                                            .contains(&(function_name.clone(), params[1].val)))
-                                {
-                                    if new_encapsulators
-                                        .insert((function_name.clone(), params[0].val))
-                                    {
-                                        changed = true;
+                            TIR::CallLocalFunction(_, callee_name, caller_args, _, _)
+                            | TIR::CallExternFunction(_, callee_name, caller_args, _, _, _) => {
+                                if let Some(pairs) = encapsulates_pairs_by_func.get(callee_name.as_ref()) {
+                                    for &(arr_param_idx, elem_param_idx) in pairs {
+                                        if let (Some(arr_arg), Some(elem_arg)) = (caller_args.get(arr_param_idx), caller_args.get(elem_param_idx)) {
+                                            if alias_values.contains(&(function_name.clone(), elem_arg.val))
+                                                || encapsulator_values.contains(&(function_name.clone(), elem_arg.val))
+                                            {
+                                                if new_encapsulators.insert((function_name.clone(), arr_arg.val)) {
+                                                    changed = true;
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -704,6 +706,24 @@ impl AliasAndEncapsulationTracker {
             }
         }
 
+        // Build encapsulates_pairs_by_func: functions that store param[elem] into param[arr].
+        // toy_write_to_arr has this built-in (arr=0, elem=1).
+        // Local functions compute it from TIR; external functions from their CTLA summary.
+        let mut encapsulates_pairs_by_func: HashMap<String, Vec<(usize, usize)>> = HashMap::new();
+        encapsulates_pairs_by_func.insert("toy_write_to_arr".to_string(), vec![(0, 1)]);
+        for cfg_f in cfg_functions.iter() {
+            if !cfg_f.param_encapsulates_pairs.is_empty() {
+                encapsulates_pairs_by_func.insert((*cfg_f.func.name).clone(), cfg_f.param_encapsulates_pairs.clone());
+            }
+        }
+        for summaries in self.external_modules.values() {
+            for summary in summaries {
+                if !summary.param_encapsulates_pairs.is_empty() {
+                    encapsulates_pairs_by_func.insert(summary.name.clone(), summary.param_encapsulates_pairs.clone());
+                }
+            }
+        }
+
         let builder = self.builder.borrow();
         let capacity = builder
             .funcs
@@ -731,7 +751,7 @@ impl AliasAndEncapsulationTracker {
 
         let mut encapsulator_values: HashSet<(String, ValueId)> = HashSet::new();
 
-        self.propagate_aliases(&mut alias_values, summary_by_func, &mut encapsulator_values);
+        self.propagate_aliases(&mut alias_values, summary_by_func, &mut encapsulator_values, &encapsulates_pairs_by_func);
         let alloc_key = alloc.alloc_ins.val as u64;
         self.aliases.extend(
             alias_values

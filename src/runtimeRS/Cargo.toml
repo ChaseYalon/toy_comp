@@ -16,12 +16,9 @@ crate-type = ["staticlib"]
 
 #this is bad
 [profile.release]
-panic = "abort"
 debug = 2                  # full debug info
 split-debuginfo = "off"    # embed everything, no split
 strip = false
 debug-assertions = false
 opt-level = 3
 
-[profile.dev]
-panic = "abort"

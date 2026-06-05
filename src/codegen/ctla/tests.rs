@@ -403,3 +403,75 @@ fn test_ctla_bug_6() {
     );
     assert!(!output.contains("FAIL_TEST"));
 }
+
+#[test]
+fn test_ctla_bug_7(){
+    compile_code_aot!(
+        output,
+        r#"
+            import std.fuzz;
+
+            fn func1(p2: bool[]) {
+                if true {
+                    let v2: bool[] = [false];
+                    if true {
+                        let v3: bool = fuzz.read_rand(p2);
+                        fuzz.write_arr(p2, v3);
+                        fuzz.write_arr(v2, true);
+                    }
+                }
+            }
+
+            func1([false]);
+        "#,
+        "ctla_bug_7"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_bug_8(){
+    compile_code_aot!(
+        output,
+        r#"
+            import std.fuzz;
+            let v1: str[] = ["s"];
+            let v2 = [1.0];
+            fuzz.write_arr(v1, "k");
+            fuzz.write_arr(
+                v1,
+                "" + fuzz.read_rand(v1)
+            );
+        "#,
+        "ctla_bug_8"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_bug_9(){
+    compile_code_aot!(
+        output,
+        r#"
+            import std.fuzz;
+
+            fn func1(p1: str): float {
+                let v1: str[] = [("P")];
+                let v2: int = 0;
+                while true {
+                    fuzz.write_arr(v1, p1);
+                    if v2 >= 100 {
+                        break;
+                    } else {
+                        v2 = v2 + 1;
+                    }
+                }
+                return 425130.0813183049;
+            }
+
+            func1("z");
+        "#,
+        "ctla_bug_9"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+}

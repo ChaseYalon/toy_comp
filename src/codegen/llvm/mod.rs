@@ -1149,9 +1149,18 @@ impl<'a> LlvmGenerator<'a> {
             self.block_id_to_block.insert(b.id, llvm_block);
         }
 
-        for b in &func.body {
+        let rpo = Self::reverse_post_order(&func);
+        for block_id in &rpo {
+            let b = func.body.iter().find(|b| b.id == *block_id).unwrap();
             let llvm_block = self.block_id_to_block.get(&b.id).unwrap();
             self.compile_tir_block(b.clone(), &builder, *llvm_block, *func.name.clone())?;
+        }
+        // Compile any blocks not reachable from entry (unreachable blocks) last.
+        for b in &func.body {
+            if !rpo.contains(&b.id) {
+                let llvm_block = self.block_id_to_block.get(&b.id).unwrap();
+                self.compile_tir_block(b.clone(), &builder, *llvm_block, *func.name.clone())?;
+            }
         }
 
         let fixups: Vec<_> = self.phi_fixups.drain(..).collect();
@@ -1176,6 +1185,43 @@ impl<'a> LlvmGenerator<'a> {
             _ => todo!("Chase you have not implemented {t:?} param type yet"),
         };
     }
+    fn block_successors(block: &Block) -> Vec<BlockId> {
+        match block.ins.last() {
+            Some(TIR::JumpBlockUnCond(_, target)) => vec![*target],
+            Some(TIR::JumpCond(_, _, t, f)) => vec![*t, *f],
+            _ => vec![],
+        }
+    }
+
+    fn reverse_post_order(func: &Function) -> Vec<BlockId> {
+        if func.body.is_empty() {
+            return vec![];
+        }
+        let entry = func.body[0].id;
+        let mut visited = std::collections::HashSet::new();
+        let mut post_order: Vec<BlockId> = vec![];
+
+        fn dfs(
+            block_id: BlockId,
+            func: &Function,
+            visited: &mut std::collections::HashSet<BlockId>,
+            post_order: &mut Vec<BlockId>,
+        ) {
+            if !visited.insert(block_id) {
+                return;
+            }
+            let block = func.body.iter().find(|b| b.id == block_id).unwrap();
+            for succ in LlvmGenerator::block_successors(block) {
+                dfs(succ, func, visited, post_order);
+            }
+            post_order.push(block_id);
+        }
+
+        dfs(entry, func, &mut visited, &mut post_order);
+        post_order.reverse();
+        post_order
+    }
+
     fn declare_individual_function(&mut self, name: &str, types: Vec<TirType>, ret_type: TirType) {
         let mut compiled_types: Vec<BasicMetadataTypeEnum> = vec![];
         types

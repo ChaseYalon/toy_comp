@@ -35,7 +35,7 @@ pub fn _toy_malloc_debug(size: usize) -> *mut c_void {
 pub fn toy_free(buff: *mut c_void) {
     if buff.is_null() {
         eprintln!("[ERROR] Tried to free a null buffer");
-        unsafe { libc::abort() };
+        std::process::exit(1);
     }
     _check_pointer(buff);
     let val = env::var("TOY_DEBUG");
@@ -93,7 +93,7 @@ pub fn _check_pointer(buff: *mut c_void) {
     if buff.is_null() {
         eprintln!("\n[ERROR] Null pointer detected");
         eprintln!("\nFAIL_TEST");
-        panic!();
+        std::process::exit(1);
     }
 
     let v = env::var("TOY_DEBUG");
@@ -116,7 +116,7 @@ pub fn _check_pointer(buff: *mut c_void) {
             println!("\nFAIL_TEST");
             io::stdout().flush().ok();
             io::stderr().flush().ok();
-            panic!();
+            std::process::exit(1);
         }
     }
 }

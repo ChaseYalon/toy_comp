@@ -78,6 +78,10 @@ impl<'a> Generator<'a> {
             fs::write("./debug/TIR.json", s).unwrap(); //rly should be an io error -> toy error conversion
         }
         let ir = self.analyzer.analyze(self.converter.builder.clone())?;
+        if std::env::var("TOY_DEBUG_POST_CTLA_TIR").is_ok() {
+            let s = Generator::pretty_print_tir(&ir).unwrap_or_default();
+            fs::write("./debug/POST_CTLA_TIR.json", s).unwrap();
+        }
         if args.contains(&"--debug-cfg".to_string()) || args.contains(&"--debug-ALL".to_string()) {
             let s = Generator::pretty_print_cfg(self.analyzer.cfg_functions())?;
             fs::write("./debug/CFG.json", s).unwrap(); //rly should be an io error -> toy error conversion

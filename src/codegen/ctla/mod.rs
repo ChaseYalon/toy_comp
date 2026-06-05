@@ -8,7 +8,7 @@ use crate::{
     driver::Driver,
     errors::ToyError,
 };
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 use std::{cell::RefCell, io::Write};
 pub mod aliasing;
@@ -41,6 +41,9 @@ pub struct FunctionSummary {
     pub escaped_parameters: Vec<usize>,
     #[serde(default)]
     pub return_owned_fields: Vec<OwnedField>,
+    /// (arr_param_idx, elem_param_idx): this function stores param[elem] into param[arr]
+    #[serde(default)]
+    pub param_encapsulates_pairs: Vec<(usize, usize)>,
 }
 impl FunctionSummary {
     pub fn new(
@@ -49,6 +52,7 @@ impl FunctionSummary {
         encapsulated_parameters: Vec<usize>,
         escaped_parameters: Vec<usize>,
         return_owned_fields: Vec<OwnedField>,
+        param_encapsulates_pairs: Vec<(usize, usize)>,
     ) -> FunctionSummary {
         return FunctionSummary {
             name: name,
@@ -56,6 +60,7 @@ impl FunctionSummary {
             encapsulated_parameters,
             escaped_parameters,
             return_owned_fields,
+            param_encapsulates_pairs,
         };
     }
 }
@@ -659,6 +664,9 @@ impl CTLA {
         let mut visited: HashSet<BlockId> = HashSet::new();
         let mut tracked_blocks =
             self.allocation_tracked_blocks_in_function(alloc, func.name.as_ref());
+        if std::env::var("TOY_DEBUG_CTLA").is_ok() {
+            eprintln!("[CTLA_DEBUG] alloc val={} func={} block={} refs={:?} tracked={:?}", alloc.alloc_ins.val, func.name, origin_block_id, alloc.refs, tracked_blocks);
+        }
 
         // Also track blocks where encapsulator values are used — if an encapsulator
         // (e.g. an outer array holding this allocation) is still live in a child block,
@@ -710,30 +718,86 @@ impl CTLA {
             return;
         }
 
-        // Conservative fallback: if value is defined in entry block, free at function return blocks.
-        if origin_block_id == func.body[0].id {
-            for block in &func.body {
-                if matches!(block.ins.last(), Some(TIR::Ret(_, _))) {
-                    if self.block_returns_allocation_or_alias(func, block.id, alloc) {
-                        continue;
-                    }
-                    let insertion_idx = if free_func == "toy_free_arr" || free_func == "toy_deep_free_arr" {
-                        block.ins.len().saturating_sub(1)
-                    } else {
-                        self.free_insertion_index_for_block(func, block.id, alloc)
-                    };
+        // Compute blocks dominated by origin to find exit points for the allocation's scope.
+        let dominated = self.blocks_dominated_by(cfg_func, origin_block_id);
 
-                    insertion_points.push((
-                        *func.name.clone(),
-                        block.id,
-                        insertion_idx,
-                        alloc.alloc_ins.clone(),
-                        free_func.clone(),
-                    ));
+        for cfg_block in &cfg_func.cfg_blocks {
+            if !dominated.contains(&cfg_block.block) {
+                continue;
+            }
+            let is_exit = cfg_block.possible_output_blocks.is_empty()
+                || cfg_block
+                    .possible_output_blocks
+                    .iter()
+                    .all(|s| !dominated.contains(s));
+            if !is_exit {
+                continue;
+            }
+
+            let Some(block) = func.body.iter().find(|b| b.id == cfg_block.block) else {
+                continue;
+            };
+
+            // Blocks with no successors that aren't Ret (e.g. panic) — skip
+            if cfg_block.possible_output_blocks.is_empty()
+                && !matches!(block.ins.last(), Some(TIR::Ret(_, _)))
+            {
+                continue;
+            }
+
+            if self.block_returns_allocation_or_alias(func, cfg_block.block, alloc) {
+                continue;
+            }
+
+            let insertion_idx =
+                if free_func == "toy_free_arr" || free_func == "toy_deep_free_arr" {
+                    block.ins.len().saturating_sub(1)
+                } else {
+                    self.free_insertion_index_for_block(func, cfg_block.block, alloc)
+                };
+
+            insertion_points.push((
+                *func.name.clone(),
+                cfg_block.block,
+                insertion_idx,
+                alloc.alloc_ins.clone(),
+                free_func.clone(),
+            ));
+        }
+    }
+    /// Returns the set of blocks dominated by `origin` in the given CFG function.
+    /// A block B is dominated by `origin` if every path from the entry block to B
+    /// passes through `origin`.
+    fn blocks_dominated_by(
+        &self,
+        cfg_func: &CFGFunction,
+        origin: BlockId,
+    ) -> HashSet<BlockId> {
+        let entry = cfg_func.cfg_blocks[0].block;
+        let mut reachable: HashSet<BlockId> = HashSet::new();
+        let mut queue: VecDeque<BlockId> = VecDeque::new();
+        if entry != origin {
+            reachable.insert(entry);
+            queue.push_back(entry);
+        }
+        while let Some(b) = queue.pop_front() {
+            if let Some(cfg_b) = cfg_func.cfg_blocks.iter().find(|cb| cb.block == b) {
+                for &succ in &cfg_b.possible_output_blocks {
+                    if succ != origin && !reachable.contains(&succ) {
+                        reachable.insert(succ);
+                        queue.push_back(succ);
+                    }
                 }
             }
         }
+        let all_blocks: HashSet<BlockId> =
+            cfg_func.cfg_blocks.iter().map(|b| b.block).collect();
+        let mut dominated: HashSet<BlockId> =
+            all_blocks.difference(&reachable).cloned().collect();
+        dominated.insert(origin);
+        dominated
     }
+
     /// determines if a given ssa value is in the given function body or parameters
     fn function_has_ssa(&self, func: &Function, value_id: ValueId) -> bool {
         if func.params.iter().any(|p| p.val == value_id) {
@@ -967,6 +1031,31 @@ impl CTLA {
             );
         }
     }
+    /// For each local function, finds pairs (arr_param_idx, elem_param_idx) where the function
+    /// directly calls toy_write_to_arr(param[arr], param[elem], ...).
+    fn populate_param_encapsulates_pairs(funcs: &mut Vec<CFGFunction>) {
+        for cfg_f in funcs.iter_mut() {
+            let mut pairs: Vec<(usize, usize)> = vec![];
+            for block in &cfg_f.func.body {
+                for ins in &block.ins {
+                    if let TIR::CallExternFunction(_, name, wp, _, _, _) = ins {
+                        if name.as_ref() == "toy_write_to_arr" && wp.len() >= 2 {
+                            let arr_idx = cfg_f.func.params.iter().position(|p| p.val == wp[0].val);
+                            let elem_idx = cfg_f.func.params.iter().position(|p| p.val == wp[1].val);
+                            if let (Some(ai), Some(ei)) = (arr_idx, elem_idx) {
+                                let pair = (ai, ei);
+                                if !pairs.contains(&pair) {
+                                    pairs.push(pair);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            cfg_f.param_encapsulates_pairs = pairs;
+        }
+    }
+
     fn populate_parameter_escape_summary(&self, funcs: Vec<CFGFunction>) -> Vec<CFGFunction> {
         let mut new_funcs: Vec<CFGFunction> = vec![];
         for cfg_func in funcs {
@@ -1050,6 +1139,7 @@ impl CTLA {
                 vec![],
                 vec![],
                 vec![],
+                vec![],
             ));
         self.alias_detector.set_external_modules(external_modules);
         self.cfg_functions.clear();
@@ -1070,6 +1160,7 @@ impl CTLA {
         self.alias_detector
             .populate_return_owned_fields(&mut self.cfg_functions);
         self.cfg_functions = self.populate_parameter_escape_summary(self.cfg_functions.clone());
+        CTLA::populate_param_encapsulates_pairs(&mut self.cfg_functions);
         let mut unique_allocations = self.builder.borrow().detect_unique_heap_allocations();
         let mut insertion_points: Vec<(String, BlockId, ValueId, SSAValue, String)> = vec![];
         let len = unique_allocations.len();
@@ -1156,6 +1247,7 @@ impl CTLA {
                 func.parameter_encapsulates.clone(),
                 func.parameter_escapes.clone(),
                 func.return_owned_fields.clone(),
+                func.param_encapsulates_pairs.clone(),
             ));
         }
 

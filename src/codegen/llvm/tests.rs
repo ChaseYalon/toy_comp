@@ -514,3 +514,47 @@ fn test_llvm_bug_3(){
     );
     assert!(output.contains("1"));
 }
+
+#[test]
+fn test_llvm_bug_4(){
+    compile_code_aot!(
+        output,
+        r#"
+            import std.fuzz;
+
+            let v1: bool[] = [true];
+            let v2: int = 0;
+            while false {
+                if false {}
+                let v3: str[] = [""];
+                let v5: bool = fuzz.read_rand(v1);
+                if v5 {
+                    let v4: str[][] = [["K"]];
+                    if true {
+                        let v6: str[] = fuzz.read_rand(v4);
+                        fuzz.write_arr(v4, v6);
+                        let v7: int = 0;
+                        while true {
+                            fuzz.write_arr(v3, "P");
+                            fuzz.write_arr(v4, v3);
+                            if v7 >= 100 {
+                                break;
+                            } else {
+                                v7 = v7 + 1;
+                            }
+                        }
+                    }
+                }
+                if v2 >= 100 {
+                    break;
+                } else {
+                    v2 = v2 + 1;
+                }
+            }
+            println(v1);
+        "#,
+        "llvm_bug_4"
+    );
+    assert!(output.contains("[true]"));
+    
+}
