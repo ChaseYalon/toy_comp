@@ -789,6 +789,50 @@ fn test_ast_gen_while() {
 }
 
 #[test]
+fn test_ast_gen_while_func_call_cond() {
+    setup_ast!(
+        "fn foo(): bool { return true; } fn bar(): int { while foo() { break; } return 0; }",
+        ast
+    );
+    assert!(compare_ast_vecs(
+        ast,
+        vec![
+            Ast::FuncDec(
+                Box::new("foo".to_string()),
+                vec![],
+                TypeTok::Bool,
+                vec![Ast::Return(
+                    Box::new(Ast::BoolLit(true, Span::null_span())),
+                    Span::null_span()
+                )],
+                Span::null_span()
+            ),
+            Ast::FuncDec(
+                Box::new("bar".to_string()),
+                vec![],
+                TypeTok::Int,
+                vec![
+                    Ast::WhileStmt(
+                        Box::new(Ast::FuncCall(
+                            Box::new("foo".to_string()),
+                            vec![],
+                            Span::null_span()
+                        )),
+                        vec![Ast::Break(Span::null_span())],
+                        Span::null_span()
+                    ),
+                    Ast::Return(
+                        Box::new(Ast::IntLit(0, Span::null_span())),
+                        Span::null_span()
+                    )
+                ],
+                Span::null_span()
+            )
+        ]
+    ))
+}
+
+#[test]
 fn test_ast_gen_str_concat() {
     setup_ast!(r#"let x = "1"; let y = str(x) + "1"; println(y);"#, ast);
     assert!(compare_ast_vecs(

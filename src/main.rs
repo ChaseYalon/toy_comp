@@ -114,6 +114,20 @@ fn collect_used_vars(nodes: &[Ast], used: &mut std::collections::HashSet<String>
         }
     }
 }
+fn strip_unused(nodes: &mut Vec<Ast>) {
+    let mut used_vars = std::collections::HashSet::new();
+    collect_used_vars(nodes, &mut used_vars);
+    strip_unused_vars(nodes, &used_vars);
+    let mut used_ifaces = std::collections::HashSet::new();
+    collect_used_structs(nodes, &mut used_ifaces);
+    nodes.retain(|node| {
+        if let Ast::StructInterface(name, _, _) = node {
+            used_ifaces.contains(&**name)
+        } else {
+            true
+        }
+    });
+}
 fn strip_unused_vars(nodes: &mut Vec<Ast>, used: &std::collections::HashSet<String>) {
     nodes.retain(|node| {
         if let Ast::VarDec(name, _, _, _) = node {
@@ -409,13 +423,17 @@ fn main() {
                 d.start_with_ast(&ctx, current.clone())
             }));
             loop {
-                // Alternate: even iterations shrink whole functions, odd iterations
-                // prune individual statements from within function bodies.
-                let reduced = if count % 2 == 0 {
-                    runner.reduce(current.clone())
-                } else {
-                    runner.reduce_body(current.clone())
+                let mut reduced = match count % 5 {
+                    0 => runner.reduce(current.clone()),
+                    1 => runner.reduce_body(current.clone()),
+                    2 => runner.reduce_top_level_call(current.clone()),
+                    3 => runner.simplify_func_body(current.clone()),
+                    _ => runner.reduce_params(current.clone()),
                 };
+                // Strip unused vars/interfaces on the candidate BEFORE the crash
+                // check — unused allocations can change CTLA behavior, so the
+                // stripped form must be what gets verified.
+                strip_unused(&mut reduced);
 
                 if count > MAX_DELTA_DEBUG_ITERS
                     || consecutive_failures > MAX_CONSECUTIVE_FAILURES
@@ -459,20 +477,6 @@ fn main() {
                 if still_crashes {
                     current = reduced;
                     consecutive_failures = 0;
-                    // Strip unused vars and struct interfaces — safe because unused
-                    // nodes can't affect execution, so the crash still reproduces.
-                    let mut used_vars = std::collections::HashSet::new();
-                    collect_used_vars(&current, &mut used_vars);
-                    strip_unused_vars(&mut current, &used_vars);
-                    let mut used_ifaces = std::collections::HashSet::new();
-                    collect_used_structs(&current, &mut used_ifaces);
-                    current.retain(|node| {
-                        if let Ast::StructInterface(name, _, _) = node {
-                            used_ifaces.contains(&**name)
-                        } else {
-                            true
-                        }
-                    });
                     // recompile to the real binary path so fuzz0.exe matches `current`
                     let _ = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                         let mut d =
@@ -494,20 +498,7 @@ fn main() {
 
             // Try removing unused struct interfaces and var decs, but only keep if crash still reproduces
             let mut cleaned = current.clone();
-
-            let mut used_interfaces = std::collections::HashSet::new();
-            collect_used_structs(&cleaned, &mut used_interfaces);
-            cleaned.retain(|node| {
-                if let Ast::StructInterface(name, _, _) = node {
-                    used_interfaces.contains(&**name)
-                } else {
-                    true
-                }
-            });
-
-            let mut used_vars = std::collections::HashSet::new();
-            collect_used_vars(&cleaned, &mut used_vars);
-            strip_unused_vars(&mut cleaned, &used_vars);
+            strip_unused(&mut cleaned);
 
             // Verify the cleaned version still crashes
             let delta_base = format!("{base}_delta");
@@ -559,47 +550,133 @@ fn main() {
 
         let base = "temp/reduce".to_string();
         let name = format!("{base}{}", FILE_EXTENSION_EXE);
+        let max_reduce_secs: u64 = env::var("TOY_REDUCE_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(MAX_REDUCE_SECS);
 
-        // verify it actually crashes first, and record whether it's a compile panic
-        let compile_result = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let mut d = Driver::new_with_name(PathBuf::from(base.clone()), base.clone());
-            let ctx = Context::create();
-            d.start_with_ast(&ctx, prgm.clone())
-        }));
-        let crash_is_compile_panic = matches!(compile_result, Err(_) | Ok(Err(_)));
-        let crashes = match compile_result {
-            Err(_) | Ok(Err(_)) => true,
-            Ok(Ok(_)) => {
-                let child = Command::new(&name)
-                    .spawn()
-                    .expect("failed to start process");
-                !run_for_30_seconds(child)
+        // None = any crash counts (--assume-crash skips the expensive initial
+        // verification compile), Some(true) = compile panic, Some(false) = runtime crash
+        let crash_is_compile_panic: Option<bool> = if args
+            .contains(&"--assume-crash".to_string())
+        {
+            println!("Skipping initial verification (--assume-crash): any crash counts");
+            None
+        } else {
+            // verify it actually crashes first, and record whether it's a compile panic
+            let compile_result = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let mut d = Driver::new_with_name(PathBuf::from(base.clone()), base.clone());
+                let ctx = Context::create();
+                d.start_with_ast(&ctx, prgm.clone())
+            }));
+            let is_compile_panic = matches!(compile_result, Err(_) | Ok(Err(_)));
+            let crashes = match compile_result {
+                Err(_) | Ok(Err(_)) => true,
+                Ok(Ok(_)) => {
+                    let child = Command::new(&name)
+                        .spawn()
+                        .expect("failed to start process");
+                    !run_for_30_seconds(child)
+                }
+            };
+            if !crashes {
+                println!("AST does not crash, nothing to reduce");
+                return;
+            }
+            println!(
+                "Crash type: {}",
+                if is_compile_panic { "compiler panic" } else { "runtime crash" }
+            );
+            Some(is_compile_panic)
+        };
+
+        let test_crashes = |candidate: &[Ast]| -> bool {
+            let delta_base = format!("{base}_delta");
+            let delta_name = format!("{delta_base}{}", FILE_EXTENSION_EXE);
+            let compile_result = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let mut d =
+                    Driver::new_with_name(PathBuf::from(delta_base.clone()), delta_base.clone());
+                let ctx = Context::create();
+                d.start_with_ast(&ctx, candidate.to_vec())
+            }));
+            match compile_result {
+                // a compiler panic counts as a crash in assume mode, but a clean
+                // compile error just means the reduction produced an invalid program
+                Err(_) => crash_is_compile_panic.unwrap_or(true),
+                Ok(Err(_)) => crash_is_compile_panic.unwrap_or(false),
+                Ok(Ok(_)) => {
+                    if crash_is_compile_panic == Some(true) {
+                        false
+                    } else {
+                        let child = Command::new(delta_name)
+                            .spawn()
+                            .expect("failed to start child");
+                        !run_for_30_seconds(child)
+                    }
+                }
             }
         };
-        if !crashes {
-            println!("AST does not crash, nothing to reduce");
-            return;
-        }
-        println!(
-            "Crash type: {}",
-            if crash_is_compile_panic { "compiler panic" } else { "runtime crash" }
-        );
 
         let mut runner = TestRunner::new();
         let mut current = prgm;
         let mut count = 0;
         let mut consecutive_failures = 0;
         let reduce_start = Instant::now();
-        loop {
-            let reduced = if count % 2 == 0 {
-                runner.reduce(current.clone())
+
+        // Phase 1: remove many functions per candidate so the program (and the
+        // superlinear CTLA compile time) shrinks geometrically before the
+        // one-mutation-per-compile loop below.
+        let func_count =
+            |nodes: &[Ast]| nodes.iter().filter(|n| n.node_type() == "FuncDec").count();
+        let mut chunk = func_count(&current) / 2;
+        while chunk >= 1 && reduce_start.elapsed() < Duration::from_secs(max_reduce_secs) {
+            let mut progressed = false;
+            for _ in 0..3 {
+                if reduce_start.elapsed() >= Duration::from_secs(max_reduce_secs) {
+                    break;
+                }
+                let mut candidate = current.clone();
+                for _ in 0..chunk {
+                    candidate = runner.reduce(candidate);
+                }
+                strip_unused(&mut candidate);
+                if candidate == current {
+                    continue;
+                }
+                let (stmts, exprs) = count_nodes(&candidate);
+                println!(
+                    "Phase 1: trying removal of {chunk} functions ({stmts} stmts, {exprs} exprs)"
+                );
+                if test_crashes(&candidate) {
+                    current = candidate;
+                    progressed = true;
+                    break;
+                }
+            }
+            if progressed {
+                chunk = (func_count(&current) / 2).min(chunk);
             } else {
-                runner.reduce_body(current.clone())
+                chunk /= 2;
+            }
+        }
+        let (stmts, exprs) = count_nodes(&current);
+        println!("Phase 1 done ({stmts} stmts, {exprs} exprs), starting fine-grained reduction");
+
+        loop {
+            let mut reduced = match count % 4 {
+                0 => runner.reduce(current.clone()),
+                1 => runner.reduce_body(current.clone()),
+                2 => runner.reduce_top_level_call(current.clone()),
+                _ => runner.simplify_func_body(current.clone()),
             };
+            // Strip unused vars/interfaces on the candidate BEFORE the crash
+            // check — unused allocations can change CTLA behavior, so the
+            // stripped form must be what gets verified.
+            strip_unused(&mut reduced);
 
             if count > MAX_DELTA_DEBUG_ITERS
                 || consecutive_failures > MAX_CONSECUTIVE_FAILURES
-                || reduce_start.elapsed() > Duration::from_secs(MAX_REDUCE_SECS)
+                || reduce_start.elapsed() > Duration::from_secs(max_reduce_secs)
             {
                 break;
             }
@@ -610,54 +687,9 @@ fn main() {
                 continue;
             }
 
-            let delta_base = format!("{base}_delta");
-            let delta_name = format!("{delta_base}{}", FILE_EXTENSION_EXE);
-            let compile_result = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                let mut d = Driver::new_with_name(
-                    PathBuf::from(delta_base.clone()),
-                    delta_base.clone(),
-                );
-                let ctx = Context::create();
-                d.start_with_ast(&ctx, reduced.clone())
-            }));
-
-            let still_crashes = match compile_result {
-                Err(_) | Ok(Err(_)) => crash_is_compile_panic,
-                Ok(Ok(_)) => {
-                    if crash_is_compile_panic {
-                        false
-                    } else {
-                        let child = Command::new(delta_name.clone())
-                            .spawn()
-                            .expect("failed to start child");
-                        !run_for_30_seconds(child)
-                    }
-                }
-            };
-
-            if still_crashes {
+            if test_crashes(&reduced) {
                 current = reduced;
                 consecutive_failures = 0;
-                // Strip unused vars and struct interfaces — safe because unused
-                // nodes can't affect execution, so the crash still reproduces.
-                let mut used_vars = std::collections::HashSet::new();
-                collect_used_vars(&current, &mut used_vars);
-                strip_unused_vars(&mut current, &used_vars);
-                let mut used_ifaces = std::collections::HashSet::new();
-                collect_used_structs(&current, &mut used_ifaces);
-                current.retain(|node| {
-                    if let Ast::StructInterface(name, _, _) = node {
-                        used_ifaces.contains(&**name)
-                    } else {
-                        true
-                    }
-                });
-                let _ = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    let mut d =
-                        Driver::new_with_name(PathBuf::from(base.clone()), base.clone());
-                    let ctx = Context::create();
-                    d.start_with_ast(&ctx, current.clone())
-                }));
             } else {
                 consecutive_failures += 1;
             }
@@ -672,41 +704,17 @@ fn main() {
 
         // cleanup pass
         let mut cleaned = current.clone();
-        let mut used_interfaces = std::collections::HashSet::new();
-        collect_used_structs(&cleaned, &mut used_interfaces);
-        cleaned.retain(|node| {
-            if let Ast::StructInterface(name, _, _) = node {
-                used_interfaces.contains(&**name)
-            } else {
-                true
-            }
-        });
-        let mut used_vars = std::collections::HashSet::new();
-        collect_used_vars(&cleaned, &mut used_vars);
-        strip_unused_vars(&mut cleaned, &used_vars);
-
-        let delta_base = format!("{base}_delta");
-        let delta_name = format!("{delta_base}{}", FILE_EXTENSION_EXE);
-        let clean_ok = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let mut d =
-                Driver::new_with_name(PathBuf::from(delta_base.clone()), delta_base.clone());
-            let ctx = Context::create();
-            d.start_with_ast(&ctx, cleaned.clone())
-        }));
-        if let Ok(Ok(_)) = clean_ok {
-            let child = Command::new(delta_name)
-                .spawn()
-                .expect("failed to start child");
-            if !run_for_30_seconds(child) {
-                current = cleaned;
-                let _ = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    let mut d =
-                        Driver::new_with_name(PathBuf::from(base.clone()), base.clone());
-                    let ctx = Context::create();
-                    d.start_with_ast(&ctx, current.clone())
-                }));
-            }
+        strip_unused(&mut cleaned);
+        if cleaned != current && test_crashes(&cleaned) {
+            current = cleaned;
         }
+
+        // recompile the final result to the real path so temp/reduce.exe matches reduced.txt
+        let _ = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let mut d = Driver::new_with_name(PathBuf::from(base.clone()), base.clone());
+            let ctx = Context::create();
+            d.start_with_ast(&ctx, current.clone())
+        }));
 
         fs::write(
             "reduced.txt",

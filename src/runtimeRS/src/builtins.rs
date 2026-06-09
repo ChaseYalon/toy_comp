@@ -5,6 +5,7 @@ use std::ffi::{CStr, CString};
 use std::io;
 use std::io::Write;
 use std::os::raw::c_void;
+use std::time::Instant;
 use crate::values::ToyType;
 //datatype is 0 for string, 1 for bool, 2 for int, 3 for float, 4 for str[], 5 for bool[], 6 for int[], 7 for float[], 8 for struct[]
 //if datatype is 0 (input is string) then input is a pointer
@@ -311,7 +312,7 @@ pub fn toy_malloc_arr(len: i64, ty: i64, degree: i64) -> ToyPtr {
     if let Ok(v) = std::env::var("TOY_DEBUG") {
         if v == "TRUE" {
             let mut heap = DEBUG_HEAP.get().unwrap().lock().unwrap();
-            heap.map.insert(ptr, std::mem::size_of::<ToyArr>() as i64);
+            heap.map.insert(ptr, (std::mem::size_of::<ToyArr>() as i64, Instant::now()));
             heap.total_live_allocations += 1;
             heap.total_allocations += 1;
         }
@@ -339,6 +340,36 @@ pub fn toy_write_to_arr(arr_in_ptr: ToyPtr, value: i64, idx: i64, ty: i64) {
     }
     if idx as usize >= arr_ptr.arr.len() {
         arr_ptr.arr.resize(idx as usize + 1, 0);
+    }
+    // A heap scalar stored into an array is owned by the array, but CTLA cannot statically track
+    // values routed through a library wrapper like fuzz.write_arr. Record it so the exit sweep
+    // frees it if nothing else did (its liveness guard keeps this conflict-free with CTLA).
+    if value != 0 {
+        let elem_type = if arr_ptr.degree == 1 {
+            match toy_ty {
+                ToyType::StrArr => Some(ToyType::Str),
+                ToyType::Struct => Some(ToyType::Struct),
+                _ => None,
+            }
+        } else if arr_ptr.degree == 2 {
+            // Writing a str[] into str[][] — track the sub-array so the exit sweep can free it
+            // if CTLA couldn't (e.g. it escaped from a callee into a parameter array).
+            match toy_ty {
+                ToyType::StrArr => Some(ToyType::StrArr),
+                _ => None,
+            }
+        } else {
+            None
+        };
+        if let Some(elem_type) = elem_type {
+            if let Ok("TRUE") = std::env::var("TOY_DEBUG").as_deref() {
+                if let Some(h) = DEBUG_HEAP.get() {
+                    if let Ok(mut heap) = h.lock() {
+                        heap.written_elems.push((value, elem_type as i64));
+                    }
+                }
+            }
+        }
     }
     arr_ptr.arr[idx as usize] = value;
 }
@@ -379,12 +410,13 @@ pub fn toy_free_arr(arr_ptr_int: ToyPtr) {
     if let Ok(v) = std::env::var("TOY_DEBUG") {
         if v == "TRUE" {
             let mut heap = DEBUG_HEAP.get().unwrap().lock().unwrap();
-            if let Some(&val) = heap.map.get(&arr_ptr_int) {
-                if val != -1 {
+            if let Some(&(size, alloc_time)) = heap.map.get(&arr_ptr_int) {
+                if size != -1 {
                     heap.total_live_allocations -= 1;
+                    heap.lifetimes_ns.push(alloc_time.elapsed().as_nanos() as u64);
                 }
             }
-            heap.map.insert(arr_ptr_int, -1);
+            heap.map.insert(arr_ptr_int, (-1, Instant::now()));
         }
     }
 

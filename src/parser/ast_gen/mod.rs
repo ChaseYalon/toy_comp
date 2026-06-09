@@ -899,7 +899,13 @@ impl AstGenerator {
             }
 
             TBox::While(expr, body, raw_text) => {
-                let parsed_expr = self.parse_bool_expr(&expr);
+                let (parsed_expr, cond_type) = self.parse_expr(&expr)?;
+                if cond_type != TypeTok::Bool {
+                    return Err(ToyError::new(
+                        ToyErrorType::ExpressionNotBoolean,
+                        parsed_expr.span(),
+                    ));
+                }
                 let mut parsed_body: Vec<Ast> = Vec::new();
                 for stmt in body {
                     parsed_body.push(self.parse_stmt(stmt, false)?)
@@ -908,7 +914,7 @@ impl AstGenerator {
                     self.eat();
                 }
                 return Ok(Ast::WhileStmt(
-                    Box::new(parsed_expr?),
+                    Box::new(parsed_expr),
                     parsed_body,
                     raw_text,
                 ));

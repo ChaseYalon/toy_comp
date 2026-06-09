@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -12,6 +12,8 @@ pub struct AliasAndEncapsulationTracker {
     pub aliases: HashSet<(u64, String, ValueId)>,
     pub encapsulators: HashSet<(u64, String, ValueId)>,
     pub external_modules: HashMap<String, Vec<FunctionSummary>>,
+    /// Total number of fixed-point iterations across all propagate_aliases calls
+    pub total_fp_iters: Cell<u64>,
 }
 impl AliasAndEncapsulationTracker {
     pub fn new(builder: &Rc<RefCell<TirBuilder>>) -> AliasAndEncapsulationTracker {
@@ -20,6 +22,7 @@ impl AliasAndEncapsulationTracker {
             aliases: HashSet::new(),
             encapsulators: HashSet::new(),
             external_modules: HashMap::new(),
+            total_fp_iters: Cell::new(0),
         };
     }
 
@@ -492,6 +495,7 @@ impl AliasAndEncapsulationTracker {
 
 
         loop {
+            self.total_fp_iters.set(self.total_fp_iters.get() + 1);
             let mut changed = false;
 
             let mut new_aliases = alias_values.clone();
@@ -802,6 +806,18 @@ impl AliasAndEncapsulationTracker {
                             None
                         }
                     })
+                })
+                .or_else(|| {
+                    // Parameters have no instruction entry in value_to_block; use the entry block.
+                    builder.funcs.iter()
+                        .find(|f| *f.name == *function_name)
+                        .and_then(|f| {
+                            if f.params.iter().any(|p| p.val == *value_id) {
+                                f.body.first().map(|b| b.id)
+                            } else {
+                                None
+                            }
+                        })
                 });
 
             if let Some(block_id) = block_id {

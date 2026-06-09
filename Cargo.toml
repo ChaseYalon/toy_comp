@@ -19,7 +19,6 @@ rand = "0.10.1"
 fxhash = "0.2.1"
 dhat = { version = "0.3", optional = true }
 [build-dependencies]
-cmake = "0.1.54"
 bindgen = "0.70"
 cc = "1.2.59"
 

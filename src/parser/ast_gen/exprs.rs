@@ -139,6 +139,15 @@ impl AstGenerator {
             .map_err(|e| e.with_context(cumulate_span.clone()))?;
         let (r_node, r_type) = self.parse_expr(&right.to_vec())?;
 
+        if !matches!(l_type, TypeTok::Int | TypeTok::Float)
+            || !matches!(r_type, TypeTok::Int | TypeTok::Float)
+        {
+            return Err(ToyError::new(
+                ToyErrorType::InvalidOperationOnGivenType,
+                cumulate_span,
+            ));
+        }
+
         let res_type = if l_type == TypeTok::Float || r_type == TypeTok::Float {
             TypeTok::Float
         } else {

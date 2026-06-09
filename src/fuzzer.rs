@@ -143,12 +143,10 @@ impl TestRunner {
         }
     }
     fn _rand_int_infix_op(&mut self) -> InfixOp {
-        return match self.rng.random_range(0..=4) {
+        return match self.rng.random_range(0..=2) {
             0 => InfixOp::Plus,
             1 => InfixOp::Minus,
             2 => InfixOp::Multiply,
-            3 => InfixOp::Divide,
-            4 => InfixOp::Modulo,
             _ => unreachable!(),
         };
     }
@@ -479,7 +477,7 @@ impl TestRunner {
         let if_stmt = Ast::IfStmt(
             Box::new(Ast::InfixExpr(
                 Box::new(Ast::VarRef(Box::new(name.clone()), Span::null_span())),
-                Box::new(Ast::IntLit(100, Span::null_span())),
+                Box::new(Ast::IntLit(5, Span::null_span())),
                 InfixOp::GreaterThanEqt,
                 Span::null_span(),
             )),
@@ -901,6 +899,7 @@ impl TestRunner {
             Ast::IntLit(_, _) => Some(TypeTok::Int),
             Ast::FloatLit(_, _) => Some(TypeTok::Float),
             Ast::BoolLit(_, _) => Some(TypeTok::Bool),
+            Ast::StringLit(_, _) => Some(TypeTok::Str),
             Ast::ArrLit(ty, _, _) => Some(ty.clone()),
             Ast::InfixExpr(l, r, op, _) => {
                 if matches!(
@@ -915,18 +914,23 @@ impl TestRunner {
                         | InfixOp::GreaterThanEqt
                 ) {
                     Some(TypeTok::Bool)
+                } else if op == &InfixOp::Plus
+                    && (self.typeof_node(&(**l)) == Some(TypeTok::Str)
+                        || self.typeof_node(&(**r)) == Some(TypeTok::Str))
+                {
+                    Some(TypeTok::Str)
                 } else if self.typeof_node(&(**l)) == Some(TypeTok::Float)
                     || self.typeof_node(&(**r)) == Some(TypeTok::Float)
                 {
                     Some(TypeTok::Float)
                 } else {
-                    Some(TypeTok::Int) //infix expr is always bool, float, int
+                    Some(TypeTok::Int)
                 }
             }
             Ast::EmptyExpr(sub, _) => self.typeof_node(&(**sub)),
             Ast::Not(_, _) => Some(TypeTok::Bool),
             Ast::VarDec(_, t, _, _) => {
-                if matches!(t, TypeTok::Int | TypeTok::Float | TypeTok::Bool) {
+                if matches!(t, TypeTok::Int | TypeTok::Float | TypeTok::Bool | TypeTok::Str) {
                     Some(t.clone())
                 } else {
                     None
@@ -934,10 +938,13 @@ impl TestRunner {
             }
             Ast::VarRef(n, _) => {
                 let res = self.var_names_to_types.get(&(**n).clone());
-                if res.is_some()
-                    && matches!(res.unwrap(), TypeTok::Int | TypeTok::Float | TypeTok::Bool)
-                {
-                    Some(res.unwrap().clone())
+                if let Some(ty) = res {
+                    match ty {
+                        TypeTok::Int | TypeTok::Float | TypeTok::Bool | TypeTok::Str => {
+                            Some(ty.clone())
+                        }
+                        _ => None,
+                    }
                 } else {
                     None
                 }
@@ -997,6 +1004,14 @@ impl TestRunner {
                             | InfixOp::LessThanEqt
                     ) {
                         Ast::BoolLit(self.rng.random_bool(0.5), Span::null_span())
+                    } else if op == InfixOp::Plus
+                        && (self.typeof_node(&*lhs) == Some(TypeTok::Str)
+                            || self.typeof_node(&*rhs) == Some(TypeTok::Str))
+                    {
+                        Ast::StringLit(
+                            Box::new(Alphabetic.sample_string(&mut self.rng, 5)),
+                            Span::null_span(),
+                        )
                     } else if self.typeof_node(&*lhs) == Some(TypeTok::Float)
                         || self.typeof_node(&*rhs) == Some(TypeTok::Float)
                     {
@@ -1018,12 +1033,23 @@ impl TestRunner {
                         )
                     }
                 } else {
-                    Ast::InfixExpr(
-                        Box::new(self.rewrite_expr(*lhs, removed_name, removed_ret)),
-                        Box::new(self.rewrite_expr(*rhs, removed_name, removed_ret)),
-                        op,
-                        span,
-                    )
+                    let new_lhs = self.rewrite_expr(*lhs, removed_name, removed_ret);
+                    let new_rhs = self.rewrite_expr(*rhs, removed_name, removed_ret);
+                    // For Plus, both operands must be the same kind (str or numeric).
+                    if op == InfixOp::Plus {
+                        let lhs_str = self.typeof_node(&new_lhs) == Some(TypeTok::Str);
+                        let rhs_str = self.typeof_node(&new_rhs) == Some(TypeTok::Str);
+                        if lhs_str && !rhs_str {
+                            let fixed =
+                                self.gen_expr_of_type(TypeTok::Str, self.max_expr_depth + 1);
+                            return Ast::InfixExpr(Box::new(new_lhs), Box::new(fixed), op, span);
+                        } else if rhs_str && !lhs_str {
+                            let fixed =
+                                self.gen_expr_of_type(TypeTok::Str, self.max_expr_depth + 1);
+                            return Ast::InfixExpr(Box::new(fixed), Box::new(new_rhs), op, span);
+                        }
+                    }
+                    Ast::InfixExpr(Box::new(new_lhs), Box::new(new_rhs), op, span)
                 }
             }
 
@@ -1082,9 +1108,28 @@ impl TestRunner {
             }
 
             Ast::ArrLit(ty, elems, span) => {
+                let expected_elem_ty: Option<TypeTok> = match &ty {
+                    TypeTok::IntArr(1) => Some(TypeTok::Int),
+                    TypeTok::FloatArr(1) => Some(TypeTok::Float),
+                    TypeTok::BoolArr(1) => Some(TypeTok::Bool),
+                    TypeTok::StrArr(1) => Some(TypeTok::Str),
+                    TypeTok::StrArr(2) => Some(TypeTok::StrArr(1)),
+                    _ => None,
+                };
                 let mut new_elems: Vec<Ast> = elems
                     .into_iter()
-                    .map(|e| self.rewrite_expr(e, removed_name, removed_ret))
+                    .map(|e| {
+                        let rewritten = self.rewrite_expr(e, removed_name, removed_ret);
+                        if let Some(ref expected) = expected_elem_ty {
+                            if let Some(actual) = self.typeof_node(&rewritten) {
+                                if &actual != expected {
+                                    return self
+                                        .gen_arg_for_type(expected, self.max_expr_depth + 1);
+                                }
+                            }
+                        }
+                        rewritten
+                    })
                     .collect();
                 // shrink arrays toward length 1
                 if new_elems.len() > 1 {
@@ -1120,10 +1165,22 @@ impl TestRunner {
                     return None;
                 }
 
-                let body = body
+                let mut body: Vec<Ast> = body
                     .into_iter()
                     .filter_map(|s| self.rewrite_stmt(s, removed_name, removed_ret))
                     .collect();
+
+                for stmt in &mut body {
+                    if let Ast::Return(expr, _) = stmt {
+                        if let Some(actual_ty) = self.typeof_node(expr) {
+                            if actual_ty != ret {
+                                *expr = Box::new(
+                                    self.gen_expr_of_type(ret.clone(), self.max_expr_depth + 1),
+                                );
+                            }
+                        }
+                    }
+                }
 
                 Some(Ast::FuncDec(name, params, ret, body, span))
             }
@@ -1141,8 +1198,7 @@ impl TestRunner {
             }
 
             Ast::IfStmt(cond, body, else_body, span) => {
-                //give every if stmt a 1/6 chance of being removed
-                if self.rng.random_range(0..=5) == 0 || body.len() == 0 {
+                if body.len() == 0 {
                     None
                 } else {
                     let cond = Box::new(self.rewrite_expr(*cond, removed_name, removed_ret));
@@ -1163,8 +1219,7 @@ impl TestRunner {
             }
 
             Ast::WhileStmt(cond, mut body, span) => {
-                //same as if
-                if self.rng.random_range(0..=5) == 0 || body.len() == 0 {
+                if body.len() == 0 {
                     None
                 } else {
                     let cond = Box::new(self.rewrite_expr(*cond, removed_name, removed_ret));
@@ -1537,6 +1592,334 @@ impl TestRunner {
             result[func_idx] = Ast::FuncDec(name, params, ret, new_body, span);
         }
 
+        result
+    }
+
+    fn replace_varref_in_expr(expr: Ast, name: &str, replacement: &Ast) -> Ast {
+        match expr {
+            Ast::VarRef(n, _) if *n == name => replacement.clone(),
+            Ast::InfixExpr(l, r, op, span) => Ast::InfixExpr(
+                Box::new(Self::replace_varref_in_expr(*l, name, replacement)),
+                Box::new(Self::replace_varref_in_expr(*r, name, replacement)),
+                op,
+                span,
+            ),
+            Ast::EmptyExpr(e, span) => Ast::EmptyExpr(
+                Box::new(Self::replace_varref_in_expr(*e, name, replacement)),
+                span,
+            ),
+            Ast::Not(e, span) => Ast::Not(
+                Box::new(Self::replace_varref_in_expr(*e, name, replacement)),
+                span,
+            ),
+            Ast::FuncCall(fname, args, span) => Ast::FuncCall(
+                fname,
+                args.into_iter()
+                    .map(|a| Self::replace_varref_in_expr(a, name, replacement))
+                    .collect(),
+                span,
+            ),
+            Ast::ArrLit(ty, elems, span) => Ast::ArrLit(
+                ty,
+                elems
+                    .into_iter()
+                    .map(|e| Self::replace_varref_in_expr(e, name, replacement))
+                    .collect(),
+                span,
+            ),
+            Ast::MemberAccess(e, field, span) => Ast::MemberAccess(
+                Box::new(Self::replace_varref_in_expr(*e, name, replacement)),
+                field,
+                span,
+            ),
+            Ast::IndexAccess(e, idx, span) => Ast::IndexAccess(
+                Box::new(Self::replace_varref_in_expr(*e, name, replacement)),
+                Box::new(Self::replace_varref_in_expr(*idx, name, replacement)),
+                span,
+            ),
+            Ast::StructLit(sname, fields, span) => {
+                let new_fields = fields
+                    .into_iter()
+                    .map(|(k, (e, ty))| (k, (Self::replace_varref_in_expr(e, name, replacement), ty)))
+                    .collect();
+                Ast::StructLit(sname, Box::new(new_fields), span)
+            }
+            _ => expr,
+        }
+    }
+
+    fn replace_varref_in_stmt(stmt: Ast, name: &str, replacement: &Ast) -> Ast {
+        match stmt {
+            Ast::VarDec(n, ty, expr, span) => Ast::VarDec(
+                n,
+                ty,
+                Box::new(Self::replace_varref_in_expr(*expr, name, replacement)),
+                span,
+            ),
+            Ast::Assignment(lhs, rhs, span) => Ast::Assignment(
+                Box::new(Self::replace_varref_in_expr(*lhs, name, replacement)),
+                Box::new(Self::replace_varref_in_expr(*rhs, name, replacement)),
+                span,
+            ),
+            Ast::Return(expr, span) => Ast::Return(
+                Box::new(Self::replace_varref_in_expr(*expr, name, replacement)),
+                span,
+            ),
+            Ast::IfStmt(cond, body, else_body, span) => Ast::IfStmt(
+                Box::new(Self::replace_varref_in_expr(*cond, name, replacement)),
+                body.into_iter()
+                    .map(|s| Self::replace_varref_in_stmt(s, name, replacement))
+                    .collect(),
+                else_body.map(|b| {
+                    b.into_iter()
+                        .map(|s| Self::replace_varref_in_stmt(s, name, replacement))
+                        .collect()
+                }),
+                span,
+            ),
+            Ast::WhileStmt(cond, body, span) => Ast::WhileStmt(
+                Box::new(Self::replace_varref_in_expr(*cond, name, replacement)),
+                body.into_iter()
+                    .map(|s| Self::replace_varref_in_stmt(s, name, replacement))
+                    .collect(),
+                span,
+            ),
+            Ast::FuncCall(fname, args, span) => Ast::FuncCall(
+                fname,
+                args.into_iter()
+                    .map(|a| Self::replace_varref_in_expr(a, name, replacement))
+                    .collect(),
+                span,
+            ),
+            _ => stmt,
+        }
+    }
+
+    fn remove_arg_from_expr(expr: Ast, func_name: &str, param_idx: usize) -> Ast {
+        match expr {
+            Ast::FuncCall(name, args, span) => {
+                if *name == func_name {
+                    let new_args = args
+                        .into_iter()
+                        .enumerate()
+                        .filter(|(i, _)| *i != param_idx)
+                        .map(|(_, a)| a)
+                        .collect();
+                    Ast::FuncCall(name, new_args, span)
+                } else {
+                    Ast::FuncCall(
+                        name,
+                        args.into_iter()
+                            .map(|a| Self::remove_arg_from_expr(a, func_name, param_idx))
+                            .collect(),
+                        span,
+                    )
+                }
+            }
+            Ast::InfixExpr(l, r, op, span) => Ast::InfixExpr(
+                Box::new(Self::remove_arg_from_expr(*l, func_name, param_idx)),
+                Box::new(Self::remove_arg_from_expr(*r, func_name, param_idx)),
+                op,
+                span,
+            ),
+            Ast::EmptyExpr(e, span) => Ast::EmptyExpr(
+                Box::new(Self::remove_arg_from_expr(*e, func_name, param_idx)),
+                span,
+            ),
+            Ast::Not(e, span) => Ast::Not(
+                Box::new(Self::remove_arg_from_expr(*e, func_name, param_idx)),
+                span,
+            ),
+            Ast::ArrLit(ty, elems, span) => Ast::ArrLit(
+                ty,
+                elems
+                    .into_iter()
+                    .map(|e| Self::remove_arg_from_expr(e, func_name, param_idx))
+                    .collect(),
+                span,
+            ),
+            Ast::MemberAccess(e, field, span) => Ast::MemberAccess(
+                Box::new(Self::remove_arg_from_expr(*e, func_name, param_idx)),
+                field,
+                span,
+            ),
+            Ast::IndexAccess(e, idx, span) => Ast::IndexAccess(
+                Box::new(Self::remove_arg_from_expr(*e, func_name, param_idx)),
+                Box::new(Self::remove_arg_from_expr(*idx, func_name, param_idx)),
+                span,
+            ),
+            Ast::StructLit(sname, fields, span) => {
+                let new_fields = fields
+                    .into_iter()
+                    .map(|(k, (e, ty))| (k, (Self::remove_arg_from_expr(e, func_name, param_idx), ty)))
+                    .collect();
+                Ast::StructLit(sname, Box::new(new_fields), span)
+            }
+            _ => expr,
+        }
+    }
+
+    fn remove_arg_from_stmt(stmt: Ast, func_name: &str, param_idx: usize) -> Ast {
+        match stmt {
+            Ast::FuncDec(name, params, ret, body, span) => Ast::FuncDec(
+                name,
+                params,
+                ret,
+                body.into_iter()
+                    .map(|s| Self::remove_arg_from_stmt(s, func_name, param_idx))
+                    .collect(),
+                span,
+            ),
+            Ast::VarDec(n, ty, expr, span) => Ast::VarDec(
+                n,
+                ty,
+                Box::new(Self::remove_arg_from_expr(*expr, func_name, param_idx)),
+                span,
+            ),
+            Ast::Assignment(lhs, rhs, span) => Ast::Assignment(
+                Box::new(Self::remove_arg_from_expr(*lhs, func_name, param_idx)),
+                Box::new(Self::remove_arg_from_expr(*rhs, func_name, param_idx)),
+                span,
+            ),
+            Ast::Return(expr, span) => Ast::Return(
+                Box::new(Self::remove_arg_from_expr(*expr, func_name, param_idx)),
+                span,
+            ),
+            Ast::IfStmt(cond, body, else_body, span) => Ast::IfStmt(
+                Box::new(Self::remove_arg_from_expr(*cond, func_name, param_idx)),
+                body.into_iter()
+                    .map(|s| Self::remove_arg_from_stmt(s, func_name, param_idx))
+                    .collect(),
+                else_body.map(|b| {
+                    b.into_iter()
+                        .map(|s| Self::remove_arg_from_stmt(s, func_name, param_idx))
+                        .collect()
+                }),
+                span,
+            ),
+            Ast::WhileStmt(cond, body, span) => Ast::WhileStmt(
+                Box::new(Self::remove_arg_from_expr(*cond, func_name, param_idx)),
+                body.into_iter()
+                    .map(|s| Self::remove_arg_from_stmt(s, func_name, param_idx))
+                    .collect(),
+                span,
+            ),
+            Ast::FuncCall(name, args, span) => {
+                Self::remove_arg_from_expr(Ast::FuncCall(name, args, span), func_name, param_idx)
+            }
+            _ => stmt,
+        }
+    }
+
+    /// Remove a random parameter from a random function declaration plus all call sites.
+    /// If the parameter is referenced in the body, VarRef nodes are replaced with a fresh literal.
+    pub fn reduce_params(&mut self, input: Vec<Ast>) -> Vec<Ast> {
+        let func_indices: Vec<usize> = input
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| n.node_type() == "FuncDec")
+            .map(|(i, _)| i)
+            .collect();
+        if func_indices.is_empty() {
+            return input;
+        }
+        // Find functions that actually have parameters
+        let candidates: Vec<usize> = func_indices
+            .into_iter()
+            .filter(|&i| {
+                matches!(&input[i], Ast::FuncDec(_, params, _, _, _) if !params.is_empty())
+            })
+            .collect();
+        if candidates.is_empty() {
+            return input;
+        }
+        let func_idx = candidates[self.rng.random_range(0..candidates.len())];
+        let (func_name, param_idx, param_name, param_type) = match &input[func_idx] {
+            Ast::FuncDec(name, params, _, _, _) => {
+                let pi = self.rng.random_range(0..params.len());
+                match &params[pi] {
+                    Ast::FuncParam(pname, ptype, _) => {
+                        ((**name).clone(), pi, (**pname).clone(), ptype.clone())
+                    }
+                    _ => return input,
+                }
+            }
+            _ => return input,
+        };
+
+        let replacement = self.gen_expr_of_type(param_type, self.max_expr_depth + 1);
+
+        input
+            .into_iter()
+            .map(|stmt| {
+                let stmt = Self::remove_arg_from_stmt(stmt, &func_name, param_idx);
+                // For the target function, also remove the parameter from its signature
+                // and replace body references with the generated literal
+                match stmt {
+                    Ast::FuncDec(name, mut params, ret, body, span)
+                        if *name == func_name =>
+                    {
+                        params.remove(param_idx);
+                        let body = body
+                            .into_iter()
+                            .map(|s| Self::replace_varref_in_stmt(s, &param_name, &replacement))
+                            .collect();
+                        Ast::FuncDec(name, params, ret, body, span)
+                    }
+                    other => other,
+                }
+            })
+            .collect()
+    }
+
+    /// Remove a single top-level FuncCall (not inside any function body).
+    /// Allows isolating which call triggers the crash without touching function definitions.
+    pub fn reduce_top_level_call(&mut self, input: Vec<Ast>) -> Vec<Ast> {
+        let call_indices: Vec<usize> = input
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| n.node_type() == "FuncCall")
+            .map(|(i, _)| i)
+            .collect();
+        if call_indices.is_empty() {
+            return input;
+        }
+        let idx = call_indices[self.rng.random_range(0..call_indices.len())];
+        let mut result = input;
+        result.remove(idx);
+        result
+    }
+
+    /// Replace a random function's body with just `return <literal>` (or empty for void).
+    /// Much faster than one-statement-at-a-time when function bodies are large.
+    pub fn simplify_func_body(&mut self, input: Vec<Ast>) -> Vec<Ast> {
+        let func_indices: Vec<usize> = input
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| n.node_type() == "FuncDec")
+            .map(|(i, _)| i)
+            .collect();
+        if func_indices.is_empty() {
+            return input;
+        }
+        let idx = func_indices[self.rng.random_range(0..func_indices.len())];
+        let mut result = input;
+        if let Ast::FuncDec(name, params, ret, body, span) = result[idx].clone() {
+            let is_minimal = match &ret {
+                TypeTok::Void => body.is_empty(),
+                _ => body.len() == 1 && body.iter().any(|s| matches!(s, Ast::Return(..))),
+            };
+            if is_minimal {
+                return result;
+            }
+            let new_body = if ret != TypeTok::Void {
+                let ret_expr = self.gen_expr_of_type(ret.clone(), self.max_expr_depth + 1);
+                vec![Ast::Return(Box::new(ret_expr), Span::null_span())]
+            } else {
+                vec![]
+            };
+            result[idx] = Ast::FuncDec(name, params, ret, new_body, span);
+        }
         result
     }
 

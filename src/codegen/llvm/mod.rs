@@ -18,6 +18,7 @@ use inkwell::{FloatPredicate, IntPredicate};
 use crate::{
     codegen::{
         Block, Function, SSAValue, TIR, TirType,
+        ctla::CTLAStats,
         tir::ir::{BlockId, BoolInfixOp, NumericInfixOp},
     },
     driver::Driver,
@@ -41,6 +42,7 @@ pub struct LlvmGenerator<'a> {
     phi_fixups: Vec<(PhiValue<'a>, String, BlockId, SSAValue)>,
     ///Maps TirType Interface -> (LLVM Struct Type, INTERFACE name)
     struct_interfaces: HashMap<TirType, (StructType<'a>, String)>,
+    ctla_stats: Option<CTLAStats>,
 }
 impl<'a> LlvmGenerator<'a> {
     pub fn new(ctx: &'a Context, main_module: Module<'a>) -> LlvmGenerator<'a> {
@@ -54,7 +56,12 @@ impl<'a> LlvmGenerator<'a> {
             curr_tir_func: None,
             phi_fixups: vec![],
             struct_interfaces: HashMap::new(),
+            ctla_stats: None,
         };
+    }
+
+    pub fn set_ctla_stats(&mut self, stats: CTLAStats) {
+        self.ctla_stats = Some(stats);
     }
     fn get_ssa_val(&self, func_name: &str, ssa: SSAValue) -> BasicValueEnum<'a> {
         if let Some(v) = self.tir_to_val.get(&(func_name.to_string(), ssa.clone())) {
@@ -1395,6 +1402,21 @@ impl<'a> LlvmGenerator<'a> {
         self.main_module.set_triple(&triple);
         self.main_module
             .set_data_layout(&target_machine.get_target_data().get_data_layout());
+        if let Some(stats) = self.ctla_stats.take() {
+            let json = serde_json::to_string(&stats).unwrap();
+            let blob = format!("__TOY_CTLA_STATS__{}\0", json);
+            let blob_bytes = blob.as_bytes();
+            let i8_type = self.ctx.i8_type();
+            let arr_type = i8_type.array_type(blob_bytes.len() as u32);
+            let global = self.main_module.add_global(arr_type, None, "__toy_ctla_stats_blob");
+            let byte_vals: Vec<_> = blob_bytes
+                .iter()
+                .map(|&b| i8_type.const_int(b as u64, false))
+                .collect();
+            global.set_initializer(&i8_type.const_array(&byte_vals));
+            global.set_constant(true);
+            global.set_linkage(Linkage::External);
+        }
         Driver::verify_module(&self.main_module)?;
         let obj_file = format!("{}.o", prgm_name);
         let obj_path: &Path = Path::new(&obj_file);

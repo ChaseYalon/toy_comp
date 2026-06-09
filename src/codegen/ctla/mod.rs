@@ -26,6 +26,7 @@ pub struct CTLA {
     phi_operands_by_func: HashMap<String, HashMap<ValueId, Vec<(BlockId, ValueId)>>>,
     /// function name -> set of blocks containing a non-returning panic call.
     panic_blocks_by_func: HashMap<String, HashSet<BlockId>>,
+    stats: Option<CTLAStats>,
 }
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct OwnedField {
@@ -65,6 +66,28 @@ impl FunctionSummary {
     }
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CTLAStats {
+    // Compile-time fields populated by CTLA
+    pub alloc_count: u64,
+    pub alias_count: u64,
+    pub encap_count: u64,
+    /// Fraction (0.0–1.0) of allocations that escape their creating function
+    pub escape_func_pct: f64,
+    /// Fraction (0.0–1.0) of allocations that escape their creating module
+    pub escape_mod_pct: f64,
+    /// Total fixed-point iterations across all alias propagation passes
+    pub fp_iters: u64,
+    // Runtime fields filled in by the runtime after execution
+    pub escape_prog_pct: Option<f64>,
+    pub total_bytes: Option<u64>,
+    pub malloc_calls: Option<u64>,
+    pub lifetime_mean_ns: Option<u64>,
+    pub lifetime_median_ns: Option<u64>,
+    pub lifetime_min_ns: Option<u64>,
+    pub lifetime_max_ns: Option<u64>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CTLASchema {
     pub schema_version: u64,
     pub summaries: Vec<FunctionSummary>,
@@ -99,7 +122,12 @@ impl CTLA {
             original_text: None,
             phi_operands_by_func: HashMap::new(),
             panic_blocks_by_func: HashMap::new(),
+            stats: None,
         }
+    }
+
+    pub fn stats(&self) -> Option<&CTLAStats> {
+        self.stats.as_ref()
     }
 
     /// Builds the per-function phi-operand and panic-block indexes from the current builder.
@@ -349,6 +377,9 @@ impl CTLA {
         let Some(TIR::Ret(_, ret_val)) = block.ins.last() else {
             return false;
         };
+        if ret_val.ty.is_none() {
+            return false;
+        }
 
         let protected_ids = self.allocation_protected_values_in_function(alloc, func.name.as_ref());
         if protected_ids.contains(&ret_val.val) {
@@ -395,6 +426,155 @@ impl CTLA {
         };
     }
 
+    /// The runtime deallocators CTLA itself inserts. Passing an allocation to one of these frees it;
+    /// it is never an escape, so escape analysis must ignore these call sites (they may already be
+    /// present when analysis re-runs, e.g. during stats computation).
+    fn is_free_func_name(name: &str) -> bool {
+        matches!(
+            name,
+            "toy_free" | "toy_free_arr" | "toy_deep_free_arr" | "toy_free_struct"
+        )
+    }
+
+    /// True when this "allocation" is actually the result of a call that returns an alias of one of
+    /// its arguments and owns no fields of its own (e.g. `read_rand` returning an array element). It
+    /// points into existing memory, so it is not a fresh allocation: it must not be freed, and it
+    /// does not escape anything.
+    fn allocation_is_returned_param_alias(&self, alloc: &HeapAllocation) -> bool {
+        let builder = self.builder.borrow();
+        let Some(func) = builder.funcs.iter().find(|f| *f.name == *alloc.function) else {
+            return false;
+        };
+        let alloc_ins = func
+            .body
+            .iter()
+            .flat_map(|b| b.ins.iter())
+            .find(|ins| ins.get_id() == alloc.alloc_ins.val);
+        let Some(
+            TIR::CallLocalFunction(_, callee_name, params, _, _)
+            | TIR::CallExternFunction(_, callee_name, params, _, _, _),
+        ) = alloc_ins
+        else {
+            return false;
+        };
+        let summary = self
+            .cfg_functions
+            .iter()
+            .find(|f| *f.func.name == **callee_name)
+            .map(|f| (f.returns_alias_of_parameter.clone(), f.return_owned_fields.clone()))
+            .or_else(|| {
+                self.alias_detector
+                    .get_external_summary(callee_name.as_ref())
+                    .map(|s| (s.aliased_parameters.clone(), s.return_owned_fields.clone()))
+            });
+        match summary {
+            Some((aliased_params, owned_fields)) => {
+                owned_fields.is_empty()
+                    && aliased_params.iter().any(|idx| params.get(*idx).is_some())
+            }
+            None => false,
+        }
+    }
+
+    /// True when this allocation is stored into one of its own function's parameters (a side-effect
+    /// escape, e.g. `arr[i] = x` where `arr` is a parameter). Such values are owned by the caller's
+    /// array and must not be freed inside this function.
+    fn allocation_encapsulated_by_param(&self, alloc: &HeapAllocation) -> bool {
+        let func = {
+            let builder = self.builder.borrow();
+            match builder.funcs.iter().find(|f| *f.name == *alloc.function) {
+                Some(f) => f.clone(),
+                None => return false,
+            }
+        };
+
+        // Build (callee_name -> [(arr_param_idx, elem_param_idx)]) for direct-write verification.
+        // toy_write_to_arr is the primitive; wrapper functions (e.g. fuzz.write_arr) carry this
+        // relationship in their param_encapsulates_pairs summary.
+        let mut enc_pairs: HashMap<String, Vec<(usize, usize)>> = HashMap::new();
+        enc_pairs.insert("toy_write_to_arr".to_string(), vec![(0, 1)]);
+        for cfg_f in &self.cfg_functions {
+            if !cfg_f.param_encapsulates_pairs.is_empty() {
+                enc_pairs.insert(
+                    (*cfg_f.func.name).clone(),
+                    cfg_f.param_encapsulates_pairs.clone(),
+                );
+            }
+        }
+        for summaries in self.alias_detector.external_modules.values() {
+            for s in summaries {
+                if !s.param_encapsulates_pairs.is_empty() {
+                    enc_pairs.insert(s.name.clone(), s.param_encapsulates_pairs.clone());
+                }
+            }
+        }
+
+        alloc.encapsulators.iter().any(|(enc_func, _, enc_val)| {
+            if enc_func.as_str() != func.name.as_ref() {
+                return false;
+            }
+            if !func.params.iter().any(|p| p.val == *enc_val) {
+                return false;
+            }
+            // Verify that alloc.alloc_ins.val or any intermediate encapsulator of alloc (other
+            // than enc_val itself) is the element arg in some encapsulating call where enc_val is
+            // the array arg. Including intermediate encapsulators handles the transitive case where
+            // an alias of alloc is stored into the param (e.g. str_h → arr_h → %elem → p1).
+            // Excluding enc_val itself avoids infinite recursion and spurious matches.
+            let mut direct_write_seeds: HashSet<ValueId> = HashSet::from([alloc.alloc_ins.val]);
+            let alias_ids: HashSet<ValueId> = alloc
+                .aliases
+                .iter()
+                .filter(|(f, _, _)| f.as_str() == func.name.as_ref())
+                .map(|(_, _, v)| *v)
+                .collect();
+            for (ef, _, ev) in &alloc.encapsulators {
+                if ef.as_str() == func.name.as_ref()
+                    && *ev != *enc_val
+                    && *ev != alloc.alloc_ins.val
+                    && !alias_ids.contains(ev)
+                {
+                    direct_write_seeds.insert(*ev);
+                }
+            }
+
+            func.body.iter().flat_map(|b| b.ins.iter()).any(|ins| {
+                let (callee_name, args): (&str, &Vec<SSAValue>) = match ins {
+                    TIR::CallLocalFunction(_, name, args, _, _) => (name.as_ref(), args),
+                    TIR::CallExternFunction(_, name, args, _, _, _) => (name.as_ref(), args),
+                    TIR::WriteStructLiteral(_, struct_val, _, new_val) => {
+                        if struct_val.val == *enc_val {
+                            let mut visited = HashSet::new();
+                            return self.value_may_match_seed_via_phi(
+                                &func,
+                                new_val.val,
+                                &direct_write_seeds,
+                                &mut visited,
+                            );
+                        }
+                        return false;
+                    }
+                    _ => return false,
+                };
+                let Some(pairs) = enc_pairs.get(callee_name) else {
+                    return false;
+                };
+                pairs.iter().any(|&(arr_idx, elem_idx)| {
+                    args.get(arr_idx).is_some_and(|a| a.val == *enc_val)
+                        && args.get(elem_idx).is_some_and(|e| {
+                            let mut visited = HashSet::new();
+                            self.value_may_match_seed_via_phi(
+                                &func,
+                                e.val,
+                                &direct_write_seeds,
+                                &mut visited,
+                            )
+                        })
+                })
+            })
+        })
+    }
+
     /// Determines if a given allocation escapes the function it was created in, escapes the program as a whole, or dies in the function
     fn allocation_escapes(&self, alloc: &HeapAllocation) -> EscapeType {
         let builder = self.builder.borrow();
@@ -410,41 +590,30 @@ impl CTLA {
             return EscapeType::EscapesFunction;
         }
 
+        // If this allocation was stored into a parameter array (a side-effect escape), the caller
+        // can reach it after we return, so it escapes this function. We do not insert a free for it
+        // (see process_allocation) — the value lives in a caller-owned array and is reclaimed by the
+        // runtime's written-element sweep, which find_owning_function cannot model since it tracks
+        // the return value as a proxy.
+        if self.allocation_encapsulated_by_param(alloc) {
+            return EscapeType::EscapesFunction;
+        }
+
         // If the allocation was created by a call that returns an alias of one of its
         // arguments (and has no owned fields of its own), it is not a fresh allocation —
         // it points into existing memory and must not be freed separately.
-        let alloc_ins = func
-            .body
-            .iter()
-            .flat_map(|b| b.ins.iter())
-            .find(|ins| ins.get_id() == alloc.alloc_ins.val);
-        if let Some(
-            TIR::CallLocalFunction(_, callee_name, params, _, _)
-            | TIR::CallExternFunction(_, callee_name, params, _, _, _),
-        ) = alloc_ins
-        {
-            let summary = self
-                .cfg_functions
-                .iter()
-                .find(|f| *f.func.name == **callee_name)
-                .map(|f| (f.returns_alias_of_parameter.clone(), f.return_owned_fields.clone()))
-                .or_else(|| {
-                    self.alias_detector
-                        .get_external_summary(callee_name.as_ref())
-                        .map(|s| (s.aliased_parameters.clone(), s.return_owned_fields.clone()))
-                });
-            if let Some((aliased_params, owned_fields)) = summary {
-                if owned_fields.is_empty()
-                    && aliased_params.iter().any(|idx| params.get(*idx).is_some())
-                {
-                    return EscapeType::EscapesProgram;
-                }
-            }
+        if self.allocation_is_returned_param_alias(alloc) {
+            return EscapeType::EscapesProgram;
         }
 
         //alloc is returned
         for b in &func.body {
             if let Some(TIR::Ret(_, a)) = b.ins.last() {
+                // Void returns use a sentinel SSAValue { val: 0, ty: None }; skip them to avoid
+                // false positives when a param or other allocation happens to have val == 0.
+                if a.ty.is_none() {
+                    continue;
+                }
                 if a.val == alloc.alloc_ins.val {
                     return EscapeType::EscapesFunction;
                 }
@@ -469,6 +638,9 @@ impl CTLA {
             for i in &b.ins {
                 match i {
                     TIR::CallExternFunction(_, callee_name, p, _, _, doesnt_take_ownership) => {
+                        if Self::is_free_func_name(callee_name.as_ref()) {
+                            continue;
+                        }
                         for (idx, arg) in p.iter().enumerate() {
                             let is_alloc_ref = protected_ids.contains(&arg.val) || {
                                 let mut visited = HashSet::new();
@@ -964,6 +1136,12 @@ impl CTLA {
             .iter()
             .find(|f| f.func.name == func.name)
             .unwrap();
+        // Side-effect escapes (value stored into a parameter array) are owned by the caller's array
+        // and routed through the caller; we cannot pick a correct free site here. The runtime's
+        // written-element sweep reclaims them, so insert no free.
+        if self.allocation_encapsulated_by_param(&alloc) {
+            return;
+        }
         let escape_type = self.allocation_escapes(&alloc);
         if escape_type == EscapeType::EscapesProgram || escape_type == EscapeType::EscapesModule {
             //at this pont let it leak, it it escapes the program
@@ -1270,6 +1448,74 @@ impl CTLA {
             }
             _ => {}
         };
+
+        // A call returning an alias of its argument (e.g. read_rand) is not a fresh allocation, so
+        // exclude these from the statistics entirely — they neither own memory nor escape anything.
+        let real_allocations: Vec<&HeapAllocation> = unique_allocations
+            .iter()
+            .filter(|a| !self.allocation_is_returned_param_alias(a))
+            .collect();
+        let alloc_count = real_allocations.len() as u64;
+        let alias_count: u64 = real_allocations.iter().map(|a| a.aliases.len() as u64).sum();
+        let encap_count: u64 = real_allocations
+            .iter()
+            .map(|a| a.encapsulators.len() as u64)
+            .sum();
+        let mut escape_func_count = 0u64;
+        let mut escape_mod_count = 0u64;
+        let mut escape_prog_count = 0u64;
+        for a in real_allocations {
+            let is_param = {
+                let builder = self.builder.borrow();
+                builder
+                    .funcs
+                    .iter()
+                    .find(|f| *f.name == *a.function)
+                    .map(|f| f.params.iter().any(|p| p.val == a.alloc_ins.val))
+                    .unwrap_or(false)
+            };
+            if is_param {
+                escape_func_count += 1;
+                continue;
+            }
+            match self.allocation_escapes(a) {
+                EscapeType::EscapesFunction => escape_func_count += 1,
+                EscapeType::EscapesModule => escape_mod_count += 1,
+                EscapeType::EscapesProgram => escape_prog_count += 1,
+                EscapeType::DoesNotEscape => {}
+            }
+        }
+        let escape_func_pct = if alloc_count > 0 {
+            escape_func_count as f64 / alloc_count as f64
+        } else {
+            0.0
+        };
+        let escape_mod_pct = if alloc_count > 0 {
+            escape_mod_count as f64 / alloc_count as f64
+        } else {
+            0.0
+        };
+        let escape_prog_pct = if alloc_count > 0 {
+            escape_prog_count as f64 / alloc_count as f64
+        } else {
+            0.0
+        };
+        self.stats = Some(CTLAStats {
+            alloc_count,
+            alias_count,
+            encap_count,
+            escape_func_pct,
+            escape_mod_pct,
+            fp_iters: self.alias_detector.total_fp_iters.get(),
+            escape_prog_pct: Some(escape_prog_pct),
+            total_bytes: None,
+            malloc_calls: None,
+            lifetime_mean_ns: None,
+            lifetime_median_ns: None,
+            lifetime_min_ns: None,
+            lifetime_max_ns: None,
+        });
+
         return Ok(self.builder.borrow().funcs.clone());
     }
 }

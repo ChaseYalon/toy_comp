@@ -86,6 +86,11 @@ impl<'a> Generator<'a> {
             let s = Generator::pretty_print_cfg(self.analyzer.cfg_functions())?;
             fs::write("./debug/CFG.json", s).unwrap(); //rly should be an io error -> toy error conversion
         }
+        if is_main {
+            if let Some(stats) = self.analyzer.stats().cloned() {
+                self.generator.set_ctla_stats(stats);
+            }
+        }
         self.generator.generate(ir, name)?;
         Ok(())
     }

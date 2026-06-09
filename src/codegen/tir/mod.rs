@@ -486,6 +486,7 @@ impl AstToIrConverter {
                     TypeTok::AnyArr(d) => d,
                     TypeTok::StructArr(_, d) => d,
                     TypeTok::LambdaArr(_, _, d) => d,
+                    TypeTok::AnyArr(d) => d,
                     _ => panic!("Type {:?} does not have a degree", ty),
                 };
                 let mut params = vec![len];

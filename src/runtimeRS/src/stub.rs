@@ -1,9 +1,52 @@
 use crate::{TOTAL_ALLOCATION_SIZES, ctla::{_print_debug_heap, DebugHeap}};
 use ctor::ctor;
+use serde::{Deserialize, Serialize};
 use std::sync::{Mutex, OnceLock};
 use std::fs;
+use std::backtrace::Backtrace;
 unsafe extern "C" {
     fn user_main() -> i64;
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct CTLAStats {
+    alloc_count: u64,
+    alias_count: u64,
+    encap_count: u64,
+    escape_func_pct: f64,
+    escape_mod_pct: f64,
+    fp_iters: u64,
+    escape_prog_pct: Option<f64>,
+    total_bytes: Option<u64>,
+    malloc_calls: Option<u64>,
+    lifetime_mean_ns: Option<u64>,
+    lifetime_median_ns: Option<u64>,
+    lifetime_min_ns: Option<u64>,
+    lifetime_max_ns: Option<u64>,
+}
+
+unsafe extern "C" {
+    /// Byte array emitted by the compiler containing the magic prefix followed by JSON-serialized CTLAStats
+    static __toy_ctla_stats_blob: u8;
+}
+
+const CTLA_MAGIC: &[u8] = b"__TOY_CTLA_STATS__";
+
+fn read_ctla_stats() -> Option<CTLAStats> {
+    let ptr = &raw const __toy_ctla_stats_blob as *const u8;
+    let magic_len = CTLA_MAGIC.len();
+    let prefix = unsafe { std::slice::from_raw_parts(ptr, magic_len) };
+    if prefix != CTLA_MAGIC {
+        return None;
+    }
+    let json_start = unsafe { ptr.add(magic_len) };
+    let mut len = 0usize;
+    while unsafe { *json_start.add(len) } != 0 {
+        len += 1;
+    }
+    let json_bytes = unsafe { std::slice::from_raw_parts(json_start, len) };
+    let json_str = std::str::from_utf8(json_bytes).ok()?;
+    serde_json::from_str(json_str).ok()
 }
 
 #[unsafe(no_mangle)]
@@ -24,6 +67,8 @@ unsafe extern "system" {
 unsafe extern "system" fn crash_handler(_info: *mut std::ffi::c_void) -> i32 {
     use std::io::Write;
     eprintln!("\n[FATAL] toy_lang runtime aborted: memory access violation (segfault)");
+    let bt = Backtrace::force_capture();
+    eprintln!("{}", bt);
     println!("\nFAIL_TEST");
     let _ = std::io::stdout().flush();
     let _ = std::io::stderr().flush();
@@ -68,24 +113,46 @@ pub extern "C" fn main() -> i32 {
     }
     unsafe { libc::free(GLOBAL_ARGV as *mut libc::c_void) };
     unsafe {GLOBAL_ARGV = std::ptr::null_mut()};
-    let live_allocs = DEBUG_HEAP
-        .get()
+    crate::ctla::_free_written_elems();
+    let total_bytes = *TOTAL_ALLOCATION_SIZES.lock().unwrap();
+    let ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
-        .lock()
-        .unwrap()
-        .total_live_allocations;
+        .as_nanos();
+    let _ = fs::create_dir_all("./temp/FUZZ_BYTES");
+
+    let (live_allocs, malloc_calls, mut lifetimes_ns) = {
+        let heap = DEBUG_HEAP.get().unwrap().lock().unwrap();
+        (
+            heap.total_live_allocations,
+            heap.total_allocations as u64,
+            heap.lifetimes_ns.clone(),
+        )
+    };
+
+    let mut stats = read_ctla_stats().expect("[ERROR] CTLA stats blob missing or malformed");
+    stats.total_bytes = Some(total_bytes);
+    stats.malloc_calls = Some(malloc_calls);
+    if !lifetimes_ns.is_empty() {
+        lifetimes_ns.sort_unstable();
+        let count = lifetimes_ns.len() as u64;
+        let mean = lifetimes_ns.iter().sum::<u64>() / count;
+        let median = lifetimes_ns[lifetimes_ns.len() / 2];
+        let min = lifetimes_ns[0];
+        let max = *lifetimes_ns.last().unwrap();
+        stats.lifetime_mean_ns = Some(mean);
+        stats.lifetime_median_ns = Some(median);
+        stats.lifetime_min_ns = Some(min);
+        stats.lifetime_max_ns = Some(max);
+    }
+    let json = serde_json::to_string(&stats).unwrap_or_default();
+    let _ = fs::write(format!("./temp/FUZZ_BYTES/{}.json", ms), json);
+
     if live_allocs != 0 {
         _print_debug_heap();
         println!("\nFAIL_TST");
         panic!();
     }
-    let val = *&TOTAL_ALLOCATION_SIZES.lock().unwrap().clone();
-    let _ = fs::create_dir_all("./temp/FUZZ_BYTES");
-    let ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let _ = fs::write(format!("./temp/FUZZ_BYTES/{}.txt", ms), val.to_string());
 
     return res as i32;
 }

@@ -717,6 +717,12 @@ impl Driver {
         //Compile Dependencies
         for (path, ast) in &self.file_path_to_ast {
             let module_name = path.replace(".toy", "");
+            let module_stem = std::path::Path::new(&module_name)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or(&module_name)
+                .to_string();
+            let obj_name = format!("{}.{}", self.name, module_stem);
 
             Driver::set_current_file_path(path);
             let llvm_module = ctx.create_module(&module_name);
@@ -739,8 +745,8 @@ impl Driver {
             }
             generator.set_external_modules(external_modules);
 
-            generator.compile_to_object(ast.clone(), module_name.clone(), false)?;
-            object_files.push(format!("{}.o", module_name));
+            generator.compile_to_object(ast.clone(), obj_name.clone(), false)?;
+            object_files.push(format!("{}.o", obj_name));
         }
 
         // Reload freshly-compiled CTLA summaries so the main program uses updated escape info.
@@ -845,6 +851,12 @@ impl Driver {
         //Compile Dependencies
         for (path, ast) in &self.file_path_to_ast {
             let module_name = path.replace(".toy", "");
+            let module_stem = std::path::Path::new(&module_name)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or(&module_name)
+                .to_string();
+            let obj_name = format!("{}.{}", self.name, module_stem);
 
             Driver::set_current_file_path(path);
             let llvm_module = ctx.create_module(&module_name);
@@ -867,8 +879,8 @@ impl Driver {
             }
             generator.set_external_modules(external_modules);
 
-            generator.compile_to_object(ast.clone(), module_name.clone(), false)?;
-            object_files.push(format!("{}.o", module_name));
+            generator.compile_to_object(ast.clone(), obj_name.clone(), false)?;
+            object_files.push(format!("{}.o", obj_name));
         }
 
         let main_module = ctx.create_module("program");
