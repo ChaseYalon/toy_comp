@@ -1324,7 +1324,7 @@ fn test_tirgen_arr_lit_read_and_write() {
                     TIR::IConst(18, 2, TirType::I64),
                     TIR::CallExternFunction(
                         19,
-                        Box::new("toy_write_to_arr".to_string()),
+                        Box::new("toy_arr_swap".to_string()),
                         vec![
                             SSAValue {
                                 val: 6,
@@ -1344,7 +1344,7 @@ fn test_tirgen_arr_lit_read_and_write() {
                             },
                         ],
                         false,
-                        TirType::Void,
+                        TirType::I64,
                         vec![true],
                     ),
                     TIR::IConst(20, 1, TirType::I64),
@@ -3312,7 +3312,7 @@ fn test_tirgen_weird_loop_bug() {
                             TIR::IConst(16, 0, TirType::I64),
                             TIR::CallExternFunction(
                                 17,
-                                Box::new("toy_write_to_arr".to_string()),
+                                Box::new("toy_arr_swap".to_string()),
                                 vec![
                                     SSAValue {
                                         val: 8,
@@ -3332,7 +3332,7 @@ fn test_tirgen_weird_loop_bug() {
                                     },
                                 ],
                                 false,
-                                TirType::Void,
+                                TirType::I64,
                                 vec![true],
                             ),
                             TIR::IConst(18, 1, TirType::I64),
@@ -3357,7 +3357,7 @@ fn test_tirgen_weird_loop_bug() {
                             TIR::IConst(21, 0, TirType::I64),
                             TIR::CallExternFunction(
                                 22,
-                                Box::new("toy_write_to_arr".to_string()),
+                                Box::new("toy_arr_swap".to_string()),
                                 vec![
                                     SSAValue {
                                         val: 8,
@@ -3377,7 +3377,7 @@ fn test_tirgen_weird_loop_bug() {
                                     },
                                 ],
                                 false,
-                                TirType::Void,
+                                TirType::I64,
                                 vec![true],
                             ),
                             TIR::Ret(

@@ -31,3 +31,41 @@
   - If you dont know look, dont bullshit me
   - READ THE CODE!!!!Dont guess off file names, actually read the code
   - Read the ReadMe.md for syntax and stdlib help
+
+
+\subsubsection{Six CTLA Invariants}
+Now any program produced by a correct implementation of CTLA shall satisfy all of the following invariants.
+\begin{enumerate}
+    \item An allocation must not be freed if it, any of its aliases or any of its encapsulators are escaped.
+    \item An allocation must not be freed while there still exists a possible execution path that includes a reference to the allocation, its aliases, or its encapsulators.
+    \item An allocation may not be freed while it, or any of its aliases are encapsulated.
+    \item An Allocation must not be freed if it is possible to have freed the allocation or any of its aliases earlier in execution.
+    \item When an Encapsulator is freed, it may free an element only once that element is proven to have no other live reference (e.g. an array's deep-free reclaims its surviving elements, and a swap surfaces a displaced element so it can be freed); otherwise it frees only its own metadata.
+    \item An allocation must be freed as soon as possible.
+\end{enumerate}
+\subsection{Proof of Algorithmic Correctness}
+\subsubsection{Proof of Alias Transitivity}
+Because aliases and their allocations are equal in every way, some allocation $A$ is equal to its aliases $B$ and $C$. So $A = B$ and $A = C$. By the transitive property of equality $B = C$. The this can continue over infinitely many aliases and aliases of aliases.
+\subsubsection{Proof of Invariant One}
+\begin{enumerate}
+    \item If the allocation is escaped, its lifetime is unbounded from the perspective of the analyzer, whether running at compile time or runtime, because the allocation could outlive the whole program.
+    \item By the definition of an alias, if it is escaped, then the main allocations memory is escaped because an allocation and its alias’s memory is equal in every way.
+    \item Because encapsulated values must always outlive their encapsulators by the definition of an Encapsulator, and because encapsulators are necessarily allocations in their own right, both lifetimes can be thought of as unbounded from the perspective of the program, and so no free call is inserted.
+    \item Assume the invariant is false, meaning that CTLA frees an allocation while it or an alias or Encapsulator is escaped. By clauses 1-3, that allocation's lifetime is unbounded from the current scope. The opaque function holding the escaped pointer may also free it. This results in two frees of the same allocation, a textbook double-free, which violates memory safety. Therefore the assumption is false, and the invariant must hold.
+\end{enumerate}
+
+\subsubsection{Proof of Invariant Two}
+\begin{enumerate}
+    \item Assume that the invariant is false. That means the allocation could be freed, even while some specific state of the program could later lead to the reference.  A use after free, violating memory safety. 
+    \item Because an alias is the same as its allocation in every way, clause 1 applies to aliases as well.
+    \item An Encapsulator is a heap allocation in its own right, this means that clauses 1 and 2 apply, meaning the Encapsulator must not be freed at this program state. And because an allocation must always outlive its Encapsulator (by the definition of an Encapsulator), the allocation cannot be freed either.
+\end{enumerate}
+\subsubsection{Proof of Invariant Three}
+By the definition of an Encapsulator, it must outlive all of its encapsulated values. So if the Encapsulator is still alive the encapsulated values must still be alive. Because if the Encapsulator then reads its encapsulated values (like an array reading one of its elements, or a struct one of its fields), that would be a use after free.
+\subsubsection{Proof of Invariant Four}
+Assume the invariant is false. That means we have some allocation A which might or might not be freed. If we then free A and it was already freed, that is a double free, violating the definition of memory safety meaning the invariant must be true.
+\subsubsection{Proof of Invariant Five}
+Assume the invariant is false. That means some allocation “A” could be added to some Encapsulator “E”. When E is freed, it would then free A. However the definition of an Encapsulator requires an allocation to outlive its encapsulators, not the other way around so that allocation A could be legally referenced after this point. If that happened it would be a use after free, violating the definition of memory safe, meaning the invariant must be true.\\
+Invariants 1-5 therefore guarantee that an allocation will not be freed illegally, however the definition of memory safe requires that allocations with known lifetimes also be freed, to prevent leaks.
+\subsubsection{Proof of Invariant Six}
+Invariants 1-5 define all the conditions under which a free is illegal. Therefore at any program point where none of those conditions hold, the free is legal. If a free is then inserted at that point, the last tenant of memory safety (for that allocation) leak freedom is satisfied, as long as the allocation is freed along every possible control path that does not violate invariant 4.

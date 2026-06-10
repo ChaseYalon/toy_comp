@@ -323,6 +323,13 @@ pub fn toy_malloc_arr(len: i64, ty: i64, degree: i64) -> ToyPtr {
 #[unsafe(no_mangle)]
 ///ty refers to the type of the array, so 4 for str[] not the type of the elements
 pub fn toy_write_to_arr(arr_in_ptr: ToyPtr, value: i64, idx: i64, ty: i64) {
+    let _ = toy_arr_swap(arr_in_ptr, value, idx, ty);
+}
+#[unsafe(no_mangle)]
+/// Writes `value` into slot `idx` and returns the previous occupant (0 if the slot was empty or
+/// freshly grown). Surfacing the evicted value lets CTLA free it at compile time instead of a
+/// runtime sweep. `ty` refers to the type of the array, so 4 for str[] not the element type.
+pub fn toy_arr_swap(arr_in_ptr: ToyPtr, value: i64, idx: i64, ty: i64) -> i64 {
     _check_pointer(arr_in_ptr as *mut c_void);
     let arr_ptr = unsafe { &mut *(arr_in_ptr as *mut ToyArr) };
     let toy_ty = ToyType::try_from(arr_ptr.ty.clone()).unwrap();
@@ -341,37 +348,30 @@ pub fn toy_write_to_arr(arr_in_ptr: ToyPtr, value: i64, idx: i64, ty: i64) {
     if idx as usize >= arr_ptr.arr.len() {
         arr_ptr.arr.resize(idx as usize + 1, 0);
     }
-    // A heap scalar stored into an array is owned by the array, but CTLA cannot statically track
-    // values routed through a library wrapper like fuzz.write_arr. Record it so the exit sweep
-    // frees it if nothing else did (its liveness guard keeps this conflict-free with CTLA).
-    if value != 0 {
-        let elem_type = if arr_ptr.degree == 1 {
-            match toy_ty {
-                ToyType::StrArr => Some(ToyType::Str),
-                ToyType::Struct => Some(ToyType::Struct),
-                _ => None,
-            }
-        } else if arr_ptr.degree == 2 {
-            // Writing a str[] into str[][] — track the sub-array so the exit sweep can free it
-            // if CTLA couldn't (e.g. it escaped from a callee into a parameter array).
-            match toy_ty {
-                ToyType::StrArr => Some(ToyType::StrArr),
-                _ => None,
-            }
-        } else {
-            None
-        };
-        if let Some(elem_type) = elem_type {
-            if let Ok("TRUE") = std::env::var("TOY_DEBUG").as_deref() {
-                if let Some(h) = DEBUG_HEAP.get() {
-                    if let Ok(mut heap) = h.lock() {
-                        heap.written_elems.push((value, elem_type as i64));
-                    }
-                }
-            }
-        }
-    }
+    let old = arr_ptr.arr[idx as usize];
     arr_ptr.arr[idx as usize] = value;
+    // Self-write-back (`arr[i] = arr[i]`, or writing an element back into the same array): the
+    // evicted value is the value we just stored, so it is still live in the slot. Report 0 so the
+    // (null-safe) eviction free is a no-op and the value is reclaimed by the array's deep-free.
+    if old == value {
+        return 0;
+    }
+    return old;
+}
+/// Null-safe toy_free for swap-evicted scalars: a self-write-back swap reports the evicted pointer
+/// as 0, which must not be freed.
+#[unsafe(no_mangle)]
+pub fn toy_free_evicted(ptr: ToyPtr) {
+    if ptr != 0 {
+        toy_free(ptr as *mut c_void);
+    }
+}
+/// Null-safe toy_deep_free_arr for swap-evicted nested arrays.
+#[unsafe(no_mangle)]
+pub fn toy_deep_free_arr_evicted(ptr: ToyPtr) {
+    if ptr != 0 {
+        toy_deep_free_arr(ptr);
+    }
 }
 #[unsafe(no_mangle)]
 pub fn toy_read_from_arr(arr_in_ptr: ToyPtr, idx: i64) -> i64 {
@@ -391,16 +391,24 @@ pub fn toy_free_arr(arr_ptr_int: ToyPtr) {
     let arr = unsafe { &mut *(arr_ptr_int as *mut ToyArr) };
 
     if arr.should_free_subelements {
+        // The same pointer can occupy multiple slots (e.g. an element read out and written back),
+        // so dedup to free each distinct allocation exactly once.
+        let mut freed: std::collections::HashSet<i64> = std::collections::HashSet::new();
         if arr.degree > 1 {
             // Elements are nested arrays — recursively free them
             for &val in &arr.arr {
-                toy_deep_free_arr(val);
+                if val != 0 && freed.insert(val) {
+                    toy_deep_free_arr(val);
+                }
             }
         } else {
             // Elements are scalars — only free heap-allocated types
             let elem_type = arr.ty.to_elem_type();
             for &val in &arr.arr {
-                if elem_type == ToyType::Str || elem_type == ToyType::Struct {
+                if (elem_type == ToyType::Str || elem_type == ToyType::Struct)
+                    && val != 0
+                    && freed.insert(val)
+                {
                     toy_free(val as *mut c_void);
                 }
             }

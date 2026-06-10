@@ -1333,6 +1333,11 @@ impl<'a> LlvmGenerator<'a> {
             TirType::Void,
         );
         self.declare_individual_function(
+            "toy_arr_swap",
+            vec![TirType::I64, TirType::I64, TirType::I64, TirType::I64],
+            TirType::I64,
+        );
+        self.declare_individual_function(
             "toy_read_from_arr",
             vec![TirType::I64, TirType::I64],
             TirType::I64,
@@ -1346,6 +1351,12 @@ impl<'a> LlvmGenerator<'a> {
         );
         self.declare_individual_function("toy_free_arr", vec![TirType::I64], TirType::Void);
         self.declare_individual_function("toy_deep_free_arr", vec![TirType::I64], TirType::Void);
+        self.declare_individual_function("toy_free_evicted", vec![TirType::I64], TirType::Void);
+        self.declare_individual_function(
+            "toy_deep_free_arr_evicted",
+            vec![TirType::I64],
+            TirType::Void,
+        );
         self.declare_individual_function(
             "toy_mem_dup",
             vec![TirType::I64, TirType::I64, TirType::I64],

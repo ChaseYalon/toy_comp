@@ -1392,6 +1392,24 @@ impl TirBuilder {
         }
         return seen.into_values().collect();
     }
+    /// Surfaces `val` (a `toy_arr_swap` result — an array element evicted by an overwrite) as a
+    /// heap allocation in the current function so CTLA can reclaim it at compile time. Only call
+    /// for heap element types (str / struct / nested array); scalars own nothing.
+    pub fn mark_swap_displaced_alloc(&mut self, val: SSAValue) {
+        let fi = self.curr_func.unwrap();
+        let block_id = self.funcs[fi].body[self.curr_block.unwrap()].id;
+        let func_name = self.funcs[fi].name.clone();
+        let alloc = HeapAllocation {
+            block: block_id,
+            allocation_id: self._next_alloc_id(),
+            function: func_name.clone(),
+            refs: vec![(func_name, block_id, val.val)],
+            alloc_ins: val.clone(),
+            aliases: BTreeSet::new(),
+            encapsulators: BTreeSet::new(),
+        };
+        self.funcs[fi].heap_allocations.push(alloc);
+    }
     fn _next_value_id_for_func(&mut self, func_name: &str) -> ValueId {
         let func = self.funcs.iter_mut().find(|f| *f.name == func_name).unwrap();
         func.ins_counter += 1;

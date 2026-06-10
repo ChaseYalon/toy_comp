@@ -113,7 +113,6 @@ pub extern "C" fn main() -> i32 {
     }
     unsafe { libc::free(GLOBAL_ARGV as *mut libc::c_void) };
     unsafe {GLOBAL_ARGV = std::ptr::null_mut()};
-    crate::ctla::_free_written_elems();
     let total_bytes = *TOTAL_ALLOCATION_SIZES.lock().unwrap();
     let ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

@@ -677,12 +677,9 @@ impl Driver {
     ///Starts the main program compilation process
     ///Will automatically compile and build the program
     ///Linking in all necessary modules
-    pub fn start(&mut self, ctx: &Context) -> Result<(), ToyError> {
-        let args: Vec<String> = env::args().collect();
-        let idx = args.iter().position(|r| r == "--build");
-        if idx.is_some() {
-            Driver::set_build_dir(args[idx.unwrap() + 1].clone());
-        }
+    /// Lexes, boxes, and parses the main program (plus its dependencies) without
+    /// running codegen. Returns the fully resolved AST.
+    pub fn parse_only(&mut self) -> Result<Vec<Ast>, ToyError> {
         Driver::set_current_file_path(&self.main_program_path.to_string_lossy());
         let main_program = fs::read_to_string(&self.main_program_path).map_err(|_| {
             ToyError::new(
@@ -710,7 +707,16 @@ impl Driver {
 
         let mut ast_gen = AstGenerator::new();
         self.feed_to_ast_gen(&mut ast_gen);
-        let main_ast = ast_gen.generate(main_prgm_boxes)?;
+        return ast_gen.generate(main_prgm_boxes);
+    }
+
+    pub fn start(&mut self, ctx: &Context) -> Result<(), ToyError> {
+        let args: Vec<String> = env::args().collect();
+        let idx = args.iter().position(|r| r == "--build");
+        if idx.is_some() {
+            Driver::set_build_dir(args[idx.unwrap() + 1].clone());
+        }
+        let main_ast = self.parse_only()?;
 
         let mut object_files = Vec::new();
 

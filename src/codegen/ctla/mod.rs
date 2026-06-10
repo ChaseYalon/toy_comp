@@ -432,7 +432,12 @@ impl CTLA {
     fn is_free_func_name(name: &str) -> bool {
         matches!(
             name,
-            "toy_free" | "toy_free_arr" | "toy_deep_free_arr" | "toy_free_struct"
+            "toy_free"
+                | "toy_free_arr"
+                | "toy_deep_free_arr"
+                | "toy_free_struct"
+                | "toy_free_evicted"
+                | "toy_deep_free_arr_evicted"
         )
     }
 
@@ -476,6 +481,184 @@ impl CTLA {
         }
     }
 
+    /// True when this allocation (or one of its same-function aliases) is stored into an array as
+    /// the element argument of a `toy_arr_swap` / `toy_write_to_arr` call. Such values are owned by
+    /// the array and reclaimed via the array's deep-free (survivors) or the swap-eviction free
+    /// (overwritten elements) — never by a per-element free, which would double-free.
+    fn allocation_written_into_array(&self, alloc: &HeapAllocation) -> bool {
+        let builder = self.builder.borrow();
+        let Some(func) = builder.funcs.iter().find(|f| *f.name == *alloc.function) else {
+            return false;
+        };
+        let mut value_ids: HashSet<ValueId> = HashSet::new();
+        value_ids.insert(alloc.alloc_ins.val);
+        for (f, _, v) in &alloc.aliases {
+            if *f == *alloc.function {
+                value_ids.insert(*v);
+            }
+        }
+        for (f, _, v) in &alloc.refs {
+            if **f == *alloc.function {
+                value_ids.insert(*v);
+            }
+        }
+        // Direct writes: the value is the elem arg of a toy_arr_swap / toy_write_to_arr in this
+        // function (e.g. `arr[i] = x` or an array literal).
+        let direct = func.body.iter().flat_map(|b| b.ins.iter()).any(|ins| {
+            if let TIR::CallExternFunction(_, name, params, _, _, _) = ins {
+                if name.as_ref() != "toy_arr_swap" && name.as_ref() != "toy_write_to_arr" {
+                    return false;
+                }
+                if !params.get(1).is_some_and(|p| value_ids.contains(&p.val)) {
+                    return false;
+                }
+                // Only str / nested-array elements are array-owned under the swap+deep-free model.
+                // Bare struct elements (code 8) keep their per-element toy_free_struct.
+                let code = params
+                    .get(3)
+                    .and_then(|p| self.resolve_iconst(&alloc.function, p.val));
+                matches!(code, Some(0) | Some(4) | Some(5) | Some(6) | Some(7))
+            } else {
+                false
+            }
+        });
+        if direct {
+            return true;
+        }
+        // Wrapper writes: the value is encapsulated into a local array via a wrapper call
+        // (e.g. fuzz.write_arr), captured by the encapsulator set rather than a direct call.
+        // The array owns it, so suppress its per-element free.
+        alloc.encapsulators.iter().any(|(f, _, enc_v)| {
+            if f != alloc.function.as_ref() {
+                return false;
+            }
+            // Skip self-encapsulation: reading an element out of an array and writing it back makes
+            // the array appear encapsulated by itself — that must not suppress the array's own free.
+            if *enc_v == alloc.alloc_ins.val || value_ids.contains(enc_v) {
+                return false;
+            }
+            let Some(TIR::CallExternFunction(_, name, params, _, _, _)) = func
+                .body
+                .iter()
+                .flat_map(|b| b.ins.iter())
+                .find(|i| i.get_id() == *enc_v)
+            else {
+                return false;
+            };
+            if name.as_ref() != "toy_malloc_arr" {
+                return false;
+            }
+            let code = params
+                .get(1)
+                .and_then(|p| self.resolve_iconst(&alloc.function, p.val));
+            matches!(code, Some(0) | Some(4) | Some(5) | Some(6) | Some(7))
+        })
+    }
+
+    /// True when an element of this (local) array escapes the function — either a parameter value
+    /// is stored into the array, or an element read out of the array flows into a parameter array.
+    /// In both cases the element is shared with the caller, so the array must be shallow-freed (the
+    /// caller reclaims the shared element); a deep-free here would double-free it.
+    fn array_elements_escape(&self, array_alloc: &HeapAllocation) -> bool {
+        let builder = self.builder.borrow();
+        let Some(func) = builder.funcs.iter().find(|f| *f.name == *array_alloc.function) else {
+            return false;
+        };
+        let mut arr_ids: HashSet<ValueId> = HashSet::new();
+        arr_ids.insert(array_alloc.alloc_ins.val);
+        for (f, _, v) in &array_alloc.refs {
+            if **f == *array_alloc.function {
+                arr_ids.insert(*v);
+            }
+        }
+        for (f, _, v) in &array_alloc.aliases {
+            if *f == *array_alloc.function {
+                arr_ids.insert(*v);
+            }
+        }
+        let param_ids: HashSet<ValueId> = func.params.iter().map(|p| p.val).collect();
+
+        // callee_name -> encapsulates pairs (arr_arg_idx, elem_arg_idx), and -> params the callee
+        // returns an alias of (a read). Wrappers (fuzz.write_arr / read_rand) carry these summaries.
+        let mut enc_pairs: HashMap<String, Vec<(usize, usize)>> = HashMap::new();
+        enc_pairs.insert("toy_arr_swap".to_string(), vec![(0, 1)]);
+        enc_pairs.insert("toy_write_to_arr".to_string(), vec![(0, 1)]);
+        let mut aliased: HashMap<String, Vec<usize>> = HashMap::new();
+        aliased.insert("toy_read_from_arr".to_string(), vec![0]);
+        for cfg_f in &self.cfg_functions {
+            if !cfg_f.param_encapsulates_pairs.is_empty() {
+                enc_pairs.insert(
+                    (*cfg_f.func.name).clone(),
+                    cfg_f.param_encapsulates_pairs.clone(),
+                );
+            }
+            if !cfg_f.returns_alias_of_parameter.is_empty() {
+                aliased.insert(
+                    (*cfg_f.func.name).clone(),
+                    cfg_f.returns_alias_of_parameter.clone(),
+                );
+            }
+        }
+        for summaries in self.alias_detector.external_modules.values() {
+            for s in summaries {
+                if !s.param_encapsulates_pairs.is_empty() {
+                    enc_pairs.insert(s.name.clone(), s.param_encapsulates_pairs.clone());
+                }
+                if !s.aliased_parameters.is_empty() {
+                    aliased.insert(s.name.clone(), s.aliased_parameters.clone());
+                }
+            }
+        }
+        let call_args = |ins: &TIR| -> Option<(String, Vec<ValueId>)> {
+            match ins {
+                TIR::CallExternFunction(_, name, params, _, _, _) => {
+                    Some(((**name).clone(), params.iter().map(|p| p.val).collect()))
+                }
+                TIR::CallLocalFunction(_, name, params, _, _) => {
+                    Some(((**name).clone(), params.iter().map(|p| p.val).collect()))
+                }
+                _ => None,
+            }
+        };
+        // Values read out of this array (alias an element of it).
+        let mut read_out: HashSet<ValueId> = HashSet::new();
+        for ins in func.body.iter().flat_map(|b| b.ins.iter()) {
+            if let Some((name, args)) = call_args(ins) {
+                if let Some(ap) = aliased.get(&name) {
+                    if ap
+                        .iter()
+                        .any(|&k| args.get(k).is_some_and(|a| arr_ids.contains(a)))
+                    {
+                        read_out.insert(ins.get_id());
+                    }
+                }
+            }
+        }
+        for ins in func.body.iter().flat_map(|b| b.ins.iter()) {
+            if let Some((name, args)) = call_args(ins) {
+                if let Some(pairs) = enc_pairs.get(&name) {
+                    for &(ai, ei) in pairs {
+                        let arr_arg = args.get(ai).copied();
+                        let elem_arg = args.get(ei).copied();
+                        // Pattern 1: a parameter value is stored into THIS array.
+                        if arr_arg.is_some_and(|a| arr_ids.contains(&a))
+                            && elem_arg.is_some_and(|e| param_ids.contains(&e))
+                        {
+                            return true;
+                        }
+                        // Pattern 2: an element read out of THIS array is stored into a PARAM array.
+                        if arr_arg.is_some_and(|a| param_ids.contains(&a))
+                            && elem_arg.is_some_and(|e| read_out.contains(&e))
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
+
     /// True when this allocation is stored into one of its own function's parameters (a side-effect
     /// escape, e.g. `arr[i] = x` where `arr` is a parameter). Such values are owned by the caller's
     /// array and must not be freed inside this function.
@@ -493,6 +676,7 @@ impl CTLA {
         // relationship in their param_encapsulates_pairs summary.
         let mut enc_pairs: HashMap<String, Vec<(usize, usize)>> = HashMap::new();
         enc_pairs.insert("toy_write_to_arr".to_string(), vec![(0, 1)]);
+        enc_pairs.insert("toy_arr_swap".to_string(), vec![(0, 1)]);
         for cfg_f in &self.cfg_functions {
             if !cfg_f.param_encapsulates_pairs.is_empty() {
                 enc_pairs.insert(
@@ -590,11 +774,10 @@ impl CTLA {
             return EscapeType::EscapesFunction;
         }
 
-        // If this allocation was stored into a parameter array (a side-effect escape), the caller
-        // can reach it after we return, so it escapes this function. We do not insert a free for it
-        // (see process_allocation) — the value lives in a caller-owned array and is reclaimed by the
-        // runtime's written-element sweep, which find_owning_function cannot model since it tracks
-        // the return value as a proxy.
+        // A value stored into a parameter array (side-effect escape) is owned by the caller's
+        // array, which escapes this function. By invariant 1 it must not be freed here; its
+        // reclamation rides on the swap-evicted value (toy_arr_swap return) or the array's
+        // deep-free at its owner.
         if self.allocation_encapsulated_by_param(alloc) {
             return EscapeType::EscapesFunction;
         }
@@ -871,7 +1054,10 @@ impl CTLA {
             if self.block_returns_allocation_or_alias(func, origin_block_id, alloc) {
                 return;
             }
-            let insertion_idx = if free_func == "toy_free_arr" || free_func == "toy_deep_free_arr" {
+            let insertion_idx = if free_func == "toy_free_arr"
+                || free_func == "toy_deep_free_arr"
+                || free_func == "toy_deep_free_arr_evicted"
+            {
                 func.body
                     .iter()
                     .find(|b| b.id == origin_block_id)
@@ -922,7 +1108,10 @@ impl CTLA {
             }
 
             let insertion_idx =
-                if free_func == "toy_free_arr" || free_func == "toy_deep_free_arr" {
+                if free_func == "toy_free_arr"
+                    || free_func == "toy_deep_free_arr"
+                    || free_func == "toy_deep_free_arr_evicted"
+                {
                     block.ins.len().saturating_sub(1)
                 } else {
                     self.free_insertion_index_for_block(func, cfg_block.block, alloc)
@@ -981,6 +1170,24 @@ impl CTLA {
     }
 
     /// Returns the instruction at the given function, block, and value, note the inputs are id's NOT indexes
+    /// Resolves the constant value of an `IConst` SSA value within a function (used to decode the
+    /// element-type code carried by a `toy_arr_swap` call).
+    fn resolve_iconst(&self, function_name: &str, value_id: ValueId) -> Option<i64> {
+        self.builder
+            .borrow()
+            .funcs
+            .iter()
+            .find(|f| *f.name == function_name)
+            .and_then(|f| {
+                f.body.iter().flat_map(|b| b.ins.iter()).find_map(|ins| {
+                    if let TIR::IConst(id, v, _) = ins {
+                        (*id == value_id).then_some(*v)
+                    } else {
+                        None
+                    }
+                })
+            })
+    }
     fn get_alloc_ins(
         &self,
         function_name: &str,
@@ -1048,10 +1255,46 @@ impl CTLA {
         };
 
         match alloc_ins {
-            TIR::CallExternFunction(_, f_box, _, _, ret_type, _) => {
+            TIR::CallExternFunction(_, f_box, params, _, ret_type, _) => {
+                // A toy_arr_swap result is an evicted array element; its free variant is decided by
+                // the element-type code injected as the 4th arg (str=0, struct=8, nested-array=4..7).
+                if f_box.as_ref() == "toy_arr_swap" {
+                    // The evicted value may be reported as 0 (self-write-back), so use the
+                    // null-safe evicted free variants.
+                    let code = params
+                        .get(3)
+                        .and_then(|p| self.resolve_iconst(&alloc.function, p.val));
+                    return match code {
+                        Some(4) | Some(5) | Some(6) | Some(7) => {
+                            "toy_deep_free_arr_evicted".to_string()
+                        }
+                        _ => "toy_free_evicted".to_string(),
+                    };
+                }
                 //that argv thing is hacky but I dont know how to say under the hood it calls toy_malloc_arr
                 if self.is_array_allocation_call_name(f_box.as_ref()) {
-                    return "toy_free_arr".to_string();
+                    // The array owns its elements: deep-free reclaims any still-live slot contents
+                    // (survivors) when the element type is heap-owned. toy_malloc_arr encodes the
+                    // element-type code as its 2nd arg (str=0, struct=8, nested-array=4..7).
+                    let elem_code = if f_box.as_ref() == "toy_malloc_arr" {
+                        params
+                            .get(1)
+                            .and_then(|p| self.resolve_iconst(&alloc.function, p.val))
+                    } else {
+                        None
+                    };
+                    let heap_elem = matches!(
+                        elem_code,
+                        Some(0) | Some(4) | Some(5) | Some(6) | Some(7)
+                    );
+                    // Deep-free reclaims survivors for heap-element arrays — but only when the array
+                    // uniquely owns its elements. If an element escapes to a parameter (shared with
+                    // the caller), shallow-free; the caller reclaims the shared element.
+                    return if heap_elem && !self.array_elements_escape(alloc) {
+                        "toy_deep_free_arr".to_string()
+                    } else {
+                        "toy_free_arr".to_string()
+                    };
                 } else if f_box.as_ref() == "toy_malloc_struct" {
                     return "toy_free_struct".to_string();
                 }
@@ -1136,10 +1379,15 @@ impl CTLA {
             .iter()
             .find(|f| f.func.name == func.name)
             .unwrap();
-        // Side-effect escapes (value stored into a parameter array) are owned by the caller's array
-        // and routed through the caller; we cannot pick a correct free site here. The runtime's
-        // written-element sweep reclaims them, so insert no free.
+        // A value stored into a parameter array is owned by the caller's array (invariant 1);
+        // do not free it here. The swap-evicted value carries reclamation instead.
         if self.allocation_encapsulated_by_param(&alloc) {
+            return;
+        }
+        // A value stored into a local array is owned by that array: it is reclaimed by the array's
+        // deep-free (if it survives) or by the swap-eviction free (if overwritten), never by a
+        // per-element free — which would double-free.
+        if self.allocation_written_into_array(&alloc) {
             return;
         }
         let escape_type = self.allocation_escapes(&alloc);
@@ -1217,7 +1465,9 @@ impl CTLA {
             for block in &cfg_f.func.body {
                 for ins in &block.ins {
                     if let TIR::CallExternFunction(_, name, wp, _, _, _) = ins {
-                        if name.as_ref() == "toy_write_to_arr" && wp.len() >= 2 {
+                        if (name.as_ref() == "toy_write_to_arr" || name.as_ref() == "toy_arr_swap")
+                            && wp.len() >= 2
+                        {
                             let arr_idx = cfg_f.func.params.iter().position(|p| p.val == wp[0].val);
                             let elem_idx = cfg_f.func.params.iter().position(|p| p.val == wp[1].val);
                             if let (Some(ai), Some(ei)) = (arr_idx, elem_idx) {
@@ -1376,7 +1626,10 @@ impl CTLA {
             .collect();
 
         let free_sort_rank = |free_name: &str| {
-            if free_name == "toy_free_arr" || free_name == "toy_deep_free_arr" {
+            if free_name == "toy_free_arr"
+                || free_name == "toy_deep_free_arr"
+                || free_name == "toy_deep_free_arr_evicted"
+            {
                 1usize
             } else {
                 0usize

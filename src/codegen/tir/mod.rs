@@ -139,7 +139,9 @@ impl AstToIrConverter {
             Ast::FuncCall(n, _, _) => match n.as_str() {
                 "print" | "println" | "toy_write_to_arr" => Ok(TypeTok::Void),
                 "len" | "toy_strlen" | "toy_arrlen" | "toy_type_to_int" | "toy_type_to_bool"
-                | "toy_type_to_float" | "toy_malloc_arr" | "toy_input" => Ok(TypeTok::Int),
+                | "toy_type_to_float" | "toy_malloc_arr" | "toy_arr_swap" | "toy_input" => {
+                    Ok(TypeTok::Int)
+                }
                 "str" | "toy_type_to_str" => Ok(TypeTok::Str),
                 "int" => Ok(TypeTok::Int),
                 "float" => Ok(TypeTok::Float),
@@ -1099,21 +1101,28 @@ impl AstToIrConverter {
                         scope.as_ref().borrow_mut().set_var(*name, val, ty);
                     }
                     Ast::IndexAccess(target, index, _) => {
+                        let arr_ty = self.get_expr_type(&target, scope)?;
                         let arr = self.compile_expr(*target, scope)?;
                         let idx = self.compile_expr(*index, scope)?;
 
-                        let type_val = match val.ty {
-                            Some(TirType::Ptr) => 0, // String element
-                            Some(TirType::I1) => 1,  // Bool element
-                            Some(TirType::I64) => 2, // Int element
-                            Some(TirType::F64) => 3, // Float element
-                            _ => 2,                  // Default to Int
-                        };
-                        let type_param = self.builder.iconst(type_val, TypeTok::Int)?;
-
-                        let write_params = vec![arr, val, idx, type_param];
+                        // Swap (not blind write): the returned evicted occupant is what lets CTLA
+                        // free the displaced element at compile time. The injected type param uses
+                        // the precise element code (str=0, struct=8, str[]=4, ...) so CTLA can pick
+                        // the correct free variant for the evicted element.
+                        let mut write_params = vec![arr, val.clone(), idx];
                         self.builder
-                            .call("toy_write_to_arr".to_string(), write_params)?;
+                            .inject_type_param(&arr_ty, false, true, &mut write_params)?;
+                        let displaced = self
+                            .builder
+                            .call("toy_arr_swap".to_string(), write_params)?;
+                        // The evicted occupant owns heap memory iff the element is a pointer type.
+                        // Surface it to CTLA for a compile-time free — except bare struct elements,
+                        // which keep their existing per-element toy_free_struct handling (the
+                        // runtime deep-free path frees struct elements incorrectly).
+                        let elem_is_bare_struct = matches!(arr_ty, TypeTok::StructArr(_, 1));
+                        if val.ty == Some(TirType::Ptr) && !elem_is_bare_struct {
+                            self.builder.mark_swap_displaced_alloc(displaced);
+                        }
                     }
                     Ast::MemberAccess(target, field_name, _) => {
                         let struct_val = self.compile_expr(*target, scope)?;
@@ -1414,6 +1423,13 @@ impl AstToIrConverter {
             TypeTok::Void,
             vec![true, true, true, true],
             true,
+        );
+        self.builder.register_extern(
+            "toy_arr_swap".to_string(),
+            false,
+            TypeTok::Int,
+            vec![true, true, true, true],
+            false,
         );
         self.builder.register_extern(
             "toy_read_from_arr".to_string(),

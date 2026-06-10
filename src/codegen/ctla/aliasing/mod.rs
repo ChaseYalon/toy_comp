@@ -479,7 +479,8 @@ impl AliasAndEncapsulationTracker {
                 .flat_map(|b| b.ins.iter())
                 .filter_map(|ins| match ins {
                     TIR::CallExternFunction(_, name, wp, _, _, _)
-                        if name.as_ref() == "toy_write_to_arr"
+                        if (name.as_ref() == "toy_write_to_arr"
+                            || name.as_ref() == "toy_arr_swap")
                             && wp.len() >= 2
                             && returned_values.contains(&wp[0].val) =>
                     {
@@ -715,6 +716,7 @@ impl AliasAndEncapsulationTracker {
         // Local functions compute it from TIR; external functions from their CTLA summary.
         let mut encapsulates_pairs_by_func: HashMap<String, Vec<(usize, usize)>> = HashMap::new();
         encapsulates_pairs_by_func.insert("toy_write_to_arr".to_string(), vec![(0, 1)]);
+        encapsulates_pairs_by_func.insert("toy_arr_swap".to_string(), vec![(0, 1)]);
         for cfg_f in cfg_functions.iter() {
             if !cfg_f.param_encapsulates_pairs.is_empty() {
                 encapsulates_pairs_by_func.insert((*cfg_f.func.name).clone(), cfg_f.param_encapsulates_pairs.clone());

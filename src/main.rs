@@ -477,6 +477,12 @@ fn main() {
                 if still_crashes {
                     current = reduced;
                     consecutive_failures = 0;
+                    // checkpoint so a reducer crash never loses accepted progress
+                    fs::write(
+                        "reduced.txt",
+                        serde_json::to_string_pretty(&current).unwrap(),
+                    )
+                    .unwrap();
                     // recompile to the real binary path so fuzz0.exe matches `current`
                     let _ = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                         let mut d =
@@ -617,7 +623,20 @@ fn main() {
             }
         };
 
-        let mut runner = TestRunner::new();
+        // time-based by default so a rerun after a reducer crash explores a different
+        // mutation path instead of deterministically replaying into the same crash
+        let reduce_seed: u64 = env::var("TOY_REDUCE_SEED")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or_else(|| {
+                let ms = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_millis() as u64;
+                make_seed(0, ms)
+            });
+        println!("Reducer seed: {reduce_seed}");
+        let mut runner = TestRunner::new_with_seed(reduce_seed);
         let mut current = prgm;
         let mut count = 0;
         let mut consecutive_failures = 0;
@@ -649,6 +668,12 @@ fn main() {
                 );
                 if test_crashes(&candidate) {
                     current = candidate;
+                    // checkpoint so a reducer crash never loses accepted progress
+                    fs::write(
+                        "reduced.txt",
+                        serde_json::to_string_pretty(&current).unwrap(),
+                    )
+                    .unwrap();
                     progressed = true;
                     break;
                 }
@@ -690,6 +715,12 @@ fn main() {
             if test_crashes(&reduced) {
                 current = reduced;
                 consecutive_failures = 0;
+                // checkpoint so a reducer crash never loses accepted progress
+                fs::write(
+                    "reduced.txt",
+                    serde_json::to_string_pretty(&current).unwrap(),
+                )
+                .unwrap();
             } else {
                 consecutive_failures += 1;
             }
@@ -722,6 +753,17 @@ fn main() {
         )
         .unwrap();
         println!("Reduced AST written to reduced.txt ({count} iterations)");
+        return;
+    }
+
+    if args.contains(&"--dump-ast".to_string()) {
+        let idx = args.iter().position(|f| f == "--dump-ast").unwrap();
+        if idx + 1 >= args.len() {
+            panic!("[ERROR] You should use --dump-ast [TOY_FILE]");
+        }
+        let mut d = Driver::new_with_name(PathBuf::from(&args[idx + 1]), "temp/dump".to_string());
+        let ast = d.parse_only().unwrap();
+        println!("{}", serde_json::to_string_pretty(&ast).unwrap());
         return;
     }
 

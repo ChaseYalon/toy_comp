@@ -601,3 +601,68 @@ fn test_ctla_bug_14(){
     );
     assert!(!output.contains("FAIL_TEST"));
 }
+
+#[test]
+fn test_ctla_bug_15(){
+    compile_code_aot!(
+        output,
+        r#"
+            import std.fuzz;
+
+            fn func1(p1: str[][]): bool {
+                return false;
+            }
+
+            fn func2(p1: bool[], p2: str[], p3: float, p4: str[][]): bool[] {
+                return [
+                    true,
+                    false && -404505.7590752661 > 2820677330489585869,
+                    false,
+                    func1([["kKB", "p", "rspq"], ["gr"]]),
+                    false,
+                    func1([["ErMX", "R"]]),
+                    true,
+                    func1([["B"], ["xxJmlcd"], ["A"], ["JW", "SdzP", "O"]]),
+                    false,
+                    func1([["qc"]])
+                ];
+            }
+
+            fn func3(p1: str[]): str[][] {
+                let v1: int = 0;
+                while true {
+                    let v2: int = 0;
+                    while true {
+                        let v3: int = 0;
+                        while true {
+                            fuzz.write_arr(p1, "V");
+                            let rd: str = fuzz.read_rand(p1);
+                            fuzz.write_arr(p1, rd);
+                            if v3 >= 5 {
+                                break;
+                            } else {
+                                v3 = v3 + 1;
+                            }
+                        }
+                        if v2 >= 5 {
+                            break;
+                        } else {
+                            v2 = v2 + 1;
+                        }
+                    }
+                    if v1 >= 5 {
+                        break;
+                    } else {
+                        v1 = v1 + 1;
+                    }
+                }
+                return [["q"]];
+            }
+
+            func2([true], ["Q"], 6014.746010345407, [[("i")]]);
+            func3(["Q"]);
+        "#,
+        "ctla_bug_15"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+}
