@@ -57,8 +57,12 @@ pub fn _toy_format(input: ToyPtr, datatype: ToyType, degree: i64) -> *mut i8 {
             let array = unsafe { &*(input as *const ToyArr) };
             // When degree > 1, elements are still sub-arrays, so keep the array type.
             // When degree == 1, elements are scalars, so use the element type.
+            // Struct arrays have no scalar element type; struct values format as their
+            // raw pointer (matching a bare `println(some_struct)`), i.e. ToyType::Int.
             let elem_type = if degree > 1 {
                 array.ty.clone()
+            } else if array.ty == ToyType::Struct {
+                ToyType::Int
             } else {
                 array.ty.to_elem_type()
             };

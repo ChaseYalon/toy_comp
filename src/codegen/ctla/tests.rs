@@ -110,6 +110,62 @@ fn test_ctla_multi_alloc_return() {
 }
 
 #[test]
+fn test_ctla_struct_field_overwrite() {
+    compile_code_aot!(
+        output,
+        r#"
+        struct P { s: str }
+        let p = P{s: "init"};
+        let i = 0;
+        while i < 5 {
+            p.s = "x";
+            i = i + 1;
+        }
+        println(p.s);
+        "#,
+        "ctla_struct_field_overwrite"
+    );
+    assert!(!output.contains("FAIL_TEST") && !output.contains("FAIL_TST"));
+}
+
+#[test]
+fn test_ctla_struct_arr_overwrite() {
+    compile_code_aot!(
+        output,
+        r#"
+        struct P { s: str }
+        let arr = [P{s: "a"}, P{s: "b"}];
+        let i = 0;
+        while i < 5 {
+            arr[0] = P{s: "c"};
+            i = i + 1;
+        }
+        println(arr);
+        "#,
+        "ctla_struct_arr_overwrite"
+    );
+    assert!(!output.contains("FAIL_TEST") && !output.contains("FAIL_TST"));
+}
+
+#[test]
+fn test_ctla_struct_cross_arr() {
+    compile_code_aot!(
+        output,
+        r#"
+        struct P { s: str }
+        let p = P{s: "shared"};
+        let a = [p];
+        let b = [p];
+        a[0] = P{s: "new"};
+        println(b);
+        println(a);
+        "#,
+        "ctla_struct_cross_arr"
+    );
+    assert!(!output.contains("FAIL_TEST") && !output.contains("FAIL_TST"));
+}
+
+#[test]
 fn test_ctla_uaf_loop_bug() {
     compile_code_aot!(
         output,
