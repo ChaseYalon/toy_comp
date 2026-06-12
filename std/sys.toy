@@ -35,12 +35,14 @@ export fn core_count(): int {
     return toy_sys_get_core_count();
 }
 export fn version(): str{
-    return "0.0.2";
+    return "0.0.3";
 }
 export fn version_info(): str{
     //status, version, name
-    //Each name is a historical figure I like, this one is Lord Gray, PM of england in the 1830s who passed the first big reform act of the 19th century
-    return "ALPHA_0.02_GRAY";
+    //previously used names
+        //Gray - Earl Gray PM
+    //Named after John Quincy Adams, who developed the actual Monroe Doctrine, was a mediocre president but a competent secretary of state
+    return "ALPHA_0.03_ADAMS";
 }
 extern fn toy_sys_is_little_endian(): int;
 export fn is_little_endian(): bool{

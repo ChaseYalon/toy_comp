@@ -342,7 +342,12 @@ impl CTLA {
 
         let has_same_func_encapsulator =
             alloc.encapsulators.iter().any(|(f, _, _)| *f == *func.name);
-        if has_same_func_encapsulator {
+        // A struct allocation must outlive every value read out of its fields (a field read-out
+        // aliases the field's heap content, which the owned-field deep-free reclaims). Those
+        // read-out values can be used anywhere in the block (e.g. `println(p.s)`), so place the
+        // struct free — and the owned-field frees spliced before it — at the block terminator.
+        let is_struct_alloc = self.alloc_type_to_free_func(alloc) == "toy_free_struct";
+        if has_same_func_encapsulator || is_struct_alloc {
             insertion_idx = terminator_idx.unwrap_or(block.ins.len());
         }
 
@@ -555,6 +560,247 @@ impl CTLA {
         })
     }
 
+    /// True when this allocation has a use independent of being written into an array — e.g. it is a
+    /// named value referenced again after the array write (`let y = ..; arr = [y]; .. y ..`), or
+    /// passed elsewhere. Such a value is owned by its own binding, not the array, so its array slot
+    /// must be borrowed (the array must not free it) and it is reclaimed via its own free site.
+    fn allocation_used_outside_array(&self, alloc: &HeapAllocation) -> bool {
+        let builder = self.builder.borrow();
+        let Some(func) = builder.funcs.iter().find(|f| *f.name == *alloc.function) else {
+            return false;
+        };
+        let mut value_ids: HashSet<ValueId> = HashSet::new();
+        value_ids.insert(alloc.alloc_ins.val);
+        for (f, _, v) in &alloc.aliases {
+            if *f == *alloc.function {
+                value_ids.insert(*v);
+            }
+        }
+        // Functions that write an elem param into an array param (wrappers like fuzz.write_arr),
+        // keyed by name -> the elem param positions. Sourced from local CFG summaries and external
+        // module summaries; the array-write builtins are the direct base case.
+        let mut write_elem_positions: HashMap<String, Vec<usize>> = HashMap::new();
+        for cfg_f in &self.cfg_functions {
+            if !cfg_f.param_encapsulates_pairs.is_empty() {
+                write_elem_positions.insert(
+                    (*cfg_f.func.name).clone(),
+                    cfg_f.param_encapsulates_pairs.iter().map(|(_, e)| *e).collect(),
+                );
+            }
+        }
+        // Argument positions of `name` that are array containers (the array being written/read), and
+        // positions that are elements written into an array. A use of the value at any of these is
+        // array plumbing, not an independent use. Sourced from local + external summaries.
+        let array_arg_positions = |name: &str| -> (Vec<usize>, Vec<usize>) {
+            let pairs = self
+                .cfg_functions
+                .iter()
+                .find(|c| *c.func.name == *name)
+                .map(|c| c.param_encapsulates_pairs.clone())
+                .or_else(|| {
+                    self.alias_detector
+                        .get_external_summary(name)
+                        .map(|s| s.param_encapsulates_pairs.clone())
+                });
+            let alias_of = self
+                .cfg_functions
+                .iter()
+                .find(|c| *c.func.name == *name)
+                .map(|c| c.returns_alias_of_parameter.clone())
+                .or_else(|| {
+                    self.alias_detector
+                        .get_external_summary(name)
+                        .map(|s| s.aliased_parameters.clone())
+                })
+                .unwrap_or_default();
+            let mut containers = alias_of; // read wrappers (e.g. read_rand) alias the array param
+            let mut elems = vec![];
+            if let Some(pairs) = pairs {
+                for (a, e) in pairs {
+                    containers.push(a);
+                    elems.push(e);
+                }
+            }
+            (containers, elems)
+        };
+        // Instruction ids that are array-internal uses of this allocation — it is the array being
+        // written/read (container), or the element written into an array — directly via the builtins
+        // or through a wrapper call. These are array plumbing, not independent uses.
+        let array_internal_ids: HashSet<ValueId> = func
+            .body
+            .iter()
+            .flat_map(|b| b.ins.iter())
+            .filter_map(|ins| match ins {
+                TIR::CallExternFunction(id, name, params, _, _, _)
+                    if matches!(
+                        name.as_str(),
+                        "toy_write_to_arr"
+                            | "toy_write_to_arr_borrowed"
+                            | "toy_arr_swap"
+                            | "toy_arr_swap_borrowed"
+                            | "toy_read_from_arr"
+                            | "toy_arrlen"
+                            | "toy_arr_concat"
+                    ) && (params.get(0).is_some_and(|p| value_ids.contains(&p.val))
+                        || params.get(1).is_some_and(|p| value_ids.contains(&p.val))) =>
+                {
+                    Some(*id)
+                }
+                TIR::CallExternFunction(id, name, args, _, _, _)
+                | TIR::CallLocalFunction(id, name, args, _, _) => {
+                    let (containers, elems) = array_arg_positions(name.as_str());
+                    containers
+                        .iter()
+                        .chain(elems.iter())
+                        .any(|&p| args.get(p).is_some_and(|a| value_ids.contains(&a.val)))
+                        .then_some(*id)
+                }
+                _ => None,
+            })
+            .collect();
+        // Any instruction that consumes this value as an operand — other than the allocation itself
+        // and its array writes — keeps the value live independently of the array.
+        func.body.iter().flat_map(|b| b.ins.iter()).any(|ins| {
+            let id = ins.get_id();
+            if id == alloc.alloc_ins.val || array_internal_ids.contains(&id) {
+                return false;
+            }
+            Self::instruction_operand_vals(ins)
+                .into_iter()
+                .any(|v| value_ids.contains(&v))
+        })
+    }
+
+    /// The SSA value ids this instruction consumes as operands.
+    fn instruction_operand_vals(ins: &TIR) -> Vec<ValueId> {
+        match ins {
+            TIR::ItoF(_, v, _) | TIR::Not(_, v) | TIR::Ret(_, v) | TIR::JumpCond(_, v, _, _) => {
+                vec![v.val]
+            }
+            TIR::ReadStructLiteral(_, v, _) => vec![v.val],
+            TIR::NumericInfix(_, a, b, _) | TIR::BoolInfix(_, a, b, _) => vec![a.val, b.val],
+            TIR::WriteStructLiteral(_, sv, _, nv) => vec![sv.val, nv.val],
+            TIR::CallLocalFunction(_, _, args, _, _)
+            | TIR::CreateStructLiteral(_, _, args)
+            | TIR::Phi(_, _, args) => args.iter().map(|a| a.val).collect(),
+            TIR::CallExternFunction(_, _, params, _, _, _) => {
+                params.iter().map(|p| p.val).collect()
+            }
+            TIR::CallFuncPtr(_, fp, args, _, _) => {
+                let mut v: Vec<ValueId> = vec![fp.val];
+                v.extend(args.iter().map(|a| a.val));
+                v
+            }
+            _ => vec![],
+        }
+    }
+
+    /// Renames this allocation's array-write calls to their borrowed variants so the array does not
+    /// free the value — the value is reclaimed via its own free site instead. Enforces disjoint
+    /// single-slot ownership (each allocation owned by exactly one party).
+    fn mark_array_writes_borrowed(&self, alloc: &HeapAllocation) {
+        let mut builder = self.builder.borrow_mut();
+        let Some(func) = builder.funcs.iter_mut().find(|f| *f.name == *alloc.function) else {
+            return;
+        };
+        let mut value_ids: HashSet<ValueId> = HashSet::new();
+        value_ids.insert(alloc.alloc_ins.val);
+        for (f, _, v) in &alloc.aliases {
+            if *f == *alloc.function {
+                value_ids.insert(*v);
+            }
+        }
+        for ins in func.body.iter_mut().flat_map(|b| b.ins.iter_mut()) {
+            if let TIR::CallExternFunction(_, name, params, _, _, _) = ins {
+                if !params.get(1).is_some_and(|p| value_ids.contains(&p.val)) {
+                    continue;
+                }
+                match name.as_str() {
+                    "toy_write_to_arr" => {
+                        *name = Box::new("toy_write_to_arr_borrowed".to_string())
+                    }
+                    "toy_arr_swap" => *name = Box::new("toy_arr_swap_borrowed".to_string()),
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    /// Marks read-back duplicate writes borrowed: a value read out of an array (`toy_read_from_arr`)
+    /// and written back into an array already has an owner — its source array's other slot — so this
+    /// slot only borrows it. Without this the same pointer would sit in two owned slots and the
+    /// array's deep-free would reclaim it twice. Enforcing disjoint single-slot ownership at compile
+    /// time is exactly what lets the runtime free skip its dedup. Runs once over every function.
+    fn mark_readback_writes_borrowed(&self) {
+        let mut builder = self.builder.borrow_mut();
+        for func in builder.funcs.iter_mut() {
+            let readback: HashSet<ValueId> = func
+                .body
+                .iter()
+                .flat_map(|b| b.ins.iter())
+                .filter_map(|ins| match ins {
+                    TIR::CallExternFunction(id, name, _, _, _, _)
+                        if name.as_str() == "toy_read_from_arr" =>
+                    {
+                        Some(*id)
+                    }
+                    _ => None,
+                })
+                .collect();
+            for ins in func.body.iter_mut().flat_map(|b| b.ins.iter_mut()) {
+                if let TIR::CallExternFunction(_, name, params, _, _, _) = ins {
+                    if !params.get(1).is_some_and(|p| readback.contains(&p.val)) {
+                        continue;
+                    }
+                    match name.as_str() {
+                        "toy_write_to_arr" => {
+                            *name = Box::new("toy_write_to_arr_borrowed".to_string())
+                        }
+                        "toy_arr_swap" => *name = Box::new("toy_arr_swap_borrowed".to_string()),
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+
+    /// True when this allocation is an owned heap field of a struct (either an initial field of a
+    /// struct literal or a value written into a field via `p.f = x`). Such a value is reclaimed by
+    /// the struct's eviction free (when the field is overwritten) and its owned-field deep-free (the
+    /// surviving value at struct death) — never by a per-value free here, which would double-free.
+    fn allocation_written_into_struct_field(&self, alloc: &HeapAllocation) -> bool {
+        // Struct-typed field values (nested structs) are not yet deep-freed at struct death, so keep
+        // them on the normal pipeline (freed as their own allocation) rather than suppressing here.
+        if matches!(alloc.alloc_ins.ty, Some(TirType::StructInterface(_))) {
+            return false;
+        }
+        let builder = self.builder.borrow();
+        let Some(func) = builder.funcs.iter().find(|f| *f.name == *alloc.function) else {
+            return false;
+        };
+        let mut value_ids: HashSet<ValueId> = HashSet::new();
+        value_ids.insert(alloc.alloc_ins.val);
+        for (f, _, v) in &alloc.aliases {
+            if *f == *alloc.function {
+                value_ids.insert(*v);
+            }
+        }
+        for (f, _, v) in &alloc.refs {
+            if **f == *alloc.function {
+                value_ids.insert(*v);
+            }
+        }
+        func.body.iter().flat_map(|b| b.ins.iter()).any(|ins| match ins {
+            // `p.f = x`: the written value is owned by the struct.
+            TIR::WriteStructLiteral(_, _, _, new_val) => value_ids.contains(&new_val.val),
+            // `P{ f: x }`: a struct literal field becomes a heap field via toy_malloc_struct.
+            TIR::CreateStructLiteral(_, _, fields) => {
+                fields.iter().any(|fld| value_ids.contains(&fld.val))
+            }
+            _ => false,
+        })
+    }
+
     /// True when an element of this (local) array escapes the function — either a parameter value
     /// is stored into the array, or an element read out of the array flows into a parameter array.
     /// In both cases the element is shared with the caller, so the array must be shallow-freed (the
@@ -582,7 +828,9 @@ impl CTLA {
         // returns an alias of (a read). Wrappers (fuzz.write_arr / read_rand) carry these summaries.
         let mut enc_pairs: HashMap<String, Vec<(usize, usize)>> = HashMap::new();
         enc_pairs.insert("toy_arr_swap".to_string(), vec![(0, 1)]);
+        enc_pairs.insert("toy_arr_swap_borrowed".to_string(), vec![(0, 1)]);
         enc_pairs.insert("toy_write_to_arr".to_string(), vec![(0, 1)]);
+        enc_pairs.insert("toy_write_to_arr_borrowed".to_string(), vec![(0, 1)]);
         let mut aliased: HashMap<String, Vec<usize>> = HashMap::new();
         aliased.insert("toy_read_from_arr".to_string(), vec![0]);
         for cfg_f in &self.cfg_functions {
@@ -676,7 +924,9 @@ impl CTLA {
         // relationship in their param_encapsulates_pairs summary.
         let mut enc_pairs: HashMap<String, Vec<(usize, usize)>> = HashMap::new();
         enc_pairs.insert("toy_write_to_arr".to_string(), vec![(0, 1)]);
+        enc_pairs.insert("toy_write_to_arr_borrowed".to_string(), vec![(0, 1)]);
         enc_pairs.insert("toy_arr_swap".to_string(), vec![(0, 1)]);
+        enc_pairs.insert("toy_arr_swap_borrowed".to_string(), vec![(0, 1)]);
         for cfg_f in &self.cfg_functions {
             if !cfg_f.param_encapsulates_pairs.is_empty() {
                 enc_pairs.insert(
@@ -1258,9 +1508,9 @@ impl CTLA {
             TIR::CallExternFunction(_, f_box, params, _, ret_type, _) => {
                 // A toy_arr_swap result is an evicted array element; its free variant is decided by
                 // the element-type code injected as the 4th arg (str=0, struct=8, nested-array=4..7).
-                if f_box.as_ref() == "toy_arr_swap" {
-                    // The evicted value may be reported as 0 (self-write-back), so use the
-                    // null-safe evicted free variants.
+                if f_box.as_ref() == "toy_arr_swap" || f_box.as_ref() == "toy_arr_swap_borrowed" {
+                    // The evicted value may be reported as 0 (self-write-back or borrowed slot), so
+                    // use the null-safe evicted free variants.
                     let code = params
                         .get(3)
                         .and_then(|p| self.resolve_iconst(&alloc.function, p.val));
@@ -1319,6 +1569,14 @@ impl CTLA {
                 //this will cause errors
                 return "toy_free".to_string();
             }
+            // A struct-field value surfaced by an overwrite (eviction). A struct-typed field needs
+            // the struct free (8-byte size prefix); str / array fields free as plain pointers.
+            TIR::ReadStructLiteral(_, _, _) => {
+                if matches!(alloc.alloc_ins.ty, Some(TirType::StructInterface(_))) {
+                    return "toy_free_struct".to_string();
+                }
+                return "toy_free".to_string();
+            }
             _ => return "toy_free".to_string(),
         };
     }
@@ -1335,6 +1593,35 @@ impl CTLA {
             .flat_map(|b| b.ins.iter())
             .find(|ins| ins.get_id() == alloc_val);
         match alloc_ins {
+            // A local struct (`P{..}`) lowers to `toy_malloc_struct(size, struct_literal)`. Its owned
+            // heap fields come straight from the struct literal, so it gets the same field deep-free
+            // treatment as a struct returned from a function.
+            Some(TIR::CallExternFunction(_, callee_name, args, _, _, _))
+                if callee_name.as_ref() == "toy_malloc_struct" =>
+            {
+                let Some(struct_lit) = args.get(1) else {
+                    return vec![];
+                };
+                let mut fields = self.alias_detector.owned_fields_of_struct_value(
+                    func,
+                    struct_lit.val,
+                    &self.cfg_functions,
+                );
+                // Struct-typed fields (nested structs) need a recursive struct free that isn't
+                // implemented yet; freeing them as plain pointers would crash/leak. Drop them so
+                // only str / array fields are deep-freed (the rest stay on the normal pipeline).
+                if let Some(TIR::CreateStructLiteral(_, TirType::StructInterface(types), _)) = func
+                    .body
+                    .iter()
+                    .flat_map(|b| b.ins.iter())
+                    .find(|ins| ins.get_id() == struct_lit.val)
+                {
+                    fields.retain(|f| {
+                        !matches!(types.get(f.index), Some(TirType::StructInterface(_)))
+                    });
+                }
+                fields
+            }
             Some(TIR::CallLocalFunction(_, callee_name, _, _, _))
             | Some(TIR::CallExternFunction(_, callee_name, _, _, _, _)) => {
                 // Check local cfg_functions first
@@ -1386,8 +1673,19 @@ impl CTLA {
         }
         // A value stored into a local array is owned by that array: it is reclaimed by the array's
         // deep-free (if it survives) or by the swap-eviction free (if overwritten), never by a
-        // per-element free — which would double-free.
+        // per-element free — which would double-free. Exception: if the value also has an
+        // independent use (it outlives the array slot, e.g. a named local read after the write),
+        // the array only borrows it — mark its writes borrowed and free it via its own site.
         if self.allocation_written_into_array(&alloc) {
+            if self.allocation_used_outside_array(&alloc) {
+                self.mark_array_writes_borrowed(&alloc);
+            } else {
+                return;
+            }
+        }
+        // A value owned by a struct field is reclaimed via the struct's eviction + owned-field
+        // deep-free, never by a per-value free here.
+        if self.allocation_written_into_struct_field(&alloc) {
             return;
         }
         let escape_type = self.allocation_escapes(&alloc);
@@ -1465,8 +1763,13 @@ impl CTLA {
             for block in &cfg_f.func.body {
                 for ins in &block.ins {
                     if let TIR::CallExternFunction(_, name, wp, _, _, _) = ins {
-                        if (name.as_ref() == "toy_write_to_arr" || name.as_ref() == "toy_arr_swap")
-                            && wp.len() >= 2
+                        if matches!(
+                            name.as_str(),
+                            "toy_write_to_arr"
+                                | "toy_write_to_arr_borrowed"
+                                | "toy_arr_swap"
+                                | "toy_arr_swap_borrowed"
+                        ) && wp.len() >= 2
                         {
                             let arr_idx = cfg_f.func.params.iter().position(|p| p.val == wp[0].val);
                             let elem_idx = cfg_f.func.params.iter().position(|p| p.val == wp[1].val);
@@ -1589,6 +1892,9 @@ impl CTLA {
             .populate_return_owned_fields(&mut self.cfg_functions);
         self.cfg_functions = self.populate_parameter_escape_summary(self.cfg_functions.clone());
         CTLA::populate_param_encapsulates_pairs(&mut self.cfg_functions);
+        // Enforce disjoint single-slot ownership before per-allocation processing: a value read out
+        // of an array and written back is borrowed in the new slot (its source slot owns it).
+        self.mark_readback_writes_borrowed();
         let mut unique_allocations = self.builder.borrow().detect_unique_heap_allocations();
         let mut insertion_points: Vec<(String, BlockId, ValueId, SSAValue, String)> = vec![];
         let len = unique_allocations.len();

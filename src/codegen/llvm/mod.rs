@@ -1333,7 +1333,17 @@ impl<'a> LlvmGenerator<'a> {
             TirType::Void,
         );
         self.declare_individual_function(
+            "toy_write_to_arr_borrowed",
+            vec![TirType::I64, TirType::I64, TirType::I64, TirType::I64],
+            TirType::Void,
+        );
+        self.declare_individual_function(
             "toy_arr_swap",
+            vec![TirType::I64, TirType::I64, TirType::I64, TirType::I64],
+            TirType::I64,
+        );
+        self.declare_individual_function(
+            "toy_arr_swap_borrowed",
             vec![TirType::I64, TirType::I64, TirType::I64, TirType::I64],
             TirType::I64,
         );

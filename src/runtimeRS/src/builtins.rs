@@ -17,6 +17,10 @@ pub struct ToyArr {
     degree: i64,
     pub should_free_subelements: bool,
     arr: Vec<i64>,
+    /// Parallel to `arr`: `owned[i]` means the array owns `arr[i]` and is responsible for freeing it
+    /// (on eviction or at deep-free). A borrowed slot is owned by some independent variable and is
+    /// never freed by the array. The compiler sets this at the write site; the runtime only reads it.
+    owned: Vec<bool>,
 }
 #[macro_export]
 macro_rules! meta_malloc {
@@ -305,11 +309,13 @@ pub fn toy_malloc_arr(len: i64, ty: i64, degree: i64) -> ToyPtr {
         _ => toy_ty,
     };
 
+    let owned = vec![false; len as usize];
     let toy_arr = Box::new(ToyArr {
         ty: arr_type,
         degree,
         should_free_subelements: false,
         arr,
+        owned,
     });
 
     let ptr = Box::into_raw(toy_arr) as ToyPtr;
@@ -327,13 +333,31 @@ pub fn toy_malloc_arr(len: i64, ty: i64, degree: i64) -> ToyPtr {
 #[unsafe(no_mangle)]
 ///ty refers to the type of the array, so 4 for str[] not the type of the elements
 pub fn toy_write_to_arr(arr_in_ptr: ToyPtr, value: i64, idx: i64, ty: i64) {
-    let _ = toy_arr_swap(arr_in_ptr, value, idx, ty);
+    let _ = arr_swap_impl(arr_in_ptr, value, idx, ty, true);
 }
 #[unsafe(no_mangle)]
-/// Writes `value` into slot `idx` and returns the previous occupant (0 if the slot was empty or
-/// freshly grown). Surfacing the evicted value lets CTLA free it at compile time instead of a
-/// runtime sweep. `ty` refers to the type of the array, so 4 for str[] not the element type.
+/// Like `toy_write_to_arr` but marks the slot as borrowed: the array references `value` but does not
+/// own it (some independent variable does), so the array will never free it.
+pub fn toy_write_to_arr_borrowed(arr_in_ptr: ToyPtr, value: i64, idx: i64, ty: i64) {
+    let _ = arr_swap_impl(arr_in_ptr, value, idx, ty, false);
+}
+#[unsafe(no_mangle)]
+/// Writes `value` into slot `idx` (marking the slot owned) and returns the previous occupant when the
+/// array owned it (0 otherwise — borrowed slot, empty/freshly-grown slot, or a self-write-back).
+/// Surfacing the evicted owned value lets CTLA free it at compile time instead of a runtime sweep.
+/// `ty` refers to the type of the array, so 4 for str[] not the element type.
 pub fn toy_arr_swap(arr_in_ptr: ToyPtr, value: i64, idx: i64, ty: i64) -> i64 {
+    arr_swap_impl(arr_in_ptr, value, idx, ty, true)
+}
+#[unsafe(no_mangle)]
+/// Like `toy_arr_swap` but marks the written slot borrowed: the incoming `value` is owned by an
+/// independent variable, so the array will not free it. The evicted occupant is still returned iff
+/// the array owned that previous value.
+pub fn toy_arr_swap_borrowed(arr_in_ptr: ToyPtr, value: i64, idx: i64, ty: i64) -> i64 {
+    arr_swap_impl(arr_in_ptr, value, idx, ty, false)
+}
+/// `new_owned` is the compiler-set ownership bit for the incoming `value` (true = array owns it).
+fn arr_swap_impl(arr_in_ptr: ToyPtr, value: i64, idx: i64, ty: i64, new_owned: bool) -> i64 {
     _check_pointer(arr_in_ptr as *mut c_void);
     let arr_ptr = unsafe { &mut *(arr_in_ptr as *mut ToyArr) };
     let toy_ty = ToyType::try_from(arr_ptr.ty.clone()).unwrap();
@@ -351,13 +375,17 @@ pub fn toy_arr_swap(arr_in_ptr: ToyPtr, value: i64, idx: i64, ty: i64) -> i64 {
     }
     if idx as usize >= arr_ptr.arr.len() {
         arr_ptr.arr.resize(idx as usize + 1, 0);
+        arr_ptr.owned.resize(idx as usize + 1, false);
     }
     let old = arr_ptr.arr[idx as usize];
+    let old_owned = arr_ptr.owned[idx as usize];
     arr_ptr.arr[idx as usize] = value;
-    // Self-write-back (`arr[i] = arr[i]`, or writing an element back into the same array): the
-    // evicted value is the value we just stored, so it is still live in the slot. Report 0 so the
-    // (null-safe) eviction free is a no-op and the value is reclaimed by the array's deep-free.
-    if old == value {
+    arr_ptr.owned[idx as usize] = new_owned;
+    // The evicted value is reclaimable only if the array owned it. A borrowed slot's value is owned
+    // by an independent variable and must not be freed here.
+    // Self-write-back (`arr[i] = arr[i]`): the evicted value is the value we just stored, so it is
+    // still live in the slot. Report 0 so the (null-safe) eviction free is a no-op.
+    if !old_owned || old == value {
         return 0;
     }
     return old;
@@ -395,23 +423,23 @@ pub fn toy_free_arr(arr_ptr_int: ToyPtr) {
     let arr = unsafe { &mut *(arr_ptr_int as *mut ToyArr) };
 
     if arr.should_free_subelements {
-        // The same pointer can occupy multiple slots (e.g. an element read out and written back),
-        // so dedup to free each distinct allocation exactly once.
-        let mut freed: std::collections::HashSet<i64> = std::collections::HashSet::new();
+        // Ownership is disjoint by construction (the compiler marks duplicates/read-backs borrowed,
+        // so each allocation has at most one owned slot), so each owned slot is freed exactly once
+        // with no runtime dedup. Borrowed slots are freed by their independent owner.
         if arr.degree > 1 {
-            // Elements are nested arrays — recursively free them
-            for &val in &arr.arr {
-                if val != 0 && freed.insert(val) {
+            // Elements are nested arrays — recursively free the owned ones
+            for (i, &val) in arr.arr.iter().enumerate() {
+                if val != 0 && arr.owned[i] {
                     toy_deep_free_arr(val);
                 }
             }
         } else {
-            // Elements are scalars — only free heap-allocated types
+            // Elements are scalars — only free owned heap-allocated types
             let elem_type = arr.ty.to_elem_type();
-            for &val in &arr.arr {
+            for (i, &val) in arr.arr.iter().enumerate() {
                 if (elem_type == ToyType::Str || elem_type == ToyType::Struct)
                     && val != 0
-                    && freed.insert(val)
+                    && arr.owned[i]
                 {
                     toy_free(val as *mut c_void);
                 }
@@ -445,8 +473,8 @@ pub fn toy_deep_free_arr(arr_ptr_int: ToyPtr) {
 pub fn toy_arr_concat(arr1: ToyPtr, arr2: ToyPtr) -> ToyPtr {
     _check_pointer(arr1 as *mut c_void);
     _check_pointer(arr2 as *mut c_void);
-    let a1 = unsafe { &*(arr1 as *const ToyArr) };
-    let a2 = unsafe { &*(arr2 as *const ToyArr) };
+    let a1 = unsafe { &mut *(arr1 as *mut ToyArr) };
+    let a2 = unsafe { &mut *(arr2 as *mut ToyArr) };
 
     let total_len = a1.arr.len() + a2.arr.len();
     let res_ptr = toy_malloc_arr(total_len as i64, a1.ty.clone() as i64, a1.degree);
@@ -454,6 +482,17 @@ pub fn toy_arr_concat(arr1: ToyPtr, arr2: ToyPtr) -> ToyPtr {
 
     res.arr.extend_from_slice(&a1.arr);
     res.arr.extend_from_slice(&a2.arr);
+    // Keep `owned` parallel to `arr` and move ownership of the elements into the result so no
+    // allocation is owned by two arrays: the result owns whatever the sources owned, and the source
+    // slots become borrowed.
+    res.owned.extend_from_slice(&a1.owned);
+    res.owned.extend_from_slice(&a2.owned);
+    for o in a1.owned.iter_mut() {
+        *o = false;
+    }
+    for o in a2.owned.iter_mut() {
+        *o = false;
+    }
 
     return res_ptr;
 }

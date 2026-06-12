@@ -1395,6 +1395,16 @@ impl TirBuilder {
     /// Surfaces `val` (a `toy_arr_swap` result — an array element evicted by an overwrite) as a
     /// heap allocation in the current function so CTLA can reclaim it at compile time. Only call
     /// for heap element types (str / struct / nested array); scalars own nothing.
+    /// Update the `alloc_ins` type of the heap allocation produced by `val` in the current function.
+    /// Used so a struct allocation carries its `StructInterface` type for CTLA-inserted field frees.
+    pub fn set_heap_allocation_type(&mut self, val: ValueId, ty: TirType) {
+        let fi = self.curr_func.unwrap();
+        for alloc in self.funcs[fi].heap_allocations.iter_mut() {
+            if alloc.alloc_ins.val == val {
+                alloc.alloc_ins.ty = Some(ty.clone());
+            }
+        }
+    }
     pub fn mark_swap_displaced_alloc(&mut self, val: SSAValue) {
         let fi = self.curr_func.unwrap();
         let block_id = self.funcs[fi].body[self.curr_block.unwrap()].id;

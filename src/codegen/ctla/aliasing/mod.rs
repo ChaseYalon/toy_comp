@@ -52,6 +52,50 @@ impl AliasAndEncapsulationTracker {
         None
     }
 
+    /// Owned (heap) fields of a struct value (e.g. a local `toy_malloc_struct` result's struct
+    /// literal arg). Mirrors `populate_return_owned_fields` but for an arbitrary struct value, so
+    /// local structs get the same field-deep-free treatment as returned ones.
+    pub fn owned_fields_of_struct_value(
+        &self,
+        func: &Function,
+        struct_value: ValueId,
+        cfg_functions: &[CFGFunction],
+    ) -> Vec<super::OwnedField> {
+        let mut summary_by_func: HashMap<String, Vec<usize>> = cfg_functions
+            .iter()
+            .map(|cfg_f| {
+                (
+                    (*cfg_f.func.name).clone(),
+                    cfg_f.returns_alias_of_parameter.clone(),
+                )
+            })
+            .collect();
+        let mut owned_fields_by_func: HashMap<String, Vec<super::OwnedField>> = cfg_functions
+            .iter()
+            .map(|cfg_f| ((*cfg_f.func.name).clone(), cfg_f.return_owned_fields.clone()))
+            .collect();
+        for summaries in self.external_modules.values() {
+            for summary in summaries {
+                summary_by_func
+                    .entry(summary.name.clone())
+                    .or_insert_with(|| summary.aliased_parameters.clone());
+                owned_fields_by_func
+                    .insert(summary.name.clone(), summary.return_owned_fields.clone());
+            }
+        }
+        let mut visited = HashSet::new();
+        let mut fields = Self::collect_owned_fields(
+            func,
+            struct_value,
+            &mut visited,
+            &summary_by_func,
+            &owned_fields_by_func,
+        );
+        fields.sort_by_key(|f| f.index);
+        fields.dedup();
+        fields
+    }
+
     #[allow(unused)]
     pub fn has_alias(&self, original_alloc_id: u64, func_name: &str, alias_id: ValueId) -> bool {
         return self
@@ -479,9 +523,13 @@ impl AliasAndEncapsulationTracker {
                 .flat_map(|b| b.ins.iter())
                 .filter_map(|ins| match ins {
                     TIR::CallExternFunction(_, name, wp, _, _, _)
-                        if (name.as_ref() == "toy_write_to_arr"
-                            || name.as_ref() == "toy_arr_swap")
-                            && wp.len() >= 2
+                        if matches!(
+                            name.as_str(),
+                            "toy_write_to_arr"
+                                | "toy_write_to_arr_borrowed"
+                                | "toy_arr_swap"
+                                | "toy_arr_swap_borrowed"
+                        ) && wp.len() >= 2
                             && returned_values.contains(&wp[0].val) =>
                     {
                         Some(wp[1].val)
@@ -716,7 +764,9 @@ impl AliasAndEncapsulationTracker {
         // Local functions compute it from TIR; external functions from their CTLA summary.
         let mut encapsulates_pairs_by_func: HashMap<String, Vec<(usize, usize)>> = HashMap::new();
         encapsulates_pairs_by_func.insert("toy_write_to_arr".to_string(), vec![(0, 1)]);
+        encapsulates_pairs_by_func.insert("toy_write_to_arr_borrowed".to_string(), vec![(0, 1)]);
         encapsulates_pairs_by_func.insert("toy_arr_swap".to_string(), vec![(0, 1)]);
+        encapsulates_pairs_by_func.insert("toy_arr_swap_borrowed".to_string(), vec![(0, 1)]);
         for cfg_f in cfg_functions.iter() {
             if !cfg_f.param_encapsulates_pairs.is_empty() {
                 encapsulates_pairs_by_func.insert((*cfg_f.func.name).clone(), cfg_f.param_encapsulates_pairs.clone());

@@ -149,7 +149,7 @@ pub extern "C" fn main() -> i32 {
 
     if live_allocs != 0 {
         _print_debug_heap();
-        println!("\nFAIL_TST");
+        println!("\nFAIL_TEST");
         panic!();
     }
 

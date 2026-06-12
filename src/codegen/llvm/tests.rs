@@ -556,5 +556,25 @@ fn test_llvm_bug_4(){
         "llvm_bug_4"
     );
     assert!(output.contains("[true]"));
-    
+
+}
+
+// `y` is placed into `arr` and then evicted by func1's overwrite, but `y` is still a live local.
+// The evicted value must survive so `println(y)` still prints "y".
+#[test]
+fn test_llvm_evicted_value_aliased_local() {
+    compile_code_aot!(
+        output,
+        r#"
+            fn func1(p1: str[]): void {
+                p1[0] = "x";
+            }
+            let y = "y";
+            let arr = [y];
+            func1(arr);
+            println(y);
+        "#,
+        "llvm_evicted_value_aliased_local"
+    );
+    assert!(output.lines().any(|l| l == "y"));
 }

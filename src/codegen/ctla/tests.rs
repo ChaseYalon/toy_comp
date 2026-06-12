@@ -125,7 +125,7 @@ fn test_ctla_struct_field_overwrite() {
         "#,
         "ctla_struct_field_overwrite"
     );
-    assert!(!output.contains("FAIL_TEST") && !output.contains("FAIL_TST"));
+    assert!(!output.contains("FAIL_TEST") && !output.contains("FAIL_TEST"));
 }
 
 #[test]
@@ -144,7 +144,7 @@ fn test_ctla_struct_arr_overwrite() {
         "#,
         "ctla_struct_arr_overwrite"
     );
-    assert!(!output.contains("FAIL_TEST") && !output.contains("FAIL_TST"));
+    assert!(!output.contains("FAIL_TEST") && !output.contains("FAIL_TEST"));
 }
 
 #[test]
@@ -162,7 +162,7 @@ fn test_ctla_struct_cross_arr() {
         "#,
         "ctla_struct_cross_arr"
     );
-    assert!(!output.contains("FAIL_TEST") && !output.contains("FAIL_TST"));
+    assert!(!output.contains("FAIL_TEST") && !output.contains("FAIL_TEST"));
 }
 
 #[test]
@@ -265,7 +265,7 @@ fn test_ctla_aliasing() {
 }
 
 #[test]
-#[ignore = "This produces weird inexplicable errors, nothing to do with ctla"]
+//#[ignore = "This produces weird inexplicable errors, nothing to do with ctla"]
 fn test_ctla_extern_struct_func_call() {
     compile_code_aot!(
         output,
@@ -721,4 +721,75 @@ fn test_ctla_bug_15(){
         "ctla_bug_15"
     );
     assert!(!output.contains("FAIL_TEST"));
+}
+
+// Minimal version of the bug_15 pattern: an array is created in user_main, passed to a function
+// that swaps/evicts elements into it (the eviction free lands in the callee), and then the SAME
+// array is read back in user_main — where it is owned and deep-freed after the read. Exercises the
+// param-array write path together with a caller-side read + deep-free of the survivor.
+#[test]
+fn test_ctla_param_array_write_then_read_in_main() {
+    compile_code_aot!(
+        output,
+        r#"
+            import std.fuzz;
+
+            fn writer(p1: str[]): void {
+                let i: int = 0;
+                while i < 5 {
+                    fuzz.write_arr(p1, "V");
+                    i = i + 1;
+                }
+            }
+
+            let arr: str[] = ["Q"];
+            writer(arr);
+            println(arr);
+        "#,
+        "ctla_param_array_write_then_read_in_main"
+    );
+    assert!(!output.contains("FAIL_TEST") && !output.contains("FAIL_TEST"));
+}
+
+// The evicted value is still owned elsewhere: `y` is a live local that was also placed into `arr`,
+// so `y` and `arr[0]` alias. When func1 overwrites arr[0], the displaced value must NOT be freed —
+// `y` is still referenced in user_main. Freeing it at the swap is a use-after-free (and a
+// double-free against `y`'s own scope).
+#[test]
+fn test_ctla_bug_16() {
+    compile_code_aot!(
+        output,
+        r#"
+            fn func1(p1: str[]): void {
+                p1[0] = "x";
+            }
+            let y = "y";
+            let arr = [y];
+            func1(arr);
+            println(y);
+        "#,
+        "ctla_bug_16"
+    );
+    assert!(!output.contains("FAIL_TEST") && !output.contains("FAIL_TEST"));
+}
+
+// Double-own / read-back duplicate: an element read out of an array is written back into a DIFFERENT
+// slot of the SAME array, so one allocation occupies two slots. With per-element ownership and no
+// runtime dedup, the array must own that allocation in only ONE slot (the duplicate write is marked
+// borrowed); otherwise the array's deep-free reclaims the same pointer twice (a double-free). The
+// displaced "b" is owned and reclaimed by the swap eviction.
+#[test]
+fn test_ctla_double_own() {
+    compile_code_aot!(
+        output,
+        r#"
+            let arr = ["a", "b"];
+            let z = arr[0];
+            arr[1] = z;
+            println("done");
+        "#,
+        "ctla_double_own"
+    );
+    assert!(output.contains("done"));
+    assert!(!output.contains("FAIL_TEST") && !output.contains("FAIL_TST"));
 }

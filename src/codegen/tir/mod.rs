@@ -137,11 +137,12 @@ impl AstToIrConverter {
             },
             Ast::EmptyExpr(e, _) => self.get_expr_type(e, scope),
             Ast::FuncCall(n, _, _) => match n.as_str() {
-                "print" | "println" | "toy_write_to_arr" => Ok(TypeTok::Void),
-                "len" | "toy_strlen" | "toy_arrlen" | "toy_type_to_int" | "toy_type_to_bool"
-                | "toy_type_to_float" | "toy_malloc_arr" | "toy_arr_swap" | "toy_input" => {
-                    Ok(TypeTok::Int)
+                "print" | "println" | "toy_write_to_arr" | "toy_write_to_arr_borrowed" => {
+                    Ok(TypeTok::Void)
                 }
+                "len" | "toy_strlen" | "toy_arrlen" | "toy_type_to_int" | "toy_type_to_bool"
+                | "toy_type_to_float" | "toy_malloc_arr" | "toy_arr_swap"
+                | "toy_arr_swap_borrowed" | "toy_input" => Ok(TypeTok::Int),
                 "str" | "toy_type_to_str" => Ok(TypeTok::Str),
                 "int" => Ok(TypeTok::Int),
                 "float" => Ok(TypeTok::Float),
@@ -596,7 +597,10 @@ impl AstToIrConverter {
                     "toy_malloc_struct".to_string(),
                     vec![struct_size, toy_struct],
                 )?;
-                heap_struct.ty = Some(ty);
+                heap_struct.ty = Some(ty.clone());
+                // Carry the struct interface type onto the heap allocation so CTLA-inserted
+                // owned-field frees (ReadStructLiteral on this struct) lower correctly.
+                self.builder.set_heap_allocation_type(heap_struct.val, ty);
                 Ok(heap_struct)
             }
             Ast::MemberAccess(target, field_name, _) => {
@@ -1112,6 +1116,9 @@ impl AstToIrConverter {
                         let mut write_params = vec![arr, val.clone(), idx];
                         self.builder
                             .inject_type_param(&arr_ty, false, true, &mut write_params)?;
+                        // Default to the owning swap. CTLA renames this call to
+                        // `toy_arr_swap_borrowed` when the incoming value has an independent free
+                        // site or is a duplicate already owned by another slot of this array.
                         let displaced = self
                             .builder
                             .call("toy_arr_swap".to_string(), write_params)?;
@@ -1151,8 +1158,26 @@ impl AstToIrConverter {
                         }
                         let idx = field_idx.unwrap();
                         let ty = field_type.unwrap();
+                        // Overwriting a heap-owned field evicts its previous occupant. Read it out
+                        // first and surface it (like an array swap) so CTLA frees the displaced
+                        // value at compile time; the surviving value is reclaimed by the struct's
+                        // owned-field deep-free at its death.
+                        let is_heap_field =
+                            ty == TirType::Ptr || matches!(ty, TirType::StructInterface(_));
+                        let displaced = if is_heap_field {
+                            Some(self.builder.read_struct_literal(
+                                struct_val.clone(),
+                                idx as u64,
+                                ty.clone(),
+                            )?)
+                        } else {
+                            None
+                        };
                         self.builder
                             .write_struct_literal(struct_val, idx as u64, val, ty)?;
+                        if let Some(old) = displaced {
+                            self.builder.mark_swap_displaced_alloc(old);
+                        }
                     }
                     _ => {
                         return Err(ToyError::new(
@@ -1425,7 +1450,21 @@ impl AstToIrConverter {
             true,
         );
         self.builder.register_extern(
+            "toy_write_to_arr_borrowed".to_string(),
+            false,
+            TypeTok::Void,
+            vec![true, true, true, true],
+            true,
+        );
+        self.builder.register_extern(
             "toy_arr_swap".to_string(),
+            false,
+            TypeTok::Int,
+            vec![true, true, true, true],
+            false,
+        );
+        self.builder.register_extern(
+            "toy_arr_swap_borrowed".to_string(),
             false,
             TypeTok::Int,
             vec![true, true, true, true],
