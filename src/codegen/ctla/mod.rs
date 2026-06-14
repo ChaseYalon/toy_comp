@@ -87,6 +87,10 @@ pub struct CTLAStats {
     pub lifetime_max_ns: Option<u64>,
 }
 
+/// Current on-disk `.ctla` summary schema version. Bump whenever the meaning or shape of a
+/// `FunctionSummary` field changes so stale blobs are ignored on load (see `Driver`). v3 split
+/// `encapsulated_parameters` from `aliased_parameters` (element-reads vs whole-value aliases).
+pub const CTLA_SCHEMA_VERSION: u64 = 3;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CTLASchema {
     pub schema_version: u64,
@@ -560,6 +564,46 @@ impl CTLA {
         })
     }
 
+    /// True when this allocation is itself an element read out of an array — its defining
+    /// instruction is a `toy_read_from_arr` or a reader wrapper (one whose
+    /// `encapsulated_parameters` is non-empty, e.g. `fuzz.read_rand`). Such a value is not a
+    /// fresh allocation: it points into the array's memory and is reclaimed by the array's
+    /// deep-free, so it must never be freed independently — even if it is also used elsewhere
+    /// (e.g. passed to `toy_concat`).
+    fn allocation_is_array_element_read(&self, alloc: &HeapAllocation) -> bool {
+        let builder = self.builder.borrow();
+        let Some(func) = builder.funcs.iter().find(|f| *f.name == *alloc.function) else {
+            return false;
+        };
+        let callee = func
+            .body
+            .iter()
+            .flat_map(|b| b.ins.iter())
+            .find(|i| i.get_id() == alloc.alloc_ins.val)
+            .and_then(|ins| match ins {
+                TIR::CallExternFunction(_, name, _, _, _, _)
+                | TIR::CallLocalFunction(_, name, _, _, _) => Some(name.as_ref().as_str()),
+                _ => None,
+            });
+        let Some(callee) = callee else {
+            return false;
+        };
+        if callee == "toy_read_from_arr" {
+            return true;
+        }
+        let local_reader = self
+            .cfg_functions
+            .iter()
+            .any(|f| *f.func.name == *callee && !f.parameter_encapsulates.is_empty());
+        let extern_reader = self
+            .alias_detector
+            .external_modules
+            .values()
+            .flatten()
+            .any(|s| s.name == callee && !s.encapsulated_parameters.is_empty());
+        local_reader || extern_reader
+    }
+
     /// True when this allocation has a use independent of being written into an array — e.g. it is a
     /// named value referenced again after the array write (`let y = ..; arr = [y]; .. y ..`), or
     /// passed elsewhere. Such a value is owned by its own binding, not the array, so its array slot
@@ -831,8 +875,12 @@ impl CTLA {
         enc_pairs.insert("toy_arr_swap_borrowed".to_string(), vec![(0, 1)]);
         enc_pairs.insert("toy_write_to_arr".to_string(), vec![(0, 1)]);
         enc_pairs.insert("toy_write_to_arr_borrowed".to_string(), vec![(0, 1)]);
-        let mut aliased: HashMap<String, Vec<usize>> = HashMap::new();
-        aliased.insert("toy_read_from_arr".to_string(), vec![0]);
+        // callee_name -> params whose array element is read out and returned. An element read
+        // out of an array is encapsulated by that array (not an alias of it), so this uses the
+        // encapsulation summary, not the whole-value alias summary. toy_read_from_arr is the
+        // builtin base case (returns an element of arg 0).
+        let mut elem_read: HashMap<String, Vec<usize>> = HashMap::new();
+        elem_read.insert("toy_read_from_arr".to_string(), vec![0]);
         for cfg_f in &self.cfg_functions {
             if !cfg_f.param_encapsulates_pairs.is_empty() {
                 enc_pairs.insert(
@@ -840,10 +888,10 @@ impl CTLA {
                     cfg_f.param_encapsulates_pairs.clone(),
                 );
             }
-            if !cfg_f.returns_alias_of_parameter.is_empty() {
-                aliased.insert(
+            if !cfg_f.parameter_encapsulates.is_empty() {
+                elem_read.insert(
                     (*cfg_f.func.name).clone(),
-                    cfg_f.returns_alias_of_parameter.clone(),
+                    cfg_f.parameter_encapsulates.clone(),
                 );
             }
         }
@@ -852,8 +900,8 @@ impl CTLA {
                 if !s.param_encapsulates_pairs.is_empty() {
                     enc_pairs.insert(s.name.clone(), s.param_encapsulates_pairs.clone());
                 }
-                if !s.aliased_parameters.is_empty() {
-                    aliased.insert(s.name.clone(), s.aliased_parameters.clone());
+                if !s.encapsulated_parameters.is_empty() {
+                    elem_read.insert(s.name.clone(), s.encapsulated_parameters.clone());
                 }
             }
         }
@@ -868,11 +916,11 @@ impl CTLA {
                 _ => None,
             }
         };
-        // Values read out of this array (alias an element of it).
+        // Values read out of this array (an element encapsulated by it).
         let mut read_out: HashSet<ValueId> = HashSet::new();
         for ins in func.body.iter().flat_map(|b| b.ins.iter()) {
             if let Some((name, args)) = call_args(ins) {
-                if let Some(ap) = aliased.get(&name) {
+                if let Some(ap) = elem_read.get(&name) {
                     if ap
                         .iter()
                         .any(|&k| args.get(k).is_some_and(|a| arr_ids.contains(a)))
@@ -894,8 +942,12 @@ impl CTLA {
                         {
                             return true;
                         }
-                        // Pattern 2: an element read out of THIS array is stored into a PARAM array.
-                        if arr_arg.is_some_and(|a| param_ids.contains(&a))
+                        // Pattern 2: an element read out of THIS array is stored into ANY OTHER
+                        // array (a parameter array, or another local array via a wrapper such as
+                        // fuzz.write_arr). That destination array now owns the shared element, so
+                        // THIS array must be shallow-freed to avoid reclaiming it twice. The
+                        // arr_ids exclusion skips self-encapsulation (read out and written back).
+                        if arr_arg.is_some_and(|a| !arr_ids.contains(&a))
                             && elem_arg.is_some_and(|e| read_out.contains(&e))
                         {
                             return true;
@@ -1671,6 +1723,12 @@ impl CTLA {
         if self.allocation_encapsulated_by_param(&alloc) {
             return;
         }
+        // A value read out of an array is owned by that array (encapsulated by it); it is
+        // reclaimed by the array's deep-free and must never be freed here, even when it is also
+        // used elsewhere (e.g. fed to toy_concat) — that use is a borrow, not ownership.
+        if self.allocation_is_array_element_read(&alloc) {
+            return;
+        }
         // A value stored into a local array is owned by that array: it is reclaimed by the array's
         // deep-free (if it survives) or by the swap-eviction free (if overwritten), never by a
         // per-element free — which would double-free. Exception: if the value also has an
@@ -2010,7 +2068,7 @@ impl CTLA {
         hasher.write(self.original_text.as_deref().unwrap_or("").as_bytes());
         let hash = format!("{:x}", hasher.finish());
 
-        let schema = CTLASchema::new(2, summaries, hash, module_name.clone());
+        let schema = CTLASchema::new(CTLA_SCHEMA_VERSION, summaries, hash, module_name.clone());
         let serialized = serde_json::to_string(&schema).unwrap(); //should fix ?
 
         let _ = fs::create_dir_all(&build_dir);

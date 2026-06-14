@@ -224,11 +224,136 @@ impl AliasAndEncapsulationTracker {
             _ => false,
         }
     }
-    /// computes which parameter indexes in this function may flow to a return value
-    fn find_return_alias_parameter_indexes_with_summaries(
+    /// Classifies how `value_id` relates to parameter `param_value_id`, returning
+    /// `(whole, element)`:
+    /// - `whole`: reachable as a whole-value alias of the param — the value may *be* the
+    ///   param (identity, phi, struct flow, or a callee whose return aliases the followed
+    ///   arg), with no array element-read on the path.
+    /// - `element`: reachable *through* an array element read — a `toy_read_from_arr`, or a
+    ///   callee whose `encapsulated_parameters` covers the followed arg. The value is then an
+    ///   element *encapsulated by* the param array, not an alias of it.
+    fn classify_param_relation(
         func: &Function,
-        summary_by_func: &HashMap<String, Vec<usize>>,
-    ) -> Vec<usize> {
+        value_id: ValueId,
+        param_value_id: ValueId,
+        visited: &mut HashSet<ValueId>,
+        alias_by_func: &HashMap<String, Vec<usize>>,
+        enc_by_func: &HashMap<String, Vec<usize>>,
+    ) -> (bool, bool) {
+        if value_id == param_value_id {
+            return (true, false);
+        }
+        if !visited.insert(value_id) {
+            return (false, false);
+        }
+
+        let maybe_ins = func
+            .body
+            .iter()
+            .flat_map(|b| b.ins.iter())
+            .find(|ins| ins.get_id() == value_id);
+        let Some(ins) = maybe_ins else {
+            return (false, false);
+        };
+
+        let mut whole = false;
+        let mut element = false;
+        // Reaching the param through an element read taints the whole sub-path as an
+        // element relationship (the value is an element of the array, not the array).
+        let mut follow_element =
+            |arg_val: ValueId, visited: &mut HashSet<ValueId>, element: &mut bool| {
+                let (cw, ce) = AliasAndEncapsulationTracker::classify_param_relation(
+                    func, arg_val, param_value_id, visited, alias_by_func, enc_by_func,
+                );
+                if cw || ce {
+                    *element = true;
+                }
+            };
+
+        match ins {
+            TIR::Phi(_, _, vals) => {
+                for v in vals {
+                    let (cw, ce) = AliasAndEncapsulationTracker::classify_param_relation(
+                        func, v.val, param_value_id, visited, alias_by_func, enc_by_func,
+                    );
+                    whole |= cw;
+                    element |= ce;
+                }
+            }
+            TIR::CallLocalFunction(_, callee_name, params, _, _)
+            | TIR::CallExternFunction(_, callee_name, params, _, _, _) => {
+                let mut handled = false;
+                if let Some(alias_idxs) = alias_by_func.get(callee_name.as_ref()) {
+                    handled = true;
+                    for &i in alias_idxs {
+                        if let Some(arg) = params.get(i) {
+                            let (cw, ce) = AliasAndEncapsulationTracker::classify_param_relation(
+                                func, arg.val, param_value_id, visited, alias_by_func, enc_by_func,
+                            );
+                            whole |= cw;
+                            element |= ce;
+                        }
+                    }
+                }
+                if let Some(enc_idxs) = enc_by_func.get(callee_name.as_ref()) {
+                    handled = true;
+                    for &i in enc_idxs {
+                        if let Some(arg) = params.get(i) {
+                            follow_element(arg.val, visited, &mut element);
+                        }
+                    }
+                }
+                // The builtin array read has no summary: its result is an element of arg 0.
+                if callee_name.as_ref() == "toy_read_from_arr" {
+                    handled = true;
+                    if let Some(arg) = params.first() {
+                        follow_element(arg.val, visited, &mut element);
+                    }
+                }
+                if !handled {
+                    // No summary. For non-allocator extern functions, conservatively assume
+                    // the return may alias any pointer argument (whole alias).
+                    let is_allocator = matches!(ins, TIR::CallExternFunction(_, _, _, true, _, _));
+                    if !is_allocator {
+                        for arg in params {
+                            let (cw, ce) = AliasAndEncapsulationTracker::classify_param_relation(
+                                func, arg.val, param_value_id, visited, alias_by_func, enc_by_func,
+                            );
+                            whole |= cw;
+                            element |= ce;
+                        }
+                    }
+                }
+            }
+            TIR::CreateStructLiteral(_, _, fields) => {
+                for field in fields {
+                    let (cw, ce) = AliasAndEncapsulationTracker::classify_param_relation(
+                        func, field.val, param_value_id, visited, alias_by_func, enc_by_func,
+                    );
+                    whole |= cw;
+                    element |= ce;
+                }
+            }
+            TIR::WriteStructLiteral(_, base_struct, _, new_val) => {
+                for v in [base_struct.val, new_val.val] {
+                    let (cw, ce) = AliasAndEncapsulationTracker::classify_param_relation(
+                        func, v, param_value_id, visited, alias_by_func, enc_by_func,
+                    );
+                    whole |= cw;
+                    element |= ce;
+                }
+            }
+            _ => {}
+        }
+        (whole, element)
+    }
+    /// computes which parameter indexes flow to a return value as a whole-value alias
+    /// (`aliased`) vs as an array element read that the param encapsulates (`encapsulated`).
+    fn find_return_param_relations(
+        func: &Function,
+        alias_by_func: &HashMap<String, Vec<usize>>,
+        enc_by_func: &HashMap<String, Vec<usize>>,
+    ) -> (Vec<usize>, Vec<usize>) {
         let return_values: Vec<ValueId> = func
             .body
             .iter()
@@ -238,30 +363,39 @@ impl AliasAndEncapsulationTracker {
             })
             .collect();
 
-        let mut alias_param_indexes = vec![];
+        let mut aliased = vec![];
+        let mut encapsulated = vec![];
         for (idx, param) in func.params.iter().enumerate() {
-            let param_is_returned_or_aliased = return_values.iter().any(|ret_val| {
+            let mut whole = false;
+            let mut element = false;
+            for ret_val in &return_values {
                 let mut visited = HashSet::new();
-                AliasAndEncapsulationTracker::value_may_alias_param_with_summaries(
+                let (w, e) = AliasAndEncapsulationTracker::classify_param_relation(
                     func,
                     *ret_val,
                     param.val,
                     &mut visited,
-                    summary_by_func,
-                )
-            });
-            if param_is_returned_or_aliased {
-                alias_param_indexes.push(idx);
+                    alias_by_func,
+                    enc_by_func,
+                );
+                whole |= w;
+                element |= e;
+            }
+            if whole {
+                aliased.push(idx);
+            }
+            if element {
+                encapsulated.push(idx);
             }
         }
 
-        return alias_param_indexes;
+        (aliased, encapsulated)
     }
     /// repeatedly recomputes return alias summaries for all cfg functions until a fixed point is reached
     /// Will determine if any of the possible return values are aliases of any of the parameters
     pub fn populate_return_alias_parameter_summaries(&self, cfg_functions: &mut [CFGFunction]) {
         loop {
-            let mut summary_snapshot: HashMap<String, Vec<usize>> = cfg_functions
+            let mut alias_snapshot: HashMap<String, Vec<usize>> = cfg_functions
                 .iter()
                 .map(|cfg_f| {
                     (
@@ -270,29 +404,40 @@ impl AliasAndEncapsulationTracker {
                     )
                 })
                 .collect();
+            let mut enc_snapshot: HashMap<String, Vec<usize>> = cfg_functions
+                .iter()
+                .map(|cfg_f| {
+                    ((*cfg_f.func.name).clone(), cfg_f.parameter_encapsulates.clone())
+                })
+                .collect();
 
             for summaries in self.external_modules.values() {
                 for summary in summaries {
-                    summary_snapshot
+                    alias_snapshot
                         .insert(summary.name.clone(), summary.aliased_parameters.clone());
+                    enc_snapshot
+                        .insert(summary.name.clone(), summary.encapsulated_parameters.clone());
                 }
             }
 
             let mut changed = false;
             for cfg_f in cfg_functions.iter_mut() {
-                let mut new_summary =
-                    AliasAndEncapsulationTracker::find_return_alias_parameter_indexes_with_summaries(
+                let (mut new_alias, mut new_enc) =
+                    AliasAndEncapsulationTracker::find_return_param_relations(
                         &cfg_f.func,
-                        &summary_snapshot,
+                        &alias_snapshot,
+                        &enc_snapshot,
                     );
-                new_summary.sort_unstable();
-                new_summary.dedup();
+                new_alias.sort_unstable();
+                new_alias.dedup();
+                new_enc.sort_unstable();
+                new_enc.dedup();
 
-                if cfg_f.returns_alias_of_parameter != new_summary
-                    || cfg_f.parameter_encapsulates != new_summary
+                if cfg_f.returns_alias_of_parameter != new_alias
+                    || cfg_f.parameter_encapsulates != new_enc
                 {
-                    cfg_f.returns_alias_of_parameter = new_summary;
-                    cfg_f.parameter_encapsulates = cfg_f.returns_alias_of_parameter.clone();
+                    cfg_f.returns_alias_of_parameter = new_alias;
+                    cfg_f.parameter_encapsulates = new_enc;
                     changed = true;
                 }
             }
@@ -490,6 +635,7 @@ impl AliasAndEncapsulationTracker {
         summary_by_func: HashMap<String, Vec<usize>>,
         encapsulator_values: &mut HashSet<(String, ValueId)>,
         encapsulates_pairs_by_func: &HashMap<String, Vec<(usize, usize)>>,
+        elem_read_by_func: &HashMap<String, Vec<usize>>,
     ) {
         let builder = self.builder.borrow();
 
@@ -650,8 +796,8 @@ impl AliasAndEncapsulationTracker {
                                     }
                                 }
                             }
-                            TIR::CallLocalFunction(_, callee_name, caller_args, _, _)
-                            | TIR::CallExternFunction(_, callee_name, caller_args, _, _, _) => {
+                            TIR::CallLocalFunction(out_id, callee_name, caller_args, _, _)
+                            | TIR::CallExternFunction(out_id, callee_name, caller_args, _, _, _) => {
                                 if let Some(pairs) = encapsulates_pairs_by_func.get(callee_name.as_ref()) {
                                     for &(arr_param_idx, elem_param_idx) in pairs {
                                         if let (Some(arr_arg), Some(elem_arg)) = (caller_args.get(arr_param_idx), caller_args.get(elem_param_idx)) {
@@ -659,6 +805,22 @@ impl AliasAndEncapsulationTracker {
                                                 || encapsulator_values.contains(&(function_name.clone(), elem_arg.val))
                                             {
                                                 if new_encapsulators.insert((function_name.clone(), arr_arg.val)) {
+                                                    changed = true;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                // An element read out of an array (toy_read_from_arr / a reader
+                                // wrapper) is encapsulated by that array: the array reclaims it on
+                                // its deep-free, so the element must not be freed independently.
+                                if let Some(read_idxs) = elem_read_by_func.get(callee_name.as_ref()) {
+                                    if alias_values.contains(&(function_name.clone(), *out_id)) {
+                                        for &arr_param_idx in read_idxs {
+                                            if let Some(arr_arg) = caller_args.get(arr_param_idx) {
+                                                if new_encapsulators
+                                                    .insert((function_name.clone(), arr_arg.val))
+                                                {
                                                     changed = true;
                                                 }
                                             }
@@ -780,6 +942,26 @@ impl AliasAndEncapsulationTracker {
             }
         }
 
+        // Build elem_read_by_func: functions whose return is an element read out of a param
+        // array (the array encapsulates the returned element). toy_read_from_arr is the builtin
+        // base case (element of arg 0); locals/externals carry it as `encapsulated_parameters`.
+        let mut elem_read_by_func: HashMap<String, Vec<usize>> = HashMap::new();
+        elem_read_by_func.insert("toy_read_from_arr".to_string(), vec![0]);
+        for cfg_f in cfg_functions.iter() {
+            if !cfg_f.parameter_encapsulates.is_empty() {
+                elem_read_by_func
+                    .insert((*cfg_f.func.name).clone(), cfg_f.parameter_encapsulates.clone());
+            }
+        }
+        for summaries in self.external_modules.values() {
+            for summary in summaries {
+                if !summary.encapsulated_parameters.is_empty() {
+                    elem_read_by_func
+                        .insert(summary.name.clone(), summary.encapsulated_parameters.clone());
+                }
+            }
+        }
+
         let builder = self.builder.borrow();
         let capacity = builder
             .funcs
@@ -807,7 +989,7 @@ impl AliasAndEncapsulationTracker {
 
         let mut encapsulator_values: HashSet<(String, ValueId)> = HashSet::new();
 
-        self.propagate_aliases(&mut alias_values, summary_by_func, &mut encapsulator_values, &encapsulates_pairs_by_func);
+        self.propagate_aliases(&mut alias_values, summary_by_func, &mut encapsulator_values, &encapsulates_pairs_by_func, &elem_read_by_func);
         let alloc_key = alloc.alloc_ins.val as u64;
         self.aliases.extend(
             alias_values

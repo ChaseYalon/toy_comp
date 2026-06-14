@@ -16,7 +16,7 @@ thread_local! {
 use inkwell::{context::Context, module::Module};
 
 use crate::{
-    codegen::{Generator, ctla::CTLASchema},
+    codegen::{Generator, ctla::CTLASchema, ctla::CTLA_SCHEMA_VERSION},
     errors::{Span, ToyError, ToyErrorType},
     lexer::Lexer,
     parser::{ast::Ast, ast_gen::AstGenerator, boxer::Boxer, toy_box::TBox},
@@ -486,7 +486,9 @@ impl Driver {
             let ctla_path = format!("{}/{}.ctla", build_dir, module_stem);
             if let Ok(ctla_content) = fs::read_to_string(ctla_path) {
                 if let Ok(ctla_schema) = serde_json::from_str::<CTLASchema>(&ctla_content) {
-                    self.file_path_to_ctla.insert(import.clone(), ctla_schema);
+                    if ctla_schema.schema_version == CTLA_SCHEMA_VERSION {
+                        self.file_path_to_ctla.insert(import.clone(), ctla_schema);
+                    }
                 }
             }
 
@@ -768,7 +770,9 @@ impl Driver {
                 let ctla_path = format!("{}/{}.ctla", build_dir, module_stem);
                 if let Ok(ctla_content) = fs::read_to_string(&ctla_path) {
                     if let Ok(ctla_schema) = serde_json::from_str::<CTLASchema>(&ctla_content) {
-                        self.file_path_to_ctla.insert(path, ctla_schema);
+                        if ctla_schema.schema_version == CTLA_SCHEMA_VERSION {
+                            self.file_path_to_ctla.insert(path, ctla_schema);
+                        }
                     }
                 }
             }
