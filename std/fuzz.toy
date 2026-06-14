@@ -20,6 +20,18 @@ export fn read_rand(arr: str[][]): str[] {
     let idx: int = math.rand_int(0, len(arr) - 1);
     return arr[idx];
 }
+export fn read_rand(arr: int[][]): int[] {
+    let idx: int = math.rand_int(0, len(arr) - 1);
+    return arr[idx];
+}
+export fn read_rand(arr: bool[][]): bool[] {
+    let idx: int = math.rand_int(0, len(arr) - 1);
+    return arr[idx];
+}
+export fn read_rand(arr: float[][]): float[] {
+    let idx: int = math.rand_int(0, len(arr) - 1);
+    return arr[idx];
+}
 export fn write_arr(arr: int[], elem: int) {
     let idx: int = math.rand_int(0, len(arr) - 1);
     arr[idx] = elem;
@@ -41,6 +53,14 @@ export fn write_arr(arr: int[][], elem: int[]){
     arr[idx] = elem;
 }
 export fn write_arr(arr: str[][], elem: str[]){
+    let idx: int = math.rand_int(0, len(arr) - 1);
+    arr[idx] = elem;
+}
+export fn write_arr(arr: bool[][], elem: bool[]){
+    let idx: int = math.rand_int(0, len(arr) - 1);
+    arr[idx] = elem;
+}
+export fn write_arr(arr: float[][], elem: float[]){
     let idx: int = math.rand_int(0, len(arr) - 1);
     arr[idx] = elem;
 }

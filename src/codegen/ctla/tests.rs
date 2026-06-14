@@ -773,11 +773,6 @@ fn test_ctla_bug_16() {
     assert!(!output.contains("FAIL_TEST") && !output.contains("FAIL_TEST"));
 }
 
-// Double-own / read-back duplicate: an element read out of an array is written back into a DIFFERENT
-// slot of the SAME array, so one allocation occupies two slots. With per-element ownership and no
-// runtime dedup, the array must own that allocation in only ONE slot (the duplicate write is marked
-// borrowed); otherwise the array's deep-free reclaims the same pointer twice (a double-free). The
-// displaced "b" is owned and reclaimed by the swap eviction.
 #[test]
 fn test_ctla_double_own() {
     compile_code_aot!(
@@ -792,4 +787,38 @@ fn test_ctla_double_own() {
     );
     assert!(output.contains("done"));
     assert!(!output.contains("FAIL_TEST") && !output.contains("FAIL_TST"));
+}
+
+#[test]
+fn test_ctla_bug_17(){
+    compile_code_aot!(
+        output,
+        r#"
+            fn func1(): str {
+                return "O";
+            }
+            let arr = ["Q", func1()];
+        "#,
+        "ctla_bug_17_arr_lit_temp"
+    );
+    assert!(!output.contains("FAIL_TEST"))
+}
+
+#[test]
+fn test_ctla_bug_18(){
+    compile_code_aot!(
+        output,
+        r#"
+            import std.fuzz;
+
+            fn func1(): str[][] {
+                fuzz.write_arr([["j" + "w"]], fuzz.read_rand([["d"]]));
+                return [["i"]];
+            }
+
+            func1();
+        "#,
+        "ctla_bug_18"
+    );
+    assert!(!output.contains("FAIL_TEST"))
 }

@@ -1741,6 +1741,23 @@ impl CTLA {
                     .collect(),
             };
 
+            // Re-run the encapsulation checks rooted at the owning function: a call-returned
+            // value (e.g. an array literal element that is a function call) has its array write
+            // in the owner, not in the function that ran toy_malloc, so the checks above missed it.
+            if self.allocation_encapsulated_by_param(&owned_alloc) {
+                return;
+            }
+            if self.allocation_written_into_array(&owned_alloc) {
+                if self.allocation_used_outside_array(&owned_alloc) {
+                    self.mark_array_writes_borrowed(&owned_alloc);
+                } else {
+                    return;
+                }
+            }
+            if self.allocation_written_into_struct_field(&owned_alloc) {
+                return;
+            }
+
             let owning_cfg_func = self
                 .cfg_functions
                 .iter()
