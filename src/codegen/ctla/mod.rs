@@ -91,6 +91,10 @@ pub struct CTLAStats {
 /// `FunctionSummary` field changes so stale blobs are ignored on load (see `Driver`). v3 split
 /// `encapsulated_parameters` from `aliased_parameters` (element-reads vs whole-value aliases).
 pub const CTLA_SCHEMA_VERSION: u64 = 3;
+/// Name suffix for the borrowed clone of an encapsulating wrapper (see
+/// `emit_borrowed_wrapper_variants` / `mark_wrapper_writes_borrowed`). Importers derive the clone
+/// name from the original by appending this, so it must stay in sync on both sides.
+pub const BORROWED_WRAPPER_SUFFIX: &str = "__borrowed";
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CTLASchema {
     pub schema_version: u64,
@@ -776,6 +780,24 @@ impl CTLA {
     /// array's deep-free would reclaim it twice. Enforcing disjoint single-slot ownership at compile
     /// time is exactly what lets the runtime free skip its dedup. Runs once over every function.
     fn mark_readback_writes_borrowed(&self) {
+        // Reader callees: the builtin array read plus any wrapper whose return is an element read
+        // out of a param array (non-empty encapsulated-parameters summary, e.g. fuzz.read_rand).
+        // A value produced by one of these is owned by its source array, so a direct write of it
+        // into any array only borrows the slot.
+        let mut reader_callees: HashSet<String> = HashSet::new();
+        reader_callees.insert("toy_read_from_arr".to_string());
+        for cfg_f in &self.cfg_functions {
+            if !cfg_f.parameter_encapsulates.is_empty() {
+                reader_callees.insert((*cfg_f.func.name).clone());
+            }
+        }
+        for summaries in self.alias_detector.external_modules.values() {
+            for s in summaries {
+                if !s.encapsulated_parameters.is_empty() {
+                    reader_callees.insert(s.name.clone());
+                }
+            }
+        }
         let mut builder = self.builder.borrow_mut();
         for func in builder.funcs.iter_mut() {
             let readback: HashSet<ValueId> = func
@@ -784,7 +806,8 @@ impl CTLA {
                 .flat_map(|b| b.ins.iter())
                 .filter_map(|ins| match ins {
                     TIR::CallExternFunction(id, name, _, _, _, _)
-                        if name.as_str() == "toy_read_from_arr" =>
+                    | TIR::CallLocalFunction(id, name, _, _, _)
+                        if reader_callees.contains(name.as_str()) =>
                     {
                         Some(*id)
                     }
@@ -806,6 +829,146 @@ impl CTLA {
                 }
             }
         }
+    }
+
+    /// Routes encapsulating-wrapper calls (e.g. `fuzz.write_arr`) to a borrowed clone when the
+    /// element being stored is a value read out of an array (a borrow) and the destination array is
+    /// a local, non-returned temporary. The borrowed clone (see `emit_borrowed_wrapper_variants`)
+    /// does a borrowed write that frees the evicted occupant, so the destination borrows the joined
+    /// slot while the source array keeps deep-free ownership of every element.
+    fn mark_wrapper_writes_borrowed(&self) {
+        // Callees whose result is an element read out of a param array (a borrow).
+        let mut reader_callees: HashSet<String> = HashSet::new();
+        reader_callees.insert("toy_read_from_arr".to_string());
+        // Named encapsulating wrappers -> (arr_param_idx, elem_param_idx) pairs (excludes builtins,
+        // which are handled directly by mark_readback_writes_borrowed).
+        let mut wrapper_pairs: HashMap<String, Vec<(usize, usize)>> = HashMap::new();
+        for cfg_f in &self.cfg_functions {
+            if !cfg_f.parameter_encapsulates.is_empty() {
+                reader_callees.insert((*cfg_f.func.name).clone());
+            }
+            if !cfg_f.param_encapsulates_pairs.is_empty() {
+                wrapper_pairs.insert(
+                    (*cfg_f.func.name).clone(),
+                    cfg_f.param_encapsulates_pairs.clone(),
+                );
+            }
+        }
+        for summaries in self.alias_detector.external_modules.values() {
+            for s in summaries {
+                if !s.encapsulated_parameters.is_empty() {
+                    reader_callees.insert(s.name.clone());
+                }
+                if !s.param_encapsulates_pairs.is_empty() {
+                    wrapper_pairs.insert(s.name.clone(), s.param_encapsulates_pairs.clone());
+                }
+            }
+        }
+        if wrapper_pairs.is_empty() {
+            return;
+        }
+        let mut builder = self.builder.borrow_mut();
+        for func in builder.funcs.iter_mut() {
+            // reader result value id -> the array value it was read out of (arg 0 of the reader).
+            let reader_src: HashMap<ValueId, ValueId> = func
+                .body
+                .iter()
+                .flat_map(|b| b.ins.iter())
+                .filter_map(|ins| match ins {
+                    TIR::CallExternFunction(id, name, args, _, _, _)
+                    | TIR::CallLocalFunction(id, name, args, _, _)
+                        if reader_callees.contains(name.as_str()) =>
+                    {
+                        args.first().map(|src| (*id, src.val))
+                    }
+                    _ => None,
+                })
+                .collect();
+            let param_vals: HashSet<ValueId> = func.params.iter().map(|p| p.val).collect();
+            let ret_vals: HashSet<ValueId> = func
+                .body
+                .iter()
+                .filter_map(|b| match b.ins.last() {
+                    Some(TIR::Ret(_, v)) if v.ty.is_some() => Some(v.val),
+                    _ => None,
+                })
+                .collect();
+            for ins in func.body.iter_mut().flat_map(|b| b.ins.iter_mut()) {
+                let (name, args): (&mut Box<String>, &Vec<SSAValue>) = match ins {
+                    TIR::CallExternFunction(_, name, args, _, _, _)
+                    | TIR::CallLocalFunction(_, name, args, _, _) => (name, args),
+                    _ => continue,
+                };
+                let Some(pairs) = wrapper_pairs.get(name.as_str()) else {
+                    continue;
+                };
+                let route = pairs.iter().any(|&(ai, ei)| {
+                    let Some(elem) = args.get(ei) else { return false };
+                    let Some(dest) = args.get(ai) else { return false };
+                    let Some(&src_arr) = reader_src.get(&elem.val) else {
+                        return false;
+                    };
+                    // Self-encapsulation (read out of an array and stored back into the SAME array):
+                    // the element is already owned by this array via its source slot, so the
+                    // destination slot must only borrow — otherwise both slots own it and the array's
+                    // deep-free reclaims it twice. This holds even when the destination is a parameter
+                    // or returned array (it already owns the element), so route regardless. The
+                    // dynamic-index `w == r` sub-case is resolved in `arr_swap_impl` (self-same-slot
+                    // ownership preservation), which is why borrowing here cannot leak.
+                    if dest.val == src_arr {
+                        return true;
+                    }
+                    // Destination must be a local, non-returned array: a parameter or returned
+                    // destination owns the element (it outlives this scope), so it must not borrow.
+                    !param_vals.contains(&dest.val) && !ret_vals.contains(&dest.val)
+                });
+                if route {
+                    *name = Box::new(format!("{}{}", name, BORROWED_WRAPPER_SUFFIX));
+                }
+            }
+        }
+    }
+
+    /// For every encapsulating wrapper defined in this module (non-empty `param_encapsulates_pairs`),
+    /// append a borrowed clone whose *encapsulating* owned write (param elem stored into param arr)
+    /// becomes the (evict-freeing) `_borrowed` variant. Callers route to it via
+    /// `mark_wrapper_writes_borrowed` so a value borrowed out of one array can be stored into another
+    /// without the destination claiming ownership. Only the param→param store is rewritten, so any
+    /// incidental array-literal construction inside the wrapper keeps its normal owned writes.
+    fn emit_borrowed_wrapper_variants(&self, funcs: &mut Vec<Function>) {
+        let wrapper_names: HashSet<String> = self
+            .cfg_functions
+            .iter()
+            .filter(|f| !f.param_encapsulates_pairs.is_empty())
+            .map(|f| (*f.func.name).clone())
+            .collect();
+        let mut clones: Vec<Function> = vec![];
+        for f in funcs.iter() {
+            if !wrapper_names.contains(f.name.as_ref()) {
+                continue;
+            }
+            let param_vals: HashSet<ValueId> = f.params.iter().map(|p| p.val).collect();
+            let mut clone = f.clone();
+            clone.name = Box::new(format!("{}{}", f.name, BORROWED_WRAPPER_SUFFIX));
+            for ins in clone.body.iter_mut().flat_map(|b| b.ins.iter_mut()) {
+                if let TIR::CallExternFunction(_, name, args, _, _, _) = ins {
+                    let store_of_params = args.get(0).is_some_and(|a| param_vals.contains(&a.val))
+                        && args.get(1).is_some_and(|e| param_vals.contains(&e.val));
+                    if !store_of_params {
+                        continue;
+                    }
+                    match name.as_str() {
+                        "toy_write_to_arr" => {
+                            *name = Box::new("toy_write_to_arr_borrowed".to_string())
+                        }
+                        "toy_arr_swap" => *name = Box::new("toy_arr_swap_borrowed".to_string()),
+                        _ => {}
+                    }
+                }
+            }
+            clones.push(clone);
+        }
+        funcs.extend(clones);
     }
 
     /// True when this allocation is an owned heap field of a struct (either an initial field of a
@@ -870,11 +1033,12 @@ impl CTLA {
 
         // callee_name -> encapsulates pairs (arr_arg_idx, elem_arg_idx), and -> params the callee
         // returns an alias of (a read). Wrappers (fuzz.write_arr / read_rand) carry these summaries.
+        // Only OWNED writes count as the element escaping into the destination's ownership. A
+        // borrowed write (the destination only references the element) leaves ownership with the
+        // source, so it must not drive Pattern 1/2 here — exclude the `_borrowed` variants.
         let mut enc_pairs: HashMap<String, Vec<(usize, usize)>> = HashMap::new();
         enc_pairs.insert("toy_arr_swap".to_string(), vec![(0, 1)]);
-        enc_pairs.insert("toy_arr_swap_borrowed".to_string(), vec![(0, 1)]);
         enc_pairs.insert("toy_write_to_arr".to_string(), vec![(0, 1)]);
-        enc_pairs.insert("toy_write_to_arr_borrowed".to_string(), vec![(0, 1)]);
         // callee_name -> params whose array element is read out and returned. An element read
         // out of an array is encapsulated by that array (not an alias of it), so this uses the
         // encapsulation summary, not the whole-value alias summary. toy_read_from_arr is the
@@ -948,6 +1112,104 @@ impl CTLA {
                         // THIS array must be shallow-freed to avoid reclaiming it twice. The
                         // arr_ids exclusion skips self-encapsulation (read out and written back).
                         if arr_arg.is_some_and(|a| !arr_ids.contains(&a))
+                            && elem_arg.is_some_and(|e| read_out.contains(&e))
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    /// True when an element read out of this (local) array is stored into a *destination* array that
+    /// escapes the function — a parameter array or a returned array. The destination only borrows the
+    /// element (read-out writes are marked borrowed), so this array still owns it; but the destination
+    /// carries it beyond this scope, and the dynamic read index means this array cannot selectively
+    /// free the rest. So the whole source array is left unfreed — it is encapsulated by an escaping
+    /// array (invariant 1), and freeing it would leave the escaped destination with a dangling element.
+    fn read_out_element_escapes_via_array(&self, array_alloc: &HeapAllocation) -> bool {
+        let builder = self.builder.borrow();
+        let Some(func) = builder.funcs.iter().find(|f| *f.name == *array_alloc.function) else {
+            return false;
+        };
+        let mut arr_ids: HashSet<ValueId> = HashSet::new();
+        arr_ids.insert(array_alloc.alloc_ins.val);
+        for (f, _, v) in &array_alloc.refs {
+            if **f == *array_alloc.function {
+                arr_ids.insert(*v);
+            }
+        }
+        for (f, _, v) in &array_alloc.aliases {
+            if *f == *array_alloc.function {
+                arr_ids.insert(*v);
+            }
+        }
+        // Arrays that leave this function: parameter arrays and (non-void) returned values.
+        let mut escaping_dests: HashSet<ValueId> = func.params.iter().map(|p| p.val).collect();
+        for b in &func.body {
+            if let Some(TIR::Ret(_, ret_val)) = b.ins.last() {
+                if ret_val.ty.is_some() {
+                    escaping_dests.insert(ret_val.val);
+                }
+            }
+        }
+        // Reader callees (element read out of param k). Only the BORROWED direct writes matter
+        // here: a borrowed store leaves ownership with this (source) array, so if its destination
+        // escapes, this array must leak. An OWNED store (toy_write_to_arr / a write_arr wrapper)
+        // transfers ownership to the destination, which then reclaims it — that is the shallow-free
+        // path in `array_elements_escape`, not an escape of this array.
+        let mut elem_read: HashMap<String, Vec<usize>> = HashMap::new();
+        elem_read.insert("toy_read_from_arr".to_string(), vec![0]);
+        let mut enc_pairs: HashMap<String, Vec<(usize, usize)>> = HashMap::new();
+        enc_pairs.insert("toy_write_to_arr_borrowed".to_string(), vec![(0, 1)]);
+        enc_pairs.insert("toy_arr_swap_borrowed".to_string(), vec![(0, 1)]);
+        for cfg_f in &self.cfg_functions {
+            if !cfg_f.parameter_encapsulates.is_empty() {
+                elem_read.insert(
+                    (*cfg_f.func.name).clone(),
+                    cfg_f.parameter_encapsulates.clone(),
+                );
+            }
+        }
+        for summaries in self.alias_detector.external_modules.values() {
+            for s in summaries {
+                if !s.encapsulated_parameters.is_empty() {
+                    elem_read.insert(s.name.clone(), s.encapsulated_parameters.clone());
+                }
+            }
+        }
+        let call_args = |ins: &TIR| -> Option<(String, Vec<ValueId>)> {
+            match ins {
+                TIR::CallExternFunction(_, name, params, _, _, _)
+                | TIR::CallLocalFunction(_, name, params, _, _) => {
+                    Some(((**name).clone(), params.iter().map(|p| p.val).collect()))
+                }
+                _ => None,
+            }
+        };
+        let mut read_out: HashSet<ValueId> = HashSet::new();
+        for ins in func.body.iter().flat_map(|b| b.ins.iter()) {
+            if let Some((name, args)) = call_args(ins) {
+                if let Some(ap) = elem_read.get(&name) {
+                    if ap
+                        .iter()
+                        .any(|&k| args.get(k).is_some_and(|a| arr_ids.contains(a)))
+                    {
+                        read_out.insert(ins.get_id());
+                    }
+                }
+            }
+        }
+        for ins in func.body.iter().flat_map(|b| b.ins.iter()) {
+            if let Some((name, args)) = call_args(ins) {
+                if let Some(pairs) = enc_pairs.get(&name) {
+                    for &(ai, ei) in pairs {
+                        let arr_arg = args.get(ai).copied();
+                        let elem_arg = args.get(ei).copied();
+                        if arr_arg
+                            .is_some_and(|a| escaping_dests.contains(&a) && !arr_ids.contains(&a))
                             && elem_arg.is_some_and(|e| read_out.contains(&e))
                         {
                             return true;
@@ -1729,6 +1991,12 @@ impl CTLA {
         if self.allocation_is_array_element_read(&alloc) {
             return;
         }
+        // An array whose read-out element is carried off by an escaping destination array (a param
+        // or returned array borrows it) is itself encapsulated by that escaping array: it must be
+        // left unfreed, else the escaped destination would hold a dangling element (invariant 1).
+        if self.read_out_element_escapes_via_array(&alloc) {
+            return;
+        }
         // A value stored into a local array is owned by that array: it is reclaimed by the array's
         // deep-free (if it survives) or by the swap-eviction free (if overwritten), never by a
         // per-element free — which would double-free. Exception: if the value also has an
@@ -1970,6 +2238,9 @@ impl CTLA {
         // Enforce disjoint single-slot ownership before per-allocation processing: a value read out
         // of an array and written back is borrowed in the new slot (its source slot owns it).
         self.mark_readback_writes_borrowed();
+        // Same idea, but where the store goes through an encapsulating wrapper (e.g. fuzz.write_arr):
+        // route the call to a borrowed clone so the destination borrows the joined slot.
+        self.mark_wrapper_writes_borrowed();
         let mut unique_allocations = self.builder.borrow().detect_unique_heap_allocations();
         let mut insertion_points: Vec<(String, BlockId, ValueId, SSAValue, String)> = vec![];
         let len = unique_allocations.len();
@@ -2150,7 +2421,9 @@ impl CTLA {
             lifetime_max_ns: None,
         });
 
-        return Ok(self.builder.borrow().funcs.clone());
+        let mut out_funcs = self.builder.borrow().funcs.clone();
+        self.emit_borrowed_wrapper_variants(&mut out_funcs);
+        return Ok(out_funcs);
     }
 }
 

@@ -377,18 +377,46 @@ fn arr_swap_impl(arr_in_ptr: ToyPtr, value: i64, idx: i64, ty: i64, new_owned: b
         arr_ptr.arr.resize(idx as usize + 1, 0);
         arr_ptr.owned.resize(idx as usize + 1, false);
     }
+    let degree = arr_ptr.degree;
+    let elem_arr_ty = arr_ptr.ty.clone();
     let old = arr_ptr.arr[idx as usize];
     let old_owned = arr_ptr.owned[idx as usize];
     arr_ptr.arr[idx as usize] = value;
-    arr_ptr.owned[idx as usize] = new_owned;
+    // Self-write-back into the SAME slot (`arr[i] = arr[i]`): writing the pointer the slot already
+    // holds leaves ownership unchanged. Preserve the prior ownership instead of taking `new_owned`,
+    // which would let a borrowed self-write (compiler-routed for self-encapsulation) drop the slot's
+    // sole owner and leak. This is the per-slot self-write-back case, not a scan over the array.
+    let self_same_slot = old == value;
+    arr_ptr.owned[idx as usize] = if self_same_slot { old_owned } else { new_owned };
     // The evicted value is reclaimable only if the array owned it. A borrowed slot's value is owned
     // by an independent variable and must not be freed here.
-    // Self-write-back (`arr[i] = arr[i]`): the evicted value is the value we just stored, so it is
-    // still live in the slot. Report 0 so the (null-safe) eviction free is a no-op.
-    if !old_owned || old == value {
+    // Self-write-back: the evicted value is the value we just stored, so it is still live in the
+    // slot. Report 0 so the (null-safe) eviction free is a no-op.
+    if !old_owned || self_same_slot {
+        return 0;
+    }
+    // Borrowed write: the array gives up this slot, so no caller receives the evicted owned value to
+    // free. Reclaim it here, with the element-type-correct free, instead of leaking it.
+    if !new_owned {
+        free_owned_arr_element(degree, &elem_arr_ty, old);
         return 0;
     }
     return old;
+}
+/// Frees an owned element evicted from an array, matching `toy_free_arr`'s per-element rules:
+/// nested-array elements (degree > 1) deep-free; scalar str/struct elements free their pointer.
+fn free_owned_arr_element(degree: i64, arr_ty: &ToyType, val: i64) {
+    if val == 0 {
+        return;
+    }
+    if degree > 1 {
+        toy_deep_free_arr(val);
+    } else {
+        let elem_type = arr_ty.to_elem_type();
+        if elem_type == ToyType::Str || elem_type == ToyType::Struct {
+            toy_free(val as *mut c_void);
+        }
+    }
 }
 /// Null-safe toy_free for swap-evicted scalars: a self-write-back swap reports the evicted pointer
 /// as 0, which must not be freed.

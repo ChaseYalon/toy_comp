@@ -822,3 +822,47 @@ fn test_ctla_bug_18(){
     );
     assert!(!output.contains("FAIL_TEST"))
 }
+
+#[test]
+fn test_ctla_bug_19(){
+    compile_code_aot!(
+        output,
+        r#"
+            import std.fuzz;
+            let v1: str[] = ["E", fuzz.read_rand(["a", "b"])];  
+        "#,
+        "ctla_bug_19"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_bug_20(){
+    compile_code_aot!(
+        output,
+        r#"
+            import std.fuzz;
+            fuzz.write_arr([[false]], fuzz.read_rand([[true], [false]]));
+        "#,
+        "ctla_bug_20"
+    );
+    assert!(!output.contains("FAIL_TEST"))
+}
+
+#[test]
+fn test_ctla_bug_21(){
+    compile_code_aot!(
+        output,
+        r#"
+            import std.fuzz;
+
+            fn func1(p1: bool[][]){
+                fuzz.write_arr(p1, fuzz.read_rand(p1));
+            }
+
+            func1([[false], [false]]);
+        "#,
+        "ctla_bug_21"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+}

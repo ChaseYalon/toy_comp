@@ -69,3 +69,23 @@ Assume the invariant is false. That means some allocation “A” could be added
 Invariants 1-5 therefore guarantee that an allocation will not be freed illegally, however the definition of memory safe requires that allocations with known lifetimes also be freed, to prevent leaks.
 \subsubsection{Proof of Invariant Six}
 Invariants 1-5 define all the conditions under which a free is illegal. Therefore at any program point where none of those conditions hold, the free is legal. If a free is then inserted at that point, the last tenant of memory safety (for that allocation) leak freedom is satisfied, as long as the allocation is freed along every possible control path that does not violate invariant 4.
+
+
+Notes on CTLA Arrays
+If a BORROWED VALUE is written to an OWNED SLOT
+  The owned value is evicted AND freed, and the borrowed value is placed in (slot becomes borrowed)
+
+If an OWNED VALUE is written to a BORROWED SLOT
+  The Borrowed value is evicted (not freed) and the owned value is placed in
+
+If a BORROWED VALUE is written to a BORROWED SLOT
+  The Borrowed value is evicted (not freed) and the new value is placed in
+
+Self-write-back (`arr[w] = arr[r]`, incl. wrappers like `fuzz.write_arr(p1, fuzz.read_rand(p1))`)
+  The element is already owned by `arr` via slot `r`, so CTLA statically routes the store to the
+  `_borrowed` variant (source array == dest array), even for a parameter/returned `arr`. `w == r` is
+  not static, so the one wrong sub-case (borrowing a slot's sole owner) is fixed in `arr_swap_impl`:
+  on a self-same-slot write (`old == value`) it preserves the prior ownership. Per-slot, not a scan.
+
+If an OWNED VALUE is written to an OWNED SLOT
+  The new value overwrites the old one, and the old one is free
