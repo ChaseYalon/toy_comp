@@ -59,8 +59,18 @@ pub fn toy_free(buff: *mut c_void) {
 }
 #[unsafe(no_mangle)]
 pub fn toy_free_struct(ptr: ToyPtr) {
-    _check_pointer(ptr as *mut c_void);
+    if (ptr as *mut c_void).is_null() {
+        eprintln!("\n[ERROR] Null pointer detected");
+        eprintln!("\nFAIL_TEST");
+        std::process::exit(1);
+    }
+    // The shadow heap (and the allocator) key structs on the base pointer, while the program holds
+    // the body pointer (base + 8). Check the base so struct double-frees/UAFs are actually detected
+    // instead of slipping through to a second libc::free and corrupting the real heap.
     let real_ptr = unsafe { (ptr as *mut u8).sub(8) as *mut c_void };
+    _check_pointer(real_ptr);
+    // Drop any per-field ownership entry keyed on the body pointer (see builtins::STRUCT_FIELD_OWNED).
+    crate::builtins::toy_struct_forget(ptr);
     let val = env::var("TOY_DEBUG");
     if let Ok(v) = val {
         if v == "TRUE" {
@@ -114,6 +124,9 @@ pub fn _check_pointer(buff: *mut c_void) {
                 "[ERROR] Use-after-free detected! Pointer {:p} was already freed",
                 buff
             );
+            if env::var("TOY_UAF_BACKTRACE").as_deref() == Ok("TRUE") {
+                eprintln!("{}", std::backtrace::Backtrace::force_capture());
+            }
             println!("\nFAIL_TEST");
             io::stdout().flush().ok();
             io::stderr().flush().ok();

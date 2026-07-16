@@ -293,7 +293,7 @@ fn test_ctla_struct_aliasing_and_encapsulation() {
 fn test_ctla_multi_module_alloc() {
     compile_code_aot!(
         output,
-        r#"import std.fs; fs.write_file("temp.txt", "hi");"#,
+        r#"import std.fs; fs.write_file("temp/temp.txt", "hi");"#,
         "ctla_multi_module"
     );
     assert!(!output.contains("FAIL_TEST"));
@@ -865,4 +865,815 @@ fn test_ctla_bug_21(){
         "ctla_bug_21"
     );
     assert!(!output.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_bug_22(){
+    compile_code_aot!(
+        output,
+        r#"
+            import std.fuzz;
+
+            fn func1(p1: str) {
+                let v1: str[] = ["o", fuzz.read_rand(["r"]), p1];
+            }
+
+            func1("s");
+        "#,
+        "ctla_bug_22"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_bug_23(){
+    compile_code_aot!(
+        output,
+        r#"
+            struct s1 {
+                f1: float[]
+            }
+
+            let v1: float[] = [1.0];
+            if false {
+                let v2: s1 = s1 {
+                    f1: v1
+                };
+            }
+        "#,
+        "ctla_bug_23"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+
+    //same root cause: the inner-block struct must borrow v1, not own it, or this is a UAF
+    compile_code_aot!(
+        output2,
+        r#"
+            struct s1 {
+                f1: float[]
+            }
+
+            let v1: float[] = [1.0];
+            if true {
+                let v2: s1 = s1 {
+                    f1: v1
+                };
+            }
+            println(v1);
+        "#,
+        "ctla_bug_23b"
+    );
+    assert!(!output2.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_bug_24(){
+    //the element read_rand picks moves into p1 (caller reclaims it); the one it does NOT pick
+    //must still be reclaimed by the temp array's free
+    compile_code_aot!(
+        output,
+        r#"
+            import std.fuzz;
+
+            fn func1(p1: str[]) {
+                fuzz.write_arr(p1, fuzz.read_rand(["a", "b"]));
+            }
+
+            func1(["J"]);
+        "#,
+        "ctla_bug_24"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+
+    //the nested-array shape the fuzzer originally found
+    compile_code_aot!(
+        output2,
+        r#"
+            import std.fuzz;
+
+            fn func1(p1: str[][]) {
+                fuzz.write_arr(p1, fuzz.read_rand([["a"], ["b"]]));
+            }
+
+            func1([["J"]]);
+        "#,
+        "ctla_bug_24b"
+    );
+    assert!(!output2.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_bug_25(){
+    //an array of lambdas: the elements are function-pointer globals, never heap allocations, so
+    //the array must not deep-free them (doing so corrupts the heap). capture_program_output
+    //panics if the program crashes, so a clean run is the assertion.
+    compile_code_aot!(
+        output,
+        r#"
+            let v1 = [(v2: str): bool[] { return [true]; }];
+        "#,
+        "ctla_bug_25"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+
+    //a scalar lambda local must likewise never be freed as if it were a heap value
+    compile_code_aot!(
+        output2,
+        r#"
+            let v1 = (v2: int): int { return v2 + 1; };
+        "#,
+        "ctla_bug_25b"
+    );
+    assert!(!output2.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_bug_26(){
+    //an element read out of param p2 is owned-written into param p1: it would end up owned by both
+    //caller arrays and double-freed. The source param must relinquish ownership (runtime disown).
+    compile_code_aot!(
+        output,
+        r#"
+            import std.fuzz;
+
+            fn func1(p1: str[], p2: str[]) {
+                fuzz.write_arr(p1, fuzz.read_rand(p2));
+            }
+
+            func1(["a"], ["c"]);
+        "#,
+        "ctla_bug_26"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+
+    //the nested-array shape the fuzzer originally found
+    compile_code_aot!(
+        output2,
+        r#"
+            import std.fuzz;
+
+            fn func1(p1: str[][], p2: str[][]): int {
+                fuzz.write_arr(p1, fuzz.read_rand(p2));
+                return 1;
+            }
+
+            func1([["a"], ["b"]], [["c"]]);
+        "#,
+        "ctla_bug_26b"
+    );
+    assert!(!output2.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_bug_27(){
+    //an element of a heap array is read out and encapsulated into a struct field. The struct field
+    //owns the element, but the outer array ALSO still owns it via its slot, so both deep-frees
+    //reclaim the same inner array — a double-free. The struct field must borrow (not own) an
+    //element that another live encapsulator already owns.
+    compile_code_aot!(
+        output,
+        r#"
+            struct s1 { f1: float[] }
+            let v1: float[][] = [[1.0]];
+            let v2: s1 = s1 { f1: v1[0] };
+        "#,
+        "ctla_bug_27"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+
+    //the read_rand shape the fuzzer originally found: the encapsulated element comes back through a
+    //function return rather than a direct index
+    compile_code_aot!(
+        output2,
+        r#"
+            import std.fuzz;
+            struct s1 { f1: float[] }
+            let v1: float[][] = [[1.0]];
+            let v2: s1 = s1 { f1: fuzz.read_rand(v1) };
+        "#,
+        "ctla_bug_27b"
+    );
+    assert!(!output2.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_bug_28(){
+    //a borrowed str param is the LEAF of a NESTED array literal `[[p1]]`. The inner array literal
+    //`[p1]` owns and deep-frees its leaf at the outer array's death, but the leaf is the
+    //caller-owned param — freeing it double-frees against the caller. The single-dim case `[p1]`
+    //is already borrowed correctly; the gap is the inner literal of a nested one.
+    compile_code_aot!(
+        output,
+        r#"
+            fn func1(p1: str): void {
+                let v2: str[][] = [[p1]];
+            }
+            func1("a");
+        "#,
+        "ctla_bug_28"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+
+    //the while-loop shape the fuzzer originally found: the nested literal is rebuilt each iteration
+    compile_code_aot!(
+        output2,
+        r#"
+            fn func1(p1: str): float[] {
+                let v1: int = 0;
+                while true {
+                    let v2: str[][] = [[p1]];
+                    if v1 >= 5 { break; } else { v1 = v1 + 1; }
+                }
+                return [-1.0];
+            }
+            func1("a");
+        "#,
+        "ctla_bug_28b"
+    );
+    assert!(!output2.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_bug_30(){
+    //a struct literal built inside a loop emitted its scratch `alloca` in the loop body instead of
+    //the function entry block. Allocas are only reclaimed at function return, so a long-running loop
+    //accumulated one stack slot per iteration and overflowed the stack (segfault). The alloca must
+    //be hoisted to the entry block and reused. A large bounded loop overflows the old codegen but
+    //runs in O(1) stack — and terminates — once hoisted.
+    compile_code_aot!(
+        output,
+        r#"
+            struct S { a: str }
+            let i: int = 0;
+            while i < 1000000 {
+                let s: S = S{a: "q"};
+                i = i + 1;
+            }
+            println("done");
+        "#,
+        "ctla_bug_30"
+    );
+    assert!(output.contains("done"));
+    assert!(!output.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_bug_31(){
+    //dead code drove the shallow-vs-deep free choice. Inside a constant-false block, `a` both
+    //self-writes a read-out element AND receives the param `p`. The param store made
+    //`array_elements_escape` treat `a`'s elements as caller-shared, so `a` was SHALLOW-freed —
+    //stranding (leaking) its own owned element "u". But that block never executes, so `a` only ever
+    //holds "u" and must be deep-freed. The escape analysis must ignore unreachable (constant-false)
+    //blocks. Either write alone was already handled; only the combination tripped it.
+    compile_code_aot!(
+        output,
+        r#"
+            import std.fuzz;
+            fn func1(p1: str): int {
+                let v1: str[] = ["u"];
+                if false {
+                    fuzz.write_arr(v1, fuzz.read_rand(v1));
+                    fuzz.write_arr(v1, p1);
+                }
+                return 0;
+            }
+            func1("H");
+        "#,
+        "ctla_bug_31"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_bug_32(){
+    //overwriting a struct's ARRAY field (`c.f1 = [..]`) freed the evicted old array with a scalar
+    //`toy_free`, which drops the array box but strands its heap string elements — a leak. TirType
+    //cannot distinguish str from array (both Ptr), so the eviction free must recover array-ness from
+    //how the field is populated and deep-free it. int[] fields were unaffected (no heap elements).
+    compile_code_aot!(
+        output,
+        r#"
+            struct s1 { f1: str[] }
+            let v1: s1 = s1{f1: ["S"]};
+            v1.f1 = ["a", "b"];
+        "#,
+        "ctla_bug_32"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+
+    //nested-array field variant
+    compile_code_aot!(
+        output2,
+        r#"
+            struct s1 { f1: str[][] }
+            let v1: s1 = s1{f1: [["S"]]};
+            v1.f1 = [["a"], ["b"]];
+        "#,
+        "ctla_bug_32b"
+    );
+    assert!(!output2.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_bug_33(){
+    //a caller-owned parameter written as an array element via a WRAPPER (fuzz.write_arr) was stored
+    //owned, so the destination array's deep-free reclaimed the param AND the caller freed it — a
+    //double-free. mark_wrapper_writes_borrowed only borrowed read-out elements; a param element must
+    //also route to the borrowed wrapper clone (the wrapper analog of bug_28's direct-write case).
+    compile_code_aot!(
+        output,
+        r#"
+            import std.fuzz;
+            fn func1(p1: str, p2: str[]): void {
+                fuzz.write_arr(p2, p1);
+            }
+            func1("x", ["y"]);
+        "#,
+        "ctla_bug_33"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+
+    //the nested shape the fuzzer found: a bool[] param stored into a bool[][] param
+    compile_code_aot!(
+        output2,
+        r#"
+            import std.fuzz;
+            fn func1(p1: bool[], p2: bool[][]): int[][] {
+                fuzz.write_arr(p2, p1);
+                return [[-3]];
+            }
+            func1([true], [[false]]);
+        "#,
+        "ctla_bug_33b"
+    );
+    assert!(!output2.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_bug_34(){
+    //a struct field reassignment `s.f1 = v1` in a constant-false (dead) block made CTLA treat v1 as
+    //encapsulated by the struct and suppress its free — but the block never executes, so v1 is never
+    //actually stored and leaks. Same class as bug_31 (dead code driving free decisions), but via the
+    //struct-encapsulation predicate; it too must ignore unreachable blocks. A LIVE reassignment must
+    //still be recognized as encapsulation.
+    compile_code_aot!(
+        output,
+        r#"
+            struct s1 { f1: int[] }
+            let v1: int[] = [1];
+            let v2: s1 = s1{f1: [2]};
+            if false {
+                v2.f1 = v1;
+            }
+        "#,
+        "ctla_bug_34"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+
+    //control: the same reassignment when reachable must remain memory-safe (no leak, no double-free)
+    compile_code_aot!(
+        output2,
+        r#"
+            struct s1 { f1: int[] }
+            let v1: int[] = [1];
+            let v2: s1 = s1{f1: [2]};
+            if true {
+                v2.f1 = v1;
+            }
+        "#,
+        "ctla_bug_34b"
+    );
+    assert!(!output2.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_bug_35(){
+    //a struct element of an ARRAY-of-structs whose field is an array-element read
+    //(`fuzz.read_rand(temp)`) double-freed that read-out element: the source temp deep-freed it AND
+    //the struct's owned-field free reclaimed it. bug_27 borrows such a field for a lone struct, but
+    //storing the struct into the array made `borrowed_struct_literal_fields` treat it as escaping
+    //and own everything. A read-out field is owned by its source array regardless of the struct's
+    //escape, so it must always be borrowed.
+    compile_code_aot!(
+        output,
+        r#"
+            import std.fuzz;
+            struct s1 { f1: str[] }
+            let v1: s1[] = [s1{f1: fuzz.read_rand([["a"], ["b"]])}];
+        "#,
+        "ctla_bug_35"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_bug_36(){
+    //a local `v1` (defined OUTSIDE the loop) written into a multi-slot parameter array `p1` via a
+    //wrapper INSIDE a loop lands in several slots over the iterations (write_arr uses a random
+    //index), so it ends up owned by more than one slot — the caller's deep-free reclaims it twice
+    //(double-free). A value can own at most one slot, so a loop-carried write of an outer value must
+    //be borrowed. Single writes were already handled; the loop is the trigger. (Fuzzer also needed a
+    //second, unrelated param write and a >=2-element destination to surface it.)
+    compile_code_aot!(
+        output,
+        r#"
+            import std.fuzz;
+            fn func1(p1: bool[][], p2: str[]): void {
+                fuzz.write_arr(p2, "x");
+                let v1: bool[] = [true, false];
+                let i: int = 0;
+                while true {
+                    fuzz.write_arr(p1, v1);
+                    if (i >= 5) { break; } else { i = (i + 1); }
+                }
+                let j: int = 0;
+                while (fuzz.read_rand(v1)) {
+                    if (j >= 5) { break; } else { j = (j + 1); }
+                }
+            }
+            func1([[false], [true]], ["y"]);
+        "#,
+        "ctla_bug_36"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_bug_37(){
+    //`if !true {..}` is dead, but the reachability filter (bugs 31/34) only folded a DIRECT literal
+    //via resolve_iconst — `!true` is a `Not` node, so the block was treated as reachable and its
+    //struct-array encapsulation of `v1` suppressed `v1`'s free → leak. Folding `Not(const)` makes
+    //the branch recognised as dead. (`if false` was already handled; struct-array — not lone struct
+    //— surfaced it.)
+    compile_code_aot!(
+        output,
+        r#"
+            struct s1 { f1: bool[] }
+            let v1: bool[] = [false];
+            if !true {
+                let v2: s1[] = [s1{f1: v1}];
+            }
+        "#,
+        "ctla_bug_37"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+
+    //control: the same encapsulation when reachable must stay memory-safe
+    compile_code_aot!(
+        output2,
+        r#"
+            struct s1 { f1: bool[] }
+            let v1: bool[] = [false];
+            if !false {
+                let v2: s1[] = [s1{f1: v1}];
+                println(v2);
+            }
+        "#,
+        "ctla_bug_37b"
+    );
+    assert!(!output2.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_bug_38(){
+    //overwriting a struct field that holds a BORROWED param double-freed it: the eviction reclaimed
+    //the old value (the param) while the caller also freed it. Fixed by per-field struct ownership
+    //tracked at runtime (mirrors the array `owned[]` model): the struct records that the field
+    //borrows the param, so the eviction skips it, and the survivor is reclaimed only when owned.
+    compile_code_aot!(
+        output,
+        r#"
+            struct s1 { f1: str[] }
+            fn func1(p1: str[]): void {
+                let v1: s1 = s1{f1: p1};
+                v1.f1 = ["a", "b"];
+            }
+            func1(["V"]);
+        "#,
+        "ctla_bug_38"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+
+    //the case no static analysis can decide: in a loop the same field slot is evicted holding a
+    //borrowed param on some iterations and an owned array on others — only the runtime bit resolves it
+    compile_code_aot!(
+        output2,
+        r#"
+            struct s1 { f1: str[] }
+            fn func1(p1: str[]): void {
+                let v1: s1 = s1{f1: p1};
+                let i: int = 0;
+                while i < 5 {
+                    v1.f1 = p1;
+                    v1.f1 = ["a", "b"];
+                    i = i + 1;
+                }
+            }
+            func1(["V"]);
+        "#,
+        "ctla_bug_38b"
+    );
+    assert!(!output2.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_bug_39(){
+    //a local array `v1` is encapsulated into a temp array (`fuzz.write_arr([[..]], v1)`) only inside
+    //a dead (constant-false) branch, so `allocation_written_into_array` suppressed `v1`'s free even
+    //though that write never runs → leak. Same dead-code class as bugs 31/34/37; this predicate also
+    //needed the reachability filter (and to check the encapsulating array is on a live path).
+    compile_code_aot!(
+        output,
+        r#"
+            import std.fuzz;
+            fn func1(): int {
+                let v1: str[] = ["A"];
+                fuzz.write_arr(v1, "Z");
+                if false {
+                    fuzz.write_arr([["t"]], v1);
+                }
+                return 0;
+            }
+            func1();
+        "#,
+        "ctla_bug_39"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_bug_40(){
+    //a caller-owned param stored in a local str[] literal (`[.., p1]`) that is then passed to
+    //`fuzz.write_arr` was double-freed: `escaping_values` treated the local array as escaping merely
+    //because it's passed to the wrapper, so the param write was never borrowed — and write_arr's
+    //random-index overwrite could evict+free the caller's param. The wrapper escapes neither arg, so
+    //escape analysis must consult the callee's escape summary, not blanket-escape all call args.
+    compile_code_aot!(
+        output,
+        r#"
+            import std.fuzz;
+            fn func1(p1: str): bool {
+                let v1: str[] = ["x", "y", p1];
+                fuzz.write_arr(v1, "z");
+                return true;
+            }
+            func1("hello");
+        "#,
+        "ctla_bug_40"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_bug_41(){
+    //returning a read-out element of a local array (`return fuzz.read_rand(v1)`) double-freed it:
+    //the array was deep-freed at function end, reclaiming the very element being returned, so the
+    //caller received a freed pointer. When a read-out element escapes via return, the source array
+    //must shallow-free so the returned element survives for the caller.
+    compile_code_aot!(
+        output,
+        r#"
+            import std.fuzz;
+            fn func1(): str {
+                let v1: str[] = ["y"];
+                return fuzz.read_rand(v1);
+            }
+            func1();
+        "#,
+        "ctla_bug_41"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+
+    //the shape the fuzzer found: the returned element flows into a caller-side array literal
+    compile_code_aot!(
+        output2,
+        r#"
+            import std.fuzz;
+            fn func1(): str {
+                let v1: str[] = ["y"];
+                return fuzz.read_rand(v1);
+            }
+            fn func2(): bool {
+                let v2: str[] = ["x", func1()];
+                return true;
+            }
+            func2();
+        "#,
+        "ctla_bug_41b"
+    );
+    assert!(!output2.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_bug_42(){
+    //a branch guarded by a CONSTANT COMPARISON (`1.0 >= -3`, always true) is dead, but the
+    //reachability fold (bugs 31/34/37) only handled literals and `Not` — not comparisons — so the
+    //dead `else` was treated as reachable and its struct encapsulation of `v1` suppressed `v1`'s
+    //free → leak. resolve_const_bool now folds And/Or and comparisons (and resolve_const_num folds
+    //`ItoF`, so a mixed int/float comparison folds too).
+    compile_code_aot!(
+        output,
+        r#"
+            struct s1 { f1: int[] }
+            struct s2 { g1: s1 }
+            let v1: int[] = [1];
+            if (1.0 >= -3) {
+                let v3: int = 0;
+            } else {
+                let v2: s2 = s2{g1: s1{f1: v1}};
+            }
+        "#,
+        "ctla_bug_42"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+
+    //control: when the constant comparison makes the branch LIVE, the encapsulation must stay safe
+    compile_code_aot!(
+        output2,
+        r#"
+            struct s1 { f1: int[] }
+            struct s2 { g1: s1 }
+            let v1: int[] = [1];
+            if (1.0 >= 3.0) {
+                let v3: int = 0;
+            } else {
+                let v2: s2 = s2{g1: s1{f1: v1}};
+                println(v2.g1.f1);
+            }
+        "#,
+        "ctla_bug_42b"
+    );
+    assert!(!output2.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_bug_43(){
+    //reading an element out of one param array and writing it into ANOTHER param array inside a
+    //LOOP double-freed it: the transfer-disown model owned-transferred the element to the dest, but
+    //the loop re-reads the same source slot every iteration and transfers it into several dest slots,
+    //so the dest owned it multiple times → double-free at the caller's deep-free. A read-out element
+    //stored into a different array inside a loop must be borrowed (the source keeps ownership).
+    compile_code_aot!(
+        output,
+        r#"
+            import std.fuzz;
+            fn func1(p1: bool[][], p2: bool[][]): int {
+                let v1: int = 0;
+                while v1 < 5 {
+                    fuzz.write_arr(p1, fuzz.read_rand(p2));
+                    v1 = (v1 + 1);
+                }
+                return 0;
+            }
+            func1([[false], [true]], [[false]]);
+        "#,
+        "ctla_bug_43"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+
+    //the fuzzer's shape: a preceding self-writeback of the source array, in the same loop
+    compile_code_aot!(
+        output2,
+        r#"
+            import std.fuzz;
+            fn func1(p1: bool[][], p2: bool[][]): int {
+                let v1: int = 0;
+                while v1 < 5 {
+                    fuzz.write_arr(p2, fuzz.read_rand(p2));
+                    fuzz.write_arr(p1, fuzz.read_rand(p2));
+                    v1 = (v1 + 1);
+                }
+                return 0;
+            }
+            func1([[false], [true]], [[false]]);
+        "#,
+        "ctla_bug_43b"
+    );
+    assert!(!output2.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_bug_44(){
+    //the same local array written into a multi-slot array by MORE THAN ONE wrapper-write site was
+    //owned by several slots at once, so the outer array's deep-free reclaimed it repeatedly →
+    //double-free (probabilistic on which slots the random writes hit; deterministic in a loop). An
+    //element stored by >=2 wrapper writes must be borrowed — only one slot may own it.
+    compile_code_aot!(
+        output,
+        r#"
+            import std.fuzz;
+            fn func1(): int {
+                let v1: float[][] = [[1.0], [3.0]];
+                let v2: float[] = [2.0];
+                fuzz.write_arr(v1, v2);
+                fuzz.write_arr(v1, v2);
+                return 0;
+            }
+            func1();
+        "#,
+        "ctla_bug_44"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+
+    //the fuzzer's shape: repeated writes across loop iterations
+    compile_code_aot!(
+        output2,
+        r#"
+            import std.fuzz;
+            fn func1(): int {
+                let v1: float[][] = [[1.0], [3.0]];
+                let v3: int = 0;
+                while v3 < 5 {
+                    let v2: float[] = [2.0];
+                    fuzz.write_arr(v1, v2);
+                    fuzz.write_arr(v1, v2);
+                    v3 = (v3 + 1);
+                }
+                return 0;
+            }
+            func1();
+        "#,
+        "ctla_bug_44b"
+    );
+    assert!(!output2.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_bug_45(){
+    //reading a struct FIELD (`s1.f1`, a str owned by the struct) and storing it into an array
+    //double-freed it: the array claimed ownership and its deep-free reclaimed the field, then the
+    //struct's field free reclaimed it again. A struct-field value stored into an array must be
+    //borrowed — the struct owns and frees the field.
+    compile_code_aot!(
+        output,
+        r#"
+            import std.fuzz;
+            struct s1 { f1: str }
+            fn func1(): int {
+                let v1: s1 = s1{f1: "L"};
+                let v2: str[] = ["hK"];
+                fuzz.write_arr(v2, v1.f1);
+                return 0;
+            }
+            func1();
+        "#,
+        "ctla_bug_45"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+
+    //the fuzzer's shape: field written into a throwaway array literal
+    compile_code_aot!(
+        output2,
+        r#"
+            import std.fuzz;
+            struct s1 { f1: str, f2: float[] }
+            fn func1(): float[][] {
+                if true {
+                    let v1: s1 = s1{f1: "L", f2: [1.0]};
+                    fuzz.write_arr(["hK"], v1.f1);
+                }
+                return [[1.0]];
+            }
+            func1();
+        "#,
+        "ctla_bug_45b"
+    );
+    assert!(!output2.contains("FAIL_TEST"));
+}
+
+#[test]
+fn test_ctla_bug_29(){
+    //reassigning a struct-typed field (`v1.g1 = s1{..}`) double-frees the evicted nested struct:
+    //the overwrite surfaces the old value and frees it (eviction free), but the evicted struct's
+    //original allocation was also left on the normal pipeline and freed again at scope end. The
+    //evicted nested struct must be suppressed from its own free.
+    compile_code_aot!(
+        output,
+        r#"
+            struct s1 { f2: int }
+            struct s2 { g1: s1 }
+            let v1: s2 = s2 { g1: s1 { f2: 0 } };
+            v1.g1 = s1 { f2: 1 };
+        "#,
+        "ctla_bug_29"
+    );
+    assert!(!output.contains("FAIL_TEST"));
+
+    //the shape the fuzzer originally found: nested struct with an array field, overwritten inside a
+    //function that also returns an unrelated array
+    compile_code_aot!(
+        output2,
+        r#"
+            struct s1 { f1: bool[], f2: bool }
+            struct s2 { g1: s1 }
+            fn func1(): str[][] {
+                let v1: s2 = s2 { g1: s1 { f1: [true], f2: false } };
+                v1.g1 = s1 { f1: [true], f2: true };
+                return [["P"]];
+            }
+            func1();
+        "#,
+        "ctla_bug_29b"
+    );
+    assert!(!output2.contains("FAIL_TEST"));
 }

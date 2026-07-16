@@ -793,7 +793,26 @@ impl<'a> LlvmGenerator<'a> {
             }
             TIR::CreateStructLiteral(id, ty, vals) => {
                 let (struct_type, interface_name) = self.struct_interfaces.get(&ty).unwrap(); // parser validated
-                let allocated_struct = builder.build_alloca(*struct_type, interface_name)?;
+                // Emit the scratch alloca in the function ENTRY block, not at the current insert
+                // point. A struct literal built inside a loop would otherwise `alloca` every
+                // iteration (allocas are only reclaimed at function return), overflowing the stack in
+                // a long-running loop. The alloca is just scratch that is copied to the heap
+                // immediately below, so a single reused entry slot per literal is correct.
+                let allocated_struct = {
+                    let current_block = builder.get_insert_block().unwrap();
+                    let entry = current_block
+                        .get_parent()
+                        .unwrap()
+                        .get_first_basic_block()
+                        .unwrap();
+                    match entry.get_first_instruction() {
+                        Some(first) => builder.position_before(&first),
+                        None => builder.position_at_end(entry),
+                    }
+                    let a = builder.build_alloca(*struct_type, interface_name)?;
+                    builder.position_at_end(current_block);
+                    a
+                };
 
                 let zero = self.ctx.i32_type().const_int(0, false);
 
@@ -1351,6 +1370,11 @@ impl<'a> LlvmGenerator<'a> {
             "toy_read_from_arr",
             vec![TirType::I64, TirType::I64],
             TirType::I64,
+        );
+        self.declare_individual_function(
+            "toy_arr_disown",
+            vec![TirType::I64, TirType::I64],
+            TirType::Void,
         );
         self.declare_individual_function("toy_arrlen", vec![TirType::I64], TirType::I64);
         self.declare_individual_function("toy_input", vec![TirType::I64], TirType::I64);

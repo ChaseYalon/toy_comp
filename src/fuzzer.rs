@@ -8,6 +8,16 @@ use rand::{
 };
 use std::collections::{BTreeMap, HashMap};
 use std::ops::RangeInclusive;
+fn nested_removable(body: &[Ast], i: usize) -> bool {
+    match &body[i] {
+        Ast::Return(..) => false,
+        Ast::VarDec(n, _, _, _) => {
+            !body.iter().enumerate().any(|(j, s)| j != i && var_referenced_in(n, s))
+        }
+        _ => true,
+    }
+}
+
 fn var_referenced_in(name: &str, node: &Ast) -> bool {
     match node {
         Ast::VarRef(n, _) => **n == name,
@@ -2036,6 +2046,124 @@ impl TestRunner {
         result
     }
 
+    /// Removes one statement from a randomly chosen nested block (if/while body)
+    /// inside a randomly chosen function, recursing to arbitrary depth.
+    pub fn reduce_nested_body(&mut self, input: Vec<Ast>) -> Vec<Ast> {
+        let func_indices: Vec<usize> = input
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| n.node_type() == "FuncDec")
+            .map(|(i, _)| i)
+            .collect();
+        if func_indices.is_empty() {
+            return input;
+        }
+        let func_idx = func_indices[self.rng.random_range(0..func_indices.len())];
+        let mut result = input;
+        if let Ast::FuncDec(name, params, ret, body, span) = result[func_idx].clone() {
+            if let Some(new_body) = self.try_remove_nested(body) {
+                result[func_idx] = Ast::FuncDec(name, params, ret, new_body, span);
+            }
+        }
+        result
+    }
+
+    /// Recursively removes one statement from a nested while/if block in `stmts`.
+    /// Returns None when no nested block contains anything removable.
+    fn try_remove_nested(&mut self, mut stmts: Vec<Ast>) -> Option<Vec<Ast>> {
+        let nested: Vec<usize> = stmts
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| matches!(s, Ast::WhileStmt(..) | Ast::IfStmt(..)))
+            .map(|(i, _)| i)
+            .collect();
+        if nested.is_empty() {
+            return None;
+        }
+        let pick = nested[self.rng.random_range(0..nested.len())];
+        let stmt = stmts[pick].clone();
+
+        match stmt {
+            Ast::WhileStmt(cond, body, span) => {
+                // Preserve the guard (last stmt = if { break } else { counter++ })
+                let limit = body.len().saturating_sub(1);
+                let removable: Vec<usize> = (0..limit)
+                    .filter(|&i| nested_removable(&body, i))
+                    .collect();
+                if !removable.is_empty() {
+                    let ri = removable[self.rng.random_range(0..removable.len())];
+                    let mut new_body = body;
+                    new_body.remove(ri);
+                    stmts[pick] = Ast::WhileStmt(cond, new_body, span);
+                    Some(stmts)
+                } else if let Some(new_body) = self.try_remove_nested(body) {
+                    stmts[pick] = Ast::WhileStmt(cond, new_body, span);
+                    Some(stmts)
+                } else {
+                    None
+                }
+            }
+            Ast::IfStmt(cond, if_body, else_body, span) => {
+                let has_else = else_body.is_some();
+                // 0 = reduce if body, 1 = drop else, 2 = reduce else body
+                let strategy = self.rng.random_range(0..(2 + has_else as usize));
+                match strategy {
+                    0 => {
+                        let removable: Vec<usize> = (0..if_body.len())
+                            .filter(|&i| nested_removable(&if_body, i))
+                            .collect();
+                        if !removable.is_empty() {
+                            let ri = removable[self.rng.random_range(0..removable.len())];
+                            let mut new_body = if_body;
+                            new_body.remove(ri);
+                            if new_body.is_empty() {
+                                stmts.remove(pick);
+                            } else {
+                                stmts[pick] = Ast::IfStmt(cond, new_body, else_body, span);
+                            }
+                            Some(stmts)
+                        } else if let Some(new_body) = self.try_remove_nested(if_body) {
+                            stmts[pick] = Ast::IfStmt(cond, new_body, else_body, span);
+                            Some(stmts)
+                        } else {
+                            None
+                        }
+                    }
+                    1 => {
+                        if has_else {
+                            stmts[pick] = Ast::IfStmt(cond, if_body, None, span);
+                            Some(stmts)
+                        } else {
+                            None
+                        }
+                    }
+                    2 => {
+                        let else_b = else_body.unwrap();
+                        let removable: Vec<usize> = (0..else_b.len())
+                            .filter(|&i| nested_removable(&else_b, i))
+                            .collect();
+                        if !removable.is_empty() {
+                            let ri = removable[self.rng.random_range(0..removable.len())];
+                            let mut new_else = else_b;
+                            new_else.remove(ri);
+                            let new_else_opt =
+                                if new_else.is_empty() { None } else { Some(new_else) };
+                            stmts[pick] = Ast::IfStmt(cond, if_body, new_else_opt, span);
+                            Some(stmts)
+                        } else if let Some(new_else_b) = self.try_remove_nested(else_b) {
+                            stmts[pick] = Ast::IfStmt(cond, if_body, Some(new_else_b), span);
+                            Some(stmts)
+                        } else {
+                            None
+                        }
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            _ => None,
+        }
+    }
+
     fn replace_varref_in_expr(expr: Ast, name: &str, replacement: &Ast) -> Ast {
         match expr {
             Ast::VarRef(n, _) if *n == name => replacement.clone(),
@@ -2392,6 +2520,20 @@ impl TestRunner {
             result[idx] = Ast::FuncDec(name, params, ret, new_body, span);
         }
         result
+    }
+
+    /// Applies one reducer pass, selected by `which` (rotated by the caller). Lets the driver
+    /// stack several passes into a single candidate so one compile can remove many statements at
+    /// once — the key to reducing large programs whose compile time dominates.
+    pub fn reduce_step(&mut self, input: Vec<Ast>, which: usize) -> Vec<Ast> {
+        match which % 6 {
+            0 => self.reduce(input),
+            1 => self.reduce_body(input),
+            2 => self.reduce_nested_body(input),
+            3 => self.reduce_top_level_call(input),
+            4 => self.simplify_func_body(input),
+            _ => self.reduce_params(input),
+        }
     }
 
     pub fn reduce(&mut self, input: Vec<Ast>) -> Vec<Ast> {

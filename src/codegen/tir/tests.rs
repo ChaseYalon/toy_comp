@@ -4362,7 +4362,7 @@ fn test_tirgen_lambda_arr() {
                         TIR::FuncPtr(0, "__lambda_0".to_string()),
                         TIR::FuncPtr(1, "__lambda_1".to_string()),
                         TIR::IConst(2, 2, TirType::I64),
-                        TIR::IConst(3, 0, TirType::I64),
+                        TIR::IConst(3, 2, TirType::I64),
                         TIR::IConst(4, 1, TirType::I64),
                         TIR::CallExternFunction(
                             5,
@@ -4386,7 +4386,7 @@ fn test_tirgen_lambda_arr() {
                             vec![true],
                         ),
                         TIR::IConst(6, 0, TirType::I64),
-                        TIR::IConst(7, 0, TirType::I64),
+                        TIR::IConst(7, 2, TirType::I64),
                         TIR::CallExternFunction(
                             8,
                             Box::new("toy_write_to_arr".to_string()),
@@ -4413,7 +4413,7 @@ fn test_tirgen_lambda_arr() {
                             vec![true],
                         ),
                         TIR::IConst(9, 1, TirType::I64),
-                        TIR::IConst(10, 0, TirType::I64),
+                        TIR::IConst(10, 2, TirType::I64),
                         TIR::CallExternFunction(
                             11,
                             Box::new("toy_write_to_arr".to_string()),

@@ -33,6 +33,12 @@ pub enum BoolInfixOp {
 ///randomly generated "handle" that points to an ssa node
 pub type ValueId = usize;
 pub type BlockId = usize;
+/// An argument to `splice_owned_call_after`: either an existing SSA value or an i64 constant that
+/// the splice materializes as an `IConst`.
+pub enum OwnedCallArg {
+    Val(SSAValue),
+    Const(i64),
+}
 #[derive(PartialEq, Debug, Clone, Hash, Eq, Deserialize, Serialize)]
 pub enum TirType {
     ///used for integers
@@ -1216,8 +1222,13 @@ impl TirBuilder {
             &TypeTok::Bool => (1, 0),
             &TypeTok::Int => (2, 0),
             &TypeTok::Float => (3, 0),
-            &TypeTok::Lambda(_, _) => (0, 0),
-            &TypeTok::LambdaArr(_, _, n) => (if use_element_type && n == 1 { 0 } else { 4 }, n),
+            // A lambda is a function pointer to a global, never a heap allocation. It must use a
+            // non-owned word code (Int=2) so an array/struct holding it is not deep-freed as if it
+            // owned str elements — freeing a function-pointer global corrupts the heap. Only the
+            // scalar-element case (degree 1) is a bare pointer; a LambdaArr of degree > 1 holds
+            // nested arrays that ARE heap-owned, so it keeps the array element code (4).
+            &TypeTok::Lambda(_, _) => (2, 0),
+            &TypeTok::LambdaArr(_, _, n) => (if use_element_type && n == 1 { 2 } else { 4 }, n),
             &TypeTok::StrArr(n) => (if use_element_type && n == 1 { 0 } else { 4 }, n),
             &TypeTok::BoolArr(n) => (if use_element_type && n == 1 { 1 } else { 5 }, n),
             &TypeTok::IntArr(n) => (if use_element_type && n == 1 { 2 } else { 6 }, n),
@@ -1453,6 +1464,133 @@ impl TirBuilder {
             .unwrap();
         let block = func.body.iter_mut().find(|b| b.id == block_id).unwrap();
         block.ins.insert(before_ins, ins);
+    }
+
+    ///Inserts a void extern call immediately after the instruction whose value id is `after_value_id`.
+    ///The args are marked doesnt-take-ownership so escape analysis ignores the call.
+    pub fn splice_extern_call_after(
+        &mut self,
+        func_name: &str,
+        after_value_id: ValueId,
+        callee: &str,
+        args: Vec<SSAValue>,
+    ) {
+        let id = self._next_value_id_for_func(func_name);
+        let n_args = args.len();
+        let ins = TIR::CallExternFunction(
+            id,
+            Box::new(callee.to_string()),
+            args,
+            false,
+            TirType::Void,
+            vec![true; n_args],
+        );
+        let func = self
+            .funcs
+            .iter_mut()
+            .find(|f| *f.name == func_name)
+            .unwrap();
+        for block in func.body.iter_mut() {
+            if let Some(idx) = block.ins.iter().position(|i| i.get_id() == after_value_id) {
+                block.ins.insert(idx + 1, ins);
+                return;
+            }
+        }
+    }
+
+    /// Splices a void extern call `callee(args...)` immediately after `after_value_id`. Each arg is
+    /// either an existing SSA value or an i64 constant to materialize (as an `IConst`). Args are
+    /// marked doesn't-take-ownership so escape analysis ignores the call. Used to emit the per-field
+    /// struct-ownership bookkeeping calls (`toy_struct_init_owned` / `_set_owned` / `_free_field_if_owned`).
+    pub fn splice_owned_call_after(
+        &mut self,
+        func_name: &str,
+        after_value_id: ValueId,
+        callee: &str,
+        args: Vec<OwnedCallArg>,
+    ) {
+        let mut instrs: Vec<TIR> = vec![];
+        let mut call_args: Vec<SSAValue> = vec![];
+        for a in args {
+            match a {
+                OwnedCallArg::Val(v) => call_args.push(v),
+                OwnedCallArg::Const(c) => {
+                    let id = self._next_value_id_for_func(func_name);
+                    instrs.push(TIR::IConst(id, c, TirType::I64));
+                    call_args.push(SSAValue { val: id, ty: Some(TirType::I64) });
+                }
+            }
+        }
+        let call_id = self._next_value_id_for_func(func_name);
+        let n = call_args.len();
+        instrs.push(TIR::CallExternFunction(
+            call_id,
+            Box::new(callee.to_string()),
+            call_args,
+            false,
+            TirType::Void,
+            vec![true; n],
+        ));
+        let func = self.funcs.iter_mut().find(|f| *f.name == func_name).unwrap();
+        for block in func.body.iter_mut() {
+            if let Some(idx) = block.ins.iter().position(|i| i.get_id() == after_value_id) {
+                for (k, ins) in instrs.into_iter().enumerate() {
+                    block.ins.insert(idx + 1 + k, ins);
+                }
+                return;
+            }
+        }
+    }
+
+    /// Like `splice_struct_field_frees_before`, but each field free is routed through
+    /// `toy_struct_free_field_if_owned(struct, idx, value, ty_code)` so the runtime frees the field
+    /// only when the struct currently owns it (per its ownership bitmap). `ty_code`: 0 = str, 1 =
+    /// array. Returns the number of instructions inserted.
+    pub fn splice_struct_owned_field_frees_before(
+        &mut self,
+        func_name: String,
+        block_id: BlockId,
+        before_ins: usize,
+        struct_val: SSAValue,
+        fields: &[crate::codegen::ctla::OwnedField],
+    ) -> usize {
+        let mut instructions = Vec::new();
+        for field in fields {
+            let read_id = self._next_value_id_for_func(&func_name);
+            let read_ins = TIR::ReadStructLiteral(read_id, struct_val.clone(), field.index as u64);
+            let read_val = SSAValue {
+                val: read_id,
+                ty: Some(TirType::Ptr),
+            };
+            let idx_id = self._next_value_id_for_func(&func_name);
+            let ty_id = self._next_value_id_for_func(&func_name);
+            let ty_code = if field.is_array { 1 } else { 0 };
+            let free_id = self._next_value_id_for_func(&func_name);
+            let call = TIR::CallExternFunction(
+                free_id,
+                Box::new("toy_struct_free_field_if_owned".to_string()),
+                vec![
+                    struct_val.clone(),
+                    SSAValue { val: idx_id, ty: Some(TirType::I64) },
+                    read_val,
+                    SSAValue { val: ty_id, ty: Some(TirType::I64) },
+                ],
+                false,
+                TirType::Void,
+                vec![true, true, true, true],
+            );
+            instructions.push(read_ins);
+            instructions.push(TIR::IConst(idx_id, field.index as i64, TirType::I64));
+            instructions.push(TIR::IConst(ty_id, ty_code, TirType::I64));
+            instructions.push(call);
+        }
+        let count = instructions.len();
+        let func = self.funcs.iter_mut().find(|f| *f.name == func_name).unwrap();
+        let block = func.body.iter_mut().find(|b| b.id == block_id).unwrap();
+        for (i, ins) in instructions.into_iter().enumerate() {
+            block.ins.insert(before_ins + i, ins);
+        }
+        count
     }
 
     /// Insert ReadStructLiteral + free calls for each owned field of a struct,

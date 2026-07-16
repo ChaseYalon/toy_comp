@@ -4,6 +4,7 @@ use crate::stub::DEBUG_HEAP;
 use std::ffi::{CStr, CString};
 use std::io;
 use std::io::Write;
+use std::collections::HashMap;
 use std::os::raw::c_void;
 use std::time::Instant;
 use crate::values::ToyType;
@@ -433,6 +434,65 @@ pub fn toy_deep_free_arr_evicted(ptr: ToyPtr) {
         toy_deep_free_arr(ptr);
     }
 }
+
+// --- Per-field struct ownership -------------------------------------------------------------------
+// A struct is a raw heap blob of 8-byte fields with no room for metadata, so per-field ownership
+// (does the struct own field i, i.e. is it responsible for freeing it) is tracked in this side
+// table, keyed on the struct BODY pointer. It mirrors `ToyArr.owned` for arrays: the compiler sets a
+// field's bit at each write (owned vs a borrowed param / read-out / alias), and the runtime reads it
+// when a field is overwritten (eviction) or when the struct dies. This is O(1) per operation — not a
+// scan/sweep. Keyed on the body pointer, which is what the program holds and what `toy_free_struct`
+// clears; address reuse is safe because `toy_struct_init_owned` overwrites and free clears.
+static STRUCT_FIELD_OWNED: std::sync::OnceLock<std::sync::Mutex<HashMap<i64, u64>>> =
+    std::sync::OnceLock::new();
+fn struct_owned_map() -> &'static std::sync::Mutex<HashMap<i64, u64>> {
+    STRUCT_FIELD_OWNED.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
+}
+/// Registers a freshly created struct's initial per-field ownership bitmap (bit i = struct owns
+/// field i). Called by CTLA right after `toy_malloc_struct`.
+#[unsafe(no_mangle)]
+pub fn toy_struct_init_owned(body: ToyPtr, bitmap: i64) {
+    struct_owned_map().lock().unwrap().insert(body, bitmap as u64);
+}
+/// Sets field `idx`'s ownership bit (called after a field write to record the new value's ownership).
+#[unsafe(no_mangle)]
+pub fn toy_struct_set_owned(body: ToyPtr, idx: i64, owned: i64) {
+    let mut m = struct_owned_map().lock().unwrap();
+    let bm = m.entry(body).or_insert(u64::MAX);
+    if owned != 0 {
+        *bm |= 1u64 << idx;
+    } else {
+        *bm &= !(1u64 << idx);
+    }
+}
+/// Drops a struct's ownership entry (called by `toy_free_struct`), so a later reuse of the address
+/// starts clean.
+#[unsafe(no_mangle)]
+pub fn toy_struct_forget(body: ToyPtr) {
+    struct_owned_map().lock().unwrap().remove(&body);
+}
+fn struct_field_is_owned(body: ToyPtr, idx: i64) -> bool {
+    match struct_owned_map().lock().unwrap().get(&body) {
+        Some(bm) => (bm >> idx) & 1 == 1,
+        // An uninstrumented struct (e.g. one returned from an extern module) has no entry; keep the
+        // prior behavior of freeing its owned fields.
+        None => true,
+    }
+}
+/// Frees struct field `idx`'s heap value ONLY if the struct currently owns it. `ty_code`: 0 = str
+/// (scalar pointer), 1 = array (deep-free), 2 = struct. Used for both the eviction of an overwritten
+/// field and the reclamation of the surviving field at struct death.
+#[unsafe(no_mangle)]
+pub fn toy_struct_free_field_if_owned(body: ToyPtr, idx: i64, value: i64, ty_code: i64) {
+    if value == 0 || !struct_field_is_owned(body, idx) {
+        return;
+    }
+    match ty_code {
+        1 => toy_deep_free_arr(value),
+        2 => crate::ctla::toy_free_struct(value),
+        _ => toy_free(value as *mut c_void),
+    }
+}
 #[unsafe(no_mangle)]
 pub fn toy_read_from_arr(arr_in_ptr: ToyPtr, idx: i64) -> i64 {
     _check_pointer(arr_in_ptr as *mut c_void);
@@ -444,6 +504,21 @@ pub fn toy_arrlen(arr_in_ptr: ToyPtr) -> i64 {
     _check_pointer(arr_in_ptr as *mut c_void);
     let arr_ptr = unsafe { &mut *(arr_in_ptr as *mut ToyArr) };
     return arr_ptr.arr.len() as i64;
+}
+#[unsafe(no_mangle)]
+/// Marks every slot currently holding `value` as borrowed: ownership of that element was
+/// transferred elsewhere (e.g. read out of this array and owned-written into a parameter array),
+/// so this array's deep-free must skip it. Slots still owned (the unpicked elements) are
+/// unaffected and get reclaimed by the deep-free. Only the runtime knows which slot the dynamic
+/// read index picked, which is why this cannot be resolved at compile time.
+pub fn toy_arr_disown(arr_in_ptr: ToyPtr, value: i64) {
+    _check_pointer(arr_in_ptr as *mut c_void);
+    let arr_ptr = unsafe { &mut *(arr_in_ptr as *mut ToyArr) };
+    for (i, &v) in arr_ptr.arr.iter().enumerate() {
+        if v == value {
+            arr_ptr.owned[i] = false;
+        }
+    }
 }
 #[unsafe(no_mangle)]
 pub fn toy_free_arr(arr_ptr_int: ToyPtr) {

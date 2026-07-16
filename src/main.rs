@@ -64,7 +64,25 @@ fn collect_used_structs(nodes: &[Ast], used: &mut std::collections::HashSet<Stri
             }
             Ast::FuncCall(_, args, _) => collect_used_structs(args, used),
             Ast::EmptyExpr(e, _) | Ast::Not(e, _) => collect_used_structs(&[*e.clone()], used),
-            Ast::Assignment(_, rhs, _) => collect_used_structs(&[*rhs.clone()], used),
+            Ast::Assignment(lhs, rhs, _) => {
+                collect_used_structs(&[*lhs.clone()], used);
+                collect_used_structs(&[*rhs.clone()], used);
+            }
+            // StructLits also live inside arrays (struct arrays), lambda bodies, anon-call
+            // args, and index/member targets. Missing any of these makes strip_unused delete a
+            // StructInterface that is still referenced, orphaning the StructLit and panicking
+            // codegen at compile_expr's interface lookup — which silently blocks all reduction.
+            Ast::ArrLit(_, elems, _) => collect_used_structs(elems, used),
+            Ast::LambdaDec(_, _, body, _) => collect_used_structs(body, used),
+            Ast::AnonFuncCall(callable, args, _) => {
+                collect_used_structs(&[*callable.clone()], used);
+                collect_used_structs(args, used);
+            }
+            Ast::MemberAccess(expr, _, _) => collect_used_structs(&[*expr.clone()], used),
+            Ast::IndexAccess(expr, idx, _) => {
+                collect_used_structs(&[*expr.clone()], used);
+                collect_used_structs(&[*idx.clone()], used);
+            }
             _ => {}
         }
     }
@@ -110,6 +128,13 @@ fn collect_used_vars(nodes: &[Ast], used: &mut std::collections::HashSet<String>
                 }
             }
             Ast::ArrLit(_, elems, _) => collect_used_vars(elems, used),
+            Ast::AnonFuncCall(callable, args, _) => {
+                collect_used_vars(&[*callable.clone()], used);
+                collect_used_vars(args, used);
+            }
+            // Lambda bodies cannot capture outer vars, but recurse for robustness so a VarRef
+            // there never makes strip_unused drop a still-referenced declaration.
+            Ast::LambdaDec(_, _, body, _) => collect_used_vars(body, used),
             _ => {}
         }
     }
@@ -320,6 +345,31 @@ fn run_for_30_seconds(mut child: Child) -> bool {
 fn compile_file(filename: &str) -> Result<(), Box<dyn std::error::Error>> {
     compile_and_print(filename)
 }
+/// Spawns the exe `runs` times and returns true only if every run crashes — read_rand-heavy fuzz
+/// programs crash probabilistically, and accepting a reduction off a lucky single run lets the
+/// artifact drift to one that rarely (or never) reproduces.
+fn crashes_every_run(name: &str, runs: u32) -> bool {
+    for _ in 0..runs {
+        let child = Command::new(name).spawn().expect("failed to start child");
+        if run_for_30_seconds(child) {
+            return false;
+        }
+    }
+    true
+}
+/// True if the exe crashes on AT LEAST ONE of `runs` runs. Used to confirm an initial single-run
+/// failure is a real (possibly probabilistic) crash, not a spurious first-run-after-compile failure
+/// on Windows — the latter would otherwise send delta debugging off reducing a program that does not
+/// actually reproduce, drifting into artifacts (e.g. infinite recursion / stack overflow).
+fn crash_reproduces(name: &str, runs: u32) -> bool {
+    for _ in 0..runs {
+        let child = Command::new(name).spawn().expect("failed to start child");
+        if !run_for_30_seconds(child) {
+            return true;
+        }
+    }
+    false
+}
 //just random algo for randomness
 fn make_seed(counter: u64, ms: u64) -> u64 {
     let mut x = ms ^ counter.wrapping_mul(0x9e3779b97f4a7c15);
@@ -387,7 +437,9 @@ fn main() {
             let prgm = runner.generate();
 
             let prgm_clone = prgm.clone();
-            base = format!("temp/fuzz{i}");
+            // Include the PID so multiple fuzzer processes can run concurrently without clobbering
+            // each other's temp object/exe files (they'd otherwise all share temp/fuzz{i}.*).
+            base = format!("temp/fuzz{}_{i}", std::process::id());
             name = format!("{base}{}", FILE_EXTENSION_EXE);
             let compile_result = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let mut d = Driver::new_with_name(PathBuf::from(base.clone()), base.clone());
@@ -403,7 +455,10 @@ fn main() {
             let child = Command::new(&name.clone())
                 .spawn()
                 .expect("failed to start process");
-            if !run_for_30_seconds(child) {
+            // Confirm any initial failure actually reproduces before reducing — a single spurious
+            // first-run failure (Windows just-compiled exe) must not send delta debugging off into
+            // an artifact.
+            if !run_for_30_seconds(child) && crash_reproduces(&name, 5) {
                 crash = Some((prgm, false));
                 break;
             }
@@ -422,19 +477,11 @@ fn main() {
                 let ctx = Context::create();
                 d.start_with_ast(&ctx, current.clone())
             }));
+            // Stack many reducer passes into each candidate so one (slow) compile can remove a
+            // big chunk of the program. When a chunk stops reproducing the crash, halve it and try
+            // again — this is the difference between reducing a large program and barely moving.
+            let mut chunk = (count_nodes(&current).0 / 2).max(1);
             loop {
-                let mut reduced = match count % 5 {
-                    0 => runner.reduce(current.clone()),
-                    1 => runner.reduce_body(current.clone()),
-                    2 => runner.reduce_top_level_call(current.clone()),
-                    3 => runner.simplify_func_body(current.clone()),
-                    _ => runner.reduce_params(current.clone()),
-                };
-                // Strip unused vars/interfaces on the candidate BEFORE the crash
-                // check — unused allocations can change CTLA behavior, so the
-                // stripped form must be what gets verified.
-                strip_unused(&mut reduced);
-
                 if count > MAX_DELTA_DEBUG_ITERS
                     || consecutive_failures > MAX_CONSECUTIVE_FAILURES
                     || reduce_start.elapsed() > Duration::from_secs(MAX_REDUCE_SECS)
@@ -442,8 +489,21 @@ fn main() {
                     break;
                 }
 
+                chunk = chunk.min(count_nodes(&current).0.max(1));
+                let mut reduced = current.clone();
+                for k in 0..chunk {
+                    reduced = runner.reduce_step(reduced, count + k);
+                }
+                // Do NOT strip before testing: CTLA crashes are allocation-sensitive, and removing
+                // "unused" allocations can erase the very crash we are trying to preserve. Stripping
+                // is attempted only as the final cleanup pass below, kept iff the crash survives it.
+
                 if reduced == current {
-                    consecutive_failures += 1;
+                    if chunk > 1 {
+                        chunk /= 2;
+                    } else {
+                        consecutive_failures += 1;
+                    }
                     count += 1;
                     continue;
                 }
@@ -466,10 +526,7 @@ fn main() {
                             // compiled successfully — no longer triggers the compiler crash
                             false
                         } else {
-                            let child = Command::new(delta_name.clone())
-                                .spawn()
-                                .expect("failed to start child");
-                            !run_for_30_seconds(child)
+                            crashes_every_run(&delta_name, 3)
                         }
                     }
                 };
@@ -491,11 +548,16 @@ fn main() {
                         d.start_with_ast(&ctx, current.clone())
                     }));
                 } else {
-                    consecutive_failures += 1;
+                    // The chunk removed something the crash needs — narrow it and retry.
+                    if chunk > 1 {
+                        chunk /= 2;
+                    } else {
+                        consecutive_failures += 1;
+                    }
                 }
                 count += 1;
                 let (stmts, exprs) = count_nodes(&current);
-                print!("Delta debugging at iteration {count} ({stmts} stmts, {exprs} exprs)\r");
+                print!("Delta debugging at iteration {count} ({stmts} stmts, {exprs} exprs, chunk {chunk})\r");
                 io::stdout().flush().unwrap();
                 if stmts < 10 && exprs < 5 {
                     break;
@@ -516,10 +578,7 @@ fn main() {
                 d.start_with_ast(&ctx, cleaned.clone())
             }));
             if let Ok(Ok(_)) = clean_ok {
-                let child = Command::new(delta_name)
-                    .spawn()
-                    .expect("failed to start child");
-                if !run_for_30_seconds(child) {
+                if crashes_every_run(&delta_name, 3) {
                     current = cleaned;
                     // recompile to real path
                     let _ = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -614,10 +673,7 @@ fn main() {
                     if crash_is_compile_panic == Some(true) {
                         false
                     } else {
-                        let child = Command::new(delta_name)
-                            .spawn()
-                            .expect("failed to start child");
-                        !run_for_30_seconds(child)
+                        crashes_every_run(&delta_name, 3)
                     }
                 }
             }
@@ -658,7 +714,8 @@ fn main() {
                 for _ in 0..chunk {
                     candidate = runner.reduce(candidate);
                 }
-                strip_unused(&mut candidate);
+                // No pre-test strip — see the fine-grained loop below; stripping can erase an
+                // allocation-sensitive crash, so it is only attempted in the final cleanup pass.
                 if candidate == current {
                     continue;
                 }
@@ -687,18 +744,11 @@ fn main() {
         let (stmts, exprs) = count_nodes(&current);
         println!("Phase 1 done ({stmts} stmts, {exprs} exprs), starting fine-grained reduction");
 
+        // Stack many reducer passes into each candidate so one (slow) compile can remove a big
+        // chunk of the program. When a chunk stops reproducing the crash, halve it and retry —
+        // this is the difference between reducing a large program and barely moving.
+        let mut chunk = (count_nodes(&current).0 / 2).max(1);
         loop {
-            let mut reduced = match count % 4 {
-                0 => runner.reduce(current.clone()),
-                1 => runner.reduce_body(current.clone()),
-                2 => runner.reduce_top_level_call(current.clone()),
-                _ => runner.simplify_func_body(current.clone()),
-            };
-            // Strip unused vars/interfaces on the candidate BEFORE the crash
-            // check — unused allocations can change CTLA behavior, so the
-            // stripped form must be what gets verified.
-            strip_unused(&mut reduced);
-
             if count > MAX_DELTA_DEBUG_ITERS
                 || consecutive_failures > MAX_CONSECUTIVE_FAILURES
                 || reduce_start.elapsed() > Duration::from_secs(max_reduce_secs)
@@ -706,8 +756,21 @@ fn main() {
                 break;
             }
 
+            chunk = chunk.min(count_nodes(&current).0.max(1));
+            let mut reduced = current.clone();
+            for k in 0..chunk {
+                reduced = runner.reduce_step(reduced, count + k);
+            }
+            // Do NOT strip before testing: CTLA crashes are allocation-sensitive, and removing
+            // "unused" allocations can erase the very crash we are trying to preserve. Stripping
+            // is attempted only as the final cleanup pass below, kept iff the crash survives it.
+
             if reduced == current {
-                consecutive_failures += 1;
+                if chunk > 1 {
+                    chunk /= 2;
+                } else {
+                    consecutive_failures += 1;
+                }
                 count += 1;
                 continue;
             }
@@ -722,11 +785,16 @@ fn main() {
                 )
                 .unwrap();
             } else {
-                consecutive_failures += 1;
+            // The chunk removed something the crash needs — narrow it and retry.
+                if chunk > 1 {
+                    chunk /= 2;
+                } else {
+                    consecutive_failures += 1;
+                }
             }
             count += 1;
             let (stmts, exprs) = count_nodes(&current);
-            print!("Delta debugging at iteration {count} ({stmts} stmts, {exprs} exprs)\r");
+            print!("Delta debugging at iteration {count} ({stmts} stmts, {exprs} exprs, chunk {chunk})\r");
             io::stdout().flush().unwrap();
             if stmts < 10 && exprs < 5 {
                 break;
