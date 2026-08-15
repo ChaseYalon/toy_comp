@@ -41,8 +41,9 @@ export fn version_info(): str{
     //status, version, name
     //previously used names
         //Gray - Earl Gray PM
-    //Named after John Quincy Adams, who developed the actual Monroe Doctrine, was a mediocre president but a competent secretary of state
-    return "ALPHA_0.03_ADAMS";
+        //Adams - John Quincy Adams
+    //Marcus Tullius Cicero, ultimus magnus Romanorum
+    return "ALPHA_0.04_CICERO";
 }
 extern fn toy_sys_is_little_endian(): int;
 export fn is_little_endian(): bool{
