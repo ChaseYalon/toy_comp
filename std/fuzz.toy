@@ -1,4 +1,10 @@
 import std.math;
+extern fn toy_fuzz_loop_budget(): int;
+//how many iterations a generated loop may still run. decays as the program ages, so a deeply
+//nested program throttles itself instead of running for hours
+export fn loop_budget(): int {
+    return toy_fuzz_loop_budget();
+}
 //generics would make this SO much easier
 export fn read_rand(arr: int[]): int{
     let idx: int = math.rand_int(0, len(arr) - 1);

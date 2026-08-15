@@ -30,6 +30,9 @@ pub struct AstGenerator {
     imports: HashMap<String, String>,
     extern_funcs: HashSet<String>,
     module_prefix: Option<String>,
+    /// Declared return type of the function whose body is currently being parsed, used to type an
+    /// otherwise-untyped empty array literal in a `return` (mirrors the let-binding coercion).
+    current_func_return_type: Option<TypeTok>,
 }
 
 impl AstGenerator {
@@ -121,6 +124,7 @@ impl AstGenerator {
             imports: HashMap::new(),
             extern_funcs: HashSet::new(),
             module_prefix: None,
+            current_func_return_type: None,
         };
     }
 
@@ -847,10 +851,15 @@ impl AstGenerator {
             }
         }
 
+        // Save/restore around the body so a nested function/lambda does not clobber the outer
+        // function's return-type context.
+        let prev_return_type = self.current_func_return_type.take();
+        self.current_func_return_type = Some(return_type.clone());
         let mut body: Vec<Ast> = Vec::new();
         for stmt in box_boxy {
             body.push(self.parse_stmt(stmt, false)?)
         }
+        self.current_func_return_type = prev_return_type;
 
         self.pop_scope()?;
 
@@ -895,6 +904,15 @@ impl AstGenerator {
                 };
 
                 let (res, _) = self.parse_expr(expr)?;
+                // An empty array literal has no elements to infer from, so parse_expr types it
+                // TypeTok::Any. Coerce it to the function's declared return type (mirrors the
+                // let-binding coercion in parse_var_dec), else codegen has no array degree.
+                let res = match (&res, &self.current_func_return_type) {
+                    (Ast::ArrLit(TypeTok::Any, elems, raw), Some(ret_ty)) if elems.is_empty() => {
+                        Ast::ArrLit(ret_ty.clone(), elems.clone(), raw.clone())
+                    }
+                    _ => res,
+                };
                 Ast::Return(Box::new(res), raw_text)
             }
 

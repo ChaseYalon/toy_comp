@@ -261,10 +261,23 @@ impl Boxer {
         let mut cond: Vec<SpannedToken> = Vec::new();
         let mut brace_start_idx = None;
 
+        // The while body's opening brace is the first LBrace at paren/bracket depth 0. A lambda
+        // literal in the condition (`(x: int): int { ... }`) has its own brace at nonzero depth
+        // (it is inside a call's parens or the condition's parens); it must not be mistaken for the
+        // body brace, or the condition is truncated mid-lambda.
+        let mut paren_depth = 0;
+        let mut bracket_depth = 0;
         for (i, t) in input.iter().enumerate().skip(1) {
-            if t.tok.tok_type() == "LBrace" {
-                brace_start_idx = Some(i);
-                break;
+            match t.tok.tok_type().as_str() {
+                "LParen" => paren_depth += 1,
+                "RParen" => paren_depth -= 1,
+                "LBrack" => bracket_depth += 1,
+                "RBrack" => bracket_depth -= 1,
+                "LBrace" if paren_depth == 0 && bracket_depth == 0 => {
+                    brace_start_idx = Some(i);
+                    break;
+                }
+                _ => {}
             }
             cond.push(t.clone());
         }
@@ -344,7 +357,19 @@ impl Boxer {
 
                 let mut while_end = i + 1;
 
-                while while_end < input.len() && input[while_end].tok.tok_type() != "LBrace" {
+                // The body brace is the first LBrace at paren/bracket depth 0. A lambda literal in
+                // the condition has its own brace at nonzero depth and must not be mistaken for it.
+                let mut cond_paren = 0;
+                let mut cond_bracket = 0;
+                while while_end < input.len() {
+                    match input[while_end].tok.tok_type().as_str() {
+                        "LParen" => cond_paren += 1,
+                        "RParen" => cond_paren -= 1,
+                        "LBrack" => cond_bracket += 1,
+                        "RBrack" => cond_bracket -= 1,
+                        "LBrace" if cond_paren == 0 && cond_bracket == 0 => break,
+                        _ => {}
+                    }
                     while_end += 1;
                 }
 

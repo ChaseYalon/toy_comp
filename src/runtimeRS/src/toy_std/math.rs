@@ -1,4 +1,6 @@
-use rand::RngExt;
+use rand::rngs::{StdRng, SysRng};
+use rand::{RngExt, SeedableRng};
+use std::sync::{LazyLock, Mutex};
 // trig
 #[unsafe(no_mangle)]
 pub extern "C" fn toy_math_sin(value: i64) -> i64 {
@@ -377,9 +379,22 @@ pub extern "C" fn toy_math_min(x: i64, y: i64) -> i64 {
 pub extern "C" fn toy_math_minf(x: f64, y: f64) -> f64 {
     x.min(y)
 }
+/// Process-global RNG, seeded once from the OS.
+///
+/// Deliberately not `rand::rng()`. `ThreadRng` roots its state in thread-local storage, and under
+/// TOY_GC that state is a collector allocation whose only reference lives in TLS — which Boehm does
+/// not scan. It was reclaimed while still in use, the block was handed to the next `toy_malloc_arr`,
+/// and the RNG went on writing random bytes over a live array header. A `static` keeps the state
+/// inline in the data segment, which the collector does trace. This is the general rule for the
+/// runtime under GC: no allocation may be reachable only from TLS.
+static RNG: LazyLock<Mutex<StdRng>> = LazyLock::new(|| {
+    Mutex::new(StdRng::try_from_rng(&mut SysRng).expect("[ERROR] OS random source unavailable"))
+});
+
 #[unsafe(no_mangle)]
 pub extern "C" fn toy_math_rand() -> f64 {
     //this is not efficient. I do not care
-    let x: f64= rand::rng().random();
-    return x
+    let mut rng = RNG.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let x: f64 = rng.random();
+    return x;
 }

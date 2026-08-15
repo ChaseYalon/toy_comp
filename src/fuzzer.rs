@@ -724,6 +724,29 @@ impl TestRunner {
             Span::null_span(),
         ))
     }
+    /// `<counter> >= fuzz.loop_budget()` — the test every path out of a generated loop body uses.
+    ///
+    /// The bound is a call rather than a constant because the iteration counter alone does NOT
+    /// bound runtime: loops nest to max_stmt_depth and a body statement may call an earlier
+    /// function that itself nests loops containing calls, so the counts multiply across the call
+    /// DAG (measured: ~1e11 node executions for one generated program). loop_budget() decays with
+    /// process age, throttling that product as a program runs long.
+    fn counter_spent(&self, counter: &str) -> Ast {
+        Ast::InfixExpr(
+            Box::new(Ast::VarRef(Box::new(counter.to_string()), Span::null_span())),
+            Box::new(Ast::FuncCall(
+                Box::new(crate::driver::Driver::mangle_name(
+                    Some("std::fuzz"),
+                    "loop_budget",
+                    &[],
+                )),
+                vec![],
+                Span::null_span(),
+            )),
+            InfixOp::GreaterThanEqt,
+            Span::null_span(),
+        )
+    }
     fn gen_while_stmt(&mut self, stmt_depth: usize) -> Vec<Ast> {
         if stmt_depth > self.max_stmt_depth {
             return self.gen_stmt(stmt_depth);
@@ -746,11 +769,15 @@ impl TestRunner {
             Box::new(Ast::IntLit(0, Span::null_span())),
             Span::null_span(),
         );
-        // Occasionally insert a `continue` somewhere in the body. It bumps the loop counter BEFORE
-        // continuing so termination still holds (the trailing guard also bumps on the other path),
-        // and it sits before the guard so the reducer's last-statement guard detection is intact.
+        // Occasionally insert a `continue` somewhere in the body. It sits before the guard so the
+        // reducer's last-statement guard detection is intact.
         // Memory relevance: a `continue` skips allocations made later in the body on some paths,
         // exercising CTLA's "free along every control path" requirement.
+        //
+        // It must bump the counter AND re-test the bound itself. Bumping alone does not terminate
+        // anything: the comparison lives only in the trailing guard, which `continue` jumps over,
+        // so a condition that stays true loops forever no matter how high the counter climbs.
+        // That was a real source of hanging generated programs.
         if self.rng.random_bool(0.3) {
             let cont_cond = self.gen_bool_expr(0);
             let bump = Ast::Assignment(
@@ -763,9 +790,15 @@ impl TestRunner {
                 )),
                 Span::null_span(),
             );
+            let cont_guard = Ast::IfStmt(
+                Box::new(self.counter_spent(&name)),
+                vec![Ast::Break(Span::null_span())],
+                None,
+                Span::null_span(),
+            );
             let cont_block = Ast::IfStmt(
                 Box::new(cont_cond),
-                vec![bump, Ast::Continue(Span::null_span())],
+                vec![bump, cont_guard, Ast::Continue(Span::null_span())],
                 None,
                 Span::null_span(),
             );
@@ -773,12 +806,7 @@ impl TestRunner {
             stmts.insert(pos, cont_block);
         }
         let if_stmt = Ast::IfStmt(
-            Box::new(Ast::InfixExpr(
-                Box::new(Ast::VarRef(Box::new(name.clone()), Span::null_span())),
-                Box::new(Ast::IntLit(5, Span::null_span())),
-                InfixOp::GreaterThanEqt,
-                Span::null_span(),
-            )),
+            Box::new(self.counter_spent(&name)),
             vec![Ast::Break(Span::null_span())],
             Some(vec![Ast::Assignment(
                 Box::new(Ast::VarRef(Box::new(name.clone()), Span::null_span())),

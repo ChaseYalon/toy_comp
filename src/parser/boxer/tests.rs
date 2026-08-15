@@ -1617,3 +1617,36 @@ fn test_boxer_lambda_passes_through_as_expr() {
         )]
     ))
 }
+
+// A lambda literal in a while condition has its own `{ }` body. box_while must not mistake the
+// lambda's opening brace for the while body's brace, or it truncates the condition (which then
+// fails downstream with "Unclosed Delimiter"). The body-brace scan must respect paren/bracket
+// depth. Asserting the while condition has balanced parens catches the truncation, which a bare
+// is_ok() misses (boxing "succeeds" with a malformed While).
+#[test]
+fn test_boxer_lambda_in_while_condition() {
+    let input = String::from(
+        "fn func1(): int { while (!apply((x: int): int { return x; })) { } return 0; } func1();",
+    );
+    let mut l = Lexer::new();
+    let mut b = Boxer::new();
+    let toks = l.lex(input).unwrap();
+    let boxes = b.box_toks(toks).expect("boxing failed");
+    let func_body = boxes
+        .iter()
+        .find_map(|tb| match tb {
+            TBox::FuncDec(_, _, _, body, _, _) => Some(body),
+            _ => None,
+        })
+        .expect("func1 not found");
+    let cond = func_body
+        .iter()
+        .find_map(|tb| match tb {
+            TBox::While(cond, _, _) => Some(cond),
+            _ => None,
+        })
+        .expect("while not found");
+    let lp = cond.iter().filter(|t| t.tok.tok_type() == "LParen").count();
+    let rp = cond.iter().filter(|t| t.tok.tok_type() == "RParen").count();
+    assert_eq!(lp, rp, "while condition parens unbalanced (truncated): {lp} vs {rp}");
+}

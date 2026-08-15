@@ -17,16 +17,6 @@ fn main() {
         env::var("LLVM_SYS_211_PREFIX").unwrap_or("LLVM_SYS_211_NOT_FOUND".to_string())
     );
     let target = env::var("TARGET").unwrap();
-    let profile = env::var("PROFILE").unwrap();
-    if profile == "test" {
-        unsafe {
-            env::set_var("TOY_DEBUG", "TRUE");
-        }
-    } else {
-        unsafe {
-            env::set_var("TOY_DEBUG", "FALSE");
-        }
-    }
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let runtime_dir = manifest_dir.join("src").join("runtimeRS");
 

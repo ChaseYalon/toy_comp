@@ -123,7 +123,50 @@ impl Linker {
             None
         };
 
-        let args: Vec<String> = if env::consts::OS == "windows" {
+        // The vendored libgcc.a for the Linux target ships without an unwind
+        // implementation (no defined _Unwind_* symbols), so std's panic/backtrace
+        // machinery is left undefined at link time. Pull in the host's static
+        // libgcc_eh.a, mirroring how the Windows branch locates its unwind libs.
+        let linux_unwind_lib = if env::consts::OS != "windows" {
+            ["cc", "gcc", "clang"].iter().find_map(|cc| {
+                Command::new(cc)
+                    .args(["-print-file-name=libgcc_eh.a"])
+                    .output()
+                    .ok()
+                    .filter(|o| o.status.success())
+                    .and_then(|o| {
+                        let path = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                        let path = PathBuf::from(path);
+                        path.is_absolute().then_some(path)
+                    })
+            })
+        } else {
+            None
+        };
+
+        // atexit/pthread_atfork (pulled in by the vendored libgc.a) aren't exported by
+        // the vendored libc.so.6 - glibc only ships them in libc_nonshared.a, which a
+        // normal `-lc` invocation pulls in automatically via a linker script. We bypass
+        // that script by linking libc.so.6 directly, so pull the host's static archive
+        // in ourselves, mirroring the libgcc_eh.a lookup above.
+        let linux_libc_nonshared = if env::consts::OS != "windows" {
+            ["cc", "gcc", "clang"].iter().find_map(|cc| {
+                Command::new(cc)
+                    .args(["-print-file-name=libc_nonshared.a"])
+                    .output()
+                    .ok()
+                    .filter(|o| o.status.success())
+                    .and_then(|o| {
+                        let path = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                        let path = PathBuf::from(path);
+                        path.is_absolute().then_some(path)
+                    })
+            })
+        } else {
+            None
+        };
+
+        let mut args: Vec<String> = if env::consts::OS == "windows" {
             let mut args: Vec<String> = vec![
                 "-m".into(),
                 "i386pep".into(),
@@ -196,6 +239,9 @@ impl Linker {
                 args.push(lib.to_string_lossy().into_owned());
             }
             args.push("--end-group".to_string());
+            if let Some(unwind_lib) = &linux_unwind_lib {
+                args.push(unwind_lib.to_string_lossy().into_owned());
+            }
             args.push(
                 lib_path
                     .join("cacert.o".to_string())
@@ -206,6 +252,11 @@ impl Linker {
                 crtn_path.to_string_lossy().into_owned(),
                 libc_path.to_string_lossy().into_owned(),
                 libm_path.to_string_lossy().into_owned(),
+            ]);
+            if let Some(libc_nonshared) = &linux_libc_nonshared {
+                args.push(libc_nonshared.to_string_lossy().into_owned());
+            }
+            args.extend_from_slice(&[
                 "-dynamic-linker".into(),
                 "/lib64/ld-linux-x86-64.so.2".into(),
                 "-o".into(),
@@ -214,6 +265,14 @@ impl Linker {
 
             args
         };
+
+        // The runtime static lib is built with full debug info, which is ~87% of every linked
+        // binary (47MB of DWARF against 3.2MB of code) and none of it describes toy code — the
+        // backend emits no DWARF for the program being compiled. Dropping it makes each binary
+        // ~10x smaller, which is the difference between usable and unusable when fuzzing writes a
+        // fresh executable every iteration. `--strip-debug` keeps the symbol table, so the
+        // runtime's segfault/leak backtraces still name functions; they just lose file:line.
+        args.push("--strip-debug".into());
 
         let rstatus = Command::new(lib_path.join("ld.lld")).args(&args).status();
 

@@ -26,9 +26,12 @@ pub struct ToyArr {
 #[macro_export]
 macro_rules! meta_malloc {
     ($size:expr) => {{
-        match ::std::env::var("TOY_DEBUG").as_deref() {
-            Ok("TRUE") => $crate::ctla::_toy_malloc_debug($size),
-            _ => unsafe { ::libc::malloc($size) },
+        // GC must be checked here (not just inside _toy_malloc_debug) because that's only reached
+        // when TOY_DEBUG is also set - GC needs to route through it regardless of TOY_DEBUG.
+        if $crate::ctla::gc_enabled() || $crate::ctla::toy_debug() {
+            $crate::ctla::_toy_malloc_debug($size)
+        } else {
+            unsafe { ::libc::malloc($size) }
         }
     }};
 }
@@ -311,22 +314,29 @@ pub fn toy_malloc_arr(len: i64, ty: i64, degree: i64) -> ToyPtr {
     };
 
     let owned = vec![false; len as usize];
-    let toy_arr = Box::new(ToyArr {
+    let toy_arr = ToyArr {
         ty: arr_type,
         degree,
         should_free_subelements: false,
         arr,
         owned,
-    });
+    };
 
-    let ptr = Box::into_raw(toy_arr) as ToyPtr;
-    if let Ok(v) = std::env::var("TOY_DEBUG") {
-        if v == "TRUE" {
-            let mut heap = DEBUG_HEAP.get().unwrap().lock().unwrap();
-            heap.map.insert(ptr, (std::mem::size_of::<ToyArr>() as i64, Instant::now()));
-            heap.total_live_allocations += 1;
-            heap.total_allocations += 1;
-        }
+    // Under TOY_GC the global allocator routes this Box AND the inner Vecs through the collector.
+    // `arr` must be GC memory, not just the header: it holds the array's live element pointers, and
+    // Boehm does not trace libc allocations, so elements reachable only through a libc-backed buffer
+    // would be collected while the array still points at them.
+    let ptr = Box::into_raw(Box::new(toy_arr)) as ToyPtr;
+    // GC-backed arrays are registered and de-registered exactly like malloc-backed ones, so both
+    // configs pay the same tracking cost and the benchmark stays comparable.
+    if crate::ctla::toy_debug() {
+        let mut heap = DEBUG_HEAP.get().unwrap().lock().unwrap();
+        heap.map.insert(
+            crate::ctla::heap_key(ptr),
+            (std::mem::size_of::<ToyArr>() as i64, Instant::now()),
+        );
+        heap.total_live_allocations += 1;
+        heap.total_allocations += 1;
     }
     return ptr;
 }
@@ -387,8 +397,14 @@ fn arr_swap_impl(arr_in_ptr: ToyPtr, value: i64, idx: i64, ty: i64, new_owned: b
     // holds leaves ownership unchanged. Preserve the prior ownership instead of taking `new_owned`,
     // which would let a borrowed self-write (compiler-routed for self-encapsulation) drop the slot's
     // sole owner and leak. This is the per-slot self-write-back case, not a scan over the array.
+    //
+    // Only the BORROWED write preserves. An OWNED write is the acquiring half of a transfer whose
+    // releasing half (a spliced toy_arr_disown on the source) runs unconditionally, so preserving
+    // here would skip the acquire and destroy ownership instead of moving it — the element would
+    // then be owned by nobody and leak. `old == value` is reached on an owned write whenever the
+    // element is moved back into an array that still holds it, e.g. p2[i] = p1[j] then p1[j] = p2[i].
     let self_same_slot = old == value;
-    arr_ptr.owned[idx as usize] = if self_same_slot { old_owned } else { new_owned };
+    arr_ptr.owned[idx as usize] = if self_same_slot && !new_owned { old_owned } else { new_owned };
     // The evicted value is reclaimable only if the array owned it. A borrowed slot's value is owned
     // by an independent variable and must not be freed here.
     // Self-write-back: the evicted value is the value we just stored, so it is still live in the
@@ -412,9 +428,11 @@ fn free_owned_arr_element(degree: i64, arr_ty: &ToyType, val: i64) {
     }
     if degree > 1 {
         toy_deep_free_arr(val);
+    } else if *arr_ty == ToyType::Struct {
+        crate::ctla::toy_free_struct(val);
     } else {
         let elem_type = arr_ty.to_elem_type();
-        if elem_type == ToyType::Str || elem_type == ToyType::Struct {
+        if elem_type == ToyType::Str {
             toy_free(val as *mut c_void);
         }
     }
@@ -443,6 +461,12 @@ pub fn toy_deep_free_arr_evicted(ptr: ToyPtr) {
 // when a field is overwritten (eviction) or when the struct dies. This is O(1) per operation — not a
 // scan/sweep. Keyed on the body pointer, which is what the program holds and what `toy_free_struct`
 // clears; address reuse is safe because `toy_struct_init_owned` overwrites and free clears.
+//
+// These keys are deliberately NOT hidden the way the shadow heap's are (see `ctla::heap_key`).
+// Under TOY_GC a raw key pins the struct, which is exactly what keeps the "address reuse is safe"
+// argument above true: an escaped struct that CTLA never frees keeps its entry, so if the collector
+// could reclaim it, a later struct landing on the same address would inherit stale ownership bits
+// and free fields it does not own. Pinning trades a bounded leak for that correctness.
 static STRUCT_FIELD_OWNED: std::sync::OnceLock<std::sync::Mutex<HashMap<i64, u64>>> =
     std::sync::OnceLock::new();
 fn struct_owned_map() -> &'static std::sync::Mutex<HashMap<i64, u64>> {
@@ -470,6 +494,50 @@ pub fn toy_struct_set_owned(body: ToyPtr, idx: i64, owned: i64) {
 #[unsafe(no_mangle)]
 pub fn toy_struct_forget(body: ToyPtr) {
     struct_owned_map().lock().unwrap().remove(&body);
+    struct_types_map().lock().unwrap().remove(&body);
+}
+// Per-field TYPE codes, the second half of the struct side-table: ownership says WHETHER the struct
+// must free field i, this says HOW (which free variant). Needed because a struct that dies at
+// runtime (e.g. an element of a deep-freed returned array) has no compile-time splice point where
+// the ty_code could be injected. Packed 2 bits per field: 0 = scalar/uninstrumented (never freed
+// here), 1 = str, 2 = array, 3 = nested struct. Caps instrumented fields at 32 per struct; fields
+// past that keep code 0 (leak, never corrupt).
+static STRUCT_FIELD_TYPES: std::sync::OnceLock<std::sync::Mutex<HashMap<i64, u64>>> =
+    std::sync::OnceLock::new();
+fn struct_types_map() -> &'static std::sync::Mutex<HashMap<i64, u64>> {
+    STRUCT_FIELD_TYPES.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
+}
+/// Registers a freshly created struct's packed per-field type codes. Called by CTLA right after
+/// `toy_struct_init_owned`.
+#[unsafe(no_mangle)]
+pub fn toy_struct_init_types(body: ToyPtr, packed: i64) {
+    struct_types_map().lock().unwrap().insert(body, packed as u64);
+}
+/// Frees every field the struct still owns, dispatching on the registered type code. This is the
+/// runtime-death path (invariant 5): compile-time death sites splice per-field
+/// `toy_struct_free_field_if_owned` calls which clear the owned bits, so by the time
+/// `toy_free_struct` runs this walk only reclaims fields no static splice could reach.
+/// Uninstrumented structs (no types entry) are skipped entirely.
+pub(crate) fn struct_free_owned_fields(body: ToyPtr) {
+    let Some(packed) = struct_types_map().lock().unwrap().get(&body).copied() else {
+        return;
+    };
+    let bitmap = struct_owned_map().lock().unwrap().get(&body).copied().unwrap_or(0);
+    for i in 0..32 {
+        let code = (packed >> (2 * i)) & 3;
+        if code == 0 || (bitmap >> i) & 1 == 0 {
+            continue;
+        }
+        let val = unsafe { *((body as *const i64).add(i)) };
+        if val == 0 {
+            continue;
+        }
+        match code {
+            1 => toy_free(val as *mut c_void),
+            2 => toy_deep_free_arr(val),
+            _ => crate::ctla::toy_free_struct(val),
+        }
+    }
 }
 fn struct_field_is_owned(body: ToyPtr, idx: i64) -> bool {
     match struct_owned_map().lock().unwrap().get(&body) {
@@ -487,6 +555,9 @@ pub fn toy_struct_free_field_if_owned(body: ToyPtr, idx: i64, value: i64, ty_cod
     if value == 0 || !struct_field_is_owned(body, idx) {
         return;
     }
+    // Clear the bit so the field is freed exactly once: `toy_free_struct`'s runtime field-walk
+    // (struct_free_owned_fields) must skip anything a static splice already reclaimed.
+    toy_struct_set_owned(body, idx, 0);
     match ty_code {
         1 => toy_deep_free_arr(value),
         2 => crate::ctla::toy_free_struct(value),
@@ -536,33 +607,39 @@ pub fn toy_free_arr(arr_ptr_int: ToyPtr) {
                     toy_deep_free_arr(val);
                 }
             }
+        } else if arr.ty == ToyType::Struct {
+            // Struct elements carry a size prefix and own their own fields, so they need
+            // `toy_free_struct` (which walks the struct's still-owned fields), not a raw free.
+            for (i, &val) in arr.arr.iter().enumerate() {
+                if val != 0 && arr.owned[i] {
+                    crate::ctla::toy_free_struct(val);
+                }
+            }
         } else {
             // Elements are scalars — only free owned heap-allocated types
             let elem_type = arr.ty.to_elem_type();
             for (i, &val) in arr.arr.iter().enumerate() {
-                if (elem_type == ToyType::Str || elem_type == ToyType::Struct)
-                    && val != 0
-                    && arr.owned[i]
-                {
+                if elem_type == ToyType::Str && val != 0 && arr.owned[i] {
                     toy_free(val as *mut c_void);
                 }
             }
         }
     }
 
-    if let Ok(v) = std::env::var("TOY_DEBUG") {
-        if v == "TRUE" {
-            let mut heap = DEBUG_HEAP.get().unwrap().lock().unwrap();
-            if let Some(&(size, alloc_time)) = heap.map.get(&arr_ptr_int) {
-                if size != -1 {
-                    heap.total_live_allocations -= 1;
-                    heap.lifetimes_ns.push(alloc_time.elapsed().as_nanos() as u64);
-                }
+    if crate::ctla::toy_debug() {
+        let mut heap = DEBUG_HEAP.get().unwrap().lock().unwrap();
+        if let Some(&(size, alloc_time)) = heap.map.get(&crate::ctla::heap_key(arr_ptr_int)) {
+            if size != -1 {
+                heap.total_live_allocations -= 1;
+                heap.lifetimes_ns.push(alloc_time.elapsed().as_nanos() as u64);
             }
-            heap.map.insert(arr_ptr_int, (-1, Instant::now()));
         }
+        heap.map
+            .insert(crate::ctla::heap_key(arr_ptr_int), (-1, Instant::now()));
     }
 
+    // Under TOY_GC this drop routes through the global allocator, which no-ops on GC memory, so the
+    // collector keeps ownership of both the header and the inner Vecs.
     unsafe { drop(Box::from_raw(arr_ptr_int as *mut ToyArr)) };
 }
 #[unsafe(no_mangle)]

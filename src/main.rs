@@ -24,9 +24,15 @@ pub use crate::token::TypeTok;
 use inkwell::context::Context;
 pub use ordered_float::OrderedFloat;
 use std::process::{Child, Command};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+/// Counts how often `run_for_30_seconds` hits its timeout (child still running after 30s and
+/// gets killed) rather than the child exiting on its own. Tracked globally so a single fuzz
+/// campaign can report a hang rate across all runs it drives, including reduction sub-runs.
+static HANG_COUNT: AtomicU64 = AtomicU64::new(0);
 #[cfg(feature = "profile")]
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
@@ -35,6 +41,11 @@ static ALLOC: dhat::Alloc = dhat::Alloc;
 static MAX_DELTA_DEBUG_ITERS: usize = 5000;
 static MAX_CONSECUTIVE_FAILURES: usize = 100;
 static MAX_REDUCE_SECS: u64 = 300; // 5-minute wall-clock limit per reduction run
+/// Attempts a reduction candidate gets to reproduce the crash at least once before it is rejected.
+/// Must match the single-crash trigger: a candidate that has LOST the bug can never crash, so
+/// accepting on one hit cannot silently drop it — more runs only recover rare (`read_rand`) crashes
+/// that would otherwise look like a failed reduction.
+static REDUCE_CONFIRM_RUNS: u32 = 6;
 fn collect_used_structs(nodes: &[Ast], used: &mut std::collections::HashSet<String>) {
     for node in nodes {
         match node {
@@ -334,6 +345,7 @@ fn run_for_30_seconds(mut child: Child) -> bool {
                 // Still running
                 if start.elapsed() >= timeout {
                     // Still running after 30s — this is also acceptable
+                    HANG_COUNT.fetch_add(1, Ordering::Relaxed);
                     child.kill().ok(); // clean up
                     return true;
                 }
@@ -345,22 +357,11 @@ fn run_for_30_seconds(mut child: Child) -> bool {
 fn compile_file(filename: &str) -> Result<(), Box<dyn std::error::Error>> {
     compile_and_print(filename)
 }
-/// Spawns the exe `runs` times and returns true only if every run crashes — read_rand-heavy fuzz
-/// programs crash probabilistically, and accepting a reduction off a lucky single run lets the
-/// artifact drift to one that rarely (or never) reproduces.
-fn crashes_every_run(name: &str, runs: u32) -> bool {
-    for _ in 0..runs {
-        let child = Command::new(name).spawn().expect("failed to start child");
-        if run_for_30_seconds(child) {
-            return false;
-        }
-    }
-    true
-}
-/// True if the exe crashes on AT LEAST ONE of `runs` runs. Used to confirm an initial single-run
-/// failure is a real (possibly probabilistic) crash, not a spurious first-run-after-compile failure
-/// on Windows — the latter would otherwise send delta debugging off reducing a program that does not
-/// actually reproduce, drifting into artifacts (e.g. infinite recursion / stack overflow).
+/// True if the exe crashes on AT LEAST ONE of `runs` runs — the acceptance test for a reduction
+/// candidate. `read_rand`-heavy fuzz programs crash probabilistically, so a candidate that still has
+/// the bug may survive several runs by luck; a candidate that has LOST the bug cannot crash at all,
+/// which is why one hit is enough to keep it. A 30s hang counts as success (see
+/// `run_for_30_seconds`), so an infinite-loop artifact can never be accepted here.
 fn crash_reproduces(name: &str, runs: u32) -> bool {
     for _ in 0..runs {
         let child = Command::new(name).spawn().expect("failed to start child");
@@ -413,6 +414,10 @@ fn main() {
         if idx + 1 >= args.len() {
             panic!("[ERROR] You should use --fuzz [NUMBER_OF_PROGRAMS]");
         }
+        let no_run = args.contains(&"--no-run".to_string());
+        if no_run {
+            fs::create_dir_all("temp/bins").unwrap();
+        }
         let mut seed: i64 = -1;
         let num: u64 = args[idx + 1].parse().unwrap();
         let mut crash: Option<(Vec<Ast>, bool)> = None; // (program, crash_is_compile_panic)
@@ -452,18 +457,35 @@ fn main() {
                 crash = Some((prgm, true));
                 break;
             }
+            if no_run {
+                let ms = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos();
+                let dest = format!("temp/bins/{}{}", ms, FILE_EXTENSION_EXE);
+                fs::copy(&name, &dest).unwrap();
+                println!("Fuzz {i} compiled to {dest}");
+                continue;
+            }
             let child = Command::new(&name.clone())
                 .spawn()
                 .expect("failed to start process");
-            // Confirm any initial failure actually reproduces before reducing — a single spurious
-            // first-run failure (Windows just-compiled exe) must not send delta debugging off into
-            // an artifact.
-            if !run_for_30_seconds(child) && crash_reproduces(&name, 5) {
+            // ONE crash is enough to trigger reduction. CTLA bugs are frequently RNG-sensitive
+            // (`read_rand`), so demanding a confirmation run skipped real bugs outright — a rare
+            // leak that fails ~1-in-20 never cleared a 1-in-5 confirmation bar and the campaign
+            // walked straight past it. A hang cannot trigger this: `run_for_30_seconds` treats a
+            // 30s timeout as success, so infinite-loop artifacts are still excluded.
+            if !run_for_30_seconds(child) {
                 crash = Some((prgm, false));
                 break;
             }
             println!("Fuzz {i} completed");
         }
+        println!(
+            "Hangs (30s timeout, treated as non-crash): {} / {} runs",
+            HANG_COUNT.load(Ordering::Relaxed),
+            num
+        );
 
         if let Some((prgm, crash_is_compile_panic)) = crash {
             let mut runner = TestRunner::new();
@@ -526,7 +548,7 @@ fn main() {
                             // compiled successfully — no longer triggers the compiler crash
                             false
                         } else {
-                            crashes_every_run(&delta_name, 3)
+                            crash_reproduces(&delta_name, REDUCE_CONFIRM_RUNS)
                         }
                     }
                 };
@@ -578,7 +600,7 @@ fn main() {
                 d.start_with_ast(&ctx, cleaned.clone())
             }));
             if let Ok(Ok(_)) = clean_ok {
-                if crashes_every_run(&delta_name, 3) {
+                if crash_reproduces(&delta_name, REDUCE_CONFIRM_RUNS) {
                     current = cleaned;
                     // recompile to real path
                     let _ = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -673,7 +695,7 @@ fn main() {
                     if crash_is_compile_panic == Some(true) {
                         false
                     } else {
-                        crashes_every_run(&delta_name, 3)
+                        crash_reproduces(&delta_name, REDUCE_CONFIRM_RUNS)
                     }
                 }
             }

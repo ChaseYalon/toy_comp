@@ -2586,3 +2586,29 @@ fn test_ast_gen_void_lambda_in_array_and_call() {
         ]
     ))
 }
+
+// An empty array literal in a `return` must be typed from the function's declared return type,
+// like `let v: int[] = []` already is. Otherwise it stays TypeTok::Any (no degree) and codegen
+// panics at "Type Any does not have a degree".
+#[test]
+fn test_ast_gen_return_empty_array_typed_from_return_type() {
+    setup_ast!("fn func1(): int[] { return []; } func1();", ast);
+    let body = ast
+        .iter()
+        .find_map(|n| match n {
+            Ast::FuncDec(name, _, _, body, _) if **name == *"func1" => Some(body),
+            _ => None,
+        })
+        .expect("func1 not found");
+    let ret_arr_type = body
+        .iter()
+        .find_map(|n| match n {
+            Ast::Return(inner, _) => match &**inner {
+                Ast::ArrLit(ty, _, _) => Some(ty.clone()),
+                _ => None,
+            },
+            _ => None,
+        })
+        .expect("return arr literal not found");
+    assert_eq!(ret_arr_type, TypeTok::IntArr(1));
+}
